@@ -1,8 +1,10 @@
 # Debian 13 (trixie) on the DragonBox Pyra
 
-Status: **card written and verified 2026-09-08, not yet booted.** All three
-fixes were confirmed necessary against the real image, applied offline, and
-verified on the card. See "Pre-flight results" and "Card as written" below.
+Status: **card boots; lightdm fails, so no desktop yet (2026-09-08).** The unit
+comes up far enough to reach multi-user and is reachable over SSH as `pyra`.
+The graphical target is the open problem. All three fixes were confirmed
+necessary against the real image, applied offline, and verified on the card.
+See "Pre-flight results", "Card as written" and "Boot result" below.
 Written 2026-09-07. Target: V5.x Pyra, live boot from the left SD slot, eMMC
 untouched. Kernel is the same 5.6.19-pyradef that bookworm-7 uses.
 
@@ -307,6 +309,29 @@ Two things left open, both only resolvable by booting:
   and the Pyra runs 5.6.19.** The superblock feature set is unchanged (`encrypt`
   only, set at mkfs time) and it unmounted with a clean checkpoint, so this
   should be fine, but it is the one step that was not verifiable offline.
+
+## Boot result — 2026-09-08
+
+The card boots. The long-press quirk in step 5 is real and remains the first
+thing to check if it appears not to.
+
+What works:
+
+- Boot through to multi-user, with networking.
+- SSH in as the `pyra` account the prep script created, at <usb-address>.
+
+What does not:
+
+- **lightdm fails and no desktop appears.** Unknown whether this is fix 1
+  incompletely covering the Xorg problem, a lightdm configuration issue, or
+  something else. The forum writeup only ever claimed a working desktop via
+  the bare `xinit` session the first-run wizard used, which is not the same
+  code path as lightdm starting a session.
+
+Not yet checked on hardware: whether `pyrainput` actually starts and produces
+the three input devices, whether the empty `/etc/pyrainput.cfg` is accepted,
+and whether GLES2 through the SGX blob works. Since SSH works, all of that is
+now debuggable on the device instead of by pulling the card.
 
 ## Where this deviates from the forum post
 
