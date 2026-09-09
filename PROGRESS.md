@@ -445,24 +445,53 @@ symptom later.
 
 ## Open items
 
-- **Log in to MATE and confirm the session works.** The greeter renders and the
-  operator reports the UI working; a session has not been driven from here.
-- **Verify `pyra-usb3503-rescue.service` on a real warm reboot.** It no-ops
-  correctly with the hub present, but the path that matters has not been
-  exercised.
-- **Remove `/etc/sudoers.d/90-pyra-nopasswd`** when the build is finished. This
-  is the last outstanding change to the device:
+Nothing here blocks using the device. It boots to a desktop, the hardware works
+and the rootfs fills the card.
+
+- **Log in to MATE and confirm a full session works.** The greeter renders and
+  the operator reports the UI working, but a session has not been driven from
+  here, so nothing beyond the login screen has been exercised directly.
+- **Remove `/etc/sudoers.d/90-pyra-nopasswd`.** Added so this session could work
+  unattended, and the last outstanding change to the device. It gives the `pyra`
+  account root with no password:
 
       sudo rm /etc/sudoers.d/90-pyra-nopasswd
-- **No desktop GLX.** Consequence of fix 4. Revert when Xorg's AIGLX probe
-  fails gracefully, or when mesa's stub can create a screen for omapdrm.
-- **Two upstream bugs to file**, beyond the pyrainput one:
-  - xorg-server 21.1.16: AIGLX DRI2 probe NULL-derefs on every failure path
-    instead of falling back to swrast. This is the whole "brokenxorg" problem.
+
+- **No desktop GLX**, as a consequence of fix 4. Bookworm has software GLX here,
+  so this is a real regression against it, though GLX never touched the SGX on
+  this platform. Revert when Xorg's AIGLX probe fails gracefully, or when mesa's
+  stub can create a screen for omapdrm.
+- **Three upstream bugs worth filing:**
+  - xorg-server 21.1.16: the AIGLX DRI2 probe NULL-derefs on every failure path
+    instead of returning NULL and falling back to swrast, which is what 21.1.7
+    does with the identical missing driver. This is the whole "brokenxorg"
+    problem, and fixing it would retire fix 4.
   - mesa 25.0.7: `libdril_dri.so` reports `Error creating gpu or npu` for
     omapdrm rather than falling back to software.
-- **Upstream bug to file.** `funkeymonkey-pyrainput` 0.1.19 in the trixie repo
-  ships no systemd unit while the identical version in bookworm does.
-  https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
-- **f2fs cross-kernel caveat.** Resolved in practice: the card was written by a
-  Linux 7.1 host and has now booted and rebooted cleanly under 5.6.19.
+  - `funkeymonkey-pyrainput` 0.1.19 in the trixie repo ships no systemd unit
+    while the identical version in bookworm does.
+    https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
+- **The USB3503 warm-reboot bug is worked around, not fixed.** The hub's reset
+  GPIO is left deasserted across a warm boot so the driver's reset is a no-op.
+  `pyra-usb3503-rescue.service` re-resets it after the fact. The real fix is in
+  the driver or device tree.
+- **Load average sits near 2.0** from two permanently uninterruptible
+  `events_freezable` kworkers, with the CPU ~80% idle. Present from the image's
+  first boot, cosmetic, cause not chased. See `TRIXIE.md`.
+
+## Settled, so they do not come back as questions
+
+- **`pyra-usb3503-rescue.service` works on a real warm reboot.** Verified after
+  a reboot on 2026-09-09: the journal reads `hub absent from the USB bus,
+  re-resetting` then `hub enumerated after 1 s`, and the hub, ethernet adapter
+  and mouse all returned without intervention.
+- **Fix 4 survives a cold boot.** The Xorg log after a power cycle carries only
+  `Extension "GLX" is disabled`, with no AIGLX line and no segfault.
+- **The card is genuine and its full capacity is real.** 40 unique samples
+  written and read back across the previously untested upper 113 GiB, plus a
+  clean sustained 256 MiB round trip.
+- **`reboot` does not power the unit off.** An earlier entry claimed it did.
+  It reboots normally; USB dies, which is a different problem with a different
+  fix.
+- **f2fs cross-kernel caveat.** The card was written by a Linux 7.1 host and has
+  since booted, rebooted and been resized cleanly under 5.6.19.
