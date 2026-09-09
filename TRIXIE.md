@@ -856,9 +856,89 @@ trixie archive for these tests and are not in the base image.
 
 ---
 
-## Not tried yet
+## x86 software through box86 — tested 2026-09-09, works
 
-- box86 on trixie
+`box86-pyra` is in the Pyra repository and is **not** installed by the image:
+
+    sudo apt-get install box86-pyra        # 0.3.7.1, dynarec build
+
+box86 runs x86 binaries by translating the x86 code and substituting the
+device's own ARM libraries for the x86 ones the binary asks for. That is why it
+pairs with gl4es: an x86 program's GL calls end up in the same native `libGL`
+the ARM programs use, so they cost nothing extra.
+
+**Dynamically linked i386 ELF binaries run.** A statically linked one does not:
+
+    Error, using brk on multi-part memory elf is not allowed for now
+
+This is a box86 limitation and not much of one in practice, since the whole
+design depends on the binary resolving its libraries at run time.
+
+**x86 GL is as fast as ARM GL.** Debian's i386 `glxgears`, under the gl4es
+wrapper, runs at 851–869 FPS in its default window, against ~870 for the ARM
+build measured in the section above. Emulation is not on the path that matters.
+
+    gl4es box86 ./glxgears.i386-linux-gnu
+
+### Wine, and a 1999 Windows game
+
+Wine has to be an **x86** build; the ARM Wine in the Debian archive runs ARM
+Windows binaries, which is not what an x86 game is. A self-contained relocatable
+tarball is much less work than Debian's i386 packages, which would drag in i386
+libraries that box86 exists to avoid:
+
+    wine-9.0-x86.tar.xz   from github.com/Kron4ek/Wine-Builds
+
+Prefix creation takes about 75 seconds under emulation:
+
+    export WINEPREFIX=$HOME/wine-x86 WINEDLLOVERRIDES="mscoree,mshtml="
+    gl4es box86 ~/wine/bin/wine wineboot -u
+
+Wine's own GUI works — `notepad` renders normally on the MATE desktop — and so
+does the game's 1999 configuration utility, so x86 Windows code executes.
+
+**DirectDraw must be told to use the GDI renderer:**
+
+    gl4es box86 ~/wine/bin/wine reg add \
+        "HKCU\Software\Wine\Direct3D" /v renderer /d gdi /f
+
+Without it the game creates its window and then hangs, drawing nothing, with a
+single line to say why:
+
+    trace:ddraw:DirectDrawCreate driver_guid (null) ...
+    LIBGL: ERROR: EGL Error detected: EGL_BAD_MATCH
+    err:d3d:wined3d_caps_gl_ctx_create_attribs Failed to make new context current
+
+This is fix 4 and the blob's fbconfig strictness meeting each other. With GLX
+off, Wine's window gets the server's default 24-bit visual, while the only EGL
+config the SGX blob will accept is the exact RGBA8 / depth24 / stencil8 one
+documented above, so the context and the surface can never match.
+`LIBGL_ALPHAHACK`, `LIBGL_AVOID24BITS` and `LIBGL_FBONOALPHA` were each tried
+and none of them help.
+
+The GDI renderer sidesteps GL completely, which for a 2D DirectDraw game is no
+loss at all. The practical rule:
+
+| Windows game type | Works? |
+| --- | --- |
+| 2D DirectDraw, `renderer=gdi` | yes |
+| 3D through wined3d's GL renderer | no, blocked by the EGL mismatch above |
+
+**Anno 1602 / 1602 A.D.** (Win32, 1999) runs this way at 800x600 inside a Wine
+virtual desktop, with sound through PulseAudio, using about 80% of one core:
+
+    cd "/path/to/1602 A.D"
+    gl4es box86 ~/wine/bin/wine explorer /desktop=anno,800x600 ./1602.exe
+
+Use the virtual desktop rather than letting it go fullscreen; the game asks for
+display modes the panel does not have.
+
+**It runs hot.** Sustained emulation puts the CPU sensor at 95°C against 65°C
+idle, with the GPU and core sensors around 88°C. Nothing throttled or fell over
+in the runs here, but this is a fanless handheld and a long session is a
+different test from a ten-minute one.
+
+## Not tried yet
 
 Side note from the original report: a test binary compiled on bookworm ran
 unmodified on trixie, so the armhf 64-bit `time_t` transition did not bite this

@@ -688,6 +688,89 @@ like a fast pass, arriving from the opposite direction: there the banner was
 missing, here it lied. A verdict line is only worth having if it can only be
 produced one way.
 
+---
+
+## 2026-09-09 (PC clock, US Eastern) — x86 through box86, up to a Windows game
+
+The last item under "Not tried yet". Worked over SSH against the running unit
+with the MATE session live on `:0`.
+
+### box86 itself
+
+`box86-pyra` 0.3.7.1 is in the Pyra repository and is not installed by the
+image. Installed it, then went up in stages rather than starting from the game,
+so that a failure would land somewhere specific.
+
+- A dynamically linked i386 `hello` built on the PC runs.
+- A **statically** linked one does not: `Error, using brk on multi-part memory
+  elf is not allowed for now`. That is box86's own limitation and it barely
+  matters, since box86 works by substituting the device's ARM libraries for the
+  x86 ones a binary asks for, which a static binary never does.
+- Debian's i386 `glxgears`, under the gl4es wrapper, runs at **851–869 FPS**
+  against ~870 for the ARM build measured earlier. So the emulation costs
+  nothing on the GL path: box86 hands those calls to the same native library.
+
+### Wine
+
+Wine has to be an x86 build. The ARM Wine in the archive runs ARM Windows
+binaries, which is not what a 1999 x86 game is. Used Kron4ek's self-contained
+`wine-9.0-x86` tarball rather than Debian's i386 packages, which would have
+pulled in the i386 libraries box86 exists to avoid. Prefix bootstrap took 75
+seconds under emulation. `wine notepad` renders normally on the desktop.
+
+### 1602 A.D., and the one thing that had to change
+
+The game is Anno 1602, Win32 and DirectDraw, from a zip the operator supplied.
+Its own `Config.exe` came up and drew correctly, which established that x86
+Windows code executes before any question about rendering.
+
+`1602.exe` then created its window and hung, drawing nothing, at 0% CPU. Two
+wrong readings were made and corrected on the way:
+
+- I first concluded "no window at all" from grepping `xwininfo -root -children`.
+  That was wrong — a `marco`-decorated window is listed under its unnamed frame,
+  so the grep could not have matched. A screenshot showed `wine notepad`
+  rendering perfectly at the same moment. **Screenshot before concluding
+  anything about what is or is not on screen.**
+- With `WINEDEBUG=-all` there was nothing to go on but a single gl4es error
+  line. Turning wine's own channels back on named the failure exactly.
+
+    trace:ddraw:DirectDrawCreate driver_guid (null) ...
+    LIBGL: ERROR: EGL Error detected: EGL_BAD_MATCH
+    err:d3d:wined3d_caps_gl_ctx_create_attribs Failed to make new context current
+
+This is fix 4 and the SGX blob's fbconfig strictness meeting each other. With
+GLX off, wine's window carries the server's default 24-bit visual, and the only
+EGL config the blob accepts is the exact RGBA8/depth24/stencil8 one the gl4es
+work already documented, so context and surface can never match.
+`LIBGL_ALPHAHACK`, `LIBGL_AVOID24BITS` and `LIBGL_FBONOALPHA` were each tried
+and all four runs failed identically.
+
+Switching wine's DirectDraw to the GDI renderer avoids GL altogether, which for
+a 2D game costs nothing:
+
+    wine reg add "HKCU\Software\Wine\Direct3D" /v renderer /d gdi /f
+
+The game then runs: 800x600 in a wine virtual desktop, sound through
+PulseAudio as a sink input named `ANNO 1602`, about 80–87% of one core, and the
+scene animating between captures. `pyra-box86-anno1602.png` is a screenshot of
+it in play.
+
+The practical rule this leaves: **2D DirectDraw titles work, 3D wined3d titles
+do not**, and the reason is fix 4, not box86.
+
+### thermals
+
+Worth writing down because this is a fanless handheld. Sustained emulation put
+the CPU sensor at **95°C against 65°C idle**, GPU and core around 88°C. Nothing
+throttled or failed in these runs, which were tens of minutes, not hours.
+
+### left on the device
+
+`box86-pyra` installed from the repository. `~/box86test` holds the wine build,
+the prefix and the game, 678 MB, with 114 GB still free. The wine registry is
+left with `renderer=gdi`, which is the working configuration.
+
 ## Open items
 
 Nothing here blocks using the device. It boots to a desktop, the hardware works
@@ -706,6 +789,11 @@ and the rootfs fills the card.
   still missing is GLX for anything that cannot be wrapped. Revert fix 4 when
   Xorg's AIGLX probe fails gracefully, or when mesa's stub can create a screen
   for omapdrm.
+- **Wine's 3D path is blocked by the same thing.** With GLX off, a wine window
+  gets the default 24-bit visual and the blob's only EGL config wants alpha, so
+  `wined3d` cannot make a context current. 2D DirectDraw games work through
+  `renderer=gdi`; anything going through wined3d's GL renderer does not. This
+  would also be retired by the xorg fix below.
 - **Three upstream bugs worth filing:**
   - xorg-server 21.1.16: the AIGLX DRI2 probe NULL-derefs on every failure path
     instead of returning NULL and falling back to swrast, which is what 21.1.7
@@ -758,3 +846,9 @@ and the rootfs fills the card.
 - **The glmark2 shader failures are not gl4es's fault**, and neither is the
   fbconfig strictness. Both reproduce with `glmark2-es2` on native GLES2 with
   gl4es absent.
+- **box86 works, and x86 GL costs nothing.** Dynamically linked i386 binaries
+  run; i386 `glxgears` under gl4es matches the ARM build to within 2%. Static
+  x86 binaries do not run, by a box86 limitation.
+- **A 1999 Windows game runs, with sound.** Anno 1602 through x86 wine 9.0 under
+  box86, at 800x600 with `renderer=gdi`, using ~80% of one core. The GL renderer
+  is what fails, and it fails for the fix 4 reason, not because of box86.
