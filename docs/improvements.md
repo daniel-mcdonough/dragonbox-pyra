@@ -20,7 +20,7 @@ what the device actually says.
 | Eliminate framebuffer copies, fix TILER | Potentially enormous | **Rotation is already in hardware.** A smaller Present question remains |
 | Optimise gl4es / native GLES paths | Large | Real but unquantified. Measure before building |
 | Sustained CPU clocks and thermals | Large | **Real, and the governor is misconfigured.** Cheapest win on the list |
-| Optimise 2D X rendering, EXA, pixman | Medium–large | Real, and the shipped config contradicts its own comment |
+| Optimise 2D X rendering, EXA, pixman | Medium–large | **Fills and blits are already accelerated.** The gap is image readback |
 | Cortex-A15 / NEON rebuilds | Medium | Smaller than claimed. pixman already dispatches NEON at runtime |
 | Xorg to XLibre | Small–medium | **No performance value.** Possible correctness value, see below |
 | Strip legacy code from X | Small | None. Dropped |
@@ -194,43 +194,109 @@ The cost is losing window shadows, fades and any true transparency. On a 5-inch
 
 Effort: minutes to test. Risk: none, trivially reversible.
 
-### 4. Settle the EXA question, because the shipped config argues with itself
+### 4. Correct the EXA comment, and chase the readback path instead
 
-**Measured.** `/etc/X11/xorg.conf.d/10-pyra-driver.conf` contains:
+**Resolved.** Both halves of this item have been settled against the driver
+source and the running unit. The config comment is wrong, hardware EXA is on,
+and fills and blits are accelerated. The real gap is somewhere else.
+
+**Hardware EXA is enabled.** `/etc/X11/xorg.conf.d/10-pyra-driver.conf` carries:
 
     Option "SoftEXA" "FALSE" # will disable etnaviv acceleration. CPU only EXA
                              # is actually faster, but let all the work to A15 core
 
-The comment says this disables hardware acceleration. The X log says the
-opposite:
+The comment is backwards. In `armsoc_driver.c` the option is read straight into
+`pARMSOC->SoftExa`, logged as `Hardware EXA is %s` with `SoftExa ? "Disabled" :
+"Enabled"`, and `ARMSOCAccelInit` calls `InitViv2DEXA` under `if
+(!pARMSOC->SoftExa)`, falling through to `InitNullEXA` only if that fails. So
+`FALSE` selects the Vivante path, which is what the log reports:
 
+    (**) OMAP5(0): Option "SoftEXA" "FALSE"
     (II) OMAP5(0): Hardware EXA is Enabled
-    (II) OMAP5(0): Viv2DEXA: Etnaviv driver found
     (II) OMAP5(0): Viv2DEXA: Vivante GC320 GPU revision 5301 found !
+    (II) OMAP5(0): Viv2DEXA: initialized.
 
-`SoftEXA "FALSE"` means "do not use software EXA", so the Vivante GC320 2D core
-on `card2` is doing the work. Somebody wrote the comment for the opposite
-setting, or changed the value and left the comment. Either way the file is
-actively misleading and should be corrected once the benchmark says which value
-is right.
+The comment describes the setting somebody rejected. Fix the comment; leave the
+value alone until the benchmark says otherwise.
 
-There is a second finding in that log worth chasing:
+**Fills and blits do not fall back.** The earlier reading of the log was an
+artifact of a filtered `grep`. The unfiltered block lists three operations:
 
     (II) EXA(0): Driver registered support for the following operations:
+    (II)         Solid
+    (II)         Copy
     (II)         Composite (RENDER acceleration)
 
-Composite is the only registered operation. Solid fills and blits — which is
-most of what a desktop does — are not in the list, so they appear to fall back
-to software with the pixmap migration overhead that implies. That would make
-this the worst of both configurations: hardware EXA's migration costs without
-hardware EXA's coverage. Confirm it against the `xf86-video-armsoc-omap5` source
-before believing it; the log may simply be listing only what the EXA core
-considers noteworthy.
+`Solid` and `Copy` were there all along. Confirmed on the hardware by sampling
+the etnaviv command-DMA address in `/sys/kernel/debug/dri/2/gpu` while a
+benchmark ran. Idle, the address never moves. Under `x11perf -rect500` it took
+6 distinct values, and under `-copywinwin500` it took 12. The GC320 is executing
+both.
 
-So: benchmark `SoftEXA "TRUE"` against `"FALSE"` with `x11perf`, with the
-compositor off in both cases so item 3 does not contaminate the result. Also
-capture power draw from the `bq27421-0` gauge, because if CPU EXA wins on speed
-the GC320 may still win on battery, and that is a legitimate reason to keep it.
+The rates agree. A 500x500 fill is 1 MB of writes and a copy is 1 MB each way:
+
+| operation | rate | implied traffic |
+| --- | --- | --- |
+| `-rect500` | 2370/sec | 2.4 GB/s written |
+| `-copywinwin500` | 1670/sec | 3.3 GB/s moved |
+| `-copypixpix500` | 1670/sec | 3.3 GB/s moved |
+
+LP-DDR2 at 531 MHz cannot give a CPU memcpy those numbers, so this is not a
+software path.
+
+**The real gap is image transfer, not drawing.** `libexa.so` can print five
+operation names, and the log printed three. The two it did not print are
+`UploadToScreen` and `DownloadFromScreen`, and the driver's build config has
+both hooks commented out:
+
+    //#define VIV2D_UPLOAD_TO_SCREEN 1
+    //#define VIV2D_DOWNLOAD_FROM_SCREEN 1
+
+With no hook, every image transfer goes the generic route: EXA maps the buffer
+object and the CPU copies through it. That shows up immediately:
+
+| operation | rate | implied throughput |
+| --- | --- | --- |
+| `-putimage500` | 318/sec | 318 MB/s in |
+| `-shmput500` | 988/sec | 988 MB/s in |
+| `-getimage500` | 61.6/sec | 62 MB/s out |
+
+Readback at 62 MB/s is 27 times slower than the accelerated copy of the same
+rectangle. That is the signature of the CPU reading uncached GPU memory, and it
+lands on anything that pulls pixels back off the screen. This, not the drawing
+path, is where the migration cost the previous entry worried about actually
+lives.
+
+Two things follow. Anything that can use `MIT-SHM` should, since it is three
+times the plain path. And building the driver with the two transfer hooks
+enabled is now a concrete experiment with a number attached to it, rather than
+a guess.
+
+**Known fallbacks, from the source.** These come from `viv2d_exa.c` and
+`viv2d_config.h`, not from measurement, so treat them as leads:
+
+- Any raster op other than `GXcopy`. Both `Viv2DPrepareSolid` and
+  `Viv2DPrepareCopy` return `FALSE` on `alu != GXcopy`.
+- An `A8` destination, because `VIV2D_SUPPORT_A8_DST` is not defined. `A8`
+  source and mask are both supported, so this only bites when something draws
+  into an alpha-only pixmap.
+- Surfaces above `VIV2D_MAX_SIZE`, which is 16 MB. The 720x1280 screen is
+  3.5 MB, so this never fires here.
+- `VIV2D_MIN_SIZE` is `0`, so there is no small-pixmap cutoff and even tiny
+  operations pay a GPU submit. The header keeps three larger cutoffs commented
+  out and calls `0` the best result, but that was somebody else's hardware.
+  Worth a sweep once item 0 exists.
+
+The config header is trustworthy here: its `UploadToScreen` and
+`DownloadFromScreen` settings predict exactly what the shipped binary logged,
+and the binary carries none of the `VIV2D_UNSUPPORTED` debug strings, which the
+same header also disables.
+
+**Still open.** Whether `SoftEXA "TRUE"` beats `"FALSE"` on this panel is
+unmeasured, and the comment's claim that CPU EXA is faster is not disproven by
+any of the above. Benchmark both with the compositor off so item 3 does not
+contaminate the result, and capture power draw from the `bq27421-0` gauge,
+because if CPU EXA wins on speed the GC320 may still win on battery.
 
 Effort: a morning, given item 0. Risk: none.
 
