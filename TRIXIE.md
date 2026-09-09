@@ -479,6 +479,35 @@ NetworkManager.
 that matters after fix 4, since it proves disabling GLX cost nothing on the path
 that was ever fast.
 
+## Growing the rootfs
+
+The image is 6 GiB and nothing grows it on boot, so on a 128 GB card about
+113 GB sits unused. Growing it means extending partition 2 and running
+`resize.f2fs`.
+
+**This cannot be done on the Pyra.** f2fs online resize goes through
+`F2FS_IOC_RESIZE_FS`, and the 5.6.19 kernel's implementation only shrinks — ask
+it to grow and it returns `EINVAL`. Confirmed by calling the ioctl directly
+against a throwaway loopback f2fs on the device, rather than inferring it.
+`f2fs_io` in f2fs-tools 1.16.0 has no `resize` subcommand either, so there is no
+userspace path to it regardless. And `resize.f2fs` is a symlink to `fsck.f2fs`,
+which is an offline tool and will not operate on a mounted filesystem. Since the
+filesystem in question is the rootfs, it cannot be unmounted in place.
+
+So: power the Pyra down, move the card to a reader on a PC, and run
+
+    sudo ./pyra-trixie-grow.sh /dev/sdX
+
+`pyra-trixie-grow.sh` (in this directory) refuses to touch anything that is not
+a Pyra trixie card. It checks the MBR disk identifier and both partition start
+sectors, refuses a partition or a mounted device, and backs up the first 1 MiB
+and the partition table before it writes. Partition 2's start sector does not
+move, so the PARTUUIDs that `fstab` and `extlinux.conf` reference stay valid. It
+is idempotent: run it on an already-grown card and it reports there is nothing
+to do.
+
+Then put the card back in the **left** slot, cold boot, and check with `df -h /`.
+
 ## Where this deviates from the forum post
 
 The original writeup works, but a few steps are fragile enough to be worth

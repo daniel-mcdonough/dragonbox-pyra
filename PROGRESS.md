@@ -314,6 +314,44 @@ hardware rendering, not as a benchmark.
 
 ---
 
+### 05:50 — the rootfs cannot be grown on the device
+
+Established that f2fs online growth is impossible on this kernel, rather than
+assuming it either way:
+
+- `resize.f2fs` is a symlink to `fsck.f2fs`, an offline tool that will not work
+  on a mounted filesystem. The filesystem here is the rootfs.
+- `f2fs_io` in f2fs-tools 1.16.0 has no `resize` subcommand, so nothing in
+  userspace reaches `F2FS_IOC_RESIZE_FS`.
+- Calling that ioctl directly, from a small C probe against a throwaway 200 MiB
+  loopback f2fs grown to 400 MiB, returns `EINVAL`. The kernel symbol
+  `f2fs_resize_fs` exists in 5.6.19, but its implementation only shrinks.
+
+So the resize is a PC-side job with the card in a reader.
+
+### 06:00 — `pyra-trixie-grow.sh`, and a bug the test caught
+
+Wrote the resize script with guards, then a test harness that builds a fake
+8 GiB card with the real Pyra geometry and exercises it, including the cases
+where it must refuse.
+
+The test found a real bug. The check for "you passed a partition, not a disk"
+was `[[ $DEV =~ [0-9]$ ]]`, which rejects any device whose name ends in a digit
+— so `/dev/loop0` was refused for the wrong reason, and two of the three refusal
+tests were passing by accident rather than exercising the guard they named. The
+same bug would reject `mmcblk0` and `nvme0n1`, and the Pyra sees this very card
+as `mmcblk3`.
+
+Fixed by asking the kernel instead: `/sys/class/block/<dev>/partition` exists
+only for partitions. Partition naming is now derived too, since `sda` gives
+`sda1` but `loop0`, `mmcblk3` and `nvme0n1` give a `p1` suffix.
+
+The lesson was in the test, not the script: asserting only that a command failed
+lets it fail for the wrong reason. The refusal tests now assert on the error
+message. Re-run after the fix: all pass, including idempotency.
+
+---
+
 ## Open items
 
 - **Log in to MATE and confirm the session works.** The greeter renders and the
@@ -321,8 +359,9 @@ hardware rendering, not as a benchmark.
 - **Verify `pyra-usb3503-rescue.service` on a real warm reboot.** It no-ops
   correctly with the hub present, but the path that matters has not been
   exercised.
-- **113 GB of the card is unused.** The image is 6 GiB and nothing grows the
-  rootfs on boot. Expanding means growing p2 and running `resize.f2fs`.
+- **113 GB of the card is unused.** Cannot be done on the device; needs the
+  card in a PC reader and `pyra-trixie-grow.sh`. Script written and tested
+  against a fake card; not yet run against the real one.
 - **Remove `/etc/sudoers.d/90-pyra-nopasswd`** when the build is finished.
 - **No desktop GLX.** Consequence of fix 4. Revert when Xorg's AIGLX probe
   fails gracefully, or when mesa's stub can create a screen for omapdrm.

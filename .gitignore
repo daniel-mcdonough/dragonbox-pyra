@@ -1,2 +1,4 @@
 *.img
 *.7z
+pyra-card-*.bin
+pyra-card-*.sfdisk
