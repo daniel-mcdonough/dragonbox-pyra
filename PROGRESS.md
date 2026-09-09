@@ -619,6 +619,75 @@ read off the running device cover the logic, but the prep script has not been
 re-run against the loop-mounted `pyra-trixie-t1.img`, which needs root on the
 PC. Worth doing before the next card is written.
 
+---
+
+## 2026-09-09 (PC clock, US Eastern) — the prep script validated against the real image
+
+No hardware. This closes the caveat the previous entry left open: fix 5 had been
+tested only against a fake rootfs, and the prep script had not been run against
+the loop-mounted `pyra-trixie-t1.img` since fix 5 was added.
+
+### the harness
+
+`pyra-prep-selftest.sh`, now in the repository rather than left in a scratch
+directory, since `TRIXIE.md` refers to it. Run as root against a **copy** of the
+image, so the image stays the record of what was written to the card.
+
+Its central assertion is not a list of paths. It snapshots the entire rootfs —
+type, mode, uid, gid, size and symlink target for every entry — before and
+after, so a stray write anywhere in the tree shows up whether or not a test was
+written for it. 148,313 nodes.
+
+### result
+
+The prep script made exactly six changes and no others:
+
+| Change | Fix |
+| --- | --- |
+| removed the `armsoc_dri.so` symlink | 1 |
+| wrote `20-pyra-glx.conf`, mode 0644 | 4 |
+| created `/var/lib/lightdm/data`, 0750, uid 105 gid 108 | 4 |
+| installed `/usr/local/sbin/pyra-usb3503-rescue`, 0755 root:root | 5 |
+| installed the unit in `/etc/systemd/system/`, 0644 root:root | 5 |
+| enabled the rescue in `multi-user.target.wants` | 5 |
+
+Fixes 2 and 3 reported everything already present, which is correct: the image
+received them on the 8th. Two paths ran here for the first time against the real
+image rather than a fake one — fix 4, which did not exist when the image was
+prepped, and fix 1's *removal* of the symlink that the older fix 1 had created.
+
+The second run changed nothing. The before/after comparison came back
+byte-empty, so idempotency now holds against a real f2fs rootfs and not only
+against the fake one.
+
+Both fix 5 payloads on the target are byte-identical to the repository copies,
+`/usr/local/sbin` was not re-moded, and the missing-payload abort fired before
+fix 1 removed anything. `fsck.f2fs --dry-run` afterwards: checkpoint
+`trimmed crc unmount`, every node and inode count matched, no corruption.
+
+### a bug in the harness, not in the script
+
+The first run printed `TEST COMPLETE: FAIL` in the middle of a passing run. The
+cause is that **a bash `ERR` trap fires whether or not `errexit` is set**, so
+`set +e` does not exempt a command whose failure is the expected outcome. Three
+sites tripped it, the loudest being the missing-payload test, whose whole point
+is to fail.
+
+Two defects, and the second is the one worth remembering:
+
+- The trap was not disarmed around intentional failures. Fixed with `arm`/`disarm`
+  around those three sites.
+- **The banner was printed from two places**, so one run could emit two
+  contradictory verdicts. It is now printed once, from the `EXIT` path, and
+  distinguishes four outcomes: pass, assertion failure, harness abort, and an
+  exit with no assertion failure recorded, which is treated as incomplete rather
+  than as a pass. All four were exercised directly.
+
+This is the same lesson as `verify-card-capacity.sh` exiting silently and looking
+like a fast pass, arriving from the opposite direction: there the banner was
+missing, here it lied. A verdict line is only worth having if it can only be
+produced one way.
+
 ## Open items
 
 Nothing here blocks using the device. It boots to a desktop, the hardware works
@@ -658,6 +727,13 @@ and the rootfs fills the card.
   first boot, cosmetic, cause not chased. See `TRIXIE.md`.
 
 ## Settled, so they do not come back as questions
+
+- **The prep script produces, offline, exactly the machine that is running.**
+  Validated on 2026-09-09 against a copy of the real loop-mounted image: six
+  intended changes to the rootfs and no others across 148,313 nodes, a second
+  run changing nothing, both fix 5 payloads byte-identical to the repository,
+  the missing-payload abort firing before fix 1 writes, and a clean
+  `fsck.f2fs`. `pyra-prep-selftest.sh` re-runs the whole check.
 
 - **`pyra-usb3503-rescue.service` works on a real warm reboot.** Verified after
   a reboot on 2026-09-09: the journal reads `hub absent from the USB bus,

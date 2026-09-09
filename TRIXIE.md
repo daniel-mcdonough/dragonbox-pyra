@@ -13,7 +13,8 @@ slot, eMMC untouched. Kernel is the same 5.6.19-pyradef that bookworm-7 uses.
 Companion script: `pyra-trixie-prep.sh` (in this directory). It applies all
 five fixes offline. Fix 5 installs two files that live beside it, so run it from
 a checkout of this directory rather than copying the script somewhere on its
-own.
+own. `pyra-prep-selftest.sh` proves it does that correctly against a copy of the
+real image, without a Pyra and without touching a card.
 
 ---
 
@@ -92,6 +93,19 @@ before committing it to a card.
 
     sudo umount /mnt/pyra
     sudo losetup -d /dev/loop0
+
+**Or let the self-test do all of the above.** `pyra-prep-selftest.sh` (in this
+directory) does the loop-mount, runs the prep script against a *copy* of the
+image so the image itself is untouched, and checks the result properly:
+
+    sudo ./pyra-prep-selftest.sh                 # or: ... /path/to/other.img
+
+It snapshots the whole rootfs before and after — type, mode, uid, gid, size and
+symlink target for every one of ~148,000 entries — so a stray write anywhere
+shows up, not only at the paths someone thought to assert on. It then runs the
+prep script a second time and requires the filesystem to be bit-identical, and
+finally removes a fix 5 payload to confirm the script aborts *before* fix 1
+writes anything. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
 Note: the modified loop image is now already fixed. You can `dd` *that* to the
 card and skip step 4 entirely — but re-running the script on the card is
@@ -370,7 +384,11 @@ known state, and everything behind the hub returns within seconds:
 
 The prep script installs that as `pyra-usb3503-rescue.service`: the script at
 `/usr/local/sbin/pyra-usb3503-rescue`, the unit in `/etc/systemd/system/`,
-enabled in `multi-user.target`. It checks the USB bus for the hub before doing
+enabled in `multi-user.target`. Both files are copied from this directory rather
+than embedded, so the repository stays the one source of truth for the rescue
+logic; if either is missing the prep script aborts in its preconditions, before
+any fix has written anything. Checked offline against the real image on
+2026-09-09 — see the results section below. It checks the USB bus for the hub before doing
 anything, so on a cold boot it exits without touching a thing, and the unit
 carries `ConditionPathExists` on the usb3503 driver so it is inert on anything
 that is not a Pyra.
@@ -418,6 +436,30 @@ Other things worth knowing, all confirmed by inspection:
   carrying slim-theme code.
 - The wizard calls `poweroff` on its *success* path too, not only on cancel.
   So even a wizard that worked would end in a shutdown.
+
+## Prep script checked against the image — 2026-09-09
+
+`pyra-prep-selftest.sh` run as root against a copy of `pyra-trixie-t1.img`.
+This is the check that the written procedure and the running machine have not
+drifted apart. Six changes to the rootfs, and no others across 148,313 nodes:
+
+| Change | Fix |
+| --- | --- |
+| removed the `armsoc_dri.so` symlink | 1 |
+| wrote `/etc/X11/xorg.conf.d/20-pyra-glx.conf`, 0644 | 4 |
+| created `/var/lib/lightdm/data`, 0750, uid 105 gid 108 | 4 |
+| installed `/usr/local/sbin/pyra-usb3503-rescue`, 0755 root:root | 5 |
+| installed `/etc/systemd/system/pyra-usb3503-rescue.service`, 0644 root:root | 5 |
+| enabled the rescue in `multi-user.target.wants` | 5 |
+
+Fixes 2 and 3 reported everything already in place, correctly — this image was
+given them on the 8th.
+
+Also confirmed: a second run changes nothing at all, both fix 5 payloads on the
+target are byte-identical to the repository copies, `/usr/local/sbin` keeps the
+mode it had, the missing-payload abort fires before fix 1 removes anything, and
+`fsck.f2fs --dry-run` afterwards reads checkpoint `trimmed crc unmount` with
+every node and inode count matched.
 
 ## Card as written — 2026-09-08
 
