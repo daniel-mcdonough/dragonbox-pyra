@@ -381,10 +381,30 @@ changing for that workload. It also reports whether the GC320 moved at all and
 whether clients are presenting through `MIT-SHM`. It needs no rebuild and
 changes nothing.
 
-For reference, the X server sits at 0.03% of one core on an idle desktop, and
-reached 9.6% of one core under a pure 2D drawing load, which was 27% of all
-busy CPU time in that window. A workload that leaves Xorg near idle has no
-driver problem to solve.
+This has now been run against the real thing. `pyra-anno1602-test.sh` starts
+Anno 1602 under box86 and x86 Wine, which is the heaviest sustained load this
+machine has been put under, and profiles the X server across it:
+
+| workload | Xorg, share of one core | Xorg, share of all busy CPU |
+| --- | --- | --- |
+| idle desktop | 0.03% | negligible |
+| Anno 1602 under box86 | 16.0% | 9.3% |
+| synthetic 2D drawing load | 9.6% | 27.0% |
+
+The middle row is the one that decides this. During the game the machine was
+87.9% busy, the game itself held 92% of a core, and everything the X server did
+came to 9.3% of the busy time. That is the ceiling on the entire driver
+question for this workload, and it assumes the X server could be made free,
+which it cannot. Most of that 9.3% is legitimate accelerated work, not
+fallbacks. The GC320 was active throughout, and clients were presenting through
+`MIT-SHM`, which is already the fast upload path.
+
+So the honest expected return on the EXA work, for this workload, is a fraction
+of 9.3%. That does not justify a driver rebuild on performance grounds. It may
+still be worth doing for the emulator titles that use a raster op or a plain
+`PutImage`, but that is a correctness-shaped argument about specific titles, not
+a general performance one, and it needs the same measurement run against those
+titles first.
 
 Only if that number is large is a rebuild justified. Then define
 `VIV2D_UNSUPPORTED` in `viv2d_config.h`, rebuild, run a desktop session and an
