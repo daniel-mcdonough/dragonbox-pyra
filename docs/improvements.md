@@ -272,20 +272,111 @@ times the plain path. And building the driver with the two transfer hooks
 enabled is now a concrete experiment with a number attached to it, rather than
 a guess.
 
-**Known fallbacks, from the source.** These come from `viv2d_exa.c` and
-`viv2d_config.h`, not from measurement, so treat them as leads:
+**The three fallbacks, now measured.** Each was benchmarked on the running
+unit. One is worth implementing, one is worth a look, and one was a bad idea
+based on a wrong reading of the code.
 
-- Any raster op other than `GXcopy`. Both `Viv2DPrepareSolid` and
-  `Viv2DPrepareCopy` return `FALSE` on `alu != GXcopy`.
-- An `A8` destination, because `VIV2D_SUPPORT_A8_DST` is not defined. `A8`
-  source and mask are both supported, so this only bites when something draws
-  into an alpha-only pixmap.
-- Surfaces above `VIV2D_MAX_SIZE`, which is 16 MB. The 720x1280 screen is
-  3.5 MB, so this never fires here.
-- `VIV2D_MIN_SIZE` is `0`, so there is no small-pixmap cutoff and even tiny
-  operations pay a GPU submit. The header keeps three larger cutoffs commented
-  out and calls `0` the best result, but that was somebody else's hardware.
-  Worth a sweep once item 0 exists.
+First, the baselines everything below is judged against. All three are the same
+500x500 region, and the software figures are guaranteed software because the
+pixmaps involved are larger than `VIV2D_MAX_SIZE` and so are `malloc`ed rather
+than allocated on the GPU:
+
+| path | throughput |
+| --- | --- |
+| `memcpy` in userspace, for reference | 2130 MB/s |
+| GC320 hardware copy | 1750 MB/s |
+| X server software `fb` copy | 161 MB/s |
+
+The X server's own software path is 13 times slower than a plain `memcpy` on
+the same CPU at the same clock. That gap, not the GPU's speed, is what makes a
+fallback expensive. The CPU was sampled at 1.5 GHz throughout, so none of this
+is the governor from item 1.
+
+*Raster ops other than `GXcopy` — worth implementing.* An XOR fill runs at
+5.7 Mpix/s, which is 23 MB/s. That is 76 times slower than a hardware copy and
+7 times slower than even the software `GXcopy` path, because the X server
+handles non-copy ops with its fully generic bit-blit code.
+
+The GC320 supports this in hardware. `state_2d.xml.h` exposes `VIVS_DE_ROP`
+with ROP2, ROP3 and ROP4 types, `_Viv2DStreamDst` already takes a `rop`
+argument, and `viv2d.h` already defines all sixteen ROP codes in X's own `alu`
+order. Every one of the thirteen call sites passes the hardcoded `ROP_SRC`.
+Somebody laid the groundwork and never wired it up. Removing the two `alu !=
+GXcopy` rejections and passing a table lookup instead of `ROP_SRC` is the whole
+change.
+
+What is not known is how often a modern desktop asks for one. GTK and cairo go
+through RENDER, not core raster ops, so the likely callers are rubber-band
+selections and the emulators this device exists to run. Measure before
+building: see the counting method below.
+
+*`A8` destinations — worth a look, for copies only.* Splitting this by
+operation changes the answer.
+
+| operation into a depth-8 pixmap | rate |
+| --- | --- |
+| fill | 1347 Mpix/s |
+| copy | 34 MB/s |
+
+Software fills into an alpha-only surface are essentially `memset` and are
+already faster than the GPU would be at one byte per pixel, so defining
+`VIV2D_SUPPORT_A8_DST` buys nothing there. Copies are the opposite case, about
+50 times off the hardware path, because the fallback has to read the source
+through the same generic code. Only copies into `A8` would benefit, and the
+setting is marked experimental upstream, so it needs correctness checking as
+well as a benchmark.
+
+*`VIV2D_MIN_SIZE` — leave it at zero.* The previous entry's reasoning here was
+wrong twice over, and the measurements confirm the header's own comment.
+
+`VIV2D_MIN_SIZE` is not an operation threshold. It is used once, in
+`Viv2DAllocBuf`, to decide whether a whole pixmap gets a GPU buffer or a
+`malloc`, so it cannot express a per-operation cutoff at all. And there is no
+per-operation submit to avoid: `Viv2DDoneSolid` and `Viv2DDoneCopy` only append
+to a 32 KB command stream, which is flushed when it fills or on the X server's
+flush callback. A thousand small fills cost stream bytes, not a thousand
+submits, which is why a 10x10 fill measures 0.37 us.
+
+The one thing raising it would do is move small pixmaps to `malloc`, and that
+turns out to be worth nothing. Running identical software paths against a
+write-combine GPU buffer and against plain `malloc` gives the same number every
+time:
+
+| identical software path | GPU write-combine | plain malloc |
+| --- | --- | --- |
+| XOR fill 1000x1000 | 5.7 Mpix/s | 5.7 Mpix/s |
+| depth-8 copy 1000x1000 | 34.5 MB/s | 33.9 MB/s |
+| `GetImage` 1000x1000 | 43.5 MB/s | 46.8 MB/s |
+
+So the write-combine mapping costs nothing measurable, and switching the
+allocator to `ETNA_BO_CACHED` — which the code is already structured for, since
+every CPU access is bracketed by `etna_bo_cpu_prep` and `etna_bo_cpu_fini` —
+would gain nothing either. That idea is closed.
+
+*A real per-operation cost the config cannot reach.* Every hardware copy
+carries a fixed cost that swamps small operations. A size sweep of
+pixmap-to-pixmap copies is nearly flat from 8x8 to 32x32, at 22.7, 18.1 and
+16.6 us, because almost none of that time is the pixels. The software path has
+no such floor: at 162 MB/s a 16x16 region is 6 us of work and an 8x8 region is
+under 2 us.
+
+That puts the crossover somewhere around 30x30, which is roughly where the
+header's commented-out `VIV2D_MIN_SIZE 1024*4` sits. Both paths have fixed
+costs the sweep cannot cleanly separate, so treat that as an order of
+magnitude rather than a threshold to hardcode. The point is that capturing it
+needs a size check inside `Viv2DPrepareCopy`, where the operation's dimensions
+are known. `VIV2D_MIN_SIZE` is applied to whole pixmaps at allocation time and
+never sees an operation at all.
+
+**How to get the frequencies.** Everything above is a per-operation cost. None
+of it says how often a real session hits these paths, and that is what decides
+whether any of it is worth building. Define `VIV2D_UNSUPPORTED` in
+`viv2d_config.h`, rebuild, run an ordinary desktop session and an emulator
+session, and count the `unsupported` lines in the X log by category. That
+turns all three of these from costs into budgets.
+
+**Known fallbacks not yet measured.** Surfaces above `VIV2D_MAX_SIZE`, which is
+16 MB. The 720x1280 screen is 3.5 MB, so this never fires for on-screen work.
 
 The config header is trustworthy here: its `UploadToScreen` and
 `DownloadFromScreen` settings predict exactly what the shipped binary logged,
