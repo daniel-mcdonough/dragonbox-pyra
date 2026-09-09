@@ -25,6 +25,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
+| [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
 | [docs/progress.md](docs/progress.md) | The running history: what was done when, and why. Newest last. |
