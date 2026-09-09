@@ -552,6 +552,73 @@ None are in the base image and none are needed at runtime; they are test tools.
 
 ---
 
+---
+
+## 2026-09-09 (PC clock, US Eastern) — the USB3503 rescue folded into the procedure
+
+No hardware changes. This closes the gap between what the running unit has and
+what the written procedure produces.
+
+### the gap
+
+`pyra-usb3503-rescue.service` was diagnosed and installed by hand over SSH on
+the running device, and written up under "post-desktop configuration". The prep
+script was never taught to install it. So a card built today by following
+`TRIXIE.md` got fixes 1 through 4, booted to a desktop, and then lost all USB on
+its first warm reboot — with the document's only answer being a troubleshooting
+entry and the advice to configure wifi first, while the actual fix sat in the
+repository unused. That was the one place the procedure no longer reproduced the
+machine.
+
+### fix 5
+
+The prep script now installs the rescue offline, as fix 5:
+`/usr/local/sbin/pyra-usb3503-rescue` at 0755, the unit in
+`/etc/systemd/system/` at 0644, and the `multi-user.target.wants` symlink.
+
+**Copied from the repository rather than embedded as heredocs.** Fix 3 embeds
+its unit, which is right for a five-line file being restored from a package.
+The rescue script is sixty lines of logic that also exists as a tracked file, so
+embedding it would mean two copies drifting apart. The trade is that the prep
+script is no longer self-contained: it now resolves the two payloads next to
+itself and, if they are missing, dies in the preconditions block **before fix 1
+writes anything**, rather than leaving a card with four of five fixes.
+
+Verified first that the repository copies are what is actually running: both
+files md5-match the device's, and the install paths, modes and enable symlink
+were read off the device rather than assumed.
+
+`install -d` on the two parent directories was made conditional. The real image
+has `/usr/local/sbin` as 0755 root:root so an unconditional `install -d -m 0755`
+would have been a no-op here, but Debian's more usual 2775 root:staff would have
+been silently re-moded by a script that had no business changing it.
+
+### test harness
+
+23 assertions against a fake rootfs, run under `unshare -r` so it needs no real
+root. Covers a clean install, a re-run changing nothing on disk, a drifted
+on-card copy being refreshed and re-moded, and the missing-payload abort.
+
+Two of those cases exist because of lessons this project already learned. The
+abort test asserts on the error message, not just on a non-zero exit, so it
+cannot pass for the wrong reason the way the grow script's refusal tests did.
+And the idempotency test compares a `find` listing before and after rather than
+trusting the script's own "already up to date" report.
+
+### documentation
+
+- `TRIXIE.md`: fix 5 written up as a numbered fix with its diagnosis; the
+  post-desktop section now points at it instead of describing a manual install;
+  the troubleshooting entry replaced with how to check the service, since the
+  diagnosis now lives in the fix; a verification step added to section 6.
+- Corrected a stale claim in `TRIXIE.md` that the prep script "still creates the
+  symlink" for fix 1. It has removed it since 2026-09-09.
+
+**Not confirmed against the real image.** The fake-rootfs tests plus the paths
+read off the running device cover the logic, but the prep script has not been
+re-run against the loop-mounted `pyra-trixie-t1.img`, which needs root on the
+PC. Worth doing before the next card is written.
+
 ## Open items
 
 Nothing here blocks using the device. It boots to a desktop, the hardware works
@@ -582,8 +649,10 @@ and the rootfs fills the card.
     https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
 - **The USB3503 warm-reboot bug is worked around, not fixed.** The hub's reset
   GPIO is left deasserted across a warm boot so the driver's reset is a no-op.
-  `pyra-usb3503-rescue.service` re-resets it after the fact. The real fix is in
-  the driver or device tree.
+  `pyra-usb3503-rescue.service` re-resets it after the fact, and the prep script
+  now installs that as fix 5, so a fresh card gets it before its first boot. The
+  real fix is in the driver or device tree, and is a fourth thing worth filing
+  upstream.
 - **Load average sits near 2.0** from two permanently uninterruptible
   `events_freezable` kworkers, with the CPU ~80% idle. Present from the image's
   first boot, cosmetic, cause not chased. See `TRIXIE.md`.

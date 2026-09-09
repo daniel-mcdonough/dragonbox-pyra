@@ -6,10 +6,14 @@ lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 Getting there needed a fourth fix that supersedes fix 1: the documented DRI
 symlink does not work on mesa 25.x and never could. See "Fix 1" and "Desktop
-fixed" below. Written 2026-09-07. Target: V5.x Pyra, live boot from the left SD
+fixed" below. A fifth fix keeps USB alive across a warm reboot. Written
+2026-09-07. Target: V5.x Pyra, live boot from the left SD
 slot, eMMC untouched. Kernel is the same 5.6.19-pyradef that bookworm-7 uses.
 
-Companion script: `pyra-trixie-prep.sh` (in this directory).
+Companion script: `pyra-trixie-prep.sh` (in this directory). It applies all
+five fixes offline. Fix 5 installs two files that live beside it, so run it from
+a checkout of this directory rather than copying the script somewhere on its
+own.
 
 ---
 
@@ -151,6 +155,13 @@ Log in as the user the script created. Then:
 
 You should get three pyraInput devices: keyboard, Gamepad, Mouse.
 
+    # the USB3503 warm-reboot rescue is installed and armed
+    systemctl is-enabled pyra-usb3503-rescue
+
+On a cold boot it should be `enabled` and its journal should read `hub already
+on the USB bus, nothing to do`. It only does work after a warm reboot, so the
+real test is a `reboot` followed by checking that the USB devices came back.
+
     # X server came up
     grep -E 'AIGLX|GLX|\(EE\)' /var/log/Xorg.0.log
 
@@ -200,13 +211,13 @@ wants DRM master and fails identically on bookworm when X is running.
 
 ---
 
-## The four fixes, and what they actually do
+## The five fixes, and what they actually do
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
 
 **This fix does not work. Keep reading only for the diagnosis; fix 4 is what
-you actually apply.** The prep script still creates the symlink because it is
-harmless, but it does not solve anything and the file is best removed.
+you actually apply.** The prep script *removes* the symlink if it finds one: it
+solves nothing and only makes the Xorg log harder to read.
 
 Symptom as shipped:
 
@@ -337,6 +348,43 @@ grows an omapdrm-capable stub. Both are worth reporting:
 
 ---
 
+### Fix 5 — USB is dead after a warm reboot
+
+Cold boot, and every USB device works. `reboot`, and nothing behind the
+on-board hub comes back: no ethernet adapter, no mouse, no keyboard dongle.
+`lsusb` shows only the root hub, which reads as a failed controller. It is not
+one. `dmesg` shows `ehci-omap` starting normally and the root hub finding its
+three ports, so the controller is fine and nothing behind the hub enumerated.
+
+The USB3503 hub chip is reset over i2c when its driver probes. After a warm
+reboot the reset GPIO is still deasserted from the previous boot, so the
+sequence is a no-op and the hub never connects. `dmesg` gives it away:
+
+    usb3503 0-0008: reset gpio state 1
+
+On a cold boot that reads `0`. Rebinding the driver re-runs the reset from a
+known state, and everything behind the hub returns within seconds:
+
+    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/unbind
+    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/bind
+
+The prep script installs that as `pyra-usb3503-rescue.service`: the script at
+`/usr/local/sbin/pyra-usb3503-rescue`, the unit in `/etc/systemd/system/`,
+enabled in `multi-user.target`. It checks the USB bus for the hub before doing
+anything, so on a cold boot it exits without touching a thing, and the unit
+carries `ConditionPathExists` on the usb3503 driver so it is inert on anything
+that is not a Pyra.
+
+**Why this matters more than it sounds.** The USB ethernet adapter is very
+likely how you are talking to the machine. Without this fix, one `reboot` over
+SSH and the unit is off the network with no way back in except the screen.
+
+This is a workaround, not a fix. The GPIO should be reasserted on shutdown, or
+the driver should drive the reset unconditionally rather than trusting the pin
+state it inherits. That belongs in the driver or the device tree.
+
+---
+
 ## Pre-flight results — pyra-trixie-t1.img, checked 2026-09-08
 
 Ran against the loop-mounted image on an x86_64 Arch host. Image is 6 GiB,
@@ -462,11 +510,9 @@ string.
 
 Applied on the running unit, over SSH.
 
-**`pyra-usb3503-rescue.service`.** Re-resets the on-board USB3503 hub at boot if
-it did not enumerate, which is what a warm reboot leaves behind. It checks for
-the hub on the USB bus first, so on a cold boot it exits without touching
-anything. Script at `/usr/local/sbin/pyra-usb3503-rescue`, unit in
-`/etc/systemd/system/`, enabled in `multi-user.target`.
+**`pyra-usb3503-rescue.service`.** Installed by hand here, and diagnosed here.
+It is now fix 5 and the prep script applies it offline, so a card built from
+this document has it before its first boot. See fix 5 above.
 
 **`firmware-realtek`.** The RTL8153 USB ethernet adapter was running without its
 firmware: `Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2`.
@@ -596,33 +642,22 @@ mechanism, not a way to run a rootfs.
 **Quarter-second of LED, then nothing.** You tapped instead of holding. See
 step 5. This is by far the most likely "it doesn't boot".
 
-**The unit disappears from the network after `reboot`.** It rebooted fine. What
-died is USB, and with it the USB ethernet adapter. See "USB is dead after a warm
-reboot" below. If wifi is configured the unit is still reachable there; if it is
-not, you need the screen.
+**USB is dead after a warm reboot, and the unit is off the network.** Fix 5 is
+not in effect. Check it:
 
-**USB is dead after a warm reboot.** No devices at all behind the on-board hub:
-no ethernet adapter, no mouse, no keyboard dongle. `lsusb` shows only the root
-hub, which makes it look like the controller failed. It did not — `dmesg` shows
-`ehci-omap` starting normally and the root hub finding its 3 ports.
+    systemctl status pyra-usb3503-rescue
+    journalctl -b -u pyra-usb3503-rescue
 
-The USB3503 hub chip is the problem. It is reset over i2c at probe, and after a
-warm reboot its reset GPIO is still deasserted from the previous boot, so the
-reset is a no-op and the hub never connects. `dmesg` gives it away:
+A working rescue logs `hub absent from the USB bus, re-resetting` and then `hub
+enumerated after 1 s`. If the unit is missing entirely, the prep script never
+ran fix 5 — most likely it was run from a copy of the script with its two
+payload files left behind, which now aborts rather than half-applying. See fix
+5 above for the diagnosis and the manual rebind. A cold power cycle avoids the
+problem entirely and is the way back in if you are locked out.
 
-    usb3503 0-0008: reset gpio state 1
-
-On a cold boot that reads `0`. Rebinding the driver re-runs the sequence from a
-known state and everything behind the hub comes back within seconds:
-
-    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/unbind
-    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/bind
-
-`pyra-usb3503-rescue.service` does this automatically at boot; see below. A cold
-power cycle also avoids it entirely.
-
-**Configure wifi before you reboot remotely.** With USB gone the ethernet adapter
-goes with it, and wifi is the only way back in.
+**Configure wifi anyway before you reboot remotely.** Fix 5 restores the
+ethernet adapter a second or two into the boot, but it is a workaround on a
+path you cannot watch, and wifi is a second way in that does not depend on it.
 
 **Still no boot after a proper long press.** Re-check that the card is in the
 *left* full-size slot, that you `dd`'d to the whole device (`/dev/sdX`) and not

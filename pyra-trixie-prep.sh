@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# Apply the four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
+#
+# Fix 5 installs two files that live beside this script in the repository, so
+# run it from a checkout rather than copying the script somewhere on its own.
 
 set -euo pipefail
 
@@ -31,6 +34,16 @@ if [[ -r $ROOT/etc/os-release ]]; then
 fi
 DRIDIR=$ROOT/usr/lib/arm-linux-gnueabihf/dri
 [[ -d $DRIDIR ]] || die "no $DRIDIR — is this an armhf rootfs?"
+
+# Fix 5 copies these rather than embedding them, so the repository stays the
+# single source of truth for the rescue logic. Check them here, before anything
+# has been written, so a missing payload cannot leave a half-fixed card.
+SCRIPTDIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+USB3503_SRC=$SCRIPTDIR/pyra-usb3503-rescue
+USB3503_UNIT_SRC=$SCRIPTDIR/pyra-usb3503-rescue.service
+for f in "$USB3503_SRC" "$USB3503_UNIT_SRC"; do
+    [[ -r $f ]] || die "fix5: $(basename "$f") not found next to this script (looked in $SCRIPTDIR)"
+done
 
 echo
 
@@ -234,6 +247,54 @@ if [[ -L $WANTS/pyrainput.service ]]; then
 else
     ln -s "$(sed "s|^$ROOT||" <<<"$UNIT")" "$WANTS/pyrainput.service"
     ok "fix3: enabled in multi-user.target"
+fi
+
+########################################################################
+# Fix 5 — USB is dead after a warm reboot
+########################################################################
+# The on-board USB3503 hub is reset over i2c when its driver probes. After a
+# warm reboot the reset GPIO is still deasserted from the previous boot, so
+# the sequence is a no-op, the hub never connects, and everything behind it
+# disappears — including the USB ethernet adapter, which is probably how you
+# were talking to the machine. The EHCI controller and root hub come up
+# normally, so it presents as dead hardware rather than an unreset hub.
+#
+# Rebinding the driver re-runs the reset from a known state. The rescue script
+# checks the USB bus for the hub first, so on a cold boot it does nothing.
+# This is a workaround: the real fix belongs in the driver or the device tree.
+
+USB3503_DST=$ROOT/usr/local/sbin/pyra-usb3503-rescue
+USB3503_UNIT=$ROOT/etc/systemd/system/pyra-usb3503-rescue.service
+
+# Create only if absent: this image has /usr/local/sbin as 0755 root:root, but
+# a Debian default of 2775 root:staff must not be silently re-moded.
+[[ -d $ROOT/usr/local/sbin ]] || install -d -m 0755 "$ROOT/usr/local/sbin"
+if [[ -e $USB3503_DST ]] && cmp -s "$USB3503_SRC" "$USB3503_DST"; then
+    ok "fix5: ${USB3503_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $USB3503_DST ]] && echo updated || echo installed)
+    install -m 0755 -o 0 -g 0 "$USB3503_SRC" "$USB3503_DST"
+    ok "fix5: $VERB ${USB3503_DST#$ROOT}"
+fi
+
+[[ -d $ROOT/etc/systemd/system ]] || install -d -m 0755 "$ROOT/etc/systemd/system"
+if [[ -e $USB3503_UNIT ]] && cmp -s "$USB3503_UNIT_SRC" "$USB3503_UNIT"; then
+    ok "fix5: ${USB3503_UNIT#$ROOT} already up to date"
+else
+    VERB=$([[ -e $USB3503_UNIT ]] && echo updated || echo installed)
+    install -m 0644 -o 0 -g 0 "$USB3503_UNIT_SRC" "$USB3503_UNIT"
+    ok "fix5: $VERB ${USB3503_UNIT#$ROOT}"
+fi
+
+# Enable it offline. The unit carries ConditionPathExists on the usb3503
+# driver, so it is inert on anything that is not a Pyra. $WANTS was created by
+# fix 3 above; set -u catches it if that ever stops being true.
+if [[ -L $WANTS/pyra-usb3503-rescue.service ]]; then
+    ok "fix5: already enabled in multi-user.target"
+else
+    ln -sf /etc/systemd/system/pyra-usb3503-rescue.service \
+           "$WANTS/pyra-usb3503-rescue.service"
+    ok "fix5: enabled in multi-user.target"
 fi
 
 echo
