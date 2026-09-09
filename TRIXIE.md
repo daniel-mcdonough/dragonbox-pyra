@@ -1,7 +1,9 @@
 # Debian 13 (trixie) on the DragonBox Pyra
 
-Status: **card boots to a working MATE desktop (2026-09-08).** lightdm starts,
-the greeter renders on the panel, and the unit is reachable over SSH as `pyra`.
+Status: **working.** The card boots to a MATE desktop, hardware GLES2 runs on
+the SGX, all the on-board hardware checks out, and the rootfs fills the card.
+lightdm starts, the greeter renders on the panel, and the unit is reachable over
+SSH as `pyra`.
 Getting there needed a fourth fix that supersedes fix 1: the documented DRI
 symlink does not work on mesa 25.x and never could. See "Fix 1" and "Desktop
 fixed" below. Written 2026-09-07. Target: V5.x Pyra, live boot from the left SD
@@ -506,7 +508,44 @@ move, so the PARTUUIDs that `fstab` and `extlinux.conf` reference stay valid. It
 is idempotent: run it on an already-grown card and it reports there is nothing
 to do.
 
+If the very last sectors of a card worry you, `RESIZE_MARGIN_SECTORS` leaves
+slack at the end. It is applied through `resize.f2fs -t`, so it needs no second
+write to the partition table:
+
+    sudo RESIZE_MARGIN_SECTORS=131072 ./pyra-trixie-grow.sh /dev/sdX   # 64 MiB
+
 Then put the card back in the **left** slot, cold boot, and check with `df -h /`.
+
+**Verify the card first.** Everything this procedure has touched up to now lives
+in the first 6 GiB, so the rest of the card is completely untested and a
+capacity-overstating card would not have shown up yet. Resizing onto space that
+is not really there gives you a filesystem that looks healthy and then quietly
+destroys data. `verify-card-capacity.sh` (in this directory) writes unique
+samples across the untested region only, never below the end of the existing
+filesystem, reads them back, and runs a sustained transfer to shake out a flaky
+reader:
+
+    sudo ./verify-card-capacity.sh /dev/sdX
+
+Do this **before** growing the partition, not after.
+
+Measured on a 128 GB SanDisk: partition 249473024 sectors, filesystem 249341952,
+the difference being exactly the 64 MiB margin. `df` reports 119G with 115G
+free.
+
+## Known cosmetic oddity: load average sits at ~2
+
+Two kworkers on the `events_freezable` workqueue sit permanently in `D` state:
+
+    D   36  kworker/1:1+events_freezable
+    D 1309  kworker/1:2+events_freezable
+
+Linux counts uninterruptible tasks in the load average, so two of them pin it
+near 2.0 while the CPU is ~80% idle and nothing is actually slow. Present from
+the very first boot of this image, before any of the fixes here were applied, so
+it is not something this procedure introduces. Cause not chased down; likely a
+driver's delayed work blocking on an i2c transfer. Harmless, but it makes
+`uptime` and any monitoring that watches load average misleading on this device.
 
 ## Where this deviates from the forum post
 

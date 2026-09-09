@@ -413,6 +413,36 @@ it needs no second write to the partition table.
 
 ---
 
+### 06:50 — resize completed
+
+Re-ran with a 64 MiB margin. The partition already filled the disk from the
+first attempt, so the script left the table alone and resized only the
+filesystem, which is the resume path the earlier fix added.
+
+Verified on the device after a cold boot:
+
+| | |
+| --- | --- |
+| `df -h /` | 119G total, 4.5G used, 115G available |
+| filesystem | 249341952 sectors |
+| partition | 249473024 sectors |
+| difference | 131072 sectors, exactly the requested 64 MiB margin |
+| checkpoint | clean mount, no f2fs errors in `dmesg` |
+| services | lightdm, pyrainput and pyra-usb3503-rescue all active, no failed units |
+
+The eMMC is still untouched: `/dev/mmcblk0` shows its own 256 MB boot partition
+and 31 GB rootfs, so the bookworm-7 recovery path is intact.
+
+### note on load average
+
+Two `events_freezable` kworkers sit permanently in `D` state, which pins the
+load average near 2.0 while the CPU is ~80% idle. This was present at the very
+first SSH connection, before any change here, so it is inherent to the image.
+Not chased further. Documented in `TRIXIE.md` so it is not mistaken for a
+symptom later.
+
+---
+
 ## Open items
 
 - **Log in to MATE and confirm the session works.** The greeter renders and the
@@ -420,10 +450,10 @@ it needs no second write to the partition table.
 - **Verify `pyra-usb3503-rescue.service` on a real warm reboot.** It no-ops
   correctly with the hub present, but the path that matters has not been
   exercised.
-- **113 GB of the card is unused.** Cannot be done on the device; needs the
-  card in a PC reader and `pyra-trixie-grow.sh`. Script written and tested
-  against a fake card; not yet run against the real one.
-- **Remove `/etc/sudoers.d/90-pyra-nopasswd`** when the build is finished.
+- **Remove `/etc/sudoers.d/90-pyra-nopasswd`** when the build is finished. This
+  is the last outstanding change to the device:
+
+      sudo rm /etc/sudoers.d/90-pyra-nopasswd
 - **No desktop GLX.** Consequence of fix 4. Revert when Xorg's AIGLX probe
   fails gracefully, or when mesa's stub can create a screen for omapdrm.
 - **Two upstream bugs to file**, beyond the pyrainput one:
