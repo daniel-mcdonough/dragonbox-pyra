@@ -61,3 +61,53 @@ it is not something this procedure introduces. Cause not chased down; likely a
 driver's delayed work blocking on an i2c transfer. Harmless, but it makes
 `uptime` and any monitoring that watches load average misleading on this device.
 
+
+---
+
+## The X server can hang in a modeset, spinning a core, unkillable
+
+Seen 2026-09-10 on the trixie card, kernel 5.6.19-pyradef, X 21.1.16 with the
+`omap5` DDX. The desktop had been left idle for several minutes between
+benchmark runs, long enough for the screen to blank, and the next client to
+connect never got a reply.
+
+The symptoms, in the order they are noticed:
+
+- Every X client hangs. `xdpyinfo`, `xwininfo` and `x11perf` all block forever
+  and have to be killed. New clients hang too, so the display is unrecoverable
+  from the desktop.
+- `Xorg` sits in state `R` at **99% of one core**, and stays there.
+- `/var/log/Xorg.0.log` stops mid-modeset. The last line written is
+  `(II) OMAP5(0): preparing to set mode: 0 0 8 720 1280` with nothing after it.
+- `dmesg` carries, from earlier in the same boot:
+
+      DSI: omapdss DSI error: VC(0) busy when trying to configure it!
+      DSI: omapdss DSI error: VC(1) busy when trying to configure it!
+      DSI: omapdss DSI error: VC(2) busy when trying to configure it!
+      DSI: omapdss DSI error: VC(3) busy when trying to configure it!
+
+**`SIGKILL` does not work.** The process is spinning inside the kernel without
+reaching a signal check, so `kill -9` leaves it running and
+`systemctl restart lightdm` gets stuck with the unit `deactivating` forever
+while it waits for a server that will never exit.
+
+On a fanless handheld this is a thermal problem and not only an annoyance. One
+core pinned at 100% held `cpu_thermal` between 85 and 90°C on an otherwise idle
+desktop, and it briefly touched 101.5°C, past the 100°C passive trip.
+
+**The only recovery found is a reboot.** `sudo systemctl reboot` works normally;
+it is only the X server that is stuck, not the kernel.
+
+Before rebooting, keep the evidence, because it is gone afterwards:
+
+    sudo cp /var/log/Xorg.0.log ~/Xorg-dsi-hang-$(date +%Y%m%d-%H%M).log
+    sudo dmesg > ~/dmesg-dsi-hang-$(date +%Y%m%d-%H%M).log
+
+Note that the machine comes back to the lightdm greeter and there is no
+autologin configured, so the desktop session has to be started at the device.
+
+Not yet established: whether DPMS blanking is the trigger, or only a correlate.
+The one observed instance followed a long idle gap, and the DSI virtual-channel
+errors appeared well before the hang rather than with it. Anyone reproducing
+this should record `xset q` and the exact idle time first. Disabling blanking
+with `xset s off -dpms` is the obvious workaround to try, and is untested.

@@ -31,7 +31,47 @@ Three items the original list did not contain outrank most of what it did:
   not counted as load and a 250 MHz floor.
 - The MATE window manager is **compositing**, with GLX disabled, so every window
   update takes an extra XRender pass.
+- **PulseAudio spends 16% of a core** converting every audio stream to the only
+  format the codec accepts. See item 10; this was found by accounting for the
+  whole machine rather than one subsystem at a time.
 - The GPU rail sits at its **nominal** operating point, not its top one.
+
+---
+
+## What the whole machine is actually doing
+
+Added 2026-09-10. Every earlier section measures one subsystem at a time. This
+one accounts for **all** the busy CPU on the machine across a real workload, by
+process, which changes the ranking above more than any single measurement so
+far. `pyra-cpu-attribution.sh` produces it and needs no privileges.
+
+Two runs of Anno 1602 under box86, sixty seconds of sampling each, taken at
+different points in the same game. The two columns are the same measurement at
+two moments, and the spread between them is the honest error bar:
+
+| process | run 1 | run 2 |
+| --- | --- | --- |
+| `1602.exe` | 56.0% | 49.9% |
+| `pulseaudio` | below the noise | **14.0%** |
+| `Xorg` | 13.6% | 12.3% |
+| `marco` | 3.6% | 3.4% |
+| `wineserver` + `winedevice.exe` | 2.2% | 4.0% |
+| GC320 kernel thread `59000000.bb2d` | 0.7% | 0.7% |
+| kernel threads and short-lived processes | 21.5% | 10.9% |
+| machine busy, both cores | 87.9% | 58.7% |
+
+Split by kernel accounting class, the second run was 60.4% user, 35.3% system,
+3.6% hard IRQ and 0.5% softirq. So the interrupt path is not where the time
+goes, which rules out a whole family of guesses cheaply.
+
+**PulseAudio is the finding.** It appears in one run and not the other because
+the game's music had started, and when it plays it costs more than the
+compositor and nearly as much as the X server. Nothing in the earlier work
+looked at audio at all.
+
+An idle desktop is 5.9% busy across both cores, and at the login screen with no
+session it is 7.4%. In both cases the largest consumers are kernel threads,
+mostly two i2c interrupt threads. See the last section for what those are.
 
 ---
 
@@ -193,6 +233,18 @@ The cost is losing window shadows, fades and any true transparency. On a 5-inch
 720p panel that is a small price if the numbers move.
 
 Effort: minutes to test. Risk: none, trivially reversible.
+
+**Still the cheapest untested item, and now with a number on one side of it.**
+The whole-machine attribution above puts `marco` at 3.4-3.6% of all busy CPU
+during the game, which is what the compositor costs directly. What it adds to
+the X server's own 12-14% is the part still unknown, and that is the number the
+`compositing-manager false` comparison would produce.
+
+The comparison was attempted on 2026-09-10 and could not be completed: the X
+server hung in a modeset partway through the first `x11perf` run and the machine
+had to be rebooted. That is written up in `troubleshooting.md` and it outranks
+this item, because a display that wedges is worse than a display that is slow.
+Do the comparison after that is understood, not before.
 
 ### 4. Correct the EXA comment, and chase the readback path instead
 
@@ -529,6 +581,89 @@ is a large amount of work for a result nobody has measured.
 
 Effort: per package. Risk: rebuild divergence from the archive, which is a
 maintenance cost that outlasts the speedup.
+
+### 10. Audio: the second-largest consumer, and why it has no knob
+
+**Measured 2026-09-10, and this is a negative result with a number attached.**
+
+When the game plays music, `pulseaudio` takes 14% of all busy CPU, about 16% of
+one core. That puts it above the compositor and level with the X server, and
+nothing in this document had looked at it before.
+
+Two thirds of that is conversion, not mixing. The same thirty seconds of audio,
+played three ways with `paplay`:
+
+| stream | PulseAudio cost |
+| --- | --- |
+| 22050 Hz, needs conversion | 10.3% of one core |
+| 44100 Hz, needs conversion | 11.1% of one core |
+| 88200 Hz, matches the hardware | 3.5% of one core |
+
+It is a cliff, not a curve. A stream that matches the sink is copied; anything
+else pays the full conversion pipeline, and the input rate barely matters, which
+is why the 44100 case costs slightly more than the 22050 one despite the smaller
+ratio.
+
+The cause is the codec. `aplay --dump-hw-params` on the TWL6040 gives:
+
+    FORMAT:  S32_LE
+    CHANNELS: [1 5]
+    RATE: [88200 96000]
+
+There is no 44100 and no `S16_LE`. So every ordinary audio stream on this
+machine is upsampled to 88200 and widened to 32 bits before it can be played,
+and there is no configuration that avoids it.
+
+Four candidate fixes were tested and all four are already correct or already
+ruled out:
+
+- **The resampler.** `resample-method` is already `trivial`, the cheapest one
+  PulseAudio has. Nothing to gain.
+- **NEON.** The daemon detects it and uses it. Startup logs
+  `sconv_neon.c`, `mix_neon.c` and `remap_neon.c` all initialising, and the CPU
+  flags line reads `V6 V7 VFP EDSP NEON VFPV3`. This is worth knowing on its own,
+  because item 9 predicts exactly this for well-maintained libraries.
+- **The two remap sinks.** `pyra.pa` stacks `speakers` and `headphones` on the
+  4-channel ALSA sink to split the codec's outputs. Playing straight to the ALSA
+  sink instead measures 10.6% against the remap sink's 10.5%, so the extra layer
+  is free and the channel split is not the cost.
+- **Making the source match.** The only remaining lever, and it backfires. The
+  source here is Wine's DirectSound mixer, which is x86 code running under
+  box86. Moving the resample there moves it from native ARM into emulation.
+
+So this is understood, quantified, and currently unreachable. It is recorded
+because the next person to look at audio should not spend the afternoon
+rediscovering that `resample-method` is already `trivial`.
+
+The one untested idea: the sink runs 4 channels because the codec puts speakers
+and headphones on separate pairs. A 2-channel sink would halve everything
+downstream of the conversion, at the cost of the output switching. `CHANNELS:
+[1 5]` says the hardware allows it. Whether it is worth losing the headphone
+split is a product decision, not a performance one.
+
+### 11. The i2c interrupt floor
+
+**Measured, and small enough to close.** At the login screen with no desktop
+session, the machine is 7.4% busy and a third of that is interrupt handling for
+two i2c buses:
+
+| bus | interrupts per second | what is on it |
+| --- | --- | --- |
+| `48072000.i2c` | 457 | the two AS5013 analog nubs, keypad, fuel gauge, charger |
+| `48070000.i2c` | 265–511 | Palmas PMIC, TWL6040 codec, USB hub |
+
+That is 858 interrupts a second on an idle machine, against 211 a second for the
+system timer. It costs 2–3% of one core, permanently, in hard IRQ time.
+
+The nubs are polled by the kernel whether or not anything reads them. Stopping
+`pyrainput.service`, which is the only thing holding `/dev/input/event1` and
+`event2` open, does not change the rate: 457/s running, 451/s stopped, 455/s
+restarted. The `as5013` driver is built in, exposes no module parameters and no
+`poll_interval`, so changing this means a kernel patch.
+
+Do not bother. There is exactly one cpuidle state on this kernel, `C1`, so the
+wakeups are not blocking a deeper sleep, and the whole prize is 2–3% of one core
+for a kernel change on an out-of-tree tree. Recorded so nobody re-derives it.
 
 ---
 
