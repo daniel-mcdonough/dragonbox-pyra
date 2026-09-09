@@ -1,12 +1,11 @@
 # Debian 13 (trixie) on the DragonBox Pyra
 
-Status: **card boots; lightdm fails, so no desktop yet (2026-09-08).** The unit
-comes up far enough to reach multi-user and is reachable over SSH as `pyra`.
-The graphical target is the open problem. All three fixes were confirmed
-necessary against the real image, applied offline, and verified on the card.
-See "Pre-flight results", "Card as written" and "Boot result" below.
-Written 2026-09-07. Target: V5.x Pyra, live boot from the left SD slot, eMMC
-untouched. Kernel is the same 5.6.19-pyradef that bookworm-7 uses.
+Status: **card boots to a working MATE desktop (2026-09-08).** lightdm starts,
+the greeter renders on the panel, and the unit is reachable over SSH as `pyra`.
+Getting there needed a fourth fix that supersedes fix 1: the documented DRI
+symlink does not work on mesa 25.x and never could. See "Fix 1" and "Desktop
+fixed" below. Written 2026-09-07. Target: V5.x Pyra, live boot from the left SD
+slot, eMMC untouched. Kernel is the same 5.6.19-pyradef that bookworm-7 uses.
 
 Companion script: `pyra-trixie-prep.sh` (in this directory).
 
@@ -150,11 +149,21 @@ Log in as the user the script created. Then:
 
 You should get three pyraInput devices: keyboard, Gamepad, Mouse.
 
-    # X server came up without the AIGLX crash
-    grep -E 'AIGLX|\(EE\)' /var/log/Xorg.0.log
+    # X server came up
+    grep -E 'AIGLX|GLX|\(EE\)' /var/log/Xorg.0.log
 
-The two AIGLX errors about armsoc are expected and harmless — bookworm logs the
-identical pair. What must be absent is `Segmentation fault` / `Caught signal 11`.
+With fix 4 applied the only GLX-related line should be:
+
+    (**) Extension "GLX" is disabled
+
+There should be **no** `AIGLX` lines at all, and no `Segmentation fault` /
+`Caught signal 11`. An AIGLX line reappearing means fix 4 is not in effect.
+
+    # the extensions that matter are still there
+    DISPLAY=:0 xdpyinfo | grep -E 'DRI2|DRI3|Present'
+
+`DRI3` and `Present` must both be listed. Those are what the SGX blob's window
+integration uses; `GLX` is deliberately absent.
 
     # hardware GLES2 through the SGX blob
     # needs libx11-dev; build a minimal X11+EGL+GLES2 client against
@@ -178,36 +187,62 @@ wants DRM master and fails identically on bookworm when X is running.
 
 ---
 
-## The three fixes, and what they actually do
+## The four fixes, and what they actually do
 
-### Fix 1 — Xorg segfault at startup
+### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
 
-Symptom:
+**This fix does not work. Keep reading only for the diagnosis; fix 4 is what
+you actually apply.** The prep script still creates the symlink because it is
+harmless, but it does not solve anything and the file is best removed.
+
+Symptom as shipped:
 
     (EE) AIGLX error: dlopen of .../dri/armsoc_dri.so failed (No such file or directory)
     (EE) AIGLX error: unable to load driver armsoc
     (EE) Segmentation fault at address 0x0
     (EE) Caught signal 11 (Segmentation fault). Server aborting
 
-`armsoc_dri.so` does not exist on bookworm either. Bookworm's Xorg 21.1.7 logs
-the same two AIGLX errors and carries on; somewhere between 21.1.7 and 21.1.16
-that failure path picked up a NULL deref. The fix hands AIGLX any loadable DRI
-driver so it never reaches the broken branch:
+The documented fix symlinks `armsoc_dri.so` to `kms_swrast_dri.so`. On the real
+t1 image that changes the message and nothing else:
 
-    ln -s <some>_dri.so /usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so
+    (EE) AIGLX error: armsoc exports no extensions
+         (/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so: undefined symbol: __driDriverExtensions)
+    (EE) Segmentation fault at address 0x0
 
-GLX then lands on swrast, which sounds like a loss until you check bookworm and
-realise **GLX was always software rendered on this platform**. Desktop GL never
-touched the SGX. The hardware path is GLES2 through the blob's EGL and
-`libpvrDRI3WSEGL`, and that survives intact.
+Why no symlink can ever work: Xorg's AIGLX builds the symbol it looks up from
+the DRI2 driver name the DDX reports. `xf86-video-armsoc` hardcodes that name
+as `armsoc`, so Xorg dlopens `armsoc_dri.so` and asks for
+`__driDriverGetExtensions_armsoc`, falling back to the pre-2013
+`__driDriverExtensions`. Mesa 25.0.7 has collapsed every DRI driver into
+`libdril_dri.so`, its DRI-legacy stub, which exports exactly one
+`__driDriverGetExtensions_<name>` per driver name it was *built* for — 58 of
+them, and `armsoc` is not among them — and does not export the legacy symbol at
+all. The symlink target is irrelevant: the lookup is by name, and the name is
+wrong. Verified with `nm -D` on the image's own `libdril_dri.so`.
 
-This is a workaround for an upstream Xorg bug, not a fix. It stops being needed
-whenever Debian picks up a patched 21.1.x.
+Things that were tried on the device and did **not** work:
 
-Confirmed on the t1 image: mesa 25.0.7 has indeed collapsed every DRI driver
-into one `libdril_dri.so` megadriver, but it keeps `kms_swrast_dri.so` as a
-symlink to it, so the script's first probe hits and the forum post's hardcoded
-name would also have worked. `armsoc_dri.so` is genuinely absent.
+| Attempt | Result |
+| --- | --- |
+| Symlink to `kms_swrast_dri.so` (the documented fix) | Segfault, different message |
+| C shim exporting `__driDriverGetExtensions_armsoc`, forwarding to `kms_swrast` | Lookup succeeds, then `Error creating gpu or npu`, segfault |
+| Same shim forwarding to `swrast` | Segfault |
+| Either shim with `LIBGL_ALWAYS_SOFTWARE=1` and/or `GALLIUM_DRIVER=llvmpipe` | `Error creating gpu or npu`, segfault |
+| `Section "ServerFlags" Option "AIGLX" "off"` | No effect — the option no longer exists; the string is absent from the 21.1.16 binary |
+| `Section "Extensions" Option "DRI2" "Disable"` | No effect — does not stop the AIGLX probe |
+
+The shim is worth understanding because of *where* it fails. Once the symbol
+resolves, mesa's stub tries to build a gallium screen on the omapdrm fd and
+cannot, because there is no gallium driver for omapdrm and its software
+fallback does not take over. It returns failure, and Xorg 21.1.16 then
+segfaults.
+
+That is the actual bug, and it is bigger than the missing driver: **every**
+failure path in 21.1.16's AIGLX DRI2 probe NULL-derefs instead of returning
+cleanly. Xorg is supposed to fall back to software GLX when that probe fails,
+which is exactly what bookworm's 21.1.7 does with the identical missing driver.
+There is no way to make the probe *succeed* on this hardware, so the only
+remedy is to stop it running.
 
 ### Fix 2 — first-run wizard powers the unit off
 
@@ -245,6 +280,47 @@ defaults.
 Worth filing upstream so the package gets rebuilt, rather than everyone working
 around it forever:
 https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
+
+---
+
+### Fix 4 — disable the GLX extension (this is the one that works)
+
+    # /etc/X11/xorg.conf.d/20-pyra-glx.conf
+    Section "Extensions"
+        Option "GLX" "Disable"
+    EndSection
+
+Xorg then skips GLX entirely, never runs the AIGLX probe, never reaches the
+broken error path, and starts normally. The log carries one line about it:
+
+    (**) Extension "GLX" is disabled
+
+`Section "Module" Disable "glx"` would also work; the `Extensions` form is the
+documented one and leaves the module alone.
+
+**What this costs.** No GLX on the X server at all. Bookworm has software GLX
+here, so this is a real regression against bookworm, and `glxinfo` and anything
+that insists on desktop GL will not work. GTK4 applications fall back to the
+cairo renderer.
+
+**What this does not cost.** `DRI3` and `Present` are untouched, and those are
+what `libpvrDRI3WSEGL` uses, so the hardware path — GLES2 through the SGX blob
+via EGL — is unaffected. Desktop GL never touched the SGX on this platform
+anyway; GLX was always software rendered, so nothing that was ever fast has
+been lost.
+
+Also remove the useless symlink from fix 1 while you are here:
+
+    rm -f /usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so
+
+This is a workaround for an upstream Xorg bug and should be reverted whenever
+Debian ships a 21.1.x whose AIGLX probe fails gracefully, or whenever mesa
+grows an omapdrm-capable stub. Both are worth reporting:
+
+- xorg-server: AIGLX DRI2 probe NULL-derefs on every failure path in 21.1.16
+  rather than returning NULL and falling back to swrast.
+- mesa: `libdril_dri.so` cannot create a screen for omapdrm and reports
+  `Error creating gpu or npu`.
 
 ---
 
@@ -333,6 +409,42 @@ the three input devices, whether the empty `/etc/pyrainput.cfg` is accepted,
 and whether GLES2 through the SGX blob works. Since SSH works, all of that is
 now debuggable on the device instead of by pulling the card.
 
+## Desktop fixed, hardware verified — 2026-09-08
+
+Done over SSH on the running unit. lightdm now starts, the GTK greeter renders
+on the panel at 1280x720, and the `pyra` user is offered in the user list.
+
+**lightdm itself was never at fault.** `/var/log/lightdm/lightdm.log` shows it
+launching `/usr/bin/X :0 ... vt7`, that process dying on signal 6 within 250 ms,
+and lightdm giving up after five restarts and hitting systemd's start limit.
+The whole failure was the Xorg segfault described under fix 1. Fix 4 resolves
+it. A cosmetic warning about a missing `/var/lib/lightdm/data` is unrelated;
+create the directory owned by `lightdm` to silence it.
+
+Confirmed working on hardware:
+
+| Thing | Result |
+| --- | --- |
+| lightdm + greeter | Renders on the panel; MATE is the installed session |
+| Display | 1280x720, panel native 720x1280 rotated right |
+| X extensions | `DRI3` and `Present` present, `GLX` absent by design |
+| `pyrainput` | Active, no restart loop; empty `/etc/pyrainput.cfg` accepted |
+| pyraInput devices | All three present: keyboard, Gamepad, Mouse |
+| Audio | 5 ALSA cards; the real one is card 4, `Letux Cortex 15` (TWL6040) |
+| PulseAudio | Running for the user session (not pipewire) |
+| Wifi | `wlan0` up, scans and lists access points |
+| Bluetooth | `hci0` UP RUNNING, valid BD address, HCI 4.1 |
+| Battery | `bq27421-0` fuel gauge reporting capacity and current |
+| Charging | `bq24297` charger present |
+
+Fix 3 is therefore fully validated on hardware: the restored unit starts, and
+the empty config file the prep script creates is accepted with no complaint.
+
+Note on the charger: the `bq24297` reports `status=Not charging` and `online=0`
+while the `bq27421-0` fuel gauge simultaneously reports `status=Charging` with a
+positive `current_now`. Trust the gauge's capacity trend over either status
+string.
+
 ## Where this deviates from the forum post
 
 The original writeup works, but a few steps are fragile enough to be worth
@@ -366,7 +478,7 @@ replacing:
 it sidesteps the long-press quirk since the eMMC's older U-Boot has no PMIC
 check. But it overwrites bookworm-7 — your only known-good system and your only
 recovery path. This image is deliberately a live SD image that leaves the eMMC
-alone. Don't burn the fallback to test a build that needed three fixes to reach
+alone. Don't burn the fallback to test a build that needed four fixes to reach
 a desktop.
 
 **The microSD slot under the battery.** Not the documented boot path, and not
@@ -382,6 +494,17 @@ mechanism, not a way to run a rootfs.
 **Quarter-second of LED, then nothing.** You tapped instead of holding. See
 step 5. This is by far the most likely "it doesn't boot".
 
+**The unit vanished after `reboot` and will not come back.** Expected, and the
+same root cause as step 5. A software reboot does not give U-Boot the long-press
+power-on reason it insists on, so the unit halts instead of restarting. It is
+off, not broken. Hold the power button until both LEDs go green.
+
+**Treat `reboot` as `poweroff` on this image.** If the unit is not physically in
+front of you, do not reboot it over SSH — you will not get it back without
+walking over to it. Test changes to the graphical stack with
+`systemctl restart lightdm`, or run a throwaway server with
+`Xorg :1 vt8 -logfile /tmp/xt.log`, rather than rebooting.
+
 **Still no boot after a proper long press.** Re-check that the card is in the
 *left* full-size slot, that you `dd`'d to the whole device (`/dev/sdX`) and not
 a partition (`/dev/sdX1`), and that `dd` finished with `conv=fsync` plus a
@@ -391,9 +514,12 @@ a partition (`/dev/sdX1`), and that `dd` finished with `conv=fsync` plus a
 Pull the card, mount it, and read `/usr/bin/pyra-first-run.sh` to find the
 actual guard condition.
 
-**X still segfaults.** Pull the card and read `/var/log/Xorg.0.log`. Check that
-`usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so` is a symlink pointing at a file
-that actually exists — a dangling link behaves identically to a missing one.
+**X still segfaults / lightdm fails and there is no desktop.** Read
+`/var/log/Xorg.0.log`. If you see any `AIGLX` line, fix 4 is not in effect:
+check that `/etc/X11/xorg.conf.d/20-pyra-glx.conf` exists and disables the GLX
+extension. Do not chase the `armsoc_dri.so` symlink — it cannot fix this, for
+the reasons under fix 1. `/var/log/lightdm/lightdm.log` and
+`/var/log/lightdm/x-0.log` tell you whether lightdm or X is the one failing.
 
 **Nubs still dead.** `systemctl status pyrainput` on the device. If the unit
 failed to start, confirm `/usr/sbin/funkeymonkey`,

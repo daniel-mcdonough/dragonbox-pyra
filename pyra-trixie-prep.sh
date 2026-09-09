@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the three known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -35,29 +35,77 @@ DRIDIR=$ROOT/usr/lib/arm-linux-gnueabihf/dri
 echo
 
 ########################################################################
-# Fix 1 — Xorg 21.1.16 segfaults when AIGLX fails to dlopen armsoc_dri.so
+# Fix 1 — Xorg 21.1.16 segfaults during GLX init
 ########################################################################
-# Xorg 21.1.7 (bookworm) logs the failure and carries on; somewhere before
-# 21.1.16 that path picked up a NULL deref. Give AIGLX *any* loadable DRI
-# driver so it never reaches the broken branch. GLX then runs on swrast,
-# which is what bookworm was silently doing all along — the SGX hardware
-# path is GLES2 via the blob's EGL + libpvrDRI3WSEGL and is untouched.
+# The forum fix symlinks armsoc_dri.so at a mesa driver. That does not work
+# and cannot work. Xorg builds the symbol it looks up from the DRI2 driver
+# name the DDX reports, which xf86-video-armsoc hardcodes to "armsoc", so it
+# asks libdril_dri.so for __driDriverGetExtensions_armsoc. Mesa 25's stub
+# exports one entry point per driver name it was built for and "armsoc" is
+# not one of them, so the target of the symlink is irrelevant.
+#
+# The real bug is that 21.1.16's AIGLX probe NULL-derefs on every failure
+# path instead of falling back to software GLX the way bookworm's 21.1.7
+# does. So we stop the probe running at all — see fix 4 below.
+#
+# Remove any symlink an earlier run of this script created: it does nothing,
+# and leaving it makes the Xorg log harder to read.
 
-if [[ -e $DRIDIR/armsoc_dri.so ]]; then
-    ok "fix1: armsoc_dri.so already present ($(readlink -f "$DRIDIR/armsoc_dri.so" | sed "s|^$ROOT||"))"
+if [[ -L $DRIDIR/armsoc_dri.so || -e $DRIDIR/armsoc_dri.so ]]; then
+    rm -f "$DRIDIR/armsoc_dri.so"
+    ok "fix1: removed the ineffective armsoc_dri.so (superseded by fix 4)"
 else
-    # Don't hardcode kms_swrast_dri.so — mesa has been shuffling these around.
-    TARGET=""
-    for cand in kms_swrast_dri.so swrast_dri.so; do
-        [[ -e $DRIDIR/$cand ]] && { TARGET=$cand; break; }
-    done
-    if [[ -z $TARGET ]]; then
-        TARGET=$(cd "$DRIDIR" && ls -1 ./*_dri.so 2>/dev/null | head -1 | sed 's|^\./||') || true
-        [[ -n $TARGET ]] && warn "fix1: no swrast driver; falling back to $TARGET"
+    ok "fix1: no armsoc_dri.so present, nothing to remove"
+fi
+
+########################################################################
+# Fix 4 — disable the GLX extension so Xorg never runs the AIGLX probe
+########################################################################
+# Costs desktop GLX, which was always software rendered here anyway. Leaves
+# DRI3 and Present alone, so GLES2 through the SGX blob is unaffected.
+
+XCONFD=$ROOT/etc/X11/xorg.conf.d
+GLXCONF=$XCONFD/20-pyra-glx.conf
+if [[ ! -d $XCONFD ]]; then
+    warn "fix4: $XCONFD does not exist — creating it"
+    mkdir -p "$XCONFD"
+fi
+if [[ -f $GLXCONF ]] && grep -qi 'Option[[:space:]]*"GLX"[[:space:]]*"Disable"' "$GLXCONF"; then
+    ok "fix4: GLX already disabled in ${GLXCONF#$ROOT}"
+else
+    cat > "$GLXCONF" <<'EOF'
+# Xorg 21.1.16 segfaults in its AIGLX DRI2 probe on this hardware: the armsoc
+# DDX asks for a DRI driver mesa 25 does not provide, and the server's error
+# path NULL-derefs instead of falling back to software GLX. Disabling the GLX
+# extension stops the probe running. DRI3 and Present are unaffected, so the
+# SGX blob's GLES2 path still works. Revert when Xorg fixes the fallback.
+Section "Extensions"
+    Option "GLX" "Disable"
+EndSection
+EOF
+    chmod 0644 "$GLXCONF"
+    ok "fix4: wrote ${GLXCONF#$ROOT}"
+fi
+
+# lightdm warns on every start if this is missing. Cosmetic, but noisy.
+LDMDATA=$ROOT/var/lib/lightdm/data
+if [[ -d $LDMDATA ]]; then
+    ok "fix4: ${LDMDATA#$ROOT} already exists"
+else
+    mkdir -p "$LDMDATA"
+    # uid/gid resolved against the target rootfs, not the host
+    LDMUID=$(awk -F: '$1=="lightdm"{print $3}' "$ROOT/etc/passwd" 2>/dev/null || true)
+    LDMGID=$(awk -F: '$1=="lightdm"{print $3}' "$ROOT/etc/group" 2>/dev/null || true)
+    if [[ -n ${LDMUID:-} && -n ${LDMGID:-} ]]; then
+        # Non-fatal: this is cosmetic, and must not abort before fixes 2 and 3.
+        if chown "$LDMUID:$LDMGID" "$LDMDATA" && chmod 0750 "$LDMDATA"; then
+            ok "fix4: created ${LDMDATA#$ROOT} owned by lightdm ($LDMUID:$LDMGID)"
+        else
+            warn "fix4: created ${LDMDATA#$ROOT} but could not set ownership"
+        fi
+    else
+        warn "fix4: created ${LDMDATA#$ROOT} but no lightdm user in the image; left root-owned"
     fi
-    [[ -n $TARGET ]] || die "fix1: no *_dri.so found in $DRIDIR — cannot create the symlink"
-    ln -s "$TARGET" "$DRIDIR/armsoc_dri.so"
-    ok "fix1: armsoc_dri.so -> $TARGET"
 fi
 
 ########################################################################
