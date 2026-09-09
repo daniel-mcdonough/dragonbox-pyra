@@ -352,6 +352,67 @@ message. Re-run after the fix: all pass, including idempotency.
 
 ---
 
+### 06:20 — first resize attempt aborted, and why
+
+`pyra-trixie-grow.sh` grew p2 from 5.7 GiB to 119 GiB cleanly, then `fsck.f2fs`
+aborted before the filesystem resize:
+
+    [ASSERT] (get_current_sit_page:2110) dev_read_block(sit_blk, blk_addr) >= 0
+
+The script refusing to resize after that was correct. Nothing was written to the
+filesystem, p2's start did not move, and the card would still have booted.
+
+`dmesg` showed what it actually was, and it was not the filesystem:
+
+    usb 1-4: reset high-speed USB device number 9 using xhci_hcd   (x3)
+    sdi: detected capacity change from 249999360 to 0
+    sd 15:0:0:0: [sdi] tag#0 access beyond end of device
+    I/O error, dev sdi, sector 543136
+
+The card reader dropped off the USB bus. Sector 543136 is ~265 MB in, at the
+very start of the partition, so this was not an end-of-device arithmetic
+problem — the `access beyond end of device` lines are the kernel reporting
+in-flight reads against a device it had just been told was 0 sectors long.
+
+Confirmed against the filesystem itself: checkpoint state read
+`crc compacted_summary unmount`, i.e. cleanly unmounted, and a read-only mount
+listed the tree and checksummed files fine.
+
+### 06:35 — verifying the card before trusting it
+
+Everything ever written to or read from this card had lived in the first 6 GiB.
+The upper 113 GiB was completely untested, so a capacity-overstating card would
+not have shown up yet, and resizing onto space that does not exist produces a
+filesystem that looks healthy and then silently destroys data.
+
+`verify-card-capacity.sh` writes unique samples across the untested region only
+(never below sector 12582912, so the rootfs is untouchable), reads them back,
+and then does a sustained 256 MiB round trip to exercise the link. Result: all
+40 samples verified, round trip clean, 119 GiB real.
+
+This should have been run **before** growing the partition, not after.
+
+### two bugs in the tooling, both found by running it
+
+- `verify-card-capacity.sh` generated samples with `openssl ... | head -c 1M`.
+  `head` exits once satisfied, `openssl` takes SIGPIPE, and under
+  `set -o pipefail` that is a failed pipeline, so `set -e` killed the script on
+  the first sample. It exited silently, which looked exactly like a fast pass.
+  Fixed by dropping the pipeline, plus an `ERR` trap and an explicit
+  `TEST COMPLETE: PASS/FAIL` banner so a silent exit can never read as success.
+  The same pipeline hazard was hardened in `pyra-trixie-grow.sh`.
+- `pyra-trixie-grow.sh` decided there was nothing to do from free space *after*
+  the partition. With the partition already grown and the filesystem not, that
+  is exactly the state a failed run leaves behind, and it would have reported
+  "nothing worth doing" and skipped the resize. It now compares the filesystem
+  size from `dump.f2fs` against the partition size and resizes when they
+  disagree, so it resumes correctly.
+
+Also added an optional `RESIZE_MARGIN_SECTORS`, applied via `resize.f2fs -t` so
+it needs no second write to the partition table.
+
+---
+
 ## Open items
 
 - **Log in to MATE and confirm the session works.** The greeter renders and the

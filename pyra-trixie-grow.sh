@@ -86,14 +86,32 @@ ok "$P2 is f2fs labelled '${P2_LABEL:-none}'"
 DISK_SECTORS=$(blockdev --getsz "$DEV")
 P2_SECTORS_NOW=$(blockdev --getsz "$P2")
 FREE=$(( DISK_SECTORS - WANT_P2_START - P2_SECTORS_NOW ))
-info "disk      $DISK_SECTORS sectors ($(( DISK_SECTORS / 2097152 )) GiB)"
-info "p2 now    $P2_SECTORS_NOW sectors ($(( P2_SECTORS_NOW / 2097152 )) GiB)"
-info "unused    $FREE sectors ($(( FREE / 2097152 )) GiB)"
 
-if [[ $FREE -lt 2097152 ]]; then
-    ok "less than 1 GiB unused — nothing worth doing"
+# The filesystem's own idea of its size, which is not the same thing as the
+# partition's. These can disagree: growing the partition and resizing the
+# filesystem are two separate steps, and a run that grows the partition and
+# then fails can leave exactly that state behind.
+FS_DUMP=$(dump.f2fs "$P2" 2>/dev/null || true)
+FS_SECTORS=$(printf '%s\n' "$FS_DUMP" | sed -n 's/.*total FS sectors *= *\([0-9][0-9]*\).*/\1/p' | sed -n '1p')
+[[ -n ${FS_SECTORS:-} ]] || die "could not read the filesystem size from dump.f2fs $P2"
+
+info "disk         $DISK_SECTORS sectors ($(( DISK_SECTORS / 2097152 )) GiB)"
+info "p2 partition $P2_SECTORS_NOW sectors ($(( P2_SECTORS_NOW / 2097152 )) GiB)"
+info "p2 filesystem $FS_SECTORS sectors ($(( FS_SECTORS / 2097152 )) GiB)"
+info "unused disk  $FREE sectors ($(( FREE / 2097152 )) GiB)"
+
+GROW_PART=0
+GROW_FS=0
+[[ $FREE -ge 2097152 ]] && GROW_PART=1
+# 1 GiB of slack, since resize.f2fs does not use every last sector.
+[[ $(( P2_SECTORS_NOW - FS_SECTORS )) -ge 2097152 ]] && GROW_FS=1
+
+if [[ $GROW_PART -eq 0 && $GROW_FS -eq 0 ]]; then
+    ok "partition fills the disk and the filesystem fills the partition — nothing to do"
     exit 0
 fi
+[[ $GROW_PART -eq 1 ]] && info "will grow the partition"
+[[ $GROW_FS -eq 1 || $GROW_PART -eq 1 ]] && info "will resize the filesystem"
 
 if [[ $ASSUME_YES != "--yes" ]]; then
     echo
@@ -112,18 +130,22 @@ dd if="$DEV" of="$BACKUP_DIR/pyra-card-first-1MiB-$STAMP.bin" bs=1M count=1 stat
 sfdisk --dump "$DEV" > "$BACKUP_DIR/pyra-card-parttable-$STAMP.sfdisk"
 ok "backed up first 1 MiB and partition table to $BACKUP_DIR (restore with: sfdisk $DEV < the .sfdisk file)"
 
-# ",+" keeps p2's start and type, and takes all remaining space.
-echo ",+" | sfdisk --no-reread -N 2 "$DEV"
-partprobe "$DEV"
-sleep 2
+if [[ $GROW_PART -eq 1 ]]; then
+    # ",+" keeps p2's start and type, and takes all remaining space.
+    echo ",+" | sfdisk --no-reread -N 2 "$DEV"
+    partprobe "$DEV"
+    sleep 2
 
-P2_SECTORS_NEW=$(blockdev --getsz "$P2")
-[[ $P2_SECTORS_NEW -gt $P2_SECTORS_NOW ]] || die "partition did not grow ($P2_SECTORS_NEW sectors)"
-ok "p2 grown to $P2_SECTORS_NEW sectors ($(( P2_SECTORS_NEW / 2097152 )) GiB)"
+    P2_SECTORS_NEW=$(blockdev --getsz "$P2")
+    [[ $P2_SECTORS_NEW -gt $P2_SECTORS_NOW ]] || die "partition did not grow ($P2_SECTORS_NEW sectors)"
+    ok "p2 grown to $P2_SECTORS_NEW sectors ($(( P2_SECTORS_NEW / 2097152 )) GiB)"
 
-NEW_P2_START=$(sfdisk -l -o Device,Start "$DEV" | awk -v d="$P2" '$1==d{print $2}')
-[[ $NEW_P2_START == "$WANT_P2_START" ]] || die "p2 start moved to $NEW_P2_START — restore the backup"
-ok "p2 start unchanged, PARTUUIDs still valid"
+    NEW_P2_START=$(sfdisk -l -o Device,Start "$DEV" | awk -v d="$P2" '$1==d{print $2}')
+    [[ $NEW_P2_START == "$WANT_P2_START" ]] || die "p2 start moved to $NEW_P2_START — restore the backup"
+    ok "p2 start unchanged, PARTUUIDs still valid"
+else
+    ok "partition already fills the disk, leaving it alone"
+fi
 
 ########################################################################
 # Resize the filesystem
@@ -131,8 +153,21 @@ ok "p2 start unchanged, PARTUUIDs still valid"
 info "checking the filesystem before resizing"
 fsck.f2fs -f "$P2" || die "fsck.f2fs reported a problem; not resizing"
 
-info "resizing (metadata is rebuilt, this is not instant)"
-resize.f2fs "$P2" || die "resize.f2fs failed — the partition is bigger but the filesystem is not; restore the table backup or re-run"
+# Optional slack at the end of the partition. Costs almost nothing on a card
+# this size and avoids relying on the very last sectors, which are the ones
+# most likely to be marginal. Set RESIZE_MARGIN_SECTORS=0 to use every sector.
+MARGIN=${RESIZE_MARGIN_SECTORS:-0}
+P2_SECTORS_FINAL=$(blockdev --getsz "$P2")
+if [[ $MARGIN -gt 0 ]]; then
+    TARGET=$(( P2_SECTORS_FINAL - MARGIN ))
+    [[ $TARGET -gt $FS_SECTORS ]] || die "margin of $MARGIN sectors leaves no room to grow"
+    info "resizing to $TARGET sectors, leaving $MARGIN sectors ($(( MARGIN / 2048 )) MiB) unused at the end"
+    info "metadata is rebuilt, this is not instant"
+    resize.f2fs -t "$TARGET" "$P2" || die "resize.f2fs failed — partition is bigger but the filesystem is not; re-run, or restore the table backup"
+else
+    info "resizing to fill the partition (metadata is rebuilt, this is not instant)"
+    resize.f2fs "$P2" || die "resize.f2fs failed — partition is bigger but the filesystem is not; re-run, or restore the table backup"
+fi
 
 info "checking the filesystem after resizing"
 fsck.f2fs -f "$P2" || warn "post-resize fsck reported a problem — inspect before booting"
