@@ -370,10 +370,26 @@ never sees an operation at all.
 
 **How to get the frequencies.** Everything above is a per-operation cost. None
 of it says how often a real session hits these paths, and that is what decides
-whether any of it is worth building. Define `VIV2D_UNSUPPORTED` in
-`viv2d_config.h`, rebuild, run an ordinary desktop session and an emulator
-session, and count the `unsupported` lines in the X log by category. That
-turns all three of these from costs into budgets.
+whether any of it is worth building.
+
+Take the cheap measurement first, because it can rule the whole question out.
+`pyra-x-load-profile.sh` samples the X server's CPU consumption across a real
+workload and reports it as a share of one core, of the machine, and of all
+busy CPU time. The display driver cannot give back more than that share, so if
+Xorg is at two percent while a game runs, nothing in `omap5_drv.so` is worth
+changing for that workload. It also reports whether the GC320 moved at all and
+whether clients are presenting through `MIT-SHM`. It needs no rebuild and
+changes nothing.
+
+For reference, the X server sits at 0.03% of one core on an idle desktop, and
+reached 9.6% of one core under a pure 2D drawing load, which was 27% of all
+busy CPU time in that window. A workload that leaves Xorg near idle has no
+driver problem to solve.
+
+Only if that number is large is a rebuild justified. Then define
+`VIV2D_UNSUPPORTED` in `viv2d_config.h`, rebuild, run a desktop session and an
+emulator session, and count the `unsupported` lines in the X log by category.
+That turns all three of these from costs into budgets.
 
 **Known fallbacks not yet measured.** Surfaces above `VIV2D_MAX_SIZE`, which is
 16 MB. The 720x1280 screen is 3.5 MB, so this never fires for on-screen work.
