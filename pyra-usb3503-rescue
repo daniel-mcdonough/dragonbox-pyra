@@ -1,0 +1,58 @@
+#!/bin/sh
+# Re-reset the Pyra's on-board USB3503 hub when it fails to enumerate.
+#
+# After a warm reboot the hub's reset GPIO is still deasserted when the i2c
+# driver probes, so the reset sequence is a no-op, the hub never connects, and
+# every device behind it disappears -- including the USB ethernet adapter,
+# which is how you were probably talking to the machine. The EHCI controller
+# and root hub come up normally, which makes this look like dead hardware
+# rather than a hub that was never reset.
+#
+# Rebinding the i2c driver runs the reset sequence again from a known state.
+# On a cold boot the hub is already present and this exits without touching it.
+
+set -eu
+
+DRV=/sys/bus/i2c/drivers/usb3503
+DEV=0-0008
+HUB_VID=0424
+HUB_PID=3503
+TIMEOUT=20
+
+hub_present() {
+    for d in /sys/bus/usb/devices/*/; do
+        [ -r "$d/idVendor" ] && [ -r "$d/idProduct" ] || continue
+        [ "$(cat "$d/idVendor")" = "$HUB_VID" ] || continue
+        [ "$(cat "$d/idProduct")" = "$HUB_PID" ] || continue
+        return 0
+    done
+    return 1
+}
+
+if hub_present; then
+    echo "usb3503: hub already on the USB bus, nothing to do"
+    exit 0
+fi
+
+if [ ! -e "$DRV/$DEV" ]; then
+    echo "usb3503: driver not bound at $DEV, cannot re-reset" >&2
+    exit 0
+fi
+
+echo "usb3503: hub absent from the USB bus, re-resetting"
+echo "$DEV" > "$DRV/unbind"
+sleep 1
+echo "$DEV" > "$DRV/bind"
+
+i=0
+while [ "$i" -lt "$TIMEOUT" ]; do
+    if hub_present; then
+        echo "usb3503: hub enumerated after $i s"
+        exit 0
+    fi
+    sleep 1
+    i=$((i + 1))
+done
+
+echo "usb3503: hub still absent ${TIMEOUT}s after re-reset" >&2
+exit 1

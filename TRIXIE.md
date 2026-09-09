@@ -166,21 +166,32 @@ There should be **no** `AIGLX` lines at all, and no `Segmentation fault` /
 integration uses; `GLX` is deliberately absent.
 
     # hardware GLES2 through the SGX blob
-    # needs libx11-dev; build a minimal X11+EGL+GLES2 client against
-    # /opt/omap5-sgx-ddk-um-linux/include
+    sudo apt-get install libx11-dev
+    gcc -O2 -o gles2-smoke gles2-smoke.c \
+        -I/opt/omap5-sgx-ddk-um-linux/include \
+        -L/opt/omap5-sgx-ddk-um-linux/lib -lEGL -lGLESv2 -lX11
+    sudo env DISPLAY=:0 XAUTHORITY=/var/run/lightdm/root/:0 ./gles2-smoke
 
-Expected output:
+Check with `ldd` that it picked up `/opt/omap5-sgx-ddk-um-linux/lib/libEGL.so.1`
+and not the mesa one in `/usr/lib/arm-linux-gnueabihf`.
+
+Measured on the fixed card:
 
     DRI3 1.0
     present 1.2
-    EGL_VENDOR:  Imagination Technologies
-    GL_RENDERER: PowerVR SGX 544MP
-    GL_VERSION:  OpenGL ES 2.0 build 1.14@3699939 (MAIN)
-    ~1270 fps
+    EGL_VENDOR   Imagination Technologies
+    GL_RENDERER  PowerVR SGX 544MP
+    GL_VERSION   OpenGL ES 2.0 build 1.14@3699939 (MAIN)
+    7073 frames in 5.00 s = 1414 fps   (clear + swap, 320x240, vsync off)
 
-Bookworm manages ~1170 fps on the identical test, so trixie is marginally
-quicker and nothing was lost. The DRI3/present lines confirm `libpvrDRI3WSEGL`
-is doing window integration — the same path the bookworm desktop uses.
+The `DRI3`/`present` lines are printed by `libpvrDRI3WSEGL` itself — that module
+lives at `/usr/lib/libpvrDRI3WSEGL.so` and comes from the `dri3wsegl-pyra`
+package, not from the DDK tree. Seeing them is the proof that window integration
+is going through the blob, which is the same path the bookworm desktop uses, and
+that disabling GLX did not disturb it.
+
+Do not compare the fps figure to the forum post's ~1270 without matching the
+window size; it is a driver-throughput number, not a benchmark.
 
 **Do not use the DDK's own `gles2test1` for this.** It is a direct-KMS test that
 wants DRM master and fails identically on bookworm when X is running.
@@ -445,6 +456,29 @@ while the `bq27421-0` fuel gauge simultaneously reports `status=Charging` with a
 positive `current_now`. Trust the gauge's capacity trend over either status
 string.
 
+## Post-desktop configuration — 2026-09-09
+
+Applied on the running unit, over SSH.
+
+**`pyra-usb3503-rescue.service`.** Re-resets the on-board USB3503 hub at boot if
+it did not enumerate, which is what a warm reboot leaves behind. It checks for
+the hub on the USB bus first, so on a cold boot it exits without touching
+anything. Script at `/usr/local/sbin/pyra-usb3503-rescue`, unit in
+`/etc/systemd/system/`, enabled in `multi-user.target`.
+
+**`firmware-realtek`.** The RTL8153 USB ethernet adapter was running without its
+firmware: `Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2`.
+It worked anyway on the driver's fallback path, but installing the package and
+rebinding gets `load rtl8153a-4 v2 02/07/20 successfully` and a clean link.
+
+**Wifi.** Worth configuring before you ever reboot remotely — see the USB note in
+troubleshooting. `wlan0` associates and gets a lease normally through
+NetworkManager.
+
+**Hardware GLES2 confirmed.** See section 6 for the numbers. This is the check
+that matters after fix 4, since it proves disabling GLX cost nothing on the path
+that was ever fast.
+
 ## Where this deviates from the forum post
 
 The original writeup works, but a few steps are fragile enough to be worth
@@ -494,16 +528,33 @@ mechanism, not a way to run a rootfs.
 **Quarter-second of LED, then nothing.** You tapped instead of holding. See
 step 5. This is by far the most likely "it doesn't boot".
 
-**The unit vanished after `reboot` and will not come back.** Expected, and the
-same root cause as step 5. A software reboot does not give U-Boot the long-press
-power-on reason it insists on, so the unit halts instead of restarting. It is
-off, not broken. Hold the power button until both LEDs go green.
+**The unit disappears from the network after `reboot`.** It rebooted fine. What
+died is USB, and with it the USB ethernet adapter. See "USB is dead after a warm
+reboot" below. If wifi is configured the unit is still reachable there; if it is
+not, you need the screen.
 
-**Treat `reboot` as `poweroff` on this image.** If the unit is not physically in
-front of you, do not reboot it over SSH — you will not get it back without
-walking over to it. Test changes to the graphical stack with
-`systemctl restart lightdm`, or run a throwaway server with
-`Xorg :1 vt8 -logfile /tmp/xt.log`, rather than rebooting.
+**USB is dead after a warm reboot.** No devices at all behind the on-board hub:
+no ethernet adapter, no mouse, no keyboard dongle. `lsusb` shows only the root
+hub, which makes it look like the controller failed. It did not — `dmesg` shows
+`ehci-omap` starting normally and the root hub finding its 3 ports.
+
+The USB3503 hub chip is the problem. It is reset over i2c at probe, and after a
+warm reboot its reset GPIO is still deasserted from the previous boot, so the
+reset is a no-op and the hub never connects. `dmesg` gives it away:
+
+    usb3503 0-0008: reset gpio state 1
+
+On a cold boot that reads `0`. Rebinding the driver re-runs the sequence from a
+known state and everything behind the hub comes back within seconds:
+
+    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/unbind
+    echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/bind
+
+`pyra-usb3503-rescue.service` does this automatically at boot; see below. A cold
+power cycle also avoids it entirely.
+
+**Configure wifi before you reboot remotely.** With USB gone the ethernet adapter
+goes with it, and wifi is the only way back in.
 
 **Still no boot after a proper long press.** Re-check that the card is in the
 *left* full-size slot, that you `dd`'d to the whole device (`/dev/sdX`) and not

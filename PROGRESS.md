@@ -247,31 +247,80 @@ against a fake rootfs for correctness and idempotency.
 
 ---
 
-### 04:05 — reboot found to be a one-way trip
+### 04:05 — reboot, and a wrong diagnosis
 
-Rebooted to confirm fix 4 survives a cold boot. The unit did not come back and
-was absent from the LAN entirely, on any address.
+Rebooted to confirm fix 4 survives a cold boot. The unit vanished from the LAN
+on every address, and I concluded it had powered off — that U-Boot's long-press
+check had refused a warm reboot. **That was wrong** and is corrected below; the
+claim briefly made it into `TRIXIE.md` and has been removed.
 
-This is the step-5 long-press quirk seen from the other side: U-Boot asks the
-Palmas PMIC why the unit powered on and refuses anything that is not a real long
-press, and a warm reboot does not produce one. **`reboot` on this image behaves
-as `poweroff`.** Recovery is a physical long press, so do not reboot this unit
-over SSH unless you can reach it.
+### 05:31 — what actually happened
 
-For graphical-stack work use `systemctl restart lightdm`, or a throwaway
-`Xorg :1 vt8`, instead.
+Operator reported the desktop up and the unit on wifi at <wlan-address>, with USB
+not working. `uptime` read 1:27, putting boot at 04:04, exactly when the reboot
+was issued. **The unit rebooted normally.** It was unreachable because USB died,
+and the USB ethernet adapter was the only network path configured at the time.
+
+That fix 4 survives a cold boot is therefore confirmed: the Xorg log after the
+reboot carries only `Extension "GLX" is disabled`, no AIGLX line and no
+segfault.
+
+---
+
+### 05:32 — USB after a warm reboot
+
+`lsusb` showed only the root hub. That looks like a dead controller, but `dmesg`
+had `ehci-omap` starting normally and the root hub finding its 3 ports, so the
+controller was fine and nothing behind the hub had enumerated.
+
+The USB3503 hub chip is reset over i2c at probe, and after a warm reboot its
+reset GPIO is still deasserted from the previous boot, so the reset does nothing
+and the hub never connects:
+
+    usb3503 0-0008: reset gpio state 1
+
+On a cold boot that reads `0`. Rebinding the i2c driver re-runs the sequence and
+the hub, the ethernet adapter and the wireless mouse all came back within
+seconds.
+
+Made persistent as `pyra-usb3503-rescue.service`, which checks for the hub on
+the USB bus before doing anything, so it is a no-op on a cold boot.
+
+Also installed `firmware-realtek`: the RTL8153 had been running on the driver's
+fallback path after `Direct firmware load for rtl_nic/rtl8153a-4.fw failed with
+error -2`. After installing and rebinding it loads properly.
+
+### 05:40 — GLES2 through the SGX blob confirmed
+
+Built a minimal X11 + EGL + GLES2 client against the DDK headers rather than
+using the DDK's `gles2test1`, which is a direct-KMS test that wants DRM master
+and fails on bookworm too whenever X is running. `ldd` confirms it binds the
+DDK's `libEGL.so.1`, not mesa's.
+
+    DRI3 1.0
+    present 1.2
+    EGL_VENDOR   Imagination Technologies
+    GL_RENDERER  PowerVR SGX 544MP
+    GL_VERSION   OpenGL ES 2.0 build 1.14@3699939 (MAIN)
+    7073 frames in 5.00 s = 1414 fps   (clear + swap, 320x240, vsync off)
+
+The `DRI3`/`present` lines come from `libpvrDRI3WSEGL` itself, which lives at
+`/usr/lib/libpvrDRI3WSEGL.so` and ships in `dri3wsegl-pyra`, not in the DDK tree.
+
+**This is the check that justifies fix 4.** Disabling GLX cost nothing on the
+path that was ever hardware accelerated. The fps figure is not comparable to the
+forum post's ~1270 without matching window sizes; treat it as evidence of
+hardware rendering, not as a benchmark.
 
 ---
 
 ## Open items
 
-- **Confirm fix 4 survives a cold boot.** Untested: the reboot that was meant
-  to check this powered the unit off instead. The config is a plain file in
-  `/etc/X11/xorg.conf.d/`, so there is no real doubt, but it is unverified.
-- **Log in to MATE and confirm the session works.** The greeter renders; an
-  actual desktop session has not been driven yet.
-- **GLES2 through the SGX blob never checked.** `TRIXIE.md` section 6 has the
-  expected output and the warning against using the DDK's own `gles2test1`.
+- **Log in to MATE and confirm the session works.** The greeter renders and the
+  operator reports the UI working; a session has not been driven from here.
+- **Verify `pyra-usb3503-rescue.service` on a real warm reboot.** It no-ops
+  correctly with the hub present, but the path that matters has not been
+  exercised.
 - **113 GB of the card is unused.** The image is 6 GiB and nothing grows the
   rootfs on boot. Expanding means growing p2 and running `resize.f2fs`.
 - **Remove `/etc/sudoers.d/90-pyra-nopasswd`** when the build is finished.

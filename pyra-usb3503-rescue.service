@@ -1,0 +1,13 @@
+[Unit]
+Description=Re-reset the on-board USB3503 hub if a warm reboot left it unenumerated
+Documentation=https://dev.pyra-handheld.com/
+After=sysinit.target
+ConditionPathExists=/sys/bus/i2c/drivers/usb3503
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pyra-usb3503-rescue
+
+[Install]
+WantedBy=multi-user.target
