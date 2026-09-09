@@ -443,24 +443,133 @@ symptom later.
 
 ---
 
+## 2026-09-09 (PC clock, US Eastern) — desktop GL recovered with gl4es
+
+Worked over SSH against the running unit, with a MATE session live on `:0`.
+
+### the finding that started it
+
+`TRIXIE.md` listed gl4es under "Not tried yet". It was already installed:
+`libgl-gl4es-pyra` 1.1.7.1 ships in the image and `/usr/bin/gl4es` is a
+three-line wrapper that prepends gl4es's own `libGL.so.1` to the library path.
+So the one real regression fix 4 left behind had a candidate remedy sitting on
+the device the whole time.
+
+### baseline, then gl4es
+
+With fix 4 in effect and mesa's `libGL`, both tools fail as expected:
+
+    glxinfo  -> Error: couldn't find RGB GLX visual or fbconfig
+    glxgears -> Error: couldn't get an RGB, Double-buffered visual
+
+Under the wrapper, GL comes back:
+
+    OpenGL renderer string: GL4ES wrapper
+    OpenGL version string:  2.1 gl4es wrapper 1.1.7
+    direct rendering: Yes
+
+gl4es's own startup log reports `loaded: libGLESv2.so`, `loaded: libEGL.so` and
+`Hardware vendor is Imagination Technologies`, so `ldconfig` is resolving those
+to the DDK blob in `/opt/omap5-sgx-ddk-um-linux/lib/` and not to mesa. The
+`DRI3 1.0` / `present 1.2` lines from `libpvrDRI3WSEGL` appear too, the same
+proof of hardware window integration as the GLES2 smoke test.
+
+gl4es implements the `glX*` calls itself and never asks the server for the GLX
+extension, which is why fix 4 does not get in its way.
+
+`glxgears` runs at **~870 FPS** in its default window. A root screenshot shows
+the gears rendering correctly, shaded and depth-tested, in a `marco`-decorated
+window on the MATE desktop.
+
+**This is better than bookworm, not merely equal.** Bookworm's GLX on this
+platform is software rendered. gl4es is on the SGX.
+
+### glmark2, and two things that look like gl4es bugs and are not
+
+glmark2 would not start at all: `Failed to find suitable GLX FB config`. It
+starts once told exactly what the driver has:
+
+    --visual-config "red=8:green=8:blue=8:alpha=8:buffer=16:depth=24:stencil=8"
+
+Requesting anything looser — `alpha=0`, `depth=16`, or the defaults — gets no
+config, where the GLX spec treats those sizes as minimums. That looked like a
+gl4es defect until `glmark2-es2` was tried: going straight to the DDK's EGL
+with gl4es nowhere in the picture, it refuses the same loose configs and needs
+the same exact one. The strictness is the blob's.
+
+Full run scored **246** at 800x600. Scenes that run, run at hardware speeds —
+pulsar 597 FPS, texture 431/427, build 413, bump 407, shading 332/323, jellyfish
+148, desktop 133/70, buffer 86–106. `terrain` at 3 FPS and `refract` at 1 FPS
+are the suite's two heaviest scenes meeting an SGX 544; that is a hardware
+result.
+
+Ten scenes fail to start with
+
+    ERROR: 0:31: Syntax error, 'HIGHP_OR_DEFAULT' macro redefinition
+
+and that is **glmark2's bug, with gl4es not involved**. Established in two
+steps rather than assumed:
+
+- `LIBGL_DBGSHADERCONV=1` dumps what gl4es actually hands the driver. The
+  converted source is correct GLSL ES 100 with the `#if defined(GL_ES)` guards
+  intact — but glmark2's precision preamble appears *twice* in the one shader,
+  at the top and again inside `main()`. glmark2 assembles these shaders by
+  substitution and duplicates it.
+- Desktop GL drivers tolerate an identical macro redefinition. GLSL ES forbids
+  redefining a macro at all, and the SGX compiler enforces it. So the same
+  source that passes elsewhere fails here.
+
+Confirmed by running the same scenes through `glmark2-es2` — native GLES2, no
+gl4es — which fails with the identical error on the identical macros.
+
+`LIBGL_SHADERNOGLES=1`, `LIBGL_NOHIGHP=1` and `LIBGL_NOERROR=1` were each tried
+and none help, which fits a fault in glmark2's generated source rather than in
+the conversion.
+
+The lesson is the same one the resize tooling taught: a failure has to be
+attributed before it is written down. Both of these would have gone into the
+notes as gl4es limitations on the strength of the error message alone.
+
+### left as a wrapper, deliberately
+
+Not putting gl4es into `ld.so.conf`. That would shadow mesa's `libGL` for every
+process, and GL 2.1 is not what every caller expects — GTK4 currently falls back
+to the cairo renderer and works, and would instead start attempting a GL path.
+The upstream package ships a wrapper rather than replacing `libGL`, which is the
+right call. Wrap what needs GL: `Exec=gl4es /usr/games/something`.
+
+### incidentally, the MATE session is confirmed
+
+The screenshot taken for the gears test shows a working desktop: wallpaper,
+`marco` window decorations, the panel with its taskbar and clock, and the
+notification area carrying bluetooth, volume, network and battery applets. That
+closes the open item about never having driven a session from here.
+
+### packages added to the device
+
+`mesa-utils`, `glmark2-x11` and `glmark2-es2-x11`, from the trixie archive.
+None are in the base image and none are needed at runtime; they are test tools.
+
+---
+
 ## Open items
 
 Nothing here blocks using the device. It boots to a desktop, the hardware works
 and the rootfs fills the card.
 
-- **Log in to MATE and confirm a full session works.** The greeter renders and
-  the operator reports the UI working, but a session has not been driven from
-  here, so nothing beyond the login screen has been exercised directly.
-- **Remove `/etc/sudoers.d/90-pyra-nopasswd`.** Added so this session could work
-  unattended, and the last outstanding change to the device. It gives the `pyra`
-  account root with no password:
+- **`/etc/sudoers.d/90-pyra-nopasswd` stays for now**, by operator decision on
+  2026-09-09: keep it for the whole development period so sessions can work
+  unattended. It gives the `pyra` account root with no password, so it is the
+  last change to undo when the build is called finished:
 
       sudo rm /etc/sudoers.d/90-pyra-nopasswd
 
-- **No desktop GLX**, as a consequence of fix 4. Bookworm has software GLX here,
-  so this is a real regression against it, though GLX never touched the SGX on
-  this platform. Revert when Xorg's AIGLX probe fails gracefully, or when mesa's
-  stub can create a screen for omapdrm.
+- **No desktop GLX from the X server**, as a consequence of fix 4 — but this is
+  now largely answered. gl4es gives GL 2.1 on the SGX through a per-application
+  wrapper, which is faster than the software GLX bookworm has here. What is
+  still missing is GLX for anything that cannot be wrapped. Revert fix 4 when
+  Xorg's AIGLX probe fails gracefully, or when mesa's stub can create a screen
+  for omapdrm.
 - **Three upstream bugs worth filing:**
   - xorg-server 21.1.16: the AIGLX DRI2 probe NULL-derefs on every failure path
     instead of returning NULL and falling back to swrast, which is what 21.1.7
@@ -495,3 +604,12 @@ and the rootfs fills the card.
   fix.
 - **f2fs cross-kernel caveat.** The card was written by a Linux 7.1 host and has
   since booted, rebooted and been resized cleanly under 5.6.19.
+- **The MATE session works.** A root screenshot on 2026-09-09 shows wallpaper,
+  `marco` decorations, the panel with taskbar and clock, and the tray applets
+  for bluetooth, volume, network and battery.
+- **gl4es works, on the hardware.** GL 2.1, direct rendering, ~870 FPS in
+  `glxgears`, translating onto the DDK blob rather than mesa. Fix 4 does not
+  interfere because gl4es implements `glX*` itself.
+- **The glmark2 shader failures are not gl4es's fault**, and neither is the
+  fbconfig strictness. Both reproduce with `glmark2-es2` on native GLES2 with
+  gl4es absent.
