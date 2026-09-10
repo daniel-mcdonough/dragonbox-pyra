@@ -196,16 +196,32 @@ build_kernel_debug() {
 		rm -rf ../staging
 		mkdir -p ../staging/boot/dtb/linux-image-5.6.19-softlockup
 		make INSTALL_MOD_PATH=../staging INSTALL_MOD_STRIP=1 modules_install
+		# modules_install writes to staging/lib/modules. Debian trixie is
+		# usr-merged, where /lib is a symlink to usr/lib, and GNU tar
+		# extracting an archive that contains a ./lib/ DIRECTORY entry
+		# deletes that symlink and creates a real directory in its place.
+		# Every binary on the system then loses its interpreter at
+		# /lib/ld-linux-armhf.so.3 and nothing can start, including the
+		# shell you would need to fix it. So stage under usr/lib, which
+		# is where the files actually live, and never ship a ./lib/
+		# entry at all.
+		mkdir -p ../staging/usr
+		mv ../staging/lib ../staging/usr/lib
 		cp arch/arm/boot/zImage ../staging/boot/vmlinuz-5.6.19-softlockup
 		cp System.map ../staging/boot/System.map-5.6.19-softlockup
 		cp .config ../staging/boot/config-5.6.19-softlockup
 		cp arch/arm/boot/dts/*.dtb ../staging/boot/dtb/linux-image-5.6.19-softlockup/
 		# The modules tree'"'"'s build/source symlinks point into this
 		# container and would dangle on the Pyra.
-		rm -f ../staging/lib/modules/5.6.19-softlockup/build \
-		      ../staging/lib/modules/5.6.19-softlockup/source
+		rm -f ../staging/usr/lib/modules/5.6.19-softlockup/build \
+		      ../staging/usr/lib/modules/5.6.19-softlockup/source
 		cd ..
 		tar czf softlockup-kernel.tar.gz -C staging .
+		if tar tzf softlockup-kernel.tar.gz | grep -qx "./lib/"; then
+			echo "REFUSING: the tarball contains a ./lib/ entry, which"
+			echo "would destroy the usr-merge symlink on extraction."
+			exit 1
+		fi
 		echo "staged $(du -sh staging | cut -f1), tarball $(du -h softlockup-kernel.tar.gz | cut -f1)"
 	'
 	echo

@@ -241,12 +241,21 @@ Nothing here touches the stock kernel. `/boot` has 195 MB free and this needs
 about 27 MB of it.
 
     scp softlockup-kernel.tar.gz pyra@<address>:
-    sudo tar xzf softlockup-kernel.tar.gz -C /
+    sudo tar xzf softlockup-kernel.tar.gz -C / --keep-directory-symlink
     sudo depmod -a 5.6.19-softlockup
     sudo update-initramfs -c -k 5.6.19-softlockup
 
 The initrd is not in the tarball and cannot be: it has to be built on the device
 against the device's own userspace.
+
+**`--keep-directory-symlink` is not optional.** trixie is usr-merged, so `/lib`
+is a symlink to `usr/lib`, and GNU tar extracting an archive that contains a
+`./lib/` directory entry deletes that symlink and puts a real directory there.
+Every binary then loses its interpreter and nothing on the system can start,
+including the shell needed to repair it. An earlier version of the tarball had
+exactly that layout and did exactly that to the card on 2026-09-10; see
+`progress.md`. The build now stages under `usr/lib` and refuses to produce a
+tarball containing a `./lib/` entry, so the flag is belt as well as braces.
 
 Then add this to `/boot/extlinux/user.cfg`, which exists and is empty. The
 `append` line is copied verbatim from the stock `l0` entry in `linux.cfg`, with
