@@ -129,9 +129,20 @@ capture() {
 	tail -5 /var/log/Xorg.0.log > "$OUT/32-Xorg-last-lines.txt" 2>/dev/null
 
 	say "captured to $OUT"
-	say "--- backtrace of the CPU running Xorg, first sample ---"
-	awk '/NMI backtrace for cpu/,0' "$OUT/20-sysrq-l-sample-1.txt" \
-		| grep -A30 -m1 "Comm: Xorg" | tee -a "$OUT/run.log"
+	# Show the CPU that was running Xorg, across all the samples rather than
+	# just the first, since the spinning thread need not be scheduled at the
+	# instant of any one NMI. If Xorg is nowhere — the spin turned out to be
+	# in a kworker, say — show every CPU rather than nothing, because a
+	# summary that prints nothing looks like a capture that failed.
+	if grep -qs "Comm: Xorg" "$OUT"/20-sysrq-l-sample-*.txt; then
+		say "--- backtrace of the CPU running Xorg ---"
+		grep -h -A30 -m1 "Comm: Xorg" "$OUT"/20-sysrq-l-sample-*.txt \
+			| tee -a "$OUT/run.log"
+	else
+		say "--- Xorg was on neither CPU at any sample; here is every CPU ---"
+		awk '/NMI backtrace for cpu/,0' "$OUT/20-sysrq-l-sample-1.txt" \
+			| tee -a "$OUT/run.log"
+	fi
 }
 
 # ---------------------------------------------------------------- watchdog
