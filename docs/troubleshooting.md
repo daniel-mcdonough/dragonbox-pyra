@@ -162,3 +162,9 @@ in the same boot, but the second hang produced no kernel message at all, so thos
 errors are a separate symptom rather than the cause. The driver has no timeout on
 whatever it waits for, which is the part that turns a display glitch into a
 machine that needs rebooting, and that is where a fix should start.
+
+It is now known to be **the kernel** that spins, not the X driver: the log line
+the hang stops on is one `drmModeSetCrtc` call away from the kernel, so `Xorg`
+is stuck inside `DRM_IOCTL_MODE_SETCRTC` in `omapdrm`. `building.md` has the
+reasoning, the two diagnostics that will name the function during the next hang
+without any rebuild, and how to compile a kernel with a fix in it.

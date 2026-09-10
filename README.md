@@ -32,6 +32,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
 | [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
+| [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
 | [docs/progress.md](docs/progress.md) | The running history: what was done when, and why. Newest last. |
@@ -59,6 +60,7 @@ change nothing and need no privileges beyond reading `/proc`.
 | `pyra-cpu-attribution.sh` | Pyra | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `pyra-x-load-profile.sh` | Pyra | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `pyra-anno1602-test.sh` | Pyra | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
+| `pyra-crossbuild.sh` | PC | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 
 `pyra-usb3503-rescue.service` is the unit for the rescue script. Both are
