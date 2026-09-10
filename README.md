@@ -11,6 +11,12 @@ box86 — including a 1999 Windows game under an x86 Wine.
 The eMMC is never touched, so the bookworm-7 install stays intact as a recovery
 path.
 
+**One known hazard.** The display driver can wedge inside a modeset, spinning a
+core at 100% until the machine is rebooted, and every DPMS transition is a
+modeset. It is mitigated rather than fixed, and `docs/troubleshooting.md` has
+the mechanism, the mitigation and the one tool you must not run on this
+machine.
+
 ---
 
 ## Which document
@@ -39,7 +45,8 @@ about *how* and the history is right about *when* and *why*.
 
 All are idempotent and refuse to run against anything that is not what they
 expect. The three that take a device argument write to it, so read the header
-comment before the first run.
+comment before the first run. The measurement tools at the bottom of the table
+change nothing and need no privileges beyond reading `/proc`.
 
 | Script | Runs on | What it does |
 | --- | --- | --- |
@@ -49,6 +56,10 @@ comment before the first run.
 | `pyra-trixie-grow.sh` | PC | Extends partition 2 and the f2fs onto the rest of the card. |
 | `pyra-usb3503-rescue` | Pyra | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `pyra-gles2-smoke.c` | Pyra | Minimal X11 + EGL + GLES2 client, to prove the SGX path works. |
+| `pyra-cpu-attribution.sh` | Pyra | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
+| `pyra-x-load-profile.sh` | Pyra | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
+| `pyra-anno1602-test.sh` | Pyra | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
+| `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 
 `pyra-usb3503-rescue.service` is the unit for the rescue script. Both are
 payloads for fix 5, and the prep script copies them from here rather than

@@ -27,15 +27,20 @@ what the device actually says.
 | Xorg to XLibre | Small–medium | **No performance value.** Possible correctness value, see below |
 | Strip legacy code from X | Small | None. Dropped |
 
-Three items the original list did not contain outrank most of what it did:
+Five things the original list did not contain outrank most of what it did. The
+first is not a performance item at all, and it still comes first.
 
+- **The display driver wedges inside a modeset** and only a reboot recovers it,
+  spinning a core at 100% inside a fanless case while it does. Every DPMS
+  transition is a modeset. Mitigated, not fixed, in `troubleshooting.md`.
 - The `ondemand` governor is set to step up only at **95% load**, with I/O wait
-  not counted as load and a 250 MHz floor.
-- The MATE window manager is **compositing**, with GLX disabled, so every window
-  update takes an extra XRender pass.
+  not counted as load and a 250 MHz floor. Still untouched, still the cheapest
+  performance item.
 - **PulseAudio spends 16% of a core** converting every audio stream to the only
-  format the codec accepts. See item 10; this was found by accounting for the
-  whole machine rather than one subsystem at a time.
+  format the codec accepts. Measured, understood and unreachable. See item 10.
+- The MATE window manager was **compositing**, with GLX disabled, so every window
+  update took an extra XRender pass. Measured at 3.5% of all busy CPU and now
+  turned off. See item 3.
 - The GPU rail sits at its **nominal** operating point, not its top one.
 
 ---
@@ -133,7 +138,7 @@ writes a dated file:
 | --- | --- | --- |
 | 3D translated | `gl4es glmark2 --visual-config red=8:green=8:blue=8:alpha=8:buffer=16:depth=24:stencil=8` | score 246 |
 | 3D native GLES | `glmark2-es2` | not yet recorded |
-| 2D X | `x11perf -aa10text -copywinwin500 -comppixwin500` | not yet recorded |
+| 2D X | **not `x11perf`.** See below | see "against the game" below |
 | CPU | `sysbench` or `7z b`, pinned, both cores | not yet recorded |
 | Storage | `fio` 4K random read on the rootfs | not yet recorded |
 | Thermal | zone 0/1/2 sampled through the run | 55/58/57 idle, 95 under box86 |
@@ -145,6 +150,29 @@ Ten scenes in glmark2 fail to start on this hardware for a reason that is
 glmark2's own bug, documented in `gl4es.md`. That is stable across runs, so the
 score is still comparable to itself, but do not compare it to scores from other
 machines.
+
+**Do not use `x11perf` on this machine.** It disables and restores DPMS around
+every single test, each of those is a full modeset in the `omap5` driver, and
+that modeset path wedges the display hard enough to need a reboot. Two hangs
+came from it on 2026-09-10. `troubleshooting.md` has the counting that proves
+it.
+
+What to use instead, all of which are in this repository and none of which touch
+DPMS:
+
+| Question | Tool |
+| --- | --- |
+| where is all the CPU going | `pyra-cpu-attribution.sh` |
+| what share is the X server | `pyra-x-load-profile.sh` |
+| a real, repeatable, bounded load | `pyra-anno1602-test.sh` |
+| driver fallback costs against hardware paths | `pyra-exa-fallback-bench.c` |
+
+**Measure against the game, and compare ratios rather than absolutes.** The
+game's own CPU varies from 30% to 88% of a core depending on what is on screen,
+so the same change measured on two runs can look like anything. Each process's
+cost *relative to the game's own CPU* reproduces to within a few percent. That is
+what made the compositor question answerable in item 3 and it is the method to
+use for everything below.
 
 ### 1. Fix the cpufreq governor
 
@@ -217,24 +245,20 @@ immediately collapses, and the part is a 1.5 GHz-rated GP device.
 
 Effort: measurement is an afternoon; the physical mod is a separate project.
 
-### 3. Turn off Marco's compositor and measure
+### 3. Marco's compositor — done, and it was worth taking
 
-**Measured.** `org.mate.Marco.general compositing-manager` is `true`, and the X
-server has `Composite`, `DAMAGE`, `MIT-SHM`, `DRI3` and `Present`, with no GLX.
+**Resolved 2026-09-10. Compositing is off on this unit.**
 
-With GLX disabled by fix 4, Marco's compositor has no GL path available and
-falls back to XRender. Every window update is therefore redirected to an
-offscreen pixmap and composited to the screen in a second pass, on a machine
-whose 2D acceleration is one narrow hardware hook and otherwise the CPU.
+The reasoning that put it on the list was sound. With GLX disabled by fix 4,
+Marco's compositor has no GL path and falls back to XRender, so every window
+update is redirected to an offscreen pixmap and composited in a second pass, on
+a machine whose 2D acceleration is one narrow hardware hook and otherwise the
+CPU. The X server has `Composite`, `DAMAGE`, `MIT-SHM`, `DRI3` and `Present`,
+and no GLX.
 
-Turn it off, run the 2D benchmark, and keep whichever wins:
-
-    gsettings set org.mate.Marco.general compositing-manager false
-
-The cost is losing window shadows, fades and any true transparency. On a 5-inch
-720p panel that is a small price if the numbers move.
-
-Effort: minutes to test. Risk: none, trivially reversible.
+The open question was whether that second pass also made the X server itself
+work harder, which would have made the compositor cost much more than it
+appeared to. It does not.
 
 **Measured 2026-09-10. Turning it off is worth about 3.5% of all busy CPU, and
 costs the X server nothing.** Take it.
@@ -303,7 +327,9 @@ artifact of a filtered `grep`. The unfiltered block lists three operations:
 
 `Solid` and `Copy` were there all along. Confirmed on the hardware by sampling
 the etnaviv command-DMA address in `/sys/kernel/debug/dri/2/gpu` while a
-benchmark ran. Idle, the address never moves. Under `x11perf -rect500` it took
+benchmark ran. (The `x11perf` figures in this item and the next were taken on
+2026-09-09, before `x11perf` was found to wedge the display driver. They stand as
+a record; do not reproduce them that way. See item 0.) Idle, the address never moves. Under `x11perf -rect500` it took
 6 distinct values, and under `-copywinwin500` it took 12. The GC320 is executing
 both.
 
@@ -742,7 +768,8 @@ to gain.
 
 ## Baseline, as measured on 2026-09-09
 
-Recorded so that later runs have something to compare against.
+Recorded so that later runs have something to compare against. Rows marked with a
+date have been changed deliberately since; everything else is as the image shipped.
 
 | Thing | Value |
 | --- | --- |
@@ -758,5 +785,7 @@ Recorded so that later runs have something to compare against.
 | Panel | 720x1280 at 60 Hz, rotated right to a 1280x720 desktop |
 | DRM | `card0` omapdrm, `card1` pvrsrvkm SGX544, `card2` etnaviv GC320 |
 | X | 21.1.16, `omap5` DDX, hardware EXA via Viv2D, DRI3 + Present, no GLX |
-| Compositor | Marco, compositing on |
+| Compositor | Marco, compositing **off** since 2026-09-10, see item 3 |
+| Display blanking | disabled, see `troubleshooting.md`. Was 600 s |
+| Login | autologin, see `procedure.md` section 7. Was a greeter |
 | 3D | gl4es 1.1.7.1 onto DDK 1.14.3699939, glxgears ~870 FPS, glmark2 246 |

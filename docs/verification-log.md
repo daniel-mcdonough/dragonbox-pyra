@@ -169,3 +169,53 @@ NetworkManager.
 that matters after fix 4, since it proves disabling GLX cost nothing on the path
 that was ever fast.
 
+
+## Performance measurement and the display hang — 2026-09-10
+
+All on the running unit over SSH, against the trixie card.
+
+**Whole-machine CPU attribution works and is cheap.** `pyra-cpu-attribution.sh`
+samples every `/proc` entry once a second and tracks first and last counters per
+pid, so processes that start and finish inside the window are still counted, and
+splits the remaining busy time by kernel accounting class. Checked against
+`/proc/stat` totals: 78% to 93% of busy time lands on named processes and the
+rest is hard IRQ, which is exactly what cannot belong to a process.
+
+**PulseAudio's cost is conversion, and it is not tunable.** Thirty seconds of the
+same audio, three times, via `paplay`: 10.3% of one core at 22050 Hz, 11.1% at
+44100 Hz, 3.5% at 88200 Hz. `aplay --dump-hw-params` on the codec gives
+`FORMAT: S32_LE` and `RATE: [88200 96000]`, so there is no rate to match without
+conversion. Ruled out by direct test, not by reasoning: `resample-method` is
+already `trivial`; the daemon logs `sconv_neon`, `mix_neon` and `remap_neon` all
+initialising; and playing to the raw ALSA sink instead of through the remap sink
+measures 10.6% against 10.5%, so the extra layer is free.
+
+**The i2c interrupt rate is 858 a second at idle**, against 211 for the system
+timer. Stopping `pyrainput.service`, the only holder of the nub input devices,
+changes nothing: 457/s running, 451/s stopped, 455/s restarted. There is one
+cpuidle state, `C1`.
+
+**Every DPMS transition is a full modeset.** Counted in the X log, one action at
+a time: three ordinary windows 0, `xset s off` 0, `xset s default` 0,
+`xset -dpms` 1, `xset dpms force off` 1, `xset dpms force on` 2, one `x11perf`
+run 2. A normal desktop session does three at startup and then none.
+
+**The hang reproduces and both earlier explanations were wrong.** It is not idle
+blanking: the second hang happened with `xset s off -dpms` already in effect. It
+is not the compositor: `compositing-manager false` gives the same two modesets
+per `x11perf` run. When it wedges, `OMAP DISPC` in `/proc/interrupts` goes from
+about 10 a second to 0, `Xorg` sits in state `R` at 99% of one core, `SIGKILL`
+does not land, and `systemctl restart lightdm` hangs `deactivating`. Logs from
+both instances were kept on the device before rebooting.
+
+**The compositor costs what it appears to cost.** Measured against the game,
+because `x11perf` cannot be used here. Absolute figures do not compare across
+runs — the game's own CPU ranged from 30% to 88% of a core — but ratios to it
+do. `Xorg` was 0.243, 0.246 and 0.240 of game CPU across two runs with
+compositing on and one with it off. `marco` was 0.064 and 0.068 with it on, and
+below 0.010 with it off.
+
+**Autologin verified end to end.** After `systemctl restart lightdm` and again
+after a full reboot: no greeter process, a `seat0` session for the account,
+`Desktop=lightdm-xsession` matching what a greeter login produces, and marco,
+mate-panel and caja all up.
