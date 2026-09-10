@@ -228,3 +228,46 @@ wants DRM master and fails identically on bookworm when X is running.
 
 ---
 
+
+---
+
+## 7. Optional: log straight into the desktop
+
+The image ships a login screen and no autologin. `/etc/lightdm/lightdm.conf.d/`
+already carries `90_pyra.conf` with a commented-out `autologin-user=`
+placeholder, which is the intended knob. Leave that packaged file alone and add
+a drop-in that sorts after it, so a package upgrade never prompts about a
+modified conffile:
+
+    sudo tee /etc/lightdm/lightdm.conf.d/99-autologin.conf >/dev/null <<'CONF'
+    [Seat:*]
+    autologin-user=pyra
+    autologin-user-timeout=0
+    autologin-session=lightdm-xsession
+    CONF
+    sudo systemctl restart lightdm
+
+Use the account name the setup script created; `pyra` is the default. The
+session name must match a file in `/usr/share/xsessions/`, and
+`lightdm-xsession` is the one a normal greeter login uses on this image, so
+setting it explicitly reproduces the session you already have rather than
+guessing at one. Confirm with `cat ~/.dmrc` before changing it.
+
+No group membership is needed. Debian's `/etc/pam.d/lightdm-autologin` permits
+any non-root account, so there is nothing to add to an `autologin` or
+`nopasswdlogin` group.
+
+Verify by restarting lightdm rather than by reading the config back. The greeter
+should not appear at all:
+
+    pgrep -a lightdm-gtk-greeter || echo "no greeter, as intended"
+    loginctl list-sessions          # a seat0 session for the user
+    pgrep -a marco mate-panel       # the desktop actually came up
+
+Delete the file to go back to the login screen.
+
+**This removes the password prompt at boot.** On a handheld that is usually the
+point, but be clear about what it costs: anyone holding the device is one power
+button away from the desktop and everything in the session's keyring. The screen
+locker still applies after the session is running. It is not a substitute for
+encrypting the card if the data on it matters.
