@@ -60,6 +60,7 @@ change nothing and need no privileges beyond reading `/proc`.
 | `pyra-cpu-attribution.sh` | Pyra | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `pyra-x-load-profile.sh` | Pyra | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `pyra-anno1602-test.sh` | Pyra | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
+| `pyra-modeset-hang-trap.sh` | Pyra | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `pyra-crossbuild.sh` | PC | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 

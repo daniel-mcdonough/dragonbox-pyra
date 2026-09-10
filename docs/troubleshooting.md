@@ -166,5 +166,12 @@ machine that needs rebooting, and that is where a fix should start.
 It is now known to be **the kernel** that spins, not the X driver: the log line
 the hang stops on is one `drmModeSetCrtc` call away from the kernel, so `Xorg`
 is stuck inside `DRM_IOCTL_MODE_SETCRTC` in `omapdrm`. `building.md` has the
-reasoning, the two diagnostics that will name the function during the next hang
+reasoning, the sysrq capture that will name the function during the next hang
 without any rebuild, and how to compile a kernel with a fix in it.
+`pyra-modeset-hang-trap.sh` automates provoking it and capturing it.
+
+One correction to the mitigation above: it does **not** stop a program that
+toggles DPMS itself. Measured on 2026-09-10, with the config file in place and
+`xset q` reporting DPMS disabled, a single seven-test `x11perf` run still
+provoked 36 modesets. The mitigation protects an ordinary session, which never
+toggles DPMS by hand. It does not make `x11perf` safe to run.

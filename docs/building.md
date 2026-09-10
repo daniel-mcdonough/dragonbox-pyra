@@ -28,23 +28,51 @@ spins at 99% in state `R` and will not take `SIGKILL`, **it is spinning inside
 `DRM_IOCTL_MODE_SETCRTC` in the kernel**, in `omapdrm` or `omapdss`. The
 userspace driver is a bystander. Rebuilding it cannot fix this.
 
-Two things on the running unit will say where in the kernel, and neither needs
-a compiler. Both need the hang to be happening, and the machine stays reachable
-over SSH while it is, because only X is stuck:
+**`/proc/PID/stack` cannot supply it, despite `CONFIG_STACKTRACE=y`.** ARM's
+`__save_stack_trace` in `arch/arm/kernel/stacktrace.c` returns immediately for
+any task other than the caller when `CONFIG_SMP` is set, with a comment saying
+it cannot guarantee the task is not running on the other CPU. This kernel is
+SMP, so that file is always empty here. Tested on the running unit, on a
+healthy X server, before relying on it.
 
-    # the wedged thread's kernel stack, which is the answer
-    sudo cat /proc/$(pidof Xorg)/stack
+**sysrq does supply it.** `echo l > /proc/sysrq-trigger` sends an NMI to every
+CPU and dumps the symbolised backtrace of whatever is running on each, which is
+precisely the spinning thread. Confirmed working on this unit, cross-CPU:
 
-    # every CPU's backtrace, via sysrq. The bit for debugging dumps is not
-    # set by default on this kernel, so enable it first
-    echo 1 | sudo tee /proc/sys/kernel/sysrq
+    echo 1 | sudo tee /proc/sys/kernel/sysrq     # debugging-dumps bit is off by default
     echo l | sudo tee /proc/sysrq-trigger
     sudo dmesg | tail -60
 
-`CONFIG_STACKTRACE` and `CONFIG_KALLSYMS` are both on in `5.6.19-pyradef`, so
-the stack comes back symbolised. Capture it into
-`~/Xorg-modeset-hang-$(date +%Y%m%d-%H%M).log` beside the other evidence
-`troubleshooting.md` asks for.
+The machine stays reachable over SSH during a hang, because only X is stuck, so
+this can be run while it is happening. `pyra-modeset-hang-trap.sh` automates
+all of it: it provokes the hang, notices within about three seconds, takes five
+sysrq samples a second apart, and reboots.
+
+### Reproducing it on purpose
+
+`pyra-modeset-hang-trap.sh` runs on the Pyra and does the whole cycle. It arms
+sysrq, starts a watchdog, runs `x11perf` in rounds, and fires when `Xorg` is
+burning a whole core with `OMAP DISPC` interrupts stopped — confirmed by asking
+the X server a question and getting no answer, so a merely busy server is not
+mistaken for a wedged one. Then it captures and reboots, which is both the
+recovery and the thermal protection.
+
+    sudo ./pyra-modeset-hang-trap.sh --selftest    # prove the capture, hang nothing
+    sudo ./pyra-modeset-hang-trap.sh               # provoke it for real
+
+Run the self-test first. It is what caught the `/proc/PID/stack` problem above,
+on a healthy machine, rather than during the one chance to collect the evidence.
+
+Two measurements from 2026-09-10 worth knowing before running it:
+
+- **The DPMS mitigation does not close this path.** With
+  `30-pyra-no-dpms.conf` in place and `xset q` reporting DPMS disabled, one
+  seven-test `x11perf` run still provoked **36 modesets**. `x11perf` toggles
+  DPMS itself, and the server's zeroed blanking timers do not stop it.
+- **The hang is a race, not a certainty.** Those 36 modesets, plus a hand-driven
+  `xset dpms force off` and `force on` worth 3 more, passed without wedging. The
+  two hangs on record happened inside runs of about fourteen. So provoking it
+  means running rounds until it hits, not running it once.
 
 **The stock kernel has no lockup detector.** `CONFIG_SOFTLOCKUP_DETECTOR` and
 `CONFIG_DETECT_HUNG_TASK` are both unset, which is why a core spinning for
