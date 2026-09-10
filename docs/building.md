@@ -240,7 +240,19 @@ exercise needs, and the stock kernel cannot produce it.
 Nothing here touches the stock kernel. `/boot` has 195 MB free and this needs
 about 27 MB of it.
 
-    scp softlockup-kernel.tar.gz pyra@<address>:
+    scp softlockup-kernel.tar.gz pyra-install-debug-kernel.sh pyra@<address>:
+    sudo ./pyra-install-debug-kernel.sh
+
+`pyra-install-debug-kernel.sh` does everything in this section: it refuses a
+tarball that would destroy `/lib`, checks `/boot` has room, extracts, runs
+`depmod` and `update-initramfs`, and writes the `user.cfg` entry below by
+copying the stock `append` line verbatim rather than retyping it. It re-checks
+that `/lib` is still a symlink immediately after extraction and stops before
+the entry is written if it is not. Running it twice replaces the entry instead
+of stacking a second one.
+
+By hand, it is:
+
     sudo tar xzf softlockup-kernel.tar.gz -C / --keep-directory-symlink
     sudo depmod -a 5.6.19-softlockup
     sudo update-initramfs -c -k 5.6.19-softlockup
