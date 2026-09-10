@@ -154,14 +154,51 @@ Keep the evidence first, because it is gone afterwards:
     sudo cp /var/log/Xorg.0.log ~/Xorg-modeset-hang-$(date +%Y%m%d-%H%M).log
     sudo dmesg > ~/dmesg-modeset-hang-$(date +%Y%m%d-%H%M).log
 
-### Still unknown
+### Still unknown, but two things in the path are now measured
 
-Why the modeset wedges rather than failing. `dmesg` from the first hang carried
-`DSI: omapdss DSI error: VC(0..3) busy when trying to configure it!` from earlier
-in the same boot, but the second hang produced no kernel message at all, so those
-errors are a separate symptom rather than the cause. The driver has no timeout on
+Why the modeset wedges rather than failing. The driver has no timeout on
 whatever it waits for, which is the part that turns a display glitch into a
 machine that needs rebooting, and that is where a fix should start.
+
+Two anomalies sit directly in that path. Both were counted on 2026-09-11 over a
+run of 1587 deliberate modesets on the lockup-detector kernel, which did not
+reproduce the hang but did measure the machinery.
+
+**The DSI virtual channels are busy every single time the driver configures
+them.** `dsi_vc_initial_config()` in `dss/dsi.c` reads `DSI_VC_CTRL`, checks the
+`VC_BUSY` bit, prints `VC(n) busy when trying to configure it!` if it is set,
+and then configures the channel anyway. It does not wait, retry or refuse. Over
+400 display power-ons the count was exactly 400 for each of the four channels:
+
+| channel | times busy at configure | out of |
+| --- | --- | --- |
+| VC(0) | 400 | 400 |
+| VC(1) | 400 | 400 |
+| VC(2) | 400 | 400 |
+| VC(3) | 400 | 400 |
+
+An earlier note here guessed these were a separate symptom because one hang
+produced them and another did not. That reasoning does not survive the count.
+They accompany every modeset, hanging or not, so their presence cannot single
+one out — but reprogramming a transfer engine that the hardware still reports
+as busy, four times per display enable, is exactly the shape of thing that
+occasionally leaves a transfer no one can complete.
+
+**And the display controller's runtime power management sometimes fails to
+release.** `dispc_runtime_put()` at `dss/dispc.c:667` is a bare `WARN_ON` on
+`pm_runtime_put_sync()` returning an error, and it fired twice during the run,
+from the atomic commit worker:
+
+    WARNING: CPU: 0 PID: 4083 at drivers/gpu/drm/omapdrm/dss/dispc.c:667 commit_tail+0x9c/0x194
+    Workqueue: events_unbound commit_work
+
+That is the modeset commit path failing to put DISPC back. Twice in 1587 is
+rare enough to match a fault seen twice in weeks of use, and a DISPC whose
+power state disagrees with what the driver believes would explain the symptom
+exactly: a later modeset waits on an interrupt from a block that is not going
+to send one. It is a hypothesis, not a demonstration — the `WARN_ON` is bare,
+so the return value that would confirm it is not printed. Capturing it needs
+one line added to that function.
 
 It is now known to be **the kernel** that spins, not the X driver: the log line
 the hang stops on is one `drmModeSetCrtc` call away from the kernel, so `Xorg`
