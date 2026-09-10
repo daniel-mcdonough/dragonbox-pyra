@@ -16,6 +16,45 @@ userspace path to it regardless. And `resize.f2fs` is a symlink to `fsck.f2fs`,
 which is an offline tool and will not operate on a mounted filesystem. Since the
 filesystem in question is the rootfs, it cannot be unmounted in place.
 
+---
+
+## Before anything else: the reader will decide whether this works
+
+**Do not do this through a cheap USB card reader.** The grow rewrites about
+507 MB of f2fs metadata in one sustained write, and a USB bridge that mangles
+that write corrupts the filesystem in a way nothing notices for days.
+
+This happened on 2026-09-10, on the card this repository documents. A generic
+USB reader spliced its own USB Bulk-Only Transport command wrappers into the
+data it was writing. Eighty-five 4 KB metadata blocks ended up holding the
+signature `USBC` and a transfer tag instead of filesystem structures: two in the
+checkpoint packs, sixteen in the segment table, fifty-nine in the node address
+table. The tags ran in one unbroken sequence, so it was a single write, and the
+region hit was the metadata area of the grown filesystem rather than the
+original.
+
+The card then booted and ran normally for days, because the surviving entries
+covered the files in daily use. It failed only on a cold mount after an unclean
+shutdown, with `invalid crc_offset: 295978` and `Failed to get valid F2FS
+checkpoint`, at which point the cause was a week and several reboots in the past
+and looked like anything but a card reader.
+
+**Use a machine with a real SD host controller.** A laptop's built-in slot on
+`/dev/mmcblk*` is an SDHCI controller and is fine. A USB reader appears as
+`/dev/sd*` on the `usb` transport and is a bridge chip of unknown quality.
+`lsblk -o NAME,TRAN` tells them apart.
+
+**Then verify, before the card goes near the Pyra:**
+
+    sudo ./pyra-verify-card-metadata.sh /dev/sdX2
+
+It scans the metadata area for that signature and takes about a minute. Run it
+after writing the image and again after growing. A clean result is not a
+guarantee of a good reader, but a dirty one is proof of a bad one, and the check
+is cheap enough to be unconditional.
+
+---
+
 So: power the Pyra down, move the card to a reader on a PC, and run
 
     sudo ./pyra-trixie-grow.sh /dev/sdX

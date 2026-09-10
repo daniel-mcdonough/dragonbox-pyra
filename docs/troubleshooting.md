@@ -175,3 +175,83 @@ toggles DPMS itself. Measured on 2026-09-10, with the config file in place and
 `xset q` reporting DPMS disabled, a single seven-test `x11perf` run still
 provoked 36 modesets. The mitigation protects an ordinary session, which never
 toggles DPMS by hand. It does not make `x11perf` safe to run.
+
+
+---
+
+## The card will not mount: `Failed to get valid F2FS checkpoint`
+
+Seen 2026-09-10. The symptom, from the Pyra's own boot:
+
+    F2FS-fs (mmcblk3p2): invalid crc_offset: 295978
+    F2FS-fs (mmcblk3p2): invalid crc_offset: 0
+    F2FS-fs (mmcblk3p2): Failed to get valid F2FS checkpoint
+    mount: mounting /dev/mmcblk3p2 on /root failed: Structure needs cleaning
+    Failed to mount /dev/mmcblk3p2 as root file system.
+
+The initramfs then drops to a BusyBox shell, which is statically linked and
+works fine, so the machine is not dead and the card can be examined in place.
+
+### It is the card reader, and it happened weeks ago
+
+`295978` is not a plausible offset inside a 4 KB block. Reading the raw block
+tells you why: it starts `55534243`, which is ASCII `USBC`, the USB Bulk-Only
+Transport command wrapper signature, followed by a transfer tag. That is a USB
+bridge chip's own protocol structure sitting where filesystem metadata belongs.
+
+`pyra-verify-card-metadata.sh` counts them. On this card there were 85, spread
+across the checkpoint packs, the segment table and the node address table, with
+tags running in one unbroken sequence. One sustained write, through a bad USB
+reader, into the metadata area of the grown filesystem. `grow-rootfs.md` has the
+prevention, which is to do that write through a real SD host controller and to
+run the check afterwards.
+
+**The corruption is on the card, not in the reading.** Confirmed by reading the
+same four blocks through three independent paths, which agreed byte for byte:
+the Pyra's own MMC controller, the USB reader on two different ports, and a
+laptop's built-in SDHCI slot.
+
+### What can be recovered, and what cannot
+
+**The checkpoint can be.** f2fs writes each checkpoint block twice, once at the
+start of its pack and an identical copy at the last block of the pack. Where the
+leading block is corrupt the trailing copy is usually intact, and copying it
+back over the leading one restores a valid checkpoint:
+
+    # blocks 519 and 1031 are the trailing copies of the packs at 512 and 1024
+    sudo dd if=/dev/sdX2 of=/tmp/cp.bin bs=4096 skip=1031 count=1 iflag=direct
+    sudo dd if=/tmp/cp.bin of=/dev/sdX2 bs=4096 seek=1024 count=1 \
+            conv=fsync,notrunc oflag=direct
+
+Verify a candidate before writing it: a real checkpoint block has the value 4092
+at byte offset 164, and a CRC32 at that offset, seeded with `0xF2F52010` and
+computed over the preceding 4092 bytes, that matches what is stored there.
+
+**The node address table mostly cannot.** It has two copies too, selected by the
+checkpoint's `nat_bitmap`, with a block at address A pairing with A plus or
+minus half the NAT span. But a block whose partner was never written holds
+zeros, which is no use. Of 59 corrupt NAT blocks here, 25 had an intact partner
+and 34 had an empty one. Each block maps about 455 inodes, so even a perfect
+reconstruction left roughly 15,000 of 148,754 inodes unmapped, and those files
+come back without names or not at all.
+
+**`fsck.f2fs -f -y` is not the answer on its own.** With the checkpoint restored
+it runs to completion, 31 minutes on this card, and fixes the segment table. It
+cannot invent the missing node table entries, so the root inode stays
+unreachable and the mount then fails with `Failed to read root inode` instead.
+
+### What to do
+
+Reflash. The image, the five fixes, the grow and the verification are all
+scripted in this repository, so a rebuild is bounded work with a known outcome,
+while this recovery is not. Image the card first if anything on it matters, and
+do the rewrite through an SD host controller rather than the reader that caused
+it.
+
+### A trap worth knowing
+
+If the card was in a USB reader that cannot write reliably, writes will appear
+to succeed and silently not land. Always read the block back and compare after
+writing. On this card, a checkpoint block written through the USB reader read
+back unchanged three times running, and the identical write through a laptop's
+SD slot landed first time.
