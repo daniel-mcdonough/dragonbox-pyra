@@ -190,6 +190,84 @@ what the source package's `Build-Depends` lists. The script installs both.
 Without them the build stops at `scripts/dtc/yamltree.c` and at
 `certs/signing_key.pem` respectively.
 
+### A kernel that reports lockups
+
+    ./pyra-crossbuild.sh kernel-debug
+
+Built and staged 2026-09-10. This is the stock source and the stock config with
+the lockup detectors turned on and **nothing else changed**, which is the whole
+point: the fault it exists to catch is a timing race, so anything that perturbs
+timing works against it.
+
+| | |
+| --- | --- |
+| version | `5.6.19-softlockup` |
+| kernel | `kernel/src/arch/arm/boot/zImage` |
+| ready to install | `kernel/softlockup-kernel.tar.gz`, 23 MB |
+| symbols | `kernel/src/vmlinux`, for resolving addresses out of a report |
+
+The config delta against stock is exactly this and no more:
+
+    CONFIG_DEBUG_KERNEL=y
+    CONFIG_LOCKUP_DETECTOR=y
+    CONFIG_SOFTLOCKUP_DETECTOR=y
+    CONFIG_DETECT_HUNG_TASK=y
+    CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=30
+    CONFIG_LOCALVERSION="-softlockup"
+
+Both panic-on-lockup options are off, so it prints and carries on rather than
+dying. Two detectors rather than one, because the two plausible shapes of this
+fault need different ones: the softlockup detector catches a busy loop, which is
+the `R` at 99% that has been observed, and the hung-task detector catches an
+uninterruptible sleep, which is what a missing timeout in a `wait_for_*` would
+look like instead. One extra option costs nothing and saves a second
+build-and-reboot cycle if the fault turns out to be the other shape.
+
+`DEBUG_KERNEL` pulls several other debug options on by default, and the build
+turns four of them back off: `DEBUG_PREEMPT`, `RCU_TRACE`, `SCHED_DEBUG` and
+`DEBUG_MISC`. `DEBUG_PREEMPT` is the one that matters, since it adds work to
+every `preempt_disable`. The build checks all of this and refuses to continue if
+any of it fails to stick, rather than quietly producing a kernel that does not
+do what it says.
+
+**What it buys.** After 20 seconds of a spinning core the kernel prints
+`BUG: soft lockup - CPU#N stuck for Ns!` followed by the symbolised backtrace of
+the spinning thread, by itself, into `dmesg`. That is the evidence the whole
+exercise needs, and the stock kernel cannot produce it.
+
+### Installing it
+
+Nothing here touches the stock kernel. `/boot` has 195 MB free and this needs
+about 27 MB of it.
+
+    scp softlockup-kernel.tar.gz pyra@<address>:
+    sudo tar xzf softlockup-kernel.tar.gz -C /
+    sudo depmod -a 5.6.19-softlockup
+    sudo update-initramfs -c -k 5.6.19-softlockup
+
+The initrd is not in the tarball and cannot be: it has to be built on the device
+against the device's own userspace.
+
+Then add this to `/boot/extlinux/user.cfg`, which exists and is empty. The
+`append` line is copied verbatim from the stock `l0` entry in `linux.cfg`, with
+only the three paths changed:
+
+    label l1
+        menu label trixie, kernel 5.6.19-softlockup (lockup detector)
+        linux /vmlinuz-5.6.19-softlockup
+        append root=PARTUUID=21a4c285-02 console=ttyO2,1500000n8 console=tty0 vram=12M omapfb.vram=0:8M,1:4M omapfb.rotate_type=0 omapdss.def_disp=lcd rootwait twl4030_charger.allow_usb=1 musb_hdrc.preserve_vbus=1 log_buf_len=8M ignore_loglevel earlyprintk drm_kms_helper.fbdev_rotation=8 drm.force_hw_rotation fastboot
+        fdtdir /dtb/linux-image-5.6.19-softlockup
+        initrd /initrd.img-5.6.19-softlockup
+
+**Do not touch `default l0`.** The stock kernel stays the default and the menu
+waits 30 seconds, so the debug kernel is something you choose at each boot and a
+bad one is a power cycle away from gone. Do not edit `linux.cfg` either; it is
+regenerated and will lose the entry.
+
+To remove it later, delete the `user.cfg` entry, `/boot/*-5.6.19-softlockup`,
+`/boot/dtb/linux-image-5.6.19-softlockup/` and
+`/lib/modules/5.6.19-softlockup/`.
+
 ### Install it beside the stock kernel, not over it
 
 The build produces `KERNELRELEASE=5.6.19-pyradef`, **the same string the

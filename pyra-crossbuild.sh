@@ -5,6 +5,7 @@
 #   ./pyra-crossbuild.sh ddx                 the omap5 X display driver
 #   ./pyra-crossbuild.sh kernel              zImage, modules and dtbs
 #   ./pyra-crossbuild.sh kernel bindeb-pkg   the same, as installable .debs
+#   ./pyra-crossbuild.sh kernel-debug        a kernel that reports lockups
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -114,8 +115,108 @@ build_kernel() {
 	ls -la "$dir"/src/arch/arm/boot/zImage "$dir"/*.deb 2>/dev/null || true
 }
 
+# A kernel that says where it is stuck, instead of sitting there silently.
+#
+# The stock config has no lockup detector of any kind, which is why two hangs
+# that pinned a core for minutes produced no kernel message at all. This build
+# turns that on, and nothing else: same source, same compiler, same everything.
+#
+# It installs BESIDE the stock kernel as 5.6.19-softlockup, so the stock one
+# stays bootable and stays the default. See building.md.
+build_kernel_debug() {
+	local dir=$BUILD_DIR/kernel
+	fetch "$KERNEL_DSC" "$KERNEL_SHA" "$dir"
+	[ -d "$dir/src" ] || run debian:bookworm "$dir" '
+		apt-get update -qq
+		apt-get install -y --no-install-recommends dpkg-dev >/dev/null
+		dpkg-source -x '"$KERNEL_DSC"' src
+	'
+	run debian:bookworm "$dir" '
+		apt-get update -qq
+		apt-get install -y --no-install-recommends \
+			crossbuild-essential-armhf bc rsync kmod cpio bison flex \
+			libssl-dev libyaml-dev openssl dpkg-dev debhelper >/dev/null
+		cd src
+		export ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-
+		export KERNELRELEASE=5.6.19-softlockup KBUILD_BUILD_VERSION=10
+
+		# Keep the untouched config recoverable.
+		[ -f .config.stock ] || cp .config .config.stock
+
+		# SOFTLOCKUP_DETECTOR depends on DEBUG_KERNEL, which the Pyra
+		# config leaves off, and selects LOCKUP_DETECTOR itself.
+		scripts/config --file .config \
+			--enable  DEBUG_KERNEL \
+			--enable  SOFTLOCKUP_DETECTOR \
+			--disable BOOTPARAM_SOFTLOCKUP_PANIC \
+			--enable  DETECT_HUNG_TASK \
+			--disable BOOTPARAM_HUNG_TASK_PANIC \
+			--set-val DEFAULT_HUNG_TASK_TIMEOUT 30 \
+			--set-str LOCALVERSION "-softlockup" \
+			--disable DEBUG_PREEMPT \
+			--disable RCU_TRACE \
+			--disable SCHED_DEBUG \
+			--disable DEBUG_MISC
+		make olddefconfig
+
+		# DEBUG_KERNEL turns several other debug options on by default,
+		# and DEBUG_PREEMPT in particular costs real time on every
+		# preempt_disable. This kernel exists to catch a timing race, so
+		# anything that perturbs timing is the last thing it wants. The
+		# four disables above put those back; check they held.
+		for opt in DEBUG_PREEMPT RCU_TRACE SCHED_DEBUG DEBUG_MISC; do
+			grep -q "^CONFIG_${opt}=y" .config \
+				&& { echo "  FAIL CONFIG_${opt} came back on"; exit 1; } \
+				|| echo "  ok   CONFIG_${opt} off, no added overhead"
+		done
+
+		# olddefconfig silently drops anything whose dependencies are
+		# unmet, so check rather than assume.
+		fail=0
+		for opt in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR DETECT_HUNG_TASK; do
+			if grep -q "^CONFIG_${opt}=y" .config; then
+				echo "  ok   CONFIG_${opt}=y"
+			else
+				echo "  FAIL CONFIG_${opt} did not stick"; fail=1
+			fi
+		done
+		for opt in BOOTPARAM_SOFTLOCKUP_PANIC BOOTPARAM_HUNG_TASK_PANIC; do
+			grep -q "^CONFIG_${opt}=y" .config \
+				&& { echo "  FAIL CONFIG_${opt} is on, it would panic"; fail=1; } \
+				|| echo "  ok   CONFIG_${opt} off, it will warn not panic"
+		done
+		[ "$fail" = 0 ] || exit 1
+
+		make -j$(nproc) zImage modules dtbs
+
+		# Stage everything the Pyra needs, laid out so it unpacks
+		# straight over / without disturbing the stock kernel. The
+		# initrd is deliberately not here: it has to be generated on
+		# the device, against the device'"'"'s own userspace.
+		rm -rf ../staging
+		mkdir -p ../staging/boot/dtb/linux-image-5.6.19-softlockup
+		make INSTALL_MOD_PATH=../staging INSTALL_MOD_STRIP=1 modules_install
+		cp arch/arm/boot/zImage ../staging/boot/vmlinuz-5.6.19-softlockup
+		cp System.map ../staging/boot/System.map-5.6.19-softlockup
+		cp .config ../staging/boot/config-5.6.19-softlockup
+		cp arch/arm/boot/dts/*.dtb ../staging/boot/dtb/linux-image-5.6.19-softlockup/
+		# The modules tree'"'"'s build/source symlinks point into this
+		# container and would dangle on the Pyra.
+		rm -f ../staging/lib/modules/5.6.19-softlockup/build \
+		      ../staging/lib/modules/5.6.19-softlockup/source
+		cd ..
+		tar czf softlockup-kernel.tar.gz -C staging .
+		echo "staged $(du -sh staging | cut -f1), tarball $(du -h softlockup-kernel.tar.gz | cut -f1)"
+	'
+	echo
+	echo "built:   $dir/src/arch/arm/boot/zImage  (5.6.19-softlockup)"
+	echo "install: $dir/softlockup-kernel.tar.gz"
+	echo "symbols: $dir/src/vmlinux, for resolving addresses from a lockup report"
+}
+
 case "${1:-}" in
-	ddx)    shift; build_ddx ;;
-	kernel) shift; build_kernel "$@" ;;
-	*)      die "usage: $0 ddx | kernel [make target...]" ;;
+	ddx)          shift; build_ddx ;;
+	kernel)       shift; build_kernel "$@" ;;
+	kernel-debug) shift; build_kernel_debug ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug" ;;
 esac
