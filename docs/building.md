@@ -69,10 +69,12 @@ Two measurements from 2026-09-10 worth knowing before running it:
   `30-pyra-no-dpms.conf` in place and `xset q` reporting DPMS disabled, one
   seven-test `x11perf` run still provoked **36 modesets**. `x11perf` toggles
   DPMS itself, and the server's zeroed blanking timers do not stop it.
-- **The hang is a race, not a certainty.** Those 36 modesets, plus a hand-driven
-  `xset dpms force off` and `force on` worth 3 more, passed without wedging. The
-  two hangs on record happened inside runs of about fourteen. So provoking it
-  means running rounds until it hits, not running it once.
+- **The hang is a race, and a rare one now.** About 500 modesets were forced on
+  2026-09-10, with compositing both off and on, without a single wedge. The two
+  hangs on record happened inside runs of about fourteen. The `DSI VC busy`
+  error reproduces constantly, 288 times across those runs, so the race is
+  being hit and the wedge is a rare branch of it. Something about the state of
+  the machine on the day of the two hangs has not been identified yet.
 
 **The stock kernel has no lockup detector.** `CONFIG_SOFTLOCKUP_DETECTOR` and
 `CONFIG_DETECT_HUNG_TASK` are both unset, which is why a core spinning for
