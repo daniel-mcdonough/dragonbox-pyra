@@ -280,10 +280,50 @@ only the three paths changed:
         fdtdir /dtb/linux-image-5.6.19-softlockup
         initrd /initrd.img-5.6.19-softlockup
 
-**Do not touch `default l0`.** The stock kernel stays the default and the menu
-waits 30 seconds, so the debug kernel is something you choose at each boot and a
-bad one is a power cycle away from gone. Do not edit `linux.cfg` either; it is
-regenerated and will lose the entry.
+Do not edit `linux.cfg`; it is meant to be regenerated and would lose the entry.
+
+### There is no boot menu on this machine
+
+The entry above is correct and necessary, but you cannot pick it from a menu,
+because the Pyra never shows one.
+
+**U-Boot has no display driver.** The Pyra runs U-Boot 2016.11 out of the raw
+area at the front of the eMMC, before partition 1. Search its image for
+`vidconsole`, `panel`, `lcd` or `dss` and nothing comes back, while `sysboot`,
+`pxelinux.cfg` and `Enter choice:` are all there. So the extlinux menu is
+written to the serial console on `ttyO2` at 1500000 baud and never reaches the
+LCD. There is no `usb_kbd` in it either, so even a visible menu could not be
+answered from the built-in keyboard.
+
+**And `timeout 30` is three seconds, not thirty.** extlinux timeouts are in
+tenths of a second, and U-Boot's `pxe` code follows that convention.
+
+The practical effect is that the machine appears to boot straight into the
+stock kernel with no prompt of any kind, which is exactly what it does. To
+check any of this yourself:
+
+    sudo dd if=/dev/mmcblk0 bs=512 count=2048 2>/dev/null | strings -n 6 \
+        | grep -iE "^U-Boot 20|vidconsole|panel|sysboot|Enter choice"
+
+**So a test kernel has to be made the default**, and `pyra-boot-kernel.sh` is
+what does it:
+
+    sudo pyra-boot-kernel.sh status
+    sudo pyra-boot-kernel.sh debug --once    # next boot only
+    sudo pyra-boot-kernel.sh debug           # every boot
+    sudo pyra-boot-kernel.sh stock           # back to the stock kernel
+
+`--once` replaces the safety the menu was supposed to provide. It arms
+`pyra-boot-revert.service`, a one-shot ordered before `sysinit.target` that
+puts `default` back to `l0` early in the next boot. A test kernel that boots
+gets exactly one boot; forgetting to change it back is not a way to end up
+stranded on a debug kernel.
+
+What `--once` cannot cover is a kernel that never reaches userspace, because
+nothing running on the device can. Recover that by putting the card in a PC,
+mounting partition 1, and changing one word in `extlinux.conf`. Editing that
+file by hand is safe here: `extlinux-update` is not installed and there is no
+`/etc/default/extlinux`, so nothing regenerates it.
 
 To remove it later, delete the `user.cfg` entry, `/boot/*-5.6.19-softlockup`,
 `/boot/dtb/linux-image-5.6.19-softlockup/` and
@@ -306,10 +346,9 @@ regenerated and will lose anything put in it. Copy the `append` line from
 `linux.cfg`'s `l0` entry verbatim, changing only the kernel, initrd and dtb
 paths.
 
-**Leave `default l0` alone.** The stock kernel stays the default, the menu has
-a 30 second timeout, and a test kernel that does not boot is then one power
-cycle away from being gone rather than something to recover from. Selecting the
-test entry is a deliberate act each boot.
+**Then select it with `pyra-boot-kernel.sh`, not from the menu.** There is no
+menu on this hardware; see above. Use `debug --once` so the machine returns
+itself to the stock kernel on the following boot.
 
 If a test kernel wedges the display before the menu is usable, the serial
 console on `ttyO2` at 1500000 is already enabled on every boot entry.
