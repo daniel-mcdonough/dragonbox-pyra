@@ -66,48 +66,99 @@ driver's delayed work blocking on an i2c transfer. Harmless, but it makes
 
 ## The X server can hang in a modeset, spinning a core, unkillable
 
-Seen 2026-09-10 on the trixie card, kernel 5.6.19-pyradef, X 21.1.16 with the
-`omap5` DDX. The desktop had been left idle for several minutes between
-benchmark runs, long enough for the screen to blank, and the next client to
-connect never got a reply.
+Seen twice on 2026-09-10 on the trixie card, kernel 5.6.19-pyradef, X 21.1.16
+with the `omap5` DDX. **Reproducible**, and understood well enough to avoid.
 
 The symptoms, in the order they are noticed:
 
 - Every X client hangs. `xdpyinfo`, `xwininfo` and `x11perf` all block forever
-  and have to be killed. New clients hang too, so the display is unrecoverable
-  from the desktop.
-- `Xorg` sits in state `R` at **99% of one core**, and stays there.
+  and have to be killed. New clients hang too, so the display cannot be
+  recovered from the desktop.
+- `Xorg` sits in state `R` at **99% of one core** and stays there.
 - `/var/log/Xorg.0.log` stops mid-modeset. The last line written is
   `(II) OMAP5(0): preparing to set mode: 0 0 8 720 1280` with nothing after it.
-- `dmesg` carries, from earlier in the same boot:
+- The display controller has stopped. `OMAP DISPC` in `/proc/interrupts` goes
+  from about 10 a second to **zero**, so there are no more vblanks and whatever
+  the driver is waiting for will never arrive.
 
-      DSI: omapdss DSI error: VC(0) busy when trying to configure it!
-      DSI: omapdss DSI error: VC(1) busy when trying to configure it!
-      DSI: omapdss DSI error: VC(2) busy when trying to configure it!
-      DSI: omapdss DSI error: VC(3) busy when trying to configure it!
-
-**`SIGKILL` does not work.** The process is spinning inside the kernel without
+**`SIGKILL` does not work.** The process spins inside the kernel without
 reaching a signal check, so `kill -9` leaves it running and
 `systemctl restart lightdm` gets stuck with the unit `deactivating` forever
 while it waits for a server that will never exit.
 
 On a fanless handheld this is a thermal problem and not only an annoyance. One
-core pinned at 100% held `cpu_thermal` between 85 and 90°C on an otherwise idle
-desktop, and it briefly touched 101.5°C, past the 100°C passive trip.
+core pinned at 100% held `cpu_thermal` between 85 and 97°C on an otherwise idle
+desktop, and it touched 101.5°C, past the 100°C passive trip.
 
-**The only recovery found is a reboot.** `sudo systemctl reboot` works normally;
+### What triggers it
+
+Every modeset is a chance to hit this, and **every DPMS transition is a
+modeset.** Counting `preparing to set mode` in the X log while poking one thing
+at a time:
+
+| action | modesets |
+| --- | --- |
+| three ordinary windows opened and closed | 0 |
+| `xset s off`, `xset s default` | 0 |
+| `xset -dpms` | 1 |
+| `xset dpms force off` | 1 |
+| `xset dpms force on` | 2 |
+| one `x11perf` run | 2 |
+
+Each one reprograms the mode and re-applies the rotation property to all four
+display planes, which is what `TilerRotation 270` costs. An ordinary desktop
+session does three at startup and then none, so this is not something normal use
+runs into quickly.
+
+`x11perf` is the reliable way to reproduce it, because it disables and restores
+DPMS around every single test. A seven-test suite is fourteen modesets and both
+hangs happened inside one. **Do not run `x11perf` on this machine** until the
+driver is fixed; use a benchmark that leaves DPMS alone.
+
+Two hypotheses that were tested and are wrong. It is not idle blanking as such:
+the second hang happened with `xset s off -dpms` already in effect, because
+`x11perf` toggles DPMS itself regardless. And it is not the compositor:
+`compositing-manager false` gives exactly the same two modesets per run.
+
+### Mitigation
+
+Stop the transitions from happening. Both halves are needed, because MATE has
+its own display timers independent of the X server's:
+
+    # X server, permanent, applies at next X start
+    /etc/X11/xorg.conf.d/30-pyra-no-dpms.conf   with BlankTime/StandbyTime/
+                                                SuspendTime/OffTime all "0"
+
+    # MATE, per-user
+    gsettings set org.mate.power-manager sleep-display-ac 0
+    gsettings set org.mate.power-manager sleep-display-battery 0
+
+    # this session only
+    xset s off -dpms
+
+The cost is that the screen never blanks on its own, which on a battery handheld
+is a real cost. It buys not having to reboot, and not having a core pinned at
+100% inside a closed case. Reverse it by deleting the config file and setting
+the two timers back to 1800 and 600.
+
+This is a mitigation and not a fix. Any program that toggles DPMS still triggers
+the modeset, and a modeset can still wedge.
+
+### Recovery
+
+**A reboot is the only recovery found.** `sudo systemctl reboot` works normally;
 it is only the X server that is stuck, not the kernel.
 
-Before rebooting, keep the evidence, because it is gone afterwards:
+Keep the evidence first, because it is gone afterwards:
 
-    sudo cp /var/log/Xorg.0.log ~/Xorg-dsi-hang-$(date +%Y%m%d-%H%M).log
-    sudo dmesg > ~/dmesg-dsi-hang-$(date +%Y%m%d-%H%M).log
+    sudo cp /var/log/Xorg.0.log ~/Xorg-modeset-hang-$(date +%Y%m%d-%H%M).log
+    sudo dmesg > ~/dmesg-modeset-hang-$(date +%Y%m%d-%H%M).log
 
-Note that the machine comes back to the lightdm greeter and there is no
-autologin configured, so the desktop session has to be started at the device.
+### Still unknown
 
-Not yet established: whether DPMS blanking is the trigger, or only a correlate.
-The one observed instance followed a long idle gap, and the DSI virtual-channel
-errors appeared well before the hang rather than with it. Anyone reproducing
-this should record `xset q` and the exact idle time first. Disabling blanking
-with `xset s off -dpms` is the obvious workaround to try, and is untested.
+Why the modeset wedges rather than failing. `dmesg` from the first hang carried
+`DSI: omapdss DSI error: VC(0..3) busy when trying to configure it!` from earlier
+in the same boot, but the second hang produced no kernel message at all, so those
+errors are a separate symptom rather than the cause. The driver has no timeout on
+whatever it waits for, which is the part that turns a display glitch into a
+machine that needs rebooting, and that is where a fix should start.

@@ -21,6 +21,8 @@ what the device actually says.
 | Optimise gl4es / native GLES paths | Large | Real but unquantified. Measure before building |
 | Sustained CPU clocks and thermals | Large | **Real, and the governor is misconfigured.** Cheapest win on the list |
 | Optimise 2D X rendering, EXA, pixman | Medium–large | **Fills and blits are already accelerated.** The gap is image readback |
+| *(not on the original list)* Turn the compositor off | — | **Done and measured. 3.5% of all busy CPU, one command** |
+| *(not on the original list)* Fix the modeset hang | — | **Outranks everything here.** See `troubleshooting.md` |
 | Cortex-A15 / NEON rebuilds | Medium | Smaller than claimed. pixman already dispatches NEON at runtime |
 | Xorg to XLibre | Small–medium | **No performance value.** Possible correctness value, see below |
 | Strip legacy code from X | Small | None. Dropped |
@@ -234,17 +236,37 @@ The cost is losing window shadows, fades and any true transparency. On a 5-inch
 
 Effort: minutes to test. Risk: none, trivially reversible.
 
-**Still the cheapest untested item, and now with a number on one side of it.**
-The whole-machine attribution above puts `marco` at 3.4-3.6% of all busy CPU
-during the game, which is what the compositor costs directly. What it adds to
-the X server's own 12-14% is the part still unknown, and that is the number the
-`compositing-manager false` comparison would produce.
+**Measured 2026-09-10. Turning it off is worth about 3.5% of all busy CPU, and
+costs the X server nothing.** Take it.
 
-The comparison was attempted on 2026-09-10 and could not be completed: the X
-server hung in a modeset partway through the first `x11perf` run and the machine
-had to be rebooted. That is written up in `troubleshooting.md` and it outranks
-this item, because a display that wedges is worse than a display that is slow.
-Do the comparison after that is understood, not before.
+The comparison could not be done with `x11perf`, because `x11perf` toggles DPMS
+around every test and that is what wedges the display driver on this machine.
+See `troubleshooting.md`. It was done against the game instead, which is the
+more honest test anyway.
+
+The catch is that the game's own CPU varies enormously between runs, from 30% to
+88% of a core depending on what is on screen, so absolute figures cannot be
+compared across runs. What is stable is each process's cost *relative to the
+game*, and that comparison is clean:
+
+| | compositing on, run 1 | on, run 2 | off |
+| --- | --- | --- | --- |
+| `Xorg` / game CPU | 0.243 | 0.246 | 0.240 |
+| `marco` / game CPU | 0.064 | 0.068 | below 0.010 |
+
+So the compositor costs what it appears to cost and nothing more. It does not
+make the X server work harder, which was the open question, and switching it off
+removes `marco` almost entirely: under 0.46 s of CPU in a 60 s window against
+2.38 s and 3.37 s with compositing on, a reduction of at least five times.
+
+In whole-machine terms that is roughly 3.5% of all busy CPU returned, for one
+`gsettings` call, with no effect on anything else measured. It is the largest
+confirmed win in this document that costs nothing to take.
+
+    gsettings set org.mate.Marco.general compositing-manager false   # take it
+    gsettings set org.mate.Marco.general compositing-manager true    # revert
+
+What it costs is window shadows, fades and true transparency.
 
 ### 4. Correct the EXA comment, and chase the readback path instead
 
