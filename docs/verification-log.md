@@ -255,3 +255,35 @@ new to the log.
 interrupt with the fourth patch, and the clock alarm on that interrupt has now
 worked eleven times, but the button itself has still never been pressed to test
 it.
+
+## 2026-09-11, late — the keypad controller, caught stuck
+
+**The fault was read off the chip, not inferred.** With the keyboard completely
+dead at a login prompt, the TCA8418 at `1-0034` reported:
+
+| register | reading | meaning |
+| --- | --- | --- |
+| `0x02` | `0x01` | key interrupt pending, so the pin is asserted |
+| `0x03` | `0x0a` | ten key events queued |
+
+The interrupt's enable depth in `/sys/kernel/debug/irq/irqs/169` was 0, so
+nothing had disabled it, and its count in `/proc/interrupts` was frozen at 5
+for the whole boot. `pyrainput` was running with all four raw devices attached,
+and restarting it changed nothing. Nothing was logged at any point.
+
+**Unbind and rebind does not recover it.** After both, the same two registers
+still read `0x01` and `0x0a`. That is the evidence that the driver's startup
+path never clears the chip, which is half of `patches/0006`.
+
+**Reading the queue out by hand fixed it immediately.** Ten reads of register
+`0x04` took the count to zero, one write of `0xff` to `0x02` cleared the
+status, and both registers then read `0x00`. The interrupt count went 5, 10,
+17, 19, 32, 41 as the operator typed, having not moved at all for the previous
+twenty minutes.
+
+**Not verified.** That `patches/0006` prevents it. The race needs a keypress
+inside a window of a few milliseconds and has not been provoked deliberately.
+The patch is reasoned from the registers above and the driver source, and it
+compiles, which is a weaker claim than the one made for the nub fix on the same
+day. Treat it as untested until the keyboard has survived a long stretch of
+ordinary use.
