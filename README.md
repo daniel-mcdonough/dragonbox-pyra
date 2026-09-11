@@ -11,11 +11,31 @@ box86 — including a 1999 Windows game under an x86 Wine.
 The eMMC is never touched, so the bookworm-7 install stays intact as a recovery
 path.
 
-**One known hazard.** The display driver can wedge inside a modeset, spinning a
-core at 100% until the machine is rebooted, and every DPMS transition is a
-modeset. It is mitigated rather than fixed, and `docs/troubleshooting.md` has
-the mechanism, the mitigation and the one tool you must not run on this
-machine.
+### Three faults you should know about before you rely on it
+
+All three are diagnosed in `docs/troubleshooting.md`, each with the evidence
+that identified it. Two of them are one kernel rebuild away from being fixed
+properly; the third is not yet understood.
+
+**The display can wedge inside a modeset.** A core spins at 100% and only a
+reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
+blanking is enough to hit it. Mitigated rather than fixed, and the mitigation
+does not protect you from a program that toggles DPMS itself. Not reproducible
+on demand: roughly 2100 deliberate modesets across three configurations have
+not triggered it once. **Unsolved.**
+
+**It will not suspend, and trying freezes the desktop.** Two phantom SD hosts,
+created by an unfinished mux driver from a stub device tree node, block
+forever. The kernel's SD suspend hook waits on them and never returns, and
+because systemd freezes your session before writing to `/sys/power/state` and
+thaws it afterwards, there is no afterwards. You get a background and a working
+mouse pointer and nothing else. **Cause proven, sleep is masked on this build,
+and the kernel fix is deleting two characters.**
+
+**The screen never dims.** MATE's backlight helper recognises four device
+names, none of which exist here, and falls back to the first entry it finds,
+which is the keyboard light. Every dim request has been adjusting the keyboard.
+**Fixed by `pyra-idle-dim`, which names the device instead of guessing.**
 
 ---
 

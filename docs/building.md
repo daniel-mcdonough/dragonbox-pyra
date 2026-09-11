@@ -355,6 +355,56 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ---
 
+## The two changes waiting for the next kernel build
+
+Both are small, both are evidenced in `troubleshooting.md`, and they are
+independent of each other, so one build settles both.
+
+### 1. Stop the mux driver registering hosts it cannot reach
+
+This is the fix for suspend. `drivers/mmc/host/txs02612.c` fails to find its
+controller, says so, and then registers two card hosts regardless because of a
+forced condition someone left in:
+
+    -	if (1 || !IS_ERR_OR_NULL(data->host)) {
+    +	if (!IS_ERR_OR_NULL(data->host)) {
+
+Deleting `1 || ` is the whole change. The sysfs `switch` control that selects
+between the eMMC and the second card slot is created earlier in the same
+function, so it survives. `CONFIG_MMC_TXS02612=y`, so there is no module to
+blacklist and this genuinely needs a rebuild.
+
+**How to know it worked.** Boot it and look for the two hosts:
+
+    ls /sys/class/mmc_host/          # expect mmc1 and mmc2 to be gone
+    ps -eo stat,comm | grep '^D'     # expect no kworker stuck in D state
+
+then unmask the sleep targets and try to suspend.
+
+### 2. Print the error the display controller is failing with
+
+This is not a fix, it is the next piece of evidence for the modeset hang.
+`dispc_runtime_put()` in `drivers/gpu/drm/omapdrm/dss/dispc.c` fired twice in
+1587 modesets, from the atomic commit worker, and the assertion is bare so the
+return value that would identify the failure is thrown away:
+
+    	r = pm_runtime_put_sync(&dispc->pdev->dev);
+    -	WARN_ON(r < 0 && r != -ENOSYS);
+    +	if (r < 0 && r != -ENOSYS)
+    +		WARN(1, "dispc_runtime_put: pm_runtime_put_sync returned %d\n", r);
+
+`-EBUSY` would mean something still holds the device, `-EAGAIN` that the
+request was deferred, and either would say a great deal about how a later
+modeset ends up waiting on a block that is not going to answer.
+
+Worth pairing with a look at what runtime PM thinks, across a modeset:
+
+    watch -n0.5 cat /sys/devices/platform/44000000.ocp/*/*/58000000.dss/power/runtime_status
+
+Build both with `PYRA_KERNELRELEASE=5.6.19-fix ./pyra-crossbuild.sh kernel` so
+the result installs beside the stock kernel and the lockup-detector kernel
+rather than over either of them, and select it with `pyra-boot-kernel.sh`.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card

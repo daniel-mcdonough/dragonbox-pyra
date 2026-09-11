@@ -271,3 +271,39 @@ point, but be clear about what it costs: anyone holding the device is one power
 button away from the desktop and everything in the session's keyring. The screen
 locker still applies after the session is running. It is not a substitute for
 encrypting the card if the data on it matters.
+
+---
+
+## 8. Recommended after the first boot: power behaviour
+
+Two things about this machine's power handling are wrong out of the box. Both
+are covered in detail in `troubleshooting.md`; this is what to do about them.
+
+**Stop it trying to suspend.** Suspend cannot complete on this hardware, and a
+failed attempt leaves the desktop frozen behind a working mouse pointer with no
+way back except a reboot. Until the kernel carries the mux driver fix from
+`building.md`, refuse the operation outright rather than trusting a desktop
+setting to avoid it:
+
+    sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
+                        suspend-then-hibernate.target hibernate.target
+
+With those masked an idle timeout fails immediately instead of freezing the
+session, because nothing starts the service that freezes it. Undo with
+`systemctl unmask` once the kernel is fixed.
+
+**Make the screen actually dim.** MATE's own dimming adjusts the keyboard light
+rather than the panel, which is why the image ships with it disabled. Install
+the replacement, as the desktop user:
+
+    sudo install -m 0755 pyra-idle-dim /usr/local/bin/
+    mkdir -p ~/.config/systemd/user
+    install -m 0644 pyra-idle-dim.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now pyra-idle-dim.service
+
+    gsettings set org.mate.session idle-delay 5      # minutes before it dims
+
+The service takes its timing from `idle-delay` and has no timer of its own, so
+that one setting controls it. Leave `org.mate.power-manager backlight-enable`
+false.
