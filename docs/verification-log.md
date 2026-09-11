@@ -219,3 +219,39 @@ below 0.010 with it off.
 after a full reboot: no greeter process, a `seat0` session for the account,
 `Desktop=lightdm-xsession` matching what a greeter login produces, and marco,
 mate-panel and caja all up.
+
+## 2026-09-11, night — the fifth patch, on hardware
+
+**Both nubs now survive a suspend.** The i2c controller they sit on carries
+almost nothing else, so its interrupt rate is a direct read-out of whether the
+driver's 25 ms poll is running. Nobody has to touch the nub for this, which
+matters, because the previous attempt to measure this by hand produced a false
+reading.
+
+| | poll rate on `48072000.i2c` |
+| --- | --- |
+| unpatched, before suspend | 450/s |
+| unpatched, after resume | **0/s** |
+| unpatched, after `systemctl restart pyrainput` | 450/s |
+| patched, at boot | 466/s |
+| patched, after suspend to idle | 455/s |
+| patched, after deep sleep, first cycle | 475/s |
+| patched, after deep sleep, second cycle | 458/s |
+
+The zero is the fault, reproduced on demand on the first attempt after a year
+of it being recorded as intermittent. It is not intermittent. Three cycles on
+the patched kernel, one `freeze` and two `mem`, and the poll never stopped.
+
+**Resume stayed quiet with the fifth patch on top.** Eight PMIC interrupt
+deliveries across one wake, no `Failed to read IRQ status` anywhere in the log,
+and `FreezerState=running` afterwards, so the session thaws.
+
+**The three known per-resume warnings are unchanged**, which is what should
+happen: `Unbalanced enable for IRQ 144` from the SGX, `unbalanced disables for
+otg_path`, and four `DSI error: VC(n) busy` lines. The patch introduced nothing
+new to the log.
+
+**Not covered.** Whether the power button still wakes the machine. It shares an
+interrupt with the fourth patch, and the clock alarm on that interrupt has now
+worked eleven times, but the button itself has still never been pressed to test
+it.

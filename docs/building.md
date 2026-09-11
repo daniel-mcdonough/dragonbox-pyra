@@ -403,7 +403,7 @@ tree, so the unpatched `5.6.19-softlockup` build stays reproducible.
 
     ./pc/pyra-crossbuild.sh kernel-fix
 
-Built and staged 2026-09-11.
+Built, staged, installed and confirmed on hardware 2026-09-11.
 
 | | |
 | --- | --- |

@@ -592,7 +592,8 @@ a fresh open.
 
 **Fixed by `patches/0005`**, which schedules the work again on resume, guarded so
 that a suspend before anything has opened the device does not start a poll the
-driver would never have started.
+driver would never have started. Confirmed on hardware on 2026-09-11 across
+three suspend cycles, one to idle and two to RAM.
 
 ### How to see it
 
