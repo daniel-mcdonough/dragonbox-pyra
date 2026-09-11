@@ -709,6 +709,18 @@ The nubs are polled by the kernel whether or not anything reads them. Stopping
 restarted. The `as5013` driver is built in, exposes no module parameters and no
 `poll_interval`, so changing this means a kernel patch.
 
+Why it polls at all is now known, and it is not a tuning choice. The device tree
+wires no interrupt to either chip, so probe falls back to a delayed work item and
+a `#define` of 25 ms. The poll never stops because the driver has no close
+callback, which is exactly what the measurement above shows and why stopping the
+daemon changes nothing. The interesting version of this item is therefore not
+"poll less often" but "wire the interrupt", which is a device tree question and a
+much larger one.
+
+The same reading is now the instrument for a correctness fault rather than a
+performance one: a rate of zero after a resume is the nub bug that
+`patches/0005` fixes. See `troubleshooting.md`.
+
 Do not bother. There is exactly one cpuidle state on this kernel, `C1`, so the
 wakeups are not blocking a deeper sleep, and the whole prize is 2–3% of one core
 for a kernel change on an out-of-tree tree. Recorded so nobody re-derives it.

@@ -96,3 +96,41 @@ express.
 patch, and there is only one cpuidle state so the wakeups block no deeper sleep.
 
 ---
+
+---
+
+## Where to fix a kernel fault, 2026-09-11
+
+Four kernel bugs were found in two days and each one had a choice of where to
+put the fix. The reasoning is here so the patches are not re-argued.
+
+**The keypad interrupt: driver, not device tree.** The TCA8418 drives INT as a
+level and `pyra-mainboard-common.dtsi` declares the line
+`IRQ_TYPE_EDGE_FALLING`, which is what makes a missed acknowledgement fatal
+rather than merely wasteful. Changing the device tree to level triggering is the
+smaller diff and it is tempting. It was rejected: the driver would then storm
+whenever its handler returns without acknowledging, which is exactly the failure
+already seen on the PMIC, and the resume window where i2c returns `-EACCES` is a
+guaranteed opportunity for it. Other boards describe the line the same way, so
+the driver has to survive it regardless. `patches/0006` makes the handler leave
+only when the chip is quiet, which is correct under either description.
+
+**The nub poll: guarded on `input->users`, not mirrored blindly.** Suspend
+cancels the poll unconditionally, so the obvious fix is to schedule it
+unconditionally on resume. That would start a poll on a device nobody has opened
+yet, which the driver would otherwise never have done, and this chip is polled
+at 25 ms forever once started. The guard costs three lines and keeps the
+resume path from inventing work.
+
+**The PMIC interrupt: held off across the window, not moved to a different
+phase.** The real fault is that `resume_device_irqs()` runs a phase before
+runtime power management comes back on the i2c controller. That is core
+sequencing and not something to relitigate from a board port, so `patches/0004`
+holds the one interrupt off across the window instead. The cost is that the
+power button is unavailable for that window, which is why confirming the button
+still wakes the machine is an open item rather than a formality.
+
+**Debug options stay once added.** `CONFIG_GENERIC_IRQ_DEBUGFS` went into the
+build for a theory that turned out to be about the wrong device. It was kept,
+and it is what confirmed the keypad interrupt was not disabled two days later.
+It costs nothing at runtime.

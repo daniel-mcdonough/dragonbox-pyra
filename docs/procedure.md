@@ -56,8 +56,8 @@ is what un-breaks it.
 ## 2. Pre-flight — validate the fixes with no Pyra involved
 
 Do this once the image is extracted, before the card even matters. It costs ten
-minutes and turns card-day into a copy-paste job. Two of the three fixes rest on
-assumptions the original forum post never verified.
+minutes and turns card-day into a copy-paste job. Two of the three fixes taken
+from the original forum post rest on assumptions it never verified.
 
     sudo losetup -fP --show pyra-trixie-*.img      # prints e.g. /dev/loop0
     sudo blkid /dev/loop0p1 /dev/loop0p2           # lsblk -f shows nothing useful here
