@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+#
+# pyra-idle-dim — dim the screen backlight when the session goes idle, and put
+# it back when it wakes. Runs as the logged-in user, needs no root.
+#
+# WHY THIS EXISTS
+#
+# MATE already has this feature and it does not work on the Pyra. Its helper,
+# mate-power-backlight-helper, looks through /sys/class/backlight for a device
+# it recognises, finds none of the names it knows, and takes whatever the
+# directory hands it first. On this machine that is keyboard-backlight rather
+# than backlight, so "dim the screen" dims the keyboard and the panel never
+# changes. That is almost certainly why the Pyra image ships
+# backlight-enable=false in 99_pyra.gschema.override: the feature was pointed
+# at the wrong lamp, so it was switched off.
+#
+# This names the device explicitly instead of guessing, and changes it through
+# logind, which lets the session owner set its own backlight without root.
+#
+# The idle signal comes from the session manager, so the delay is whatever
+# org.mate.session idle-delay is set to. Set that, not anything here.
+#
+import os
+import sys
+
+import gi
+gi.require_version("GLib", "2.0")
+from gi.repository import Gio, GLib
+
+DEVICE = os.environ.get("PYRA_DIM_DEVICE", "backlight")
+# Percent of maximum to drop to when idle.
+DIM_PERCENT = int(os.environ.get("PYRA_DIM_PERCENT", "20"))
+
+SYS = "/sys/class/backlight/" + DEVICE
+STATUS_IDLE = 3
+
+saved = None
+
+
+def log(msg):
+    print(msg, flush=True)
+
+
+def read(name):
+    with open(os.path.join(SYS, name)) as f:
+        return int(f.read().strip())
+
+
+def set_brightness(system_bus, value):
+    # logind lets the session owner set the brightness of its own seat's
+    # devices. Writing the sysfs file directly would need root.
+    system_bus.call_sync(
+        "org.freedesktop.login1",
+        "/org/freedesktop/login1/session/auto",
+        "org.freedesktop.login1.Session",
+        "SetBrightness",
+        GLib.Variant("(ssu)", ("backlight", DEVICE, value)),
+        None, Gio.DBusCallFlags.NONE, 5000, None,
+    )
+
+
+def on_status(bus, sender, path, iface, signal, params, system_bus):
+    global saved
+    status = params[0]
+    if status == STATUS_IDLE:
+        if saved is not None:
+            return
+        saved = read("actual_brightness")
+        target = max(0, read("max_brightness") * DIM_PERCENT // 100)
+        if target >= saved:
+            # Already dimmer than we would make it. Leave it alone.
+            saved = None
+            return
+        log(f"idle: {saved} -> {target}")
+        set_brightness(system_bus, target)
+    else:
+        if saved is None:
+            return
+        log(f"awake: restoring {saved}")
+        set_brightness(system_bus, saved)
+        saved = None
+
+
+def main():
+    if not os.path.isdir(SYS):
+        sys.exit(f"no backlight device at {SYS}")
+
+    system_bus = Gio.bus_get_sync(Gio.BusType.SYSTEM, None)
+    session_bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+
+    # Prove we can actually drive it before claiming to be running, so a broken
+    # setup fails at start rather than silently doing nothing hours later.
+    set_brightness(system_bus, read("actual_brightness"))
+
+    session_bus.signal_subscribe(
+        None, "org.gnome.SessionManager.Presence", "StatusChanged",
+        "/org/gnome/SessionManager/Presence", None,
+        Gio.DBusSignalFlags.NONE, on_status, system_bus,
+    )
+    log(f"watching for idle; {DEVICE} dims to {DIM_PERCENT}% of maximum")
+    GLib.MainLoop().run()
+
+
+if __name__ == "__main__":
+    main()

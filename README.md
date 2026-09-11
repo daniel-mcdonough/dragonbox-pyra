@@ -63,6 +63,7 @@ change nothing and need no privileges beyond reading `/proc`.
 | `pyra-modeset-hang-trap.sh` | Pyra | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `pyra-install-debug-kernel.sh` | Pyra | Installs a test kernel beside the stock one and adds a boot menu entry, without making it the default. |
 | `pyra-boot-kernel.sh` | Pyra | Chooses which kernel boots next, with a one-shot mode that reverts to the stock kernel by itself. |
+| `pyra-idle-dim` | Pyra | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
 | `pyra-verify-card-metadata.sh` | PC | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
 | `pyra-crossbuild.sh` | PC | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |

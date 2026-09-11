@@ -309,6 +309,68 @@ same function, so it survives. `CONFIG_MMC_TXS02612=y` in both kernels here, so
 there is no module to blacklist and this needs a kernel rebuild;
 `building.md` has that.
 
+## The screen never dims, and MATE's setting for it does nothing
+
+**It dims the keyboard instead.** `mate-power-backlight-helper` searches
+`/sys/class/backlight` for a device whose name it recognises — it knows about
+`intel_backlight`, `nv_backlight`, `nvidia_backlight` and `gmux_backlight` —
+finds none of them here, and falls back to whatever the directory hands it
+first. This machine has two entries, `backlight` and `keyboard-backlight`, and
+the helper picks the keyboard. Every request to dim the screen adjusts the
+keyboard lamp and the panel never changes.
+
+You can watch it happen. Ask the helper what it is looking at:
+
+    $ sudo mate-power-backlight-helper --get-brightness
+    2
+    $ sudo mate-power-backlight-helper --get-max-brightness
+    8
+    $ cat /sys/class/backlight/backlight/actual_brightness        # the screen
+    13
+    $ cat /sys/class/backlight/keyboard-backlight/actual_brightness
+    2
+
+That is almost certainly why the image ships `backlight-enable=false` in
+`/usr/share/glib-2.0/schemas/99_pyra.gschema.override`. The feature was aimed
+at the wrong device, so it was turned off. Turning it back on does not help,
+and does make the keyboard light flicker at you.
+
+**Nothing is wrong with the hardware or the permissions.** The panel backlight
+takes fifteen steps and responds instantly, and a session can drive it without
+root through logind:
+
+    busctl call org.freedesktop.login1 /org/freedesktop/login1/session/auto \
+        org.freedesktop.login1.Session SetBrightness ssu backlight backlight 6
+
+**The fix is `pyra-idle-dim`**, which names the device instead of guessing and
+goes through logind, so it needs no privileges. Install it as a user service:
+
+    sudo install -m 0755 pyra-idle-dim /usr/local/bin/
+    mkdir -p ~/.config/systemd/user
+    install -m 0644 pyra-idle-dim.service ~/.config/systemd/user/
+    systemctl --user daemon-reload
+    systemctl --user enable --now pyra-idle-dim.service
+
+It listens for the session manager's idle signal, so **the delay is whatever
+`org.mate.session idle-delay` says** and nothing in the service duplicates that
+setting. The stock value is 30 minutes:
+
+    gsettings set org.mate.session idle-delay 5
+
+`PYRA_DIM_PERCENT` in the unit file sets how far down it goes, 20 percent of
+maximum by default. Leave `backlight-enable` false; this replaces it rather
+than working alongside it.
+
+To check it without waiting for a real idle timeout, drive the session state by
+hand and watch the brightness follow:
+
+    gdbus call --session --dest org.gnome.SessionManager \
+        --object-path /org/gnome/SessionManager/Presence \
+        --method org.gnome.SessionManager.Presence.SetStatus 3   # idle
+    gdbus call --session --dest org.gnome.SessionManager \
+        --object-path /org/gnome/SessionManager/Presence \
+        --method org.gnome.SessionManager.Presence.SetStatus 0   # awake
+
 ## The card will not mount: `Failed to get valid F2FS checkpoint`
 
 Seen 2026-09-10. The symptom, from the Pyra's own boot:
