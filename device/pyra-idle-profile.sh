@@ -61,11 +61,13 @@ say "sampling for ${WINDOW}s, leave it alone"
 before=$(snapshot)
 c_before=$(charge)
 i_before=$(current)
+s_before=$(cat "$BATT/status" 2>/dev/null || echo unknown)
 t_before=$(date +%s)
 sleep "$WINDOW"
 after=$(snapshot)
 c_after=$(charge)
 i_after=$(current)
+s_after=$(cat "$BATT/status" 2>/dev/null || echo unknown)
 elapsed=$(( $(date +%s) - t_before ))
 
 say "where the time went"
@@ -85,16 +87,34 @@ done
 # the window add up to more wall clock than the window has.
 
 say "what it cost"
-status=$(cat "$BATT/status" 2>/dev/null || echo unknown)
-printf '  battery status   %s\n' "$status"
+printf '  battery status   %s at the start, %s at the end\n' "$s_before" "$s_after"
 printf '  current, start   %s mA\n' "$(( i_before / 1000 ))"
 printf '  current, end     %s mA\n' "$(( i_after / 1000 ))"
 printf '  charge delta     %s uAh over %ss\n' "$(( c_after - c_before ))" "$elapsed"
 
-if [ "$status" = Charging ] || [ "$(( i_before ))" -gt 0 ]; then
+# Negative current is the machine drawing from the battery, which is the only
+# condition under which any of this measures the machine. A charger that cycles
+# on and off during the window is worse than one that stays on, because the
+# numbers look plausible and are not comparable to anything.
+charging=no
+if [ "$s_before" = Charging ] || [ "$s_after" = Charging ] ||
+   [ "$(( i_before ))" -gt 0 ] || [ "$(( i_after ))" -gt 0 ]; then
+	charging=yes
+fi
+
+if [ "$charging" = yes ]; then
 	echo
-	echo "  The battery is charging, so every figure above is the charger and"
-	echo "  none of it is the machine. Unplug it and run this again."
+	if [ "$s_before" = "$s_after" ] && [ "$s_before" = Charging ]; then
+		echo "  The battery charged throughout, so every figure above is the"
+		echo "  charger and none of it is the machine. Unplug it and run this"
+		echo "  again."
+	else
+		echo "  The battery changed between charging and discharging during the"
+		echo "  window, which is what a connected charger topping up looks like."
+		echo "  The figures above are part machine and part charger, in unknown"
+		echo "  proportions, and cannot be compared with another run. Unplug it"
+		echo "  and run this again."
+	fi
 elif [ "$elapsed" -lt 600 ]; then
 	echo
 	echo "  A window this short is below the gauge's own resolution. The"
