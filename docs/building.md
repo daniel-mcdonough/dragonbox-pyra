@@ -532,9 +532,10 @@ suspend:
 Expect a difference of about two, and no `Failed to read IRQ status` in
 `dmesg`. Before the patch, the same wake gave 233 deliveries and 231 messages.
 
-**What to check by hand.** The patch touches the interrupt that serves the
-power button, so confirm once that pressing it still wakes the machine. The
-real-time clock alarm, which is on the same chip and the same interrupt, does.
+**The power button still wakes the machine.** This was the one thing the patch
+could plausibly have broken, since it holds off the interrupt the button arrives
+on. Confirmed on 2026-09-11: suspended to RAM, woken by the button, with the
+button's delivery count moving by one across the wake.
 
 ### 5. Bring the mouse nubs back after a suspend
 

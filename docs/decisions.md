@@ -127,8 +127,9 @@ phase.** The real fault is that `resume_device_irqs()` runs a phase before
 runtime power management comes back on the i2c controller. That is core
 sequencing and not something to relitigate from a board port, so `patches/0004`
 holds the one interrupt off across the window instead. The cost is that the
-power button is unavailable for that window, which is why confirming the button
-still wakes the machine is an open item rather than a formality.
+power button is unavailable for that window, which is narrow and ends before
+anything can be pressed. The button was confirmed to still wake the machine on
+2026-09-11.
 
 **Debug options stay once added.** `CONFIG_GENERIC_IRQ_DEBUGFS` went into the
 build for a theory that turned out to be about the wrong device. It was kept,

@@ -251,10 +251,17 @@ happen: `Unbalanced enable for IRQ 144` from the SGX, `unbalanced disables for
 otg_path`, and four `DSI error: VC(n) busy` lines. The patch introduced nothing
 new to the log.
 
-**Not covered.** Whether the power button still wakes the machine. It shares an
-interrupt with the fourth patch, and the clock alarm on that interrupt has now
-worked eleven times, but the button itself has still never been pressed to test
-it.
+**The power button wakes the machine.** Closed later the same night, on the
+six-patch kernel. A suspend to RAM, woken by pressing the button, with the
+button's own delivery count in `/proc/interrupts` moving from 1 to 2 across the
+wake and its `wakeup_sources` event count doing the same. The nub poll read
+505/s afterwards and the keypad's two registers read `0x00`, so that wake
+exercised all three input fixes at once.
+
+The suspend was short, a couple of seconds, because the button was pressed
+almost immediately. That is still a real test of the thing in question: the
+window the fourth patch holds the interrupt across is entered and left
+regardless of how long the machine stays down.
 
 ## 2026-09-11, late — the keypad controller, caught stuck
 
