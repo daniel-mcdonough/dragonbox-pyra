@@ -46,7 +46,7 @@ and looked like anything but a card reader.
 
 **Then verify, before the card goes near the Pyra:**
 
-    sudo ./pyra-verify-card-metadata.sh /dev/sdX2
+    sudo ./pc/pyra-verify-card-metadata.sh /dev/sdX2
 
 It scans the metadata area for that signature and takes about a minute. Run it
 after writing the image and again after growing. A clean result is not a
@@ -57,7 +57,7 @@ is cheap enough to be unconditional.
 
 So: power the Pyra down, move the card to a reader on a PC, and run
 
-    sudo ./pyra-trixie-grow.sh /dev/sdX
+    sudo ./pc/pyra-trixie-grow.sh /dev/sdX
 
 `pyra-trixie-grow.sh`, in the repository root, refuses to touch anything that is not
 a Pyra trixie card. It checks the MBR disk identifier and both partition start
@@ -71,7 +71,7 @@ If the very last sectors of a card worry you, `RESIZE_MARGIN_SECTORS` leaves
 slack at the end. It is applied through `resize.f2fs -t`, so it needs no second
 write to the partition table:
 
-    sudo RESIZE_MARGIN_SECTORS=131072 ./pyra-trixie-grow.sh /dev/sdX   # 64 MiB
+    sudo RESIZE_MARGIN_SECTORS=131072 ./pc/pyra-trixie-grow.sh /dev/sdX   # 64 MiB
 
 Then put the card back in the **left** slot, cold boot, and check with `df -h /`.
 
@@ -84,7 +84,7 @@ samples across the untested region only, never below the end of the existing
 filesystem, reads them back, and runs a sustained transfer to shake out a flaky
 reader:
 
-    sudo ./verify-card-capacity.sh /dev/sdX
+    sudo ./pc/verify-card-capacity.sh /dev/sdX
 
 Do this **before** growing the partition, not after.
 

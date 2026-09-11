@@ -57,8 +57,8 @@ the X server a question and getting no answer, so a merely busy server is not
 mistaken for a wedged one. Then it captures and reboots, which is both the
 recovery and the thermal protection.
 
-    sudo ./pyra-modeset-hang-trap.sh --selftest    # prove the capture, hang nothing
-    sudo ./pyra-modeset-hang-trap.sh               # provoke it for real
+    sudo ./device/pyra-modeset-hang-trap.sh --selftest    # prove the capture, hang nothing
+    sudo ./device/pyra-modeset-hang-trap.sh               # provoke it for real
 
 Run the self-test first. It is what caught the `/proc/PID/stack` problem above,
 on a healthy machine, rather than during the one chance to collect the evidence.
@@ -135,7 +135,7 @@ its tarballs directly instead.
 
 ## The X display driver
 
-    ./pyra-crossbuild.sh ddx
+    ./pc/pyra-crossbuild.sh ddx
 
 About two minutes, most of it `apt`. Output is
 `xserver-xorg-video-armsoc-omap5_0.6_armhf.deb` plus a `-dbgsym` package, in
@@ -151,6 +151,15 @@ fallback counting in `improvements.md` item 4, extra instrumentation around the
 modeset, or a timeout wrapper. It is not the driver to rebuild for the hang
 itself.
 
+**Nothing here patches it, and the machine does not run this build.** The
+installed driver is the distribution package from the Pyra repository, and it
+is meant to stay that way; this target exists so that future work has a way in.
+The fix this project made for the display driver is a configuration change,
+fix 4, which disables the GLX extension. If you are trying to reproduce the
+machine rather than experiment on it, skip this section entirely.
+Checked on 2026-09-11: `omap5_drv.so` on the device is the 2023 file from
+`xserver-xorg-video-armsoc-omap5 0.6`, not the one built here.
+
 Install and roll back, with the X server stopped:
 
     sudo systemctl stop lightdm
@@ -164,8 +173,8 @@ Install and roll back, with the X server stopped:
 
 ## The kernel
 
-    ./pyra-crossbuild.sh kernel               # zImage, modules, dtbs
-    ./pyra-crossbuild.sh kernel bindeb-pkg    # the same, as .debs
+    ./pc/pyra-crossbuild.sh kernel               # zImage, modules, dtbs
+    ./pc/pyra-crossbuild.sh kernel bindeb-pkg    # the same, as .debs
 
 About five minutes for a full build on sixteen cores, and seconds for an
 incremental one after an edit. The tree is unpacked once into
@@ -192,7 +201,7 @@ Without them the build stops at `scripts/dtc/yamltree.c` and at
 
 ### A kernel that reports lockups
 
-    ./pyra-crossbuild.sh kernel-debug
+    ./pc/pyra-crossbuild.sh kernel-debug
 
 Built and staged 2026-09-10. This is the stock source and the stock config with
 the lockup detectors turned on and **nothing else changed**, which is the whole
@@ -254,8 +263,8 @@ hung, which is what `pyra-modeset-hang-trap.sh` does and what
 Nothing here touches the stock kernel. `/boot` has 195 MB free and this needs
 about 27 MB of it.
 
-    scp softlockup-kernel.tar.gz pyra-install-debug-kernel.sh pyra@<address>:
-    sudo ./pyra-install-debug-kernel.sh
+    scp softlockup-kernel.tar.gz device/pyra-install-debug-kernel.sh pyra@<address>:
+    sudo ./device/pyra-install-debug-kernel.sh
 
 `pyra-install-debug-kernel.sh` does everything in this section: it refuses a
 tarball that would destroy `/lib`, checks `/boot` has room, extracts, runs
@@ -352,7 +361,7 @@ running kernel uses**, so installing it as is overwrites `/boot/vmlinuz` and
 Give a test kernel its own name instead. Set `CONFIG_LOCALVERSION` in the tree
 to match:
 
-    PYRA_KERNELRELEASE=5.6.19-test ./pyra-crossbuild.sh kernel bindeb-pkg
+    PYRA_KERNELRELEASE=5.6.19-test ./pc/pyra-crossbuild.sh kernel bindeb-pkg
 
 Then add a second `extlinux` entry. `/boot/extlinux/user.cfg` exists and is
 empty, and is the file meant for hand-written entries — `linux.cfg` is
@@ -372,12 +381,12 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 ## The patch set, and the kernel that carries it
 
 Three changes live in `patches/` as ordinary unified diffs. They are applied
-in order by `./pyra-crossbuild.sh kernel-fix`, which builds exactly what
+in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
 tree, so the unpatched `5.6.19-softlockup` build stays reproducible.
 
-    ./pyra-crossbuild.sh kernel-fix
+    ./pc/pyra-crossbuild.sh kernel-fix
 
 Built and staged 2026-09-11.
 
@@ -400,7 +409,7 @@ so name the tarball you mean — with both of them sitting in `/home/pyra` it
 refuses to guess:
 
     scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
-    sudo ./pyra-install-debug-kernel.sh fix-kernel.tar.gz
+    sudo ./device/pyra-install-debug-kernel.sh fix-kernel.tar.gz
     sudo pyra-boot-kernel.sh debug --once
 
 There is one test slot in the boot configuration, `l1`, and installing points

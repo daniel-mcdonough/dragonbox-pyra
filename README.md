@@ -17,7 +17,7 @@ All three are diagnosed in `docs/troubleshooting.md`, each with the evidence
 that identified it. Two are now fixed. The one that is not is the display
 hang, and it has a candidate fix that cannot be confirmed until it next fails
 to happen. The kernel patches are in `patches/`, built by
-`./pyra-crossbuild.sh kernel-fix`.
+`./pc/pyra-crossbuild.sh kernel-fix`.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
 reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
@@ -53,6 +53,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | Document | What it covers |
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
+| [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
 | [docs/fixes.md](docs/fixes.md) | The five fixes, what each one is for, and the diagnosis behind it. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
@@ -69,36 +70,60 @@ about *how* and the history is right about *when* and *why*.
 
 ---
 
-## Scripts
+## What is in here
 
-All are idempotent and refuse to run against anything that is not what they
-expect. The three that take a device argument write to it, so read the header
-comment before the first run. The measurement tools at the bottom of the table
-change nothing and need no privileges beyond reading `/proc`.
+    pc/          run these on your computer
+    device/      run these on the Pyra, or install them onto it
+    patches/     kernel source patches, applied by the build script
+    docs/        one document per job, listed above
 
-| Script | Runs on | What it does |
-| --- | --- | --- |
-| `pyra-trixie-prep.sh` | PC | Applies all five fixes to a mounted rootfs, before the card's first boot. |
-| `pyra-prep-selftest.sh` | PC | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
-| `verify-card-capacity.sh` | PC | Checks the card's real capacity and link stability before anything is grown onto it. |
-| `pyra-trixie-grow.sh` | PC | Extends partition 2 and the f2fs onto the rest of the card. |
-| `pyra-usb3503-rescue` | Pyra | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
-| `pyra-gles2-smoke.c` | Pyra | Minimal X11 + EGL + GLES2 client, to prove the SGX path works. |
-| `pyra-cpu-attribution.sh` | Pyra | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
-| `pyra-x-load-profile.sh` | Pyra | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
-| `pyra-anno1602-test.sh` | Pyra | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
-| `pyra-modeset-hang-trap.sh` | Pyra | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
-| `pyra-install-debug-kernel.sh` | Pyra | Installs a test kernel beside the stock one and adds a boot menu entry, without making it the default. |
-| `pyra-boot-kernel.sh` | Pyra | Chooses which kernel boots next, with a one-shot mode that reverts to the stock kernel by itself. |
-| `pyra-idle-dim` | Pyra | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
-| `pyra-verify-card-metadata.sh` | PC | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
-| `pyra-crossbuild.sh` | PC | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
-| `patches/` | PC | Three kernel patches: the candidate display fix, the suspend fix, and one that prints an error the driver was discarding. Applied by `pyra-crossbuild.sh kernel-fix`. |
-| `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |
+Everything is idempotent and refuses to run against anything that is not what
+it expects. The scripts that take a device argument write to it, so read the
+header comment before the first run. The measurement tools change nothing and
+need no privileges beyond reading `/proc`.
 
-`pyra-usb3503-rescue.service` is the unit for the rescue script. Both are
-payloads for fix 5, and the prep script copies them from here rather than
-embedding them, so there is only ever one copy of each.
+### On your computer
+
+| Script | What it does |
+| --- | --- |
+| `pc/pyra-trixie-prep.sh` | Applies all five fixes to a mounted rootfs, before the card's first boot. |
+| `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
+| `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
+| `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
+| `pc/pyra-verify-card-metadata.sh` | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
+| `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
+| `patches/` | Three kernel patches: the candidate display fix, the suspend fix, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
+
+### On the Pyra
+
+| Script | What it does |
+| --- | --- |
+| `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings and the idle dimmer's user service. |
+| `device/pyra-install-debug-kernel.sh` | Installs a built kernel beside the stock one and gives it a boot entry, without making it the default. |
+| `device/pyra-boot-kernel.sh` | Chooses which kernel boots next, with a one-shot mode that reverts to the stock kernel by itself. |
+| `device/pyra-sleep-test.sh` | Suspends the machine with the clock armed to wake it, and says whether it really came back. |
+| `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
+| `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
+| `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
+| `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
+| `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
+| `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
+| `device/pyra-gles2-smoke.c` | Minimal X11, EGL and GLES2 client, to prove the SGX path works. |
+| `device/pyra-exa-fallback-bench.c` | Isolates the cost of the driver's software fallbacks against its hardware paths. |
+
+Two systemd units sit beside the scripts they belong to. The rescue unit is a
+payload for fix 5 and the prep script copies it from `device/` rather than
+carrying its own copy, so there is only ever one of each in the repository.
+`device/etc/` holds files that are installed to the same path under `/` on the
+device.
+
+---
+
+## Licence
+
+GPL-2.0-only, in `LICENSE`. The patches in `patches/` are changes to Linux
+kernel source and carry its licence; the rest is licensed the same way so that
+the whole repository has one answer.
 
 ---
 
@@ -107,15 +132,23 @@ embedding them, so there is only ever one copy of each.
     # on the PC
     wget https://packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z
     7z x pyra-trixie-t1-brokenxorg.7z
-    sudo ./pyra-prep-selftest.sh                    # optional, proves the fixes
-    sudo ./verify-card-capacity.sh /dev/sdX         # before trusting the card
+    sudo ./pc/pyra-prep-selftest.sh                    # optional, proves the fixes
+    sudo ./pc/verify-card-capacity.sh /dev/sdX         # before trusting the card
     # write the image to the whole device, mount p2, then:
-    sudo ./pyra-trixie-prep.sh /mnt
+    sudo ./pc/pyra-trixie-prep.sh /mnt
     # after the first boot, with the card back in the reader:
-    sudo ./pyra-trixie-grow.sh /dev/sdX
+    sudo ./pc/pyra-trixie-grow.sh /dev/sdX
+
+    # the patched kernel, and the helpers, once it is running
+    ./pc/pyra-crossbuild.sh kernel-fix
+    scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
+    rsync -a device patches pyra@<address>:dragonbox-pyra/
+    ssh pyra@<address> 'sudo ./dragonbox-pyra/device/pyra-install-debug-kernel.sh fix-kernel.tar.gz'
+    ssh pyra@<address> 'cd dragonbox-pyra/device && sudo ./pyra-install-helpers.sh'
 
 Every step above has conditions and guards that this summary leaves out.
-`docs/procedure.md` is the version to actually follow.
+`docs/procedure.md` is the version to actually follow for the card, and
+`docs/reproduce.md` for the whole end state including the kernel.
 
 ---
 

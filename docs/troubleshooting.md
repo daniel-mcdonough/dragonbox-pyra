@@ -444,6 +444,33 @@ nothing was left in `D` state. NetworkManager came back connected on WiFi and
 ethernet rather than stuck in its ASLEEP state, so the `nmcli device set wlan0
 managed yes` recovery above is no longer needed either.
 
+### Two suspends in a row: `Wakeup pending. Abort CPU freeze`
+
+If you test suspend twice back to back, the second attempt fails immediately
+and the write to `/sys/power/state` returns an error:
+
+    PM: suspend entry (deep)
+    Freezing user space processes ... done.
+    Wakeup pending. Abort CPU freeze
+
+This is correct kernel behaviour and not a fault. The wake that ended the
+first round is still outstanding, and the kernel will not suspend into an
+unhandled wakeup event, because doing so is how a machine sleeps through the
+very key press that was meant to wake it.
+
+The way out is the `wakeup_count` protocol. Reading the count and writing it
+back is how userspace says it has seen every wakeup so far, and the write
+fails while one is outstanding, so looping on it is the wait:
+
+    count=$(cat /sys/power/wakeup_count)
+    echo "$count" | sudo tee /sys/power/wakeup_count    # fails if one is pending
+    echo mem | sudo tee /sys/power/state
+
+`pyra-sleep-test.sh` does this between rounds. If it ever gives up there, a
+wakeup source really is stuck on, and this says which:
+
+    grep -v '	0	' /sys/kernel/debug/wakeup_sources
+
 ### Resume works but it is noisy, and that is a separate bug
 
 Waking up produces a burst of kernel messages. It is survivable, everything
@@ -552,9 +579,9 @@ root through logind:
 **The fix is `pyra-idle-dim`**, which names the device instead of guessing and
 goes through logind, so it needs no privileges. Install it as a user service:
 
-    sudo install -m 0755 pyra-idle-dim /usr/local/bin/
+    sudo install -m 0755 device/pyra-idle-dim /usr/local/bin/
     mkdir -p ~/.config/systemd/user
-    install -m 0644 pyra-idle-dim.service ~/.config/systemd/user/
+    install -m 0644 device/pyra-idle-dim.service ~/.config/systemd/user/
     systemctl --user daemon-reload
     systemctl --user enable --now pyra-idle-dim.service
 

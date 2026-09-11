@@ -97,7 +97,7 @@ thing to check if it appears not to.
 What works:
 
 - Boot through to multi-user, with networking.
-- SSH in as the `pyra` account the prep script created, at <usb-address>.
+- SSH in as the `pyra` account the prep script created, at <pyra-address>.
 
 What does not:
 

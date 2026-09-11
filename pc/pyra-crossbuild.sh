@@ -26,6 +26,8 @@
 #
 set -euo pipefail
 
+# Resolved rather than assumed, because the patch set lives at the top of
+# the repository and this script does not.
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 
 REPO=https://packages.pyra-handheld.com/trixie
@@ -267,7 +269,7 @@ build_kernel_variant() {
 }
 
 build_kernel_debug() { build_kernel_variant softlockup "" src; }
-build_kernel_fix()   { build_kernel_variant fix "$SELF_DIR/patches" src-fix; }
+build_kernel_fix()   { build_kernel_variant fix "$SELF_DIR/../patches" src-fix; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;

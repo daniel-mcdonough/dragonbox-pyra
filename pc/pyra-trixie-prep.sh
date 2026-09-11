@@ -39,10 +39,14 @@ DRIDIR=$ROOT/usr/lib/arm-linux-gnueabihf/dri
 # single source of truth for the rescue logic. Check them here, before anything
 # has been written, so a missing payload cannot leave a half-fixed card.
 SCRIPTDIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-USB3503_SRC=$SCRIPTDIR/pyra-usb3503-rescue
-USB3503_UNIT_SRC=$SCRIPTDIR/pyra-usb3503-rescue.service
+# Fix 5 installs two files onto the device. They live with the rest of the
+# device payloads rather than beside this script, so that there is exactly one
+# copy of each in the repository and no chance of the two drifting apart.
+PAYLOADS=$SCRIPTDIR/../device
+USB3503_SRC=$PAYLOADS/pyra-usb3503-rescue
+USB3503_UNIT_SRC=$PAYLOADS/pyra-usb3503-rescue.service
 for f in "$USB3503_SRC" "$USB3503_UNIT_SRC"; do
-    [[ -r $f ]] || die "fix5: $(basename "$f") not found next to this script (looked in $SCRIPTDIR)"
+    [[ -r $f ]] || die "fix5: $(basename "$f") not found (looked in $PAYLOADS)"
 done
 
 echo

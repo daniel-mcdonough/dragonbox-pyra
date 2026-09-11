@@ -1,4 +1,24 @@
+# Card images and archives. These are hundreds of megabytes to a gigabyte and
+# are downloaded, not authored. docs/procedure.md says where to get them.
 *.img
 *.7z
+*.xz
+*.gz
+
+# Card forensics: the first megabyte of a card and its partition table, taken
+# before and after a write. Device-specific and worthless to anyone else.
 pyra-card-*.bin
 pyra-card-*.sfdisk
+
+# Build output. The work tree lives outside the repository by default, but
+# do not let an override of PYRA_BUILD_DIR drag 1.5 GB of kernel source in.
+/build/
+*.deb
+*.ko
+*.o
+
+# Captures pulled off the device.
+modeset-hang-*/
+*-hang-*.log
+dmesg-*.log
+Xorg.*.log

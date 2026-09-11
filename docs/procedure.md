@@ -14,10 +14,10 @@ the original forum writeup: fix 4 supersedes fix 1, because the documented DRI
 symlink does not work on mesa 25.x and never could, and fix 5 keeps USB alive
 across a warm reboot.
 
-Companion script: `../pyra-trixie-prep.sh`. It applies all five fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all five fixes offline.
 Fix 5 installs two files that live beside it, so run it from a checkout of the
 repository rather than copying the script somewhere on its own.
-`../pyra-prep-selftest.sh` proves it does that correctly against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -98,10 +98,10 @@ before committing it to a card.
     sudo umount /mnt/pyra
     sudo losetup -d /dev/loop0
 
-**Or let the self-test do all of the above.** `../pyra-prep-selftest.sh` does the loop-mount, runs the prep script against a *copy* of the
+**Or let the self-test do all of the above.** `../pc/pyra-prep-selftest.sh` does the loop-mount, runs the prep script against a *copy* of the
 image so the image itself is untouched, and checks the result properly:
 
-    sudo ./pyra-prep-selftest.sh                 # or: ... /path/to/other.img
+    sudo ./pc/pyra-prep-selftest.sh                 # or: ... /path/to/other.img
 
 It snapshots the whole rootfs before and after — type, mode, uid, gid, size and
 symlink target for every one of ~148,000 entries — so a stray write anywhere
@@ -276,29 +276,35 @@ encrypting the card if the data on it matters.
 
 ## 8. Recommended after the first boot: power behaviour
 
-Two things about this machine's power handling are wrong out of the box. Both
-are covered in detail in `troubleshooting.md`; this is what to do about them.
+Two things about this machine's power handling are wrong out of the box, and
+what you should do about them depends on whether you are going to build the
+patched kernel. Both are covered in detail in `troubleshooting.md`.
 
-**Stop it trying to suspend.** Suspend cannot complete on this hardware, and a
-failed attempt leaves the desktop frozen behind a working mouse pointer with no
-way back except a reboot. Until the kernel carries the mux driver fix from
-`building.md`, refuse the operation outright rather than trusting a desktop
+**Suspend.** On the stock kernel it cannot complete, and a failed attempt
+leaves the desktop frozen behind a working mouse pointer with no way back
+except a reboot. Refuse the operation outright rather than trusting a desktop
 setting to avoid it:
 
     sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
                         suspend-then-hibernate.target hibernate.target
 
 With those masked an idle timeout fails immediately instead of freezing the
-session, because nothing starts the service that freezes it. Undo with
-`systemctl unmask` once the kernel is fixed.
+session, because nothing starts the service that freezes it.
+
+`patches/0003` fixes the cause, and `reproduce.md` is the path to a kernel
+carrying it. On that kernel, unmask all five and test with
+`sudo pyra-sleep-test.sh`, which arms the clock to wake the machine by itself
+and tells you whether the session really came back.
 
 **Make the screen actually dim.** MATE's own dimming adjusts the keyboard light
-rather than the panel, which is why the image ships with it disabled. Install
-the replacement, as the desktop user:
+rather than the panel, which is why the image ships with it disabled. The
+replacement is installed along with everything else by
+`device/pyra-install-helpers.sh`, which is the easier route. By hand, as the
+desktop user:
 
-    sudo install -m 0755 pyra-idle-dim /usr/local/bin/
+    sudo install -m 0755 device/pyra-idle-dim /usr/local/bin/
     mkdir -p ~/.config/systemd/user
-    install -m 0644 pyra-idle-dim.service ~/.config/systemd/user/
+    install -m 0644 device/pyra-idle-dim.service ~/.config/systemd/user/
     systemctl --user daemon-reload
     systemctl --user enable --now pyra-idle-dim.service
 
