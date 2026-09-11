@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validate pyra-trixie-prep.sh against the real trixie image, loop-mounted.
 #
-#   sudo ./pyra-prep-selftest.sh [/path/to/pyra-trixie-t1.img]
+#   sudo ./pc/pyra-prep-selftest.sh [/path/to/pyra-trixie-t1.img]
 #
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
@@ -16,8 +16,13 @@
 set -euo pipefail
 
 REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-IMG=${1:-$REPO/pyra-trixie-t1.img}
-WORK=$REPO/pyra-trixie-t1-preptest.img
+# This script lives in pc/. The image and the working copy sit at the top of
+# the repository, and the fix 5 payloads live with the rest of the device
+# files, so neither is simply "beside this script".
+ROOT=$(cd -- "$REPO/.." && pwd)
+PAYLOADS=$ROOT/device
+IMG=${1:-$ROOT/pyra-trixie-t1.img}
+WORK=$ROOT/pyra-trixie-t1-preptest.img
 PREP=$REPO/pyra-trixie-prep.sh
 OUT=${OUTDIR:-}
 MNT=$(mktemp -d /tmp/pyraprep.XXXXXX)
@@ -186,13 +191,13 @@ done
 # fix 5 — the payloads must match the repository byte for byte
 D=$MNT/usr/local/sbin/pyra-usb3503-rescue
 U=$MNT/etc/systemd/system/pyra-usb3503-rescue.service
-if [[ -e $D ]] && cmp -s "$REPO/pyra-usb3503-rescue" "$D"; then
+if [[ -e $D ]] && cmp -s "$PAYLOADS/pyra-usb3503-rescue" "$D"; then
     p "fix5: rescue script matches repo, mode $(stat -c '%a %u:%g' "$D")"
 else
     f "fix5: rescue script missing or differs from repo"
 fi
 [[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "755 0:0" ]] && p "fix5: script is 0755 root:root" || f "fix5: script mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null)"
-if [[ -e $U ]] && cmp -s "$REPO/pyra-usb3503-rescue.service" "$U"; then
+if [[ -e $U ]] && cmp -s "$PAYLOADS/pyra-usb3503-rescue.service" "$U"; then
     p "fix5: unit matches repo, mode $(stat -c '%a %u:%g' "$U")"
 else
     f "fix5: unit missing or differs from repo"
@@ -240,7 +245,7 @@ disarm
 ABORT=$("$STAGE/$(basename "$PREP")" "$MNT" pyra 2>&1) || ARC=$?
 arm
 [[ $ARC -ne 0 ]] && p "no-payload run exited $ARC" || f "no-payload run exited 0"
-grep -q 'pyra-usb3503-rescue not found next to this script' <<<"$ABORT" \
+grep -q 'pyra-usb3503-rescue not found' <<<"$ABORT" \
     && p "no-payload run failed for the right reason" \
     || { f "no-payload run failed for the wrong reason:"; sed 's/^/      /' <<<"$ABORT"; }
 if [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]]; then
