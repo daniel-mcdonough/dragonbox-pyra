@@ -96,6 +96,10 @@ Worth filing upstream so the package gets rebuilt, rather than everyone working
 around it forever:
 https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
 
+Not to be confused with the other way the nubs come out dead, which is a kernel
+bug rather than a packaging one: without `patches/0005` the driver stops polling
+them at the first suspend and never starts again. See `troubleshooting.md`.
+
 ---
 
 ### Fix 4 — disable the GLX extension (this is the one that works)

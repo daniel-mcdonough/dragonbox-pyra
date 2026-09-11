@@ -563,76 +563,70 @@ it should. The bootloader hint is stale: this card runs U-Boot 2016.11, far
 newer than the version it suggests. Identified, not chased, and it is a
 battery-life question rather than a correctness one.
 
-## Open: the mouse nub stops working, and a reboot brings it back
+## Fixed: the nubs stopped on the first suspend and stayed stopped
 
-Seen twice, on 2026-09-10 and 2026-09-11, both on days with repeated suspend
-testing. Suspend and resume is the prime suspect and has not been cleared. The
-pointer stops responding to the nub and stays dead until the machine is
-rebooted.
+The pointer stopped responding to the nub and stayed dead until the machine was
+rebooted. Seen on 2026-09-10 and 2026-09-11, both on days of repeated suspend
+testing, which turned out to be the whole of it. This is not intermittent. Every
+suspend kills both nubs, and they never come back by themselves.
 
-**The chips are not the problem.** Both nubs are AS5013 magnetic joysticks on
-i2c bus 1, at `0x40` for the left and `0x41` for the right, driven by
-`drivers/input/joystick/as5013.c`. Read them directly while the nub is dead and
-they answer normally:
+**The chips are fine throughout.** Both nubs are AS5013 magnetic joysticks on
+i2c bus 1, at `0x40` for the left and `0x41` for the right. Read them directly
+while the nub is dead and they answer normally: the control register at `0x0f`
+reads `0xf1`, which is the driver's expected mode with data waiting, and the
+axis registers at `0x10` and `0x11` still track the stick. Nothing is reading
+them.
 
-| register | meaning | reading while dead |
-| --- | --- | --- |
-| `0x0f` | control; `& 0xfe == 0xf0` is the mode the driver expects, bit 0 is data ready | `0xf1` on both |
-| `0x10`, `0x11` | X and Y | jittering by a count or two on the left, steady on the right |
+**The driver polls, and suspend cancels the poll.** The device tree gives the
+as5013 nodes no interrupt gpio, so probe takes its else branch, sets the
+client's interrupt number to zero and sets up a delayed work item instead. From
+then on a 25 ms poll is the only thing that ever reads the joystick. The suspend
+callback cancels that work, correctly, because i2c is unusable while suspended.
+The resume callback re-enables the interrupt and stops. It never schedules the
+work again. Since the interrupt number is zero, re-enabling it does nothing at
+all, which is why the resume path looks like it is doing something.
 
-So the chip is in its normal mode, is sampling, and has data waiting. Both
-interrupt lines read idle high in `/sys/kernel/debug/gpio`, so nothing is stuck
-asserted either.
+Only opening the input device reschedules the poll. That is why restarting the
+input daemon appears to repair the hardware, and why rebooting does. Both end in
+a fresh open.
 
-**What is actually stopped is the interrupt.** Each nub has its own line:
+**Fixed by `patches/0005`**, which schedules the work again on resume, guarded so
+that a suspend before anything has opened the device does not start a poll the
+driver would never have started.
 
-    grep Nub /proc/interrupts
+### How to see it
 
-    184:  14  0  4805d000.gpio  27  Edge  Left-Nub
+The i2c controller the nubs sit on carries almost nothing else, so its interrupt
+count is a direct read-out of whether the poll is alive. Two nubs at 25 ms gives
+about 450 interrupts a second.
+
+    a=$(awk '/48072000.i2c/{print $2}' /proc/interrupts); sleep 2
+    b=$(awk '/48072000.i2c/{print $2}' /proc/interrupts); echo $(( (b-a)/2 ))
+
+On the unpatched kernel that reads about 450 before a suspend, exactly 0 after
+the resume, and about 450 again after `sudo systemctl restart pyrainput`. On the
+patched kernel it stays at about 450 throughout. Nobody has to touch the nub for
+this measurement, which is its main virtue.
+
+### The wrong turn, recorded because it was convincing
+
+The first day of this was spent on the wrong interrupt. `/proc/interrupts` has
+two promising lines:
+
+    184:  29  0  4805d000.gpio  27  Edge  Left-Nub
     185:   0  0  4805d000.gpio  21  Edge  Right-Nub
 
-Fourteen deliveries in half an hour, then frozen, on a device that produces one
-per sample while it is being pushed. That is the whole symptom.
+Those are the nub *click* buttons, on gpio-keys, and they have nothing to do
+with the analog axes. The joystick driver would have named its own line
+`as5013`, and there is no such line, which is the fact that unravelled it. The
+zero on the right nub means nobody clicks the right nub. A counter that moves
+only when a human is touching the hardware invites exactly this kind of
+mistake, and the earlier version of this section built a plausible theory about
+unbalanced `disable_irq()` calls on top of it.
 
-**Why that reading is not conclusive on its own.** `handle_edge_irq()`
-increments the counter *after* it checks whether the interrupt is disabled, so
-a disabled edge interrupt looks exactly like one that is enabled and idle. The
-number that separates them is the enable depth, and reading it needs
-`CONFIG_GENERIC_IRQ_DEBUGFS`, which the stock Pyra config leaves off. The build
-script turns it on, so on a kernel built after 2026-09-11:
-
-    sudo cat /sys/kernel/debug/irq/irqs/184
-
-A depth above zero means something disabled the interrupt and never put it
-back, which points at `as5013_low_power_enter()` and `as5013_low_power_leave()`.
-Those are called from both the suspend and resume callbacks and from the input
-device open and close, they are the only `disable_irq()` and `enable_irq()` in
-the driver, and nothing in either path checks whether the paired call happened.
-A depth of zero means the interrupt is armed and the chip is genuinely not
-asserting, which is a different bug in a different place.
-
-**What to try before rebooting**, in this order, moving the nub after each:
-
-    grep Nub /proc/interrupts
-    sudo systemctl restart pyrainput
-    grep Nub /proc/interrupts
-
-Restarting the daemon closes and reopens the input device, which runs
-`as5013_close()` and then `as5013_open()`. If the counter starts moving again,
-the fault is above the driver. If it does not, it is in the driver or below,
-and the depth reading above is the next step. Note that a restart cannot repair
-an unbalanced disable: close disables and open re-enables, so a depth that was
-already too high comes back one higher and then unchanged.
-
-**A caution about measuring this.** The counter only moves while somebody is
-pushing the nub, so a frozen counter proves nothing unless you know the nub was
-being touched at the time. This has already produced one false reading in
-testing.
-
-**Unresolved.** It is not known what fixes it short of a reboot, whether
-restarting the daemon helps at all, or whether the right nub has a second fault
-of its own; its counter has read zero since boot on a machine where the right
-nub may simply never be used.
+`CONFIG_GENERIC_IRQ_DEBUGFS` was turned on in the build to read that line's
+enable depth. It is still on and still worth having, but it is not what settled
+this.
 
 ## Fixed: two of the six SD hosts were phantoms, and they were what broke suspend
 

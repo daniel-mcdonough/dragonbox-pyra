@@ -236,8 +236,10 @@ costs nothing at runtime. It fills in `/sys/kernel/debug/irq/irqs/<n>`, which
 carries an interrupt's enable depth. Without it, an interrupt somebody disabled
 and never re-enabled is indistinguishable from one that is armed and idle,
 because `handle_edge_irq()` increments the counter in `/proc/interrupts` only
-after it has checked whether the interrupt is disabled. `troubleshooting.md`
-has the case that made this worth turning on, a nub that stopped reporting.
+after it has checked whether the interrupt is disabled. The case that made this
+worth turning on, a nub that stopped reporting, turned out not to need it: the
+interrupt being watched belonged to a different device. The option stays
+because it is free and the next question of this shape will be a real one.
 
 One thing to know before editing that block: the whole config sequence is
 inside a single-quoted string handed to the container, so a comment there
@@ -393,7 +395,7 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ## The patch set, and the kernel that carries it
 
-Three changes live in `patches/` as ordinary unified diffs. They are applied
+Five changes live in `patches/` as ordinary unified diffs. They are applied
 in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
@@ -410,12 +412,13 @@ Built and staged 2026-09-11.
 | ready to install | `kernel/fix-kernel.tar.gz`, 23 MB |
 | symbols | `kernel/src-fix/vmlinux`, for resolving addresses out of a report |
 
-The build reports each patch as it goes, and the result carries all four:
+The build reports each patch as it goes, and the result carries all five:
 
       applied  0001-omapdrm-dsi-bound-the-rx-fifo-drain-loops.patch
       applied  0002-omapdrm-dispc-report-the-runtime-pm-errno.patch
       applied  0003-mmc-txs02612-refuse-phantom-hosts.patch
       applied  0004-mfd-palmas-hold-the-irq-across-suspend.patch
+      applied  0005-input-as5013-restart-the-poll-on-resume.patch
 
 Install it the same way as the lockup-detector kernel, with
 `pyra-install-debug-kernel.sh`. It reads the release name out of the tarball,
@@ -520,6 +523,31 @@ Expect a difference of about two, and no `Failed to read IRQ status` in
 **What to check by hand.** The patch touches the interrupt that serves the
 power button, so confirm once that pressing it still wakes the machine. The
 real-time clock alarm, which is on the same chip and the same interrupt, does.
+
+### 5. Bring the mouse nubs back after a suspend
+
+`0005-input-as5013-restart-the-poll-on-resume.patch`. Without it the first
+suspend of the session kills both nubs until something reopens the input
+device.
+
+The device tree wires no interrupt to the joystick chips, so the driver falls
+back to a 25 ms poll, which is then the only thing that ever reads them. The
+suspend callback cancels that poll because i2c is unusable while suspended. The
+resume callback re-enables an interrupt that does not exist and never restarts
+the poll. The patch schedules it again, guarded so that a suspend before
+anything has opened the device does not start a poll the driver would never
+have started.
+
+**How to know it worked.** The nubs' i2c controller carries almost nothing
+else, so its interrupt rate says whether the poll is running, and you do not
+need to touch the nub to read it:
+
+    a=$(awk '/48072000.i2c/{print $2}' /proc/interrupts); sleep 2
+    b=$(awk '/48072000.i2c/{print $2}' /proc/interrupts); echo $(( (b-a)/2 ))
+
+About 450 a second means the poll is alive. Read it before a suspend and after
+the resume: both should say about 450. Before the patch the second reading is
+exactly zero, and stays zero until `sudo systemctl restart pyrainput`.
 
 ## Backups
 

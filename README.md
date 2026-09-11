@@ -14,10 +14,9 @@ path.
 ### Four faults you should know about before you rely on it
 
 All four are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. Two are fixed, one has a candidate fix that cannot be
-confirmed until it next fails to happen, and the last is still open. The
-kernel patches are in `patches/`, built by `./pc/pyra-crossbuild.sh
-kernel-fix`.
+that identified it. Three are fixed. The fourth has a candidate fix that cannot
+be confirmed until it next fails to happen. The kernel patches are in
+`patches/`, built by `./pc/pyra-crossbuild.sh kernel-fix`.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
 reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
@@ -45,12 +44,12 @@ names, none of which exist here, and falls back to the first entry it finds,
 which is the keyboard light. Every dim request has been adjusting the keyboard.
 **Fixed by `pyra-idle-dim`, which names the device instead of guessing.**
 
-**The mouse nub can stop working until the machine is rebooted.** Seen twice,
-both times on a day of repeated suspend testing, which is the prime suspect and
-has not been cleared. The chip is fine when this happens: it answers, it is in
-its normal mode, and its axis registers are still moving. What stops is the
-interrupt. **Open**, with the steps to take before rebooting, and the one
-reading that would settle it, in `docs/troubleshooting.md`.
+**Both mouse nubs died on the first suspend and stayed dead.** The device tree
+wires no interrupt to the joystick chips, so the driver polls them every 25 ms,
+and its suspend callback cancels that poll while its resume callback forgets to
+restart it. Only reopening the input device brings it back, which is why a
+reboot fixed it and why restarting the input daemon did too. **Fixed by
+`patches/0005`.**
 
 ---
 
@@ -106,7 +105,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
-| `patches/` | Four kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
+| `patches/` | Five kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra
 

@@ -1,0 +1,62 @@
+input: as5013: restart the poll on resume
+
+as5013_i2c_suspend() cancels the delayed work that polls the chip, with a
+comment explaining that i2c is unusable while suspended.  That part is
+right.  as5013_i2c_resume() re-enables the interrupt and stops there, so
+the poll is never scheduled again.
+
+On a board that wires an interrupt to the chip that is survivable: the
+interrupt comes back and the poll was only a fallback.  The Pyra wires
+none.  Its device tree gives the as5013 nodes no interrupt gpio, probe
+takes the else branch, sets client->irq to 0 and initialises the work, and
+from then on the 25 ms poll in as5013_work() is the only thing that ever
+reads the joystick.  So the first suspend kills both nubs for good.
+
+enable_irq(0) is a no-op here, which is why the resume path looks like it
+is doing something.
+
+Nothing restores the poll except as5013_open(), which reschedules it.
+That is why restarting the userspace input daemon appears to repair the
+hardware, and why a reboot does: both end in a fresh open.  The chip is
+healthy throughout.  It answers on the bus, its control register reads
+0xf1, and its axis registers still track the stick.  Nobody is reading
+them.
+
+Schedule the work again on resume, guarded by input->users so that a
+suspend and resume before anything has opened the device does not start a
+poll that the driver would otherwise never have started.
+
+Measured on a Pyra V5.3 by watching the i2c controller the nubs sit on,
+which carries nothing else of consequence:
+
+  48072000.i2c interrupts/s   before suspend   450
+                              after resume       0
+                              after restarting the input daemon  450
+
+With this applied the count is unchanged across suspend and resume.
+
+--- a/drivers/input/misc/as5013.c
++++ b/drivers/input/misc/as5013.c
+@@ -836,9 +836,22 @@
+ static int as5013_i2c_resume(struct device *dev)
+ {
+ 	struct i2c_client *client = to_i2c_client(dev);
++	struct as5013_drvdata *ddata = i2c_get_clientdata(client);
++	struct input_dev *input = ddata->input;
+ 
+ 	enable_irq(client->irq);
+ 
++	/*
++	 * Suspend cancelled the poll. On a board that wires no interrupt to
++	 * this chip the poll is the only thing that ever reads it, and
++	 * nothing else restarts it, so put it back.
++	 */
++	mutex_lock(&input->mutex);
++	if (input->users)
++		schedule_delayed_work(&ddata->work,
++				      msecs_to_jiffies(AS5013_INTERVAL));
++	mutex_unlock(&input->mutex);
++
+ 	return 0;
+ }
+ #endif /* CONFIG_PM_SLEEP */
