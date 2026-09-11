@@ -352,7 +352,11 @@ make `x11perf` safe to run.
 
 ---
 
-## The machine will not sleep, and trying to freezes the desktop
+## Fixed: the machine would not sleep, and trying froze the desktop
+
+**Fixed by `patches/0003` and confirmed on hardware on 2026-09-11.** Everything
+below describes the stock kernel, and is kept because it is what you will see
+if you are still on one. The confirmation is at the end of the section.
 
 **Symptom.** Idle suspend never happens. Some time later the screen comes back
 to a bare background with a working mouse pointer and no desktop and no login
@@ -400,7 +404,7 @@ unmanaged. Put WiFi back with:
 
     sudo nmcli device set wlan0 managed yes
 
-**Stopping it happening again.** Until the driver is fixed, refuse the
+**Stopping it happening again, on a kernel without the fix.** Refuse the
 operation outright rather than relying on desktop settings:
 
     sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
@@ -408,9 +412,59 @@ operation outright rather than relying on desktop settings:
 
 With those masked, an idle timeout fails immediately instead of freezing the
 session, because `systemd-suspend.service` never starts and so nothing ever
-freezes `user.slice`. Undo with `systemctl unmask` once the kernel is fixed.
+freezes `user.slice`. Undo with `systemctl unmask`.
 
-## Two of the six SD hosts are phantoms, and they are what breaks suspend
+### Confirmed working on `5.6.19-fix`
+
+The five sleep targets are unmasked on this build. Both kinds of sleep were
+tested with the real-time clock armed to wake the machine by itself, so nothing
+depended on a wake key working:
+
+    echo +30 | sudo tee /sys/class/rtc/rtc0/wakealarm
+    echo mem | sudo tee /sys/power/state
+
+Suspend-to-idle first, then suspend to RAM. Both returned 0 and both came back.
+The kernel now gets past the point it used to stop at, and finishes:
+
+    PM: suspend entry (deep)
+    Freezing user space processes ... (elapsed 0.010 seconds) done.
+    printk: Suspending console(s)
+    Restarting tasks ... done.
+    PM: suspend exit
+
+The `Freezing user space processes` line is the one that never used to appear.
+Afterwards the session is running rather than frozen, which is the failure this
+whole section is about:
+
+    $ systemctl show user.slice -p FreezerState
+    FreezerState=running
+
+The desktop, the display manager and both network interfaces all survived, and
+nothing was left in `D` state. NetworkManager came back connected on WiFi and
+ethernet rather than stuck in its ASLEEP state, so the `nmcli device set wlan0
+managed yes` recovery above is no longer needed either.
+
+### Resume works but it is noisy, and that is a separate bug
+
+Waking up produces a burst of kernel messages. It is survivable, everything
+works afterwards, and none of it is caused by the fix; it was simply never
+visible before, because suspend never got far enough to resume from.
+
+| message | count in one resume | what it is |
+| --- | --- | --- |
+| `dummy 0-0049: Failed to read IRQ status: -13` | 1722 | the PMIC's interrupt handler retrying over an i2c bus that has not resumed yet |
+| `Unbalanced enable for IRQ 144` | 1 | IRQ 144 is `SGX ISR`, so this is the PowerVR graphics blob |
+| `unbalanced disables for otg_path` | 1 | a regulator reference count in the USB OTG path |
+
+The first one is the interesting one. The device at i2c address `0x49` is a
+second address block of the Palmas PMIC at `0x48`. Its interrupt fires during
+resume, the handler cannot read the status register to find out why, so the
+interrupt is never acknowledged and re-fires until the i2c controller is back.
+It clears itself. It also fills the kernel log, which will push older messages
+out of the buffer, so take a `dmesg` before suspending if you care about what
+is in it. Not chased further.
+
+## Fixed: two of the six SD hosts were phantoms, and they were what broke suspend
 
 `mmc1` and `mmc2` have no hardware behind them. Everything real works: the
 full-size card slot, the eMMC and the WiFi radio each have their own host, and

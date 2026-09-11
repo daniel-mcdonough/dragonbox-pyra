@@ -14,10 +14,10 @@ path.
 ### Three faults you should know about before you rely on it
 
 All three are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. The third is fixed in userspace. The first two need a
-kernel, and the patches for both are in `patches/`, built by
-`./pyra-crossbuild.sh kernel-fix`; one is a proven fix, the other a
-well-supported guess.
+that identified it. Two are now fixed. The one that is not is the display
+hang, and it has a candidate fix that cannot be confirmed until it next fails
+to happen. The kernel patches are in `patches/`, built by
+`./pyra-crossbuild.sh kernel-fix`.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
 reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
@@ -29,13 +29,15 @@ unbounded busy-wait loops left in the whole modeset path, both draining the
 display link's receive queue, both sitting under every display power-on.
 **Candidate fix written, not yet confirmed.**
 
-**It will not suspend, and trying freezes the desktop.** Two phantom SD hosts,
-created by an unfinished mux driver from a stub device tree node, block
-forever. The kernel's SD suspend hook waits on them and never returns, and
+**It would not suspend, and trying froze the desktop.** Two phantom SD hosts,
+created by an unfinished mux driver from a stub device tree node, blocked
+forever. The kernel's SD suspend hook waited on them and never returned, and
 because systemd freezes your session before writing to `/sys/power/state` and
-thaws it afterwards, there is no afterwards. You get a background and a working
-mouse pointer and nothing else. **Cause proven, sleep is masked on this build,
-and the kernel fix is deleting two characters.** It is `patches/0003`.
+thaws it afterwards, there was no afterwards. You got a background and a
+working mouse pointer and nothing else. **Fixed by `patches/0003`, which
+deletes two characters, and confirmed on hardware on 2026-09-11.** Both kinds
+of sleep complete and resume, the session thaws, and the network comes back.
+Resume is noisy in a way that is a separate and lesser bug.
 
 **The screen never dims.** MATE's backlight helper recognises four device
 names, none of which exist here, and falls back to the first entry it finds,
