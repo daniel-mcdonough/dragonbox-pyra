@@ -395,7 +395,7 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ## The patch set, and the kernel that carries it
 
-Five changes live in `patches/` as ordinary unified diffs. They are applied
+Six changes live in `patches/` as ordinary unified diffs. They are applied
 in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
@@ -412,13 +412,14 @@ Built, staged, installed and confirmed on hardware 2026-09-11.
 | ready to install | `kernel/fix-kernel.tar.gz`, 23 MB |
 | symbols | `kernel/src-fix/vmlinux`, for resolving addresses out of a report |
 
-The build reports each patch as it goes, and the result carries all five:
+The build reports each patch as it goes, and the result carries all six:
 
       applied  0001-omapdrm-dsi-bound-the-rx-fifo-drain-loops.patch
       applied  0002-omapdrm-dispc-report-the-runtime-pm-errno.patch
       applied  0003-mmc-txs02612-refuse-phantom-hosts.patch
       applied  0004-mfd-palmas-hold-the-irq-across-suspend.patch
       applied  0005-input-as5013-restart-the-poll-on-resume.patch
+      applied  0006-input-tca8418-service-until-the-chip-is-quiet.patch
 
 Install it the same way as the lockup-detector kernel, with
 `pyra-install-debug-kernel.sh`. It reads the release name out of the tarball,
@@ -548,6 +549,27 @@ need to touch the nub to read it:
 About 450 a second means the poll is alive. Read it before a suspend and after
 the resume: both should say about 450. Before the patch the second reading is
 exactly zero, and stays zero until `sudo systemctl restart pyrainput`.
+
+### 6. Stop the built-in keyboard going silent
+
+`0006-input-tca8418-service-until-the-chip-is-quiet.patch`. Without it the key
+matrix controller can be left holding its interrupt line asserted with
+keystrokes queued, after which no further interrupt is possible and the
+keyboard is dead with nothing in the log.
+
+The line is edge triggered in the device tree but the chip drives it as a
+level, so the driver gets one chance per edge to empty it. A key pressed
+between the last queue read and the acknowledgement wastes that chance. The
+patch keeps servicing until the chip reports nothing pending, and does the same
+once at the end of probe, because the chip keeps its queue across an unbind and
+the old startup path never cleared it.
+
+**How to know it worked.** Press keys and watch the count move:
+
+    grep tca8418 /proc/interrupts
+
+A count frozen while you type is the fault. `device/pyra-keypad-rescue` clears
+it on a machine not yet running this kernel.
 
 ## Backups
 

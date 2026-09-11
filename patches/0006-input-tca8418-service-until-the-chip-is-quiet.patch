@@ -1,0 +1,165 @@
+input: tca8418: do not leave the chip asserting an edge-triggered line
+
+The TCA8418's INT pin is a level.  The chip holds it asserted for as long
+as any status bit is set, and setting a bit that is already set produces no
+transition.  The Pyra, like several other boards, wires that pin to a
+gpio line described in the device tree as IRQ_TYPE_EDGE_FALLING, and the
+driver takes its trigger type from there.
+
+That gives the driver exactly one chance to empty the chip per edge, and
+the handler has a window where it can waste it.  tca8418_read_keypad()
+drains the FIFO until it reads an empty slot, and only then does the
+handler write REG_INT_STAT to acknowledge.  A key pressed between those two
+i2c transfers leaves the chip with an event queued and K_INT set again, so
+the pin never returns high, so no further edge is ever delivered.  The
+keypad is then dead until something clears the chip by other means.  It
+logs nothing while this happens, because the handler is never entered.
+
+Seen on a Pyra V5.3: ten keystrokes queued in the FIFO, REG_INT_STAT
+reading 0x01, the interrupt not disabled, its count in /proc/interrupts
+frozen at 5 for the whole boot, and the keypad completely unresponsive.
+Reading the FIFO out and writing REG_INT_STAT by hand over i2c brought it
+straight back.
+
+The window is not narrow on this hardware.  The two joystick nubs sit on
+the same i2c bus and are polled at 25 ms, so keypad transfers queue behind
+them.
+
+Service the chip in a loop instead, and leave only when it reports nothing
+pending, so an event that arrives mid-drain is picked up in the same
+invocation rather than waiting for an edge that cannot come.  Bound the
+loop so that a chip which never goes quiet produces a message rather than
+a spinning thread.
+
+Do the same once at the end of probe.  The chip keeps its FIFO and its
+status across a driver unbind and across a warm boot, and nothing in the
+existing probe path clears them, so a chip that is already asserting when
+the driver attaches is dead from that moment.  This was confirmed by
+unbinding and rebinding the driver on the stuck chip: REG_INT_STAT still
+read 0x01 and the FIFO still held ten events afterwards.
+
+--- a/drivers/input/keyboard/tca8418_keypad.c
++++ b/drivers/input/keyboard/tca8418_keypad.c
+@@ -40,6 +40,9 @@
+ #define TCA8418_MAX_ROWS	8
+ #define TCA8418_MAX_COLS	10
+ 
++/* How many times to go round before giving up on a chip that will not go quiet */
++#define TCA8418_MAX_SERVICE_PASSES	10
++
+ /* TCA8418 register offsets */
+ #define REG_CFG			0x01
+ #define REG_INT_STAT		0x02
+@@ -194,38 +197,74 @@
+ }
+ 
+ /*
+- * Threaded IRQ handler and this can (and will) sleep.
++ * Service the chip until it stops asserting INT.  Returns true if there was
++ * anything to do.
++ *
++ * INT is a level: the chip holds it asserted for as long as a status bit is
++ * set, and setting a bit again while one is already set produces no edge.  A
++ * board that wires INT to an edge-triggered line therefore gets exactly one
++ * chance to empty the chip.  If a key arrives between the last FIFO read and
++ * the write that clears the status, the chip has a fresh event and an asserted
++ * pin that never returned high, so no further interrupt can ever be delivered
++ * and the keypad is dead until something clears the chip by hand.
++ *
++ * So do not leave until the chip is quiet.
+  */
+-static irqreturn_t tca8418_irq_handler(int irq, void *dev_id)
++static bool tca8418_service(struct tca8418_keypad *keypad_data)
+ {
+-	struct tca8418_keypad *keypad_data = dev_id;
++	unsigned int pass = 0;
++	bool handled = false;
+ 	u8 reg;
+ 	int error;
+ 
+-	error = tca8418_read_byte(keypad_data, REG_INT_STAT, &reg);
+-	if (error) {
+-		dev_err(&keypad_data->client->dev,
+-			"unable to read REG_INT_STAT\n");
+-		return IRQ_NONE;
+-	}
++	for (;;) {
++		error = tca8418_read_byte(keypad_data, REG_INT_STAT, &reg);
++		if (error) {
++			dev_err(&keypad_data->client->dev,
++				"unable to read REG_INT_STAT\n");
++			break;
++		}
+ 
+-	if (!reg)
+-		return IRQ_NONE;
++		if (!reg)
++			break;
+ 
+-	if (reg & INT_STAT_OVR_FLOW_INT)
+-		dev_warn(&keypad_data->client->dev, "overflow occurred\n");
++		handled = true;
+ 
+-	if (reg & INT_STAT_K_INT)
+-		tca8418_read_keypad(keypad_data);
++		if (reg & INT_STAT_OVR_FLOW_INT)
++			dev_warn(&keypad_data->client->dev,
++				 "overflow occurred\n");
++
++		if (reg & INT_STAT_K_INT)
++			tca8418_read_keypad(keypad_data);
++
++		/* Clear all interrupts, even IRQs we didn't check (GPI, CAD, LCK) */
++		reg = 0xff;
++		error = tca8418_write_byte(keypad_data, REG_INT_STAT, reg);
++		if (error) {
++			dev_err(&keypad_data->client->dev,
++				"unable to clear REG_INT_STAT\n");
++			break;
++		}
+ 
+-	/* Clear all interrupts, even IRQs we didn't check (GPI, CAD, LCK) */
+-	reg = 0xff;
+-	error = tca8418_write_byte(keypad_data, REG_INT_STAT, reg);
+-	if (error)
+-		dev_err(&keypad_data->client->dev,
+-			"unable to clear REG_INT_STAT\n");
++		if (++pass >= TCA8418_MAX_SERVICE_PASSES) {
++			dev_err(&keypad_data->client->dev,
++				"chip still asserting after %u passes\n",
++				pass);
++			break;
++		}
++	}
+ 
+-	return IRQ_HANDLED;
++	return handled;
++}
++
++/*
++ * Threaded IRQ handler and this can (and will) sleep.
++ */
++static irqreturn_t tca8418_irq_handler(int irq, void *dev_id)
++{
++	struct tca8418_keypad *keypad_data = dev_id;
++
++	return tca8418_service(keypad_data) ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
+ /*
+@@ -344,6 +383,15 @@
+ 	if (error < 0)
+ 		return error;
+ 
++	/*
++	 * The chip keeps its FIFO and its status across a driver unbind, a
++	 * warm boot, or anything else that leaves it powered.  If it is
++	 * already asserting INT when we get here then, on an edge-triggered
++	 * line, no edge will ever arrive and the keypad would be dead from
++	 * probe onwards.  Drain it so the pin starts released.
++	 */
++	tca8418_service(keypad_data);
++
+ 	error = input_register_device(input);
+ 	if (error) {
+ 		dev_err(dev, "Unable to register input device, error: %d\n",

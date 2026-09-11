@@ -629,6 +629,69 @@ unbalanced `disable_irq()` calls on top of it.
 enable depth. It is still on and still worth having, but it is not what settled
 this.
 
+## Fixed: the built-in keyboard stops dead, and nothing is logged
+
+The keyboard stops responding completely, at the login prompt or in a session.
+No error appears anywhere. The input daemon is running and healthy, the key
+controller's interrupt is not disabled, and the chip answers on the bus.
+
+**The chip is holding its interrupt line asserted with your keystrokes queued
+behind it.** Read three registers on the TCA8418 at i2c `1-0034`:
+
+    sudo i2cget -y -f 1 0x34 0x02      # interrupt status
+    sudo i2cget -y -f 1 0x34 0x03      # queued key events
+
+Stuck, those read `0x01` and a non-zero count. Ten events were queued in the
+case that produced this section.
+
+**Why it cannot recover by itself.** That pin is a level. The chip holds it
+asserted for as long as anything is queued, and asserting it again when it is
+already asserted produces no transition. The device tree describes it as
+`IRQ_TYPE_EDGE_FALLING` and the driver takes its trigger type from there, so
+the kernel only ever hears the moment the pin becomes asserted. Once the driver
+finishes a pass with the chip still asserting, the pin never returns high and
+no further interrupt can be delivered, ever. The count in `/proc/interrupts`
+freezes:
+
+    grep tca8418 /proc/interrupts
+
+Nothing is logged because the handler is never entered. That silence is what
+makes this hard to recognise; a level-triggered line in the same state would
+storm instead, which is what the PMIC did.
+
+**The race.** The handler drains the FIFO until it reads an empty slot, and
+only then writes the register that acknowledges. A key pressed between those
+two i2c transfers leaves a fresh event queued and the status set again. On this
+machine the window is wide, because both nubs are polled on the same bus every
+25 ms and keypad transfers queue behind them.
+
+**Rebinding the driver does not help.** The chip keeps its FIFO and its status
+across an unbind, and nothing in the driver's startup path clears them, so it
+reattaches to a chip that is already asserting and is dead from that moment.
+Confirmed: after an unbind and rebind the two registers still read `0x01` and
+ten events.
+
+**Fixed by `patches/0006`**, which services the chip in a loop until it reports
+nothing pending, so an event arriving mid-drain is handled in the same
+invocation instead of waiting for an edge that cannot come, and which does the
+same once at the end of probe so the driver always starts from a released pin.
+
+### Getting the keyboard back without that kernel
+
+You need another way in, because the keyboard is the broken thing: ssh, or the
+touchscreen with an on-screen keyboard.
+
+    sudo pyra-keypad-rescue
+
+It reads the queued events out and clears the status, which releases the pin.
+The queued keystrokes are discarded. It changes nothing if the chip is not
+stuck. To confirm, press keys while watching the count:
+
+    grep tca8418 /proc/interrupts
+
+By hand, if the script is not installed, it is a read of register `0x04` per
+queued event followed by `sudo i2cset -y -f 1 0x34 0x02 0xff`.
+
 ## Fixed: two of the six SD hosts were phantoms, and they were what broke suspend
 
 `mmc1` and `mmc2` have no hardware behind them. Everything real works: the

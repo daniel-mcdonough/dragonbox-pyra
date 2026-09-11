@@ -15,7 +15,7 @@ spine, and it points at the other documents rather than repeating them.
 | --- | --- | --- |
 | Rootfs | The Pyra project's trixie image, grown onto the whole card | `procedure.md` sections 1 to 3 |
 | Five fixes | Xorg, first-run wizard, nubs, GLX, USB hub | `pc/pyra-trixie-prep.sh`, applied offline |
-| Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the five patches | `pc/pyra-crossbuild.sh kernel-fix` |
+| Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the six patches | `pc/pyra-crossbuild.sh kernel-fix` |
 | X display driver | **Stock**, unmodified, from the Pyra repository | nothing to build |
 | Helpers | Boot selector, kernel installer, suspend test, hang trap, idle dimmer, profilers | `device/pyra-install-helpers.sh` |
 | Capture settings | `kernel.sysrq = 446` and all-CPU backtraces | installed with the helpers |
@@ -53,7 +53,7 @@ It cross-compiles in a throwaway Debian container, so nothing is installed on
 your host beyond the image, and the Pyra is not involved. The output is
 `~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz`.
 
-The build prints each patch as it applies it. All five must say `applied` or
+The build prints each patch as it applies it. All six must say `applied` or
 `already`; a patch that will not apply stops the build rather than producing a
 kernel that is missing a fix it claims to have. `building.md` has what each
 patch does and why.
@@ -153,6 +153,14 @@ nubs sit on, before the suspend and after the resume:
     b=$(awk '/48072000.i2c/{print $2}' /proc/interrupts); echo $(( (b-a)/2 ))
 
 Both readings should be about 450. Before the patch the second one is zero.
+
+**The keyboard keeps working.** This is `patches/0006`. There is no passive
+check for it; the fault is rare and needs a key pressed inside a window of a
+few milliseconds. What tells you it has happened is a keyboard that is
+completely dead with nothing in the log, and a frozen count here while you
+type:
+
+    grep tca8418 /proc/interrupts
 
 **The display patch cannot be checked this way.** It is a bound on two loops
 that should never be reached, so a healthy machine looks identical with and

@@ -41,6 +41,7 @@ pyra-cpu-attribution.sh             /usr/local/sbin                    0755
 pyra-x-load-profile.sh              /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
+pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-idle-dim                       /usr/local/bin                     0755
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 "

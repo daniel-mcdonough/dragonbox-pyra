@@ -1,0 +1,85 @@
+#!/bin/sh
+# Unstick the Pyra's built-in keyboard when it stops responding entirely.
+#
+# The TCA8418 key matrix controller signals with a level: it holds its INT pin
+# asserted for as long as it has anything queued. The device tree describes
+# that pin as edge triggered, so the kernel only notices the moment it becomes
+# asserted. If the driver ever finishes a pass with the chip still asserting --
+# which happens when a key arrives between the last FIFO read and the write
+# that acknowledges -- the pin never returns high, no further edge is ever
+# delivered, and the keyboard is dead. Nothing is logged, because the handler
+# is never entered.
+#
+# This reads the queued key events out and clears the interrupt status, which
+# releases the pin and lets the next keypress deliver an edge again. The
+# queued keystrokes are discarded; they are whatever you typed while it was
+# dead.
+#
+# Fixed in the kernel by patches/0006. This is for a machine that is not
+# running that kernel yet, or a case it does not cover. It changes nothing if
+# the chip is not stuck.
+#
+# You will need another way in to run this, because the keyboard is the thing
+# that is broken: ssh, or the touchscreen and an on-screen keyboard.
+
+set -eu
+
+BUS=1
+ADDR=0x34
+REG_INT_STAT=0x02
+REG_KEY_LCK_EC=0x03
+REG_KEY_EVENT_A=0x04
+MAX_EVENTS=20
+
+die() { echo "FAILED: $*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "run me as root"
+command -v i2cget >/dev/null || die "i2c-tools is not installed"
+
+[ -e "/sys/bus/i2c/devices/$BUS-0034/name" ] ||
+	die "no i2c device at $BUS-0034; this is not a Pyra mainboard"
+[ "$(cat "/sys/bus/i2c/devices/$BUS-0034/name")" = tca8418 ] ||
+	die "$BUS-0034 is not the tca8418"
+
+# -f because the kernel driver owns this address. It is only doing what the
+# driver would have done, and by the time you are running this the driver is
+# not doing anything at all.
+get() { i2cget -y -f "$BUS" "$ADDR" "$1"; }
+
+stat=$(get $REG_INT_STAT)
+count=$(get $REG_KEY_LCK_EC)
+
+echo "interrupt status $stat, $((count)) event(s) queued"
+
+if [ "$stat" = 0x00 ] && [ "$((count))" = 0 ]; then
+	echo "The chip is not asserting and has nothing queued, so this is not"
+	echo "the fault you are looking at. Check that pyrainput is running:"
+	echo
+	echo "    systemctl status pyrainput"
+	exit 0
+fi
+
+n=0
+while [ "$((count))" -gt 0 ] && [ "$n" -lt "$MAX_EVENTS" ]; do
+	get $REG_KEY_EVENT_A >/dev/null
+	count=$(get $REG_KEY_LCK_EC)
+	n=$((n + 1))
+done
+
+[ "$((count))" = 0 ] || die "still $((count)) queued after $n reads"
+
+i2cset -y -f "$BUS" "$ADDR" $REG_INT_STAT 0xff
+
+stat=$(get $REG_INT_STAT)
+count=$(get $REG_KEY_LCK_EC)
+
+if [ "$stat" = 0x00 ] && [ "$((count))" = 0 ]; then
+	echo "drained $n event(s) and cleared the status; the keyboard should work"
+	echo
+	echo "Watch it prove itself, pressing keys as you do:"
+	echo
+	echo "    grep tca8418 /proc/interrupts"
+	exit 0
+fi
+
+die "chip still reports status $stat and $((count)) queued"

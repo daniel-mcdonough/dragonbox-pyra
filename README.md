@@ -11,10 +11,10 @@ box86 — including a 1999 Windows game under an x86 Wine.
 The eMMC is never touched, so the bookworm-7 install stays intact as a recovery
 path.
 
-### Four faults you should know about before you rely on it
+### Five faults you should know about before you rely on it
 
-All four are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. Three are fixed. The fourth has a candidate fix that cannot
+All five are diagnosed in `docs/troubleshooting.md`, each with the evidence
+that identified it. Four are fixed. The fifth has a candidate fix that cannot
 be confirmed until it next fails to happen. The kernel patches are in
 `patches/`, built by `./pc/pyra-crossbuild.sh kernel-fix`.
 
@@ -50,6 +50,15 @@ and its suspend callback cancels that poll while its resume callback forgets to
 restart it. Only reopening the input device brings it back, which is why a
 reboot fixed it and why restarting the input daemon did too. **Fixed by
 `patches/0005`.**
+
+**The built-in keyboard can stop dead, silently.** The key controller signals
+with a level held asserted while anything is queued, but the device tree
+describes the line as edge triggered, so the kernel hears only the moment it
+becomes asserted. A key pressed in the window between the driver draining the
+queue and acknowledging leaves the line asserted with nothing able to signal
+again. Nothing is logged, because the handler is never entered. **Fixed by
+`patches/0006`**, with `device/pyra-keypad-rescue` to unstick a machine that is
+not running it yet.
 
 ---
 
@@ -105,7 +114,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
-| `patches/` | Five kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
+| `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra
 
@@ -118,6 +127,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
+| `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
