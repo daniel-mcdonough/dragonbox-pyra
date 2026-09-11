@@ -216,6 +216,99 @@ toggles DPMS by hand. It does not make `x11perf` safe to run.
 
 ---
 
+## The machine will not sleep, and trying to freezes the desktop
+
+**Symptom.** Idle suspend never happens. Some time later the screen comes back
+to a bare background with a working mouse pointer and no desktop and no login
+prompt. The pointer moves, nothing else responds. SSH still works.
+
+**What is actually happening.** The suspend started and never finished, and the
+desktop is frozen because of it. `systemd-sleep` freezes `user.slice` before it
+writes to `/sys/power/state`, and thaws it afterwards. There is no afterwards.
+The X server lives in `system.slice` so it keeps running and keeps drawing the
+hardware cursor, which is why the pointer still moves over a dead desktop.
+
+**Where it stops.** In the kernel's MMC suspend hook, waiting forever. Taken
+with `echo w > /proc/sysrq-trigger` on a live machine stuck this way:
+
+    systemd-sleep   D
+      state_store            <- writing "mem" to /sys/power/state
+      pm_suspend
+      __pm_notifier_call_chain
+      mmc_pm_notify          <- the MMC subsystem's suspend hook
+      __cancel_work_timer
+      __flush_work
+      wait_for_completion    <- never returns
+
+`mmc_pm_notify()` cancels each host's card-detect work and waits for it to
+finish. On this machine two of those never finish, so suspend cannot even get
+as far as freezing tasks. `dmesg` shows it stopping exactly there, with no
+`Freezing user space processes` line after it:
+
+    PM: suspend entry (deep)
+    Filesystems sync: 0.104 seconds
+
+**Why those two never finish.** They are not real card slots. See the SD mux
+section below. Two phantom MMC hosts get registered with no controller behind
+them, their rescans block forever in `sdio_reset`, and every suspend attempt
+then waits on those rescans.
+
+**Recovering a session that is already frozen**, without rebooting:
+
+    sudo systemctl thaw user.slice
+
+The desktop comes straight back. The stuck `systemd-sleep` cannot be killed —
+it is blocked in an uninterruptible kernel wait — so suspend stays broken until
+the next boot, and NetworkManager stays in its ASLEEP state with WiFi
+unmanaged. Put WiFi back with:
+
+    sudo nmcli device set wlan0 managed yes
+
+**Stopping it happening again.** Until the driver is fixed, refuse the
+operation outright rather than relying on desktop settings:
+
+    sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
+                        suspend-then-hibernate.target hibernate.target
+
+With those masked, an idle timeout fails immediately instead of freezing the
+session, because `systemd-suspend.service` never starts and so nothing ever
+freezes `user.slice`. Undo with `systemctl unmask` once the kernel is fixed.
+
+## Two of the six SD hosts are phantoms, and they are what breaks suspend
+
+`mmc1` and `mmc2` have no hardware behind them. Everything real works: the
+full-size card slot, the eMMC and the WiFi radio each have their own host, and
+a second card slot shares the eMMC's controller through a hardware mux switched
+by hand:
+
+    cat /sys/devices/platform/txs02612/switch     # eMMC or uSD
+
+The phantoms come from a stub node kept deliberately at the root of the device
+tree, with the comment *"keep this as long as the txs02612 driver does not
+exist/work as mmc slave driver"*. The driver finds no controller for it and
+says so plainly at boot:
+
+    txs02612 txs02612: failed to get mmc phandle in /txs02612 node
+    txs02612 txs02612: could not get access to host port, using manual mode
+
+and then registers two card hosts anyway, because of a forced condition left in
+`drivers/mmc/host/txs02612.c`:
+
+    if (1 || !IS_ERR_OR_NULL(data->host)) {
+
+The `1 ||` makes the test meaningless. Two hosts appear, the MMC core tries to
+reset a card on each, and those requests never complete. The workers sit in
+uninterruptible sleep from early boot onwards. On the stock kernel nothing says
+so; the lockup-detector kernel reports them within 30 seconds of boot.
+
+This costs no CPU. Blocked is not spinning. What it costs is suspend, above.
+
+**The fix is one deletion**: drop the `1 || ` so the driver refuses to register
+hosts it cannot serve. The sysfs `switch` control is created earlier in the
+same function, so it survives. `CONFIG_MMC_TXS02612=y` in both kernels here, so
+there is no module to blacklist and this needs a kernel rebuild;
+`building.md` has that.
+
 ## The card will not mount: `Failed to get valid F2FS checkpoint`
 
 Seen 2026-09-10. The symptom, from the Pyra's own boot:
