@@ -82,7 +82,7 @@ fi
 # Everything below the detach runs with no controlling terminal, so all output
 # goes to the log and the caller polls it.
 one_round() {
-	local mode=$1 log=$2 t0 rc count tries
+	local mode=$1 log=$2 t0 path rc count tries
 
 	echo "=== $mode ===" >>"$log"
 
@@ -132,6 +132,19 @@ one_round() {
 	local frozen
 	frozen=$(systemctl show user.slice -p FreezerState --value 2>/dev/null || echo unknown)
 	echo "user.slice FreezerState: $frozen" >>"$log"
+
+	# Writing "mem" does not decide how deep it goes; /sys/power/mem_sleep
+	# does, and it can make "mem" mean s2idle without saying so anywhere in
+	# the result. The kernel names the path it took on the way in, so take
+	# the answer from there rather than inferring it.
+	path=$(dmesg | sed -n 's/.*PM: suspend entry (\(.*\))$/\1/p' | tail -1)
+	if [ -n "$path" ]; then
+		echo "the kernel took the '$path' path" >>"$log"
+		if [ "$mode" = mem ] && [ "$path" != deep ]; then
+			echo "WARNING: 'mem' did not go deep. What it will do is in:" >>"$log"
+			echo "  cat /sys/power/mem_sleep" >>"$log"
+		fi
+	fi
 	if [ "$frozen" = frozen ]; then
 		echo "RESULT $mode: CAME BACK BUT THE SESSION IS FROZEN." >>"$log"
 		echo "  Recover it with: systemctl thaw user.slice" >>"$log"

@@ -563,6 +563,94 @@ it should. The bootloader hint is stale: this card runs U-Boot 2016.11, far
 newer than the version it suggests. Identified, not chased, and it is a
 battery-life question rather than a correctness one.
 
+### There is no standby state on this machine, and there cannot be
+
+Linux names three sleep states. `standby`, the shallow one that keeps the
+system-on-chip powered and only stops the clocks, is not one of the two this
+machine offers:
+
+    $ cat /sys/power/state
+    freeze mem
+
+Writing `standby` there is refused, and nothing happens. That is not a missing
+kernel option. Every OMAP board declares a single valid suspend state, in
+`arch/arm/mach-omap2/pm.c`:
+
+    static const struct platform_suspend_ops omap_pm_ops = {
+            ...
+            .valid  = suspend_valid_only_mem,
+    };
+
+`suspend_valid_only_mem()` returns true for `PM_SUSPEND_MEM` and nothing else,
+and the platform's own `omap_pm_enter()` returns `-EINVAL` for any other state,
+so the two refusals agree. Offering `standby` would mean writing a second
+low-power sequence for the power and reset controller, and there is no reason
+to want one: the sequence that already exists does not reach the state it asks
+for, as the messages above say, so a deliberately shallower one would save
+nothing.
+
+What you have instead are the two ends:
+
+| State | What it is | What it costs |
+| --- | --- | --- |
+| `freeze` | Suspend to idle. Tasks are frozen, devices suspended, the cores park in their deepest idle state. Nothing in the power controller is touched. | Resumes instantly and from anything. Saves the least. |
+| `mem` | Suspend to RAM, which on this board means the `deep` path. Non-boot CPUs go down, the power controller is asked for its low-power state and declines part of it. | About two seconds each way. Needs a wake source that survives it. |
+
+`mem` has a second switch behind it. `/sys/power/mem_sleep` decides what `mem`
+means, and if it is set to `s2idle` then writing `mem` quietly does the same
+thing as writing `freeze`:
+
+    $ cat /sys/power/mem_sleep
+    s2idle [deep]
+
+The bracketed one is what you will get. Nothing in the result of the write says
+which happened, which is why `device/pyra-sleep-test.sh` reads the path back
+out of the kernel log afterwards rather than assuming.
+
+### Testing either of them
+
+`device/pyra-sleep-test.sh` is the whole test. It arms the real-time clock
+first, so nothing depends on a wake key working; it detaches, so running it
+over SSH survives the connection dropping; and it checks that `user.slice`
+thawed afterwards, which is the thing the old fault broke.
+
+    sudo ./pyra-sleep-test.sh                    # freeze, then mem
+    sudo ./pyra-sleep-test.sh --mode mem         # only suspend to RAM
+    sudo ./pyra-sleep-test.sh --seconds 60       # stay down longer
+
+A good run says which path the kernel took and that the session came back:
+
+    returned 0 after 21s of wall clock
+    user.slice FreezerState: running
+    the kernel took the 'deep' path
+    RESULT mem: ok, slept and resumed with the session intact
+
+Do not use `/proc/uptime` to work out how long it was really asleep. That clock
+counts the time spent suspended, so it advances by the full sleep either way.
+The kernel log timestamps do not count it, which is why a thirty second deep
+suspend shows about two seconds between `PM: suspend entry` and `PM: suspend
+exit`. Those two seconds are the cost of going down and coming back, not the
+time spent down.
+
+### What it saves, which is not measured
+
+Nobody has measured the difference between the two, or between either of them
+and an idle machine. The messages above give good reason to expect `mem` to be
+disappointing, since the parts of the chip that hold the most power refuse to
+enter their target state.
+
+The only instrument on board is the fuel gauge's coulomb counter, and it is
+only usable on battery:
+
+    cat /sys/class/power_supply/bq27421-0/charge_now    # in uAh
+    cat /sys/class/power_supply/bq27421-0/current_now   # signed, uA
+
+With the charger connected the battery reads `Charging` with a positive
+current, and any before-and-after comparison measures the charger. Unplug it,
+read `charge_now`, sleep for an hour with `--seconds 3600`, read it again, and
+the difference over the elapsed hours is the average draw. An hour is the right
+order: over thirty seconds the counter's own resolution swamps the answer.
+
 ## Fixed: the nubs stopped on the first suspend and stayed stopped
 
 The pointer stopped responding to the nub and stayed dead until the machine was

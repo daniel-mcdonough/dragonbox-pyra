@@ -138,8 +138,10 @@ the load average at 2.0.
     sudo pyra-sleep-test.sh
 
 It arms the real-time clock so the machine wakes itself, tries suspend-to-idle
-first and only then suspend to RAM, and checks afterwards that the desktop
-session was thawed rather than left frozen.
+first and only then suspend to RAM, checks afterwards that the desktop session
+was thawed rather than left frozen, and reports which path the kernel actually
+took. Those two are the only sleep states this board has; there is no standby,
+and `docs/troubleshooting.md` says why.
 
 **Resume is quiet.** This is `patches/0004`. Waking the machine used to storm
 the PMIC's interrupt for as long as the resume took, hundreds to thousands of

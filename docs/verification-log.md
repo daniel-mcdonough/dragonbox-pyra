@@ -258,10 +258,14 @@ wake and its `wakeup_sources` event count doing the same. The nub poll read
 505/s afterwards and the keypad's two registers read `0x00`, so that wake
 exercised all three input fixes at once.
 
-The suspend was short, a couple of seconds, because the button was pressed
-almost immediately. That is still a real test of the thing in question: the
-window the fourth patch holds the interrupt across is entered and left
-regardless of how long the machine stays down.
+How long it stayed down is not knowable from that log. The kernel's monotonic
+clock does not advance across a deep suspend on this SoC, so the 2.1 seconds
+between the entry and the exit line is the cost of going down and coming back,
+not the time spent asleep. Measured against the real-time clock a 30 second
+deep suspend also shows about 1.8 seconds of monotonic time, which is what
+establishes that reading. The duration does not matter to what was being
+tested: the window the fourth patch holds the interrupt across is entered and
+left regardless of how long the machine stays down.
 
 ## 2026-09-11, late — the keypad controller, caught stuck
 
@@ -294,3 +298,51 @@ The patch is reasoned from the registers above and the driver source, and it
 compiles, which is a weaker claim than the one made for the nub fix on the same
 day. Treat it as untested until the keyboard has survived a long stretch of
 ordinary use.
+
+## 2026-09-12, small hours — what the machine will and will not do for sleep
+
+Prompted by the question of whether a standby state exists here. Run on the
+six-patch kernel, `5.6.19-fix` build 10. The machine was on external power
+throughout: the gauge read `Charging` at 95 mA and gained charge across the
+session, even though the charger's own `online` said 0.
+
+**`standby` is not offered and was refused.** `/sys/power/state` reads `freeze
+mem`. Writing `standby` to it failed and changed nothing; `/sys/power/state`
+read the same two words afterwards and `/sys/power/suspend_stats/fail` stayed
+at zero, so it was rejected before any attempt rather than tried and aborted.
+The source agrees: `arch/arm/mach-omap2/pm.c` gives `omap_pm_ops` a `.valid` of
+`suspend_valid_only_mem`, and its `omap_pm_enter()` has no case but
+`PM_SUSPEND_MEM`.
+
+**Both of the states that do exist work.** Three rounds, each woken by the
+real-time clock, each returning with `user.slice` thawed:
+
+| Path | Armed for | Wall clock | Kernel entry line |
+| --- | --- | --- | --- |
+| `freeze` | 30s | 31s | `PM: suspend entry (s2idle)` |
+| `mem` | 30s | 31s | `PM: suspend entry (deep)` |
+| `mem` | 20s | 21s | `PM: suspend entry (deep)` |
+
+**The deep path still does not reach its target state.** Every `mem` round
+logged the same five `didn't enter target state` lines and the same seven
+clocks that refused to stop, which is what was already recorded for the stock
+kernel. Nothing about the six patches changed it, and nothing was expected to.
+
+**The kernel log's timestamps do not measure how long it slept.** A thirty
+second deep suspend shows 1.8 seconds between `PM: suspend entry` and `PM:
+suspend exit`, because that clock does not advance while suspended.
+`/proc/uptime` does advance, by the full thirty seconds, so the two disagree by
+exactly the sleep. Neither is evidence about power: the earlier reading of the
+power button's log, which took a 2.1 second gap for a short suspend, was
+reading the resume cost.
+
+**Nothing new appeared in the log.** The three per-resume warnings are the ones
+already listed: `Unbalanced enable for IRQ 144` from the SGX blob, `unbalanced
+disables for otg_path`, and four `DSI error: VC(n) busy` lines. All three
+occurred on the s2idle path as well as the deep one, so neither path is worse
+than the other.
+
+**Not measured.** What either state saves. The only instrument is the fuel
+gauge's coulomb counter and the machine was on external power throughout, so
+every reading was of the charger. The procedure for measuring it properly is in
+`docs/troubleshooting.md`.
