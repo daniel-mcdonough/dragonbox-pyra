@@ -217,11 +217,9 @@ The config delta against stock is exactly this and no more:
 
 Both panic-on-lockup options are off, so it prints and carries on rather than
 dying. Two detectors rather than one, because the two plausible shapes of this
-fault need different ones: the softlockup detector catches a busy loop, which is
-the `R` at 99% that has been observed, and the hung-task detector catches an
-uninterruptible sleep, which is what a missing timeout in a `wait_for_*` would
-look like instead. One extra option costs nothing and saves a second
-build-and-reboot cycle if the fault turns out to be the other shape.
+fault need different ones: the softlockup detector catches a busy loop, and the
+hung-task detector catches an uninterruptible sleep, which is what a missing
+timeout in a `wait_for_*` would look like instead.
 
 `DEBUG_KERNEL` pulls several other debug options on by default, and the build
 turns four of them back off: `DEBUG_PREEMPT`, `RCU_TRACE`, `SCHED_DEBUG` and
@@ -230,10 +228,26 @@ every `preempt_disable`. The build checks all of this and refuses to continue if
 any of it fails to stick, rather than quietly producing a kernel that does not
 do what it says.
 
-**What it buys.** After 20 seconds of a spinning core the kernel prints
-`BUG: soft lockup - CPU#N stuck for Ns!` followed by the symbolised backtrace of
-the spinning thread, by itself, into `dmesg`. That is the evidence the whole
-exercise needs, and the stock kernel cannot produce it.
+**What it buys, and what it does not.** After 20 seconds of a spinning core
+the kernel prints `BUG: soft lockup - CPU#N stuck for Ns!` with the symbolised
+backtrace of the spinning thread, into `dmesg`, by itself. The stock kernel
+cannot produce that at all, and the hung-task half of it earned its keep
+immediately: it found the two SD workers that have been stuck since boot on
+every boot this machine has ever done.
+
+But it will not catch the display hang, and it is better to know that than to
+wait for a report that is not coming. The soft lockup detector does not watch
+for a busy CPU. Each core's watchdog timer queues a job on that core's stopper
+thread, which is real-time priority; the job updates a timestamp, and a stale
+timestamp is what declares the lockup. This kernel is `CONFIG_PREEMPT=y`, so a
+kernel loop that does not hold off preemption is preempted by that stopper
+thread like anything else and the timestamp never goes stale. The loops the
+display hang is now pinned to hold a mutex and nothing more, so they are
+preemptible and invisible to it.
+
+For that fault the capture is `echo l` to sysrq while the machine is still
+hung, which is what `pyra-modeset-hang-trap.sh` does and what
+`troubleshooting.md` describes.
 
 ### Installing it
 
@@ -355,24 +369,95 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ---
 
-## The two changes waiting for the next kernel build
+## The patch set, and the kernel that carries it
 
-Both are small, both are evidenced in `troubleshooting.md`, and they are
-independent of each other, so one build settles both.
+Three changes live in `patches/` as ordinary unified diffs. They are applied
+in order by `./pyra-crossbuild.sh kernel-fix`, which builds exactly what
+`kernel-debug` builds — same source, same compiler, same lockup detector —
+and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
+tree, so the unpatched `5.6.19-softlockup` build stays reproducible.
 
-### 1. Stop the mux driver registering hosts it cannot reach
+    ./pyra-crossbuild.sh kernel-fix
 
-This is the fix for suspend. `drivers/mmc/host/txs02612.c` fails to find its
-controller, says so, and then registers two card hosts regardless because of a
-forced condition someone left in:
+Built and staged 2026-09-11.
 
-    -	if (1 || !IS_ERR_OR_NULL(data->host)) {
-    +	if (!IS_ERR_OR_NULL(data->host)) {
+| | |
+| --- | --- |
+| version | `5.6.19-fix` |
+| kernel | `kernel/src-fix/arch/arm/boot/zImage` |
+| ready to install | `kernel/fix-kernel.tar.gz`, 23 MB |
+| symbols | `kernel/src-fix/vmlinux`, for resolving addresses out of a report |
 
-Deleting `1 || ` is the whole change. The sysfs `switch` control that selects
-between the eMMC and the second card slot is created earlier in the same
-function, so it survives. `CONFIG_MMC_TXS02612=y`, so there is no module to
-blacklist and this genuinely needs a rebuild.
+The build reports each patch as it goes, and the result carries all three:
+
+      applied  0001-omapdrm-dsi-bound-the-rx-fifo-drain-loops.patch
+      applied  0002-omapdrm-dispc-report-the-runtime-pm-errno.patch
+      applied  0003-mmc-txs02612-refuse-phantom-hosts.patch
+
+Install it the same way as the lockup-detector kernel, with
+`pyra-install-debug-kernel.sh`. It reads the release name out of the tarball,
+so name the tarball you mean — with both of them sitting in `/home/pyra` it
+refuses to guess:
+
+    scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
+    sudo ./pyra-install-debug-kernel.sh fix-kernel.tar.gz
+    sudo pyra-boot-kernel.sh debug --once
+
+There is one test slot in the boot configuration, `l1`, and installing points
+it at the kernel you just installed. The older test kernel's files stay in
+`/boot` but drop out of the configuration, so going back to it means running
+the installer again with its tarball. The stock kernel is never touched and
+stays the default.
+
+The patch step is idempotent. A patch already present in the tree is reported
+as `already` and skipped, one that will not apply stops the build rather than
+producing a kernel that is missing a fix it claims to have.
+
+### 1. Bound the two DSI receive-FIFO drain loops
+
+`0001-omapdrm-dsi-bound-the-rx-fifo-drain-loops.patch`. This is the candidate
+fix for the modeset hang, and the reasoning is in `troubleshooting.md`.
+
+`dsi_vc_flush_receive_data()` and `dsi_vc_flush_long_data()` spin on a status
+bit with no iteration limit and no timeout. They are the only unbounded
+busy-waits left anywhere in the modeset path, they are reached from every DCS
+write the panel driver makes while the display is being enabled, and a loop
+there never reaches a signal check. The patch caps both at 256 reads and lets
+the callers' existing `-EIO` paths unwind.
+
+**How to know it worked.** You cannot prove a negative here, but you can watch
+for the give-up message, which is new and appears only in the case that used
+to hang:
+
+    sudo dmesg | grep "rx fifo will not drain"
+
+If that line ever appears, the diagnosis was right and the machine survived
+something that previously needed a reboot.
+
+### 2. Print the error the display controller is failing with
+
+`0002-omapdrm-dispc-report-the-runtime-pm-errno.patch`. Evidence, not a fix.
+
+`dispc_runtime_put()` fired twice in 1587 modesets, from the atomic commit
+worker, and the assertion was bare, so the return value that would identify
+the failure was thrown away. `-EBUSY` or `-EAGAIN` would mean the device
+simply declined to idle, which is unremarkable; anything else would mean the
+suspend callback itself failed.
+
+Worth pairing with a look at what runtime PM thinks, across a modeset:
+
+    watch -n0.5 cat /sys/devices/platform/44000000.ocp/*/*/58000000.dss/power/runtime_status
+
+### 3. Stop the mux driver registering hosts it cannot reach
+
+`0003-mmc-txs02612-refuse-phantom-hosts.patch`. This is the fix for suspend.
+
+`drivers/mmc/host/txs02612.c` fails to find its controller, says so, and then
+registers two card hosts regardless because of a forced condition someone left
+in. Deleting `1 || ` is the whole change. The sysfs `switch` control that
+selects between the eMMC and the second card slot is created earlier in the
+same function, so it survives. `CONFIG_MMC_TXS02612=y`, so there is no module
+to blacklist and this genuinely needs a rebuild.
 
 **How to know it worked.** Boot it and look for the two hosts:
 
@@ -380,30 +465,6 @@ blacklist and this genuinely needs a rebuild.
     ps -eo stat,comm | grep '^D'     # expect no kworker stuck in D state
 
 then unmask the sleep targets and try to suspend.
-
-### 2. Print the error the display controller is failing with
-
-This is not a fix, it is the next piece of evidence for the modeset hang.
-`dispc_runtime_put()` in `drivers/gpu/drm/omapdrm/dss/dispc.c` fired twice in
-1587 modesets, from the atomic commit worker, and the assertion is bare so the
-return value that would identify the failure is thrown away:
-
-    	r = pm_runtime_put_sync(&dispc->pdev->dev);
-    -	WARN_ON(r < 0 && r != -ENOSYS);
-    +	if (r < 0 && r != -ENOSYS)
-    +		WARN(1, "dispc_runtime_put: pm_runtime_put_sync returned %d\n", r);
-
-`-EBUSY` would mean something still holds the device, `-EAGAIN` that the
-request was deferred, and either would say a great deal about how a later
-modeset ends up waiting on a block that is not going to answer.
-
-Worth pairing with a look at what runtime PM thinks, across a modeset:
-
-    watch -n0.5 cat /sys/devices/platform/44000000.ocp/*/*/58000000.dss/power/runtime_status
-
-Build both with `PYRA_KERNELRELEASE=5.6.19-fix ./pyra-crossbuild.sh kernel` so
-the result installs beside the stock kernel and the lockup-detector kernel
-rather than over either of them, and select it with `pyra-boot-kernel.sh`.
 
 ## Backups
 

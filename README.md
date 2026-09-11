@@ -14,15 +14,20 @@ path.
 ### Three faults you should know about before you rely on it
 
 All three are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. Two of them are one kernel rebuild away from being fixed
-properly; the third is not yet understood.
+that identified it. The third is fixed in userspace. The first two need a
+kernel, and the patches for both are in `patches/`, built by
+`./pyra-crossbuild.sh kernel-fix`; one is a proven fix, the other a
+well-supported guess.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
 reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
 blanking is enough to hit it. Mitigated rather than fixed, and the mitigation
 does not protect you from a program that toggles DPMS itself. Not reproducible
 on demand: roughly 2100 deliberate modesets across three configurations have
-not triggered it once. **Unsolved.**
+not triggered it once. The search is now down to two lines: the only two
+unbounded busy-wait loops left in the whole modeset path, both draining the
+display link's receive queue, both sitting under every display power-on.
+**Candidate fix written, not yet confirmed.**
 
 **It will not suspend, and trying freezes the desktop.** Two phantom SD hosts,
 created by an unfinished mux driver from a stub device tree node, block
@@ -30,7 +35,7 @@ forever. The kernel's SD suspend hook waits on them and never returns, and
 because systemd freezes your session before writing to `/sys/power/state` and
 thaws it afterwards, there is no afterwards. You get a background and a working
 mouse pointer and nothing else. **Cause proven, sleep is masked on this build,
-and the kernel fix is deleting two characters.**
+and the kernel fix is deleting two characters.** It is `patches/0003`.
 
 **The screen never dims.** MATE's backlight helper recognises four device
 names, none of which exist here, and falls back to the first entry it finds,
@@ -86,6 +91,7 @@ change nothing and need no privileges beyond reading `/proc`.
 | `pyra-idle-dim` | Pyra | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
 | `pyra-verify-card-metadata.sh` | PC | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
 | `pyra-crossbuild.sh` | PC | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
+| `patches/` | PC | Three kernel patches: the candidate display fix, the suspend fix, and one that prints an error the driver was discarding. Applied by `pyra-crossbuild.sh kernel-fix`. |
 | `pyra-exa-fallback-bench.c` | Pyra | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 
 `pyra-usb3503-rescue.service` is the unit for the rescue script. Both are

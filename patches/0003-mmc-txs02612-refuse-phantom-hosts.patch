@@ -1,0 +1,31 @@
+mmc: txs02612: do not register hosts the driver cannot serve
+
+txs_probe() looks up the MMC host it multiplexes, reports plainly when it
+cannot find one, and then registers two card hosts anyway because the
+test that should have stopped it is written "if (1 || ...)".
+
+On the Pyra the device tree keeps a stub txs02612 node at the root with
+no mmc phandle, so this happens on every boot.  Two phantom hosts appear,
+the MMC core tries to reset a card on each, and those requests never
+complete; the rescan workers sit in uninterruptible sleep from boot
+onwards.  That costs no CPU, but it breaks suspend outright:
+mmc_pm_notify() cancels each host's card-detect work and waits for it, so
+the system never gets as far as freezing tasks, and systemd never thaws
+the user session it froze on the way in.  The desktop is left frozen with
+a working mouse pointer and the only recovery is "systemctl thaw
+user.slice".
+
+Drop the forced condition.  The sysfs "switch" control is created earlier
+in the same function, so manual muxing of the two card slots still works.
+
+--- a/drivers/mmc/host/txs02612.c	2026-09-10 22:19:00.604520246 -0400
++++ b/drivers/mmc/host/txs02612.c	2026-09-10 22:19:19.914919745 -0400
+@@ -292,7 +292,7 @@
+ 
+ 	mutex_init(&data->lock);
+ 
+-	if (1 || !IS_ERR_OR_NULL(data->host)) {
++	if (!IS_ERR_OR_NULL(data->host)) {
+ 		/* setup our client ports */
+ 
+ 		// alternatively loop over OF children

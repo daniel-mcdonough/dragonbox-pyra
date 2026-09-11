@@ -1,0 +1,29 @@
+omapdrm/dispc: say why the runtime PM put failed
+
+dispc_runtime_put() checks pm_runtime_put_sync() with a bare WARN_ON,
+which reports that something went wrong and then discards the errno that
+would say what.  It fired twice in a run of 1587 deliberate modesets on
+the Pyra, both times from the atomic commit worker, and there was no way
+to tell a device that merely declined to idle from a suspend callback
+that actually failed.
+
+Print the value.
+
+--- a/drivers/gpu/drm/omapdrm/dss/dispc.c	2026-09-10 22:19:00.603565638 -0400
++++ b/drivers/gpu/drm/omapdrm/dss/dispc.c	2026-09-10 22:19:19.914758257 -0400
+@@ -664,7 +664,14 @@
+ 	DSSDBG("dispc_runtime_put\n");
+ 
+ 	r = pm_runtime_put_sync(&dispc->pdev->dev);
+-	WARN_ON(r < 0 && r != -ENOSYS);
++	/*
++	 * This fires, rarely, from the atomic commit worker.  A bare WARN_ON
++	 * throws away the one piece of information that would say why, so
++	 * print the errno: -EBUSY and -EAGAIN mean the device simply declined
++	 * to idle, anything else is a real failure of the suspend callback.
++	 */
++	WARN(r < 0 && r != -ENOSYS,
++	     "dispc_runtime_put: pm_runtime_put_sync returned %d\n", r);
+ }
+ 
+ static u32 dispc_mgr_get_vsync_irq(struct dispc_device *dispc,

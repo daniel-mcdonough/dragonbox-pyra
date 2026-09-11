@@ -6,11 +6,12 @@
 #   ./pyra-crossbuild.sh kernel              zImage, modules and dtbs
 #   ./pyra-crossbuild.sh kernel bindeb-pkg   the same, as installable .debs
 #   ./pyra-crossbuild.sh kernel-debug        a kernel that reports lockups
+#   ./pyra-crossbuild.sh kernel-fix          the same, plus everything in patches/
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
 #
-# Both are real cross-compiles inside a throwaway Debian container, not qemu
+# These are real cross-compiles inside a throwaway Debian container, not qemu
 # emulation, so a full kernel takes minutes rather than the hours it costs to
 # build natively on the Pyra's two Cortex-A15s. Nothing is installed on the
 # host beyond the container image, and the Pyra's rootfs is never touched.
@@ -24,6 +25,8 @@
 # with gcc 14 and bookworm's gcc 12 is what upstream used.
 #
 set -euo pipefail
+
+SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 
 REPO=https://packages.pyra-handheld.com/trixie
 BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
@@ -115,30 +118,63 @@ build_kernel() {
 	ls -la "$dir"/src/arch/arm/boot/zImage "$dir"/*.deb 2>/dev/null || true
 }
 
-# A kernel that says where it is stuck, instead of sitting there silently.
+# Two more kernels are built beside the stock one. They share everything but
+# what they carry:
+#
+#   kernel-debug   5.6.19-softlockup   stock source, plus a lockup detector
+#   kernel-fix     5.6.19-fix          the same, plus everything in patches/
 #
 # The stock config has no lockup detector of any kind, which is why two hangs
-# that pinned a core for minutes produced no kernel message at all. This build
-# turns that on, and nothing else: same source, same compiler, same everything.
+# that pinned a core for minutes produced no kernel message at all. Both of
+# these turn that on: same source, same compiler, same everything else.
 #
-# It installs BESIDE the stock kernel as 5.6.19-softlockup, so the stock one
-# stays bootable and stays the default. See building.md.
-build_kernel_debug() {
+# Each installs BESIDE the stock kernel under its own release name, so the
+# stock one stays bootable and stays the default. See building.md.
+#
+#   $1  release suffix, also the tarball name
+#   $2  directory of patches to apply, empty for none
+#   $3  source directory under the work tree, one per variant so that a
+#       patched tree never leaks into an unpatched build
+build_kernel_variant() {
+	local suffix=$1 patchdir=$2 srcdir=$3
 	local dir=$BUILD_DIR/kernel
 	fetch "$KERNEL_DSC" "$KERNEL_SHA" "$dir"
-	[ -d "$dir/src" ] || run debian:bookworm "$dir" '
+	if [ -n "$patchdir" ]; then
+		ls "$patchdir"/*.patch >/dev/null 2>&1 || die "no patches in $patchdir"
+		rm -rf "$dir/patches"
+		cp -r "$patchdir" "$dir/patches"
+	else
+		rm -rf "$dir/patches"
+	fi
+	[ -d "$dir/$srcdir" ] || run debian:bookworm "$dir" '
 		apt-get update -qq
 		apt-get install -y --no-install-recommends dpkg-dev >/dev/null
-		dpkg-source -x '"$KERNEL_DSC"' src
+		dpkg-source -x '"$KERNEL_DSC"' '"$srcdir"'
 	'
 	run debian:bookworm "$dir" '
+		export SUFFIX='"$suffix"'
 		apt-get update -qq
 		apt-get install -y --no-install-recommends \
 			crossbuild-essential-armhf bc rsync kmod cpio bison flex \
-			libssl-dev libyaml-dev openssl dpkg-dev debhelper >/dev/null
-		cd src
+			libssl-dev libyaml-dev openssl dpkg-dev debhelper patch >/dev/null
+		cd '"$srcdir"'
 		export ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf-
-		export KERNELRELEASE=5.6.19-softlockup KBUILD_BUILD_VERSION=10
+		export KERNELRELEASE=5.6.19-$SUFFIX KBUILD_BUILD_VERSION=10
+
+		# Apply the patch set, if there is one. A rebuild must not fail
+		# just because the tree is already patched, so check both
+		# directions and only stop if it is neither.
+		for p in ../patches/*.patch; do
+			[ -e "$p" ] || break
+			if patch -p1 --dry-run --forward --silent <"$p" >/dev/null 2>&1; then
+				patch -p1 --forward --silent <"$p"
+				echo "  applied  $(basename $p)"
+			elif patch -p1 --dry-run --reverse --silent <"$p" >/dev/null 2>&1; then
+				echo "  already  $(basename $p)"
+			else
+				echo "  FAIL     $(basename $p) does not apply"; exit 1
+			fi
+		done
 
 		# Keep the untouched config recoverable.
 		[ -f .config.stock ] || cp .config .config.stock
@@ -152,7 +188,7 @@ build_kernel_debug() {
 			--enable  DETECT_HUNG_TASK \
 			--disable BOOTPARAM_HUNG_TASK_PANIC \
 			--set-val DEFAULT_HUNG_TASK_TIMEOUT 30 \
-			--set-str LOCALVERSION "-softlockup" \
+			--set-str LOCALVERSION "-$SUFFIX" \
 			--disable DEBUG_PREEMPT \
 			--disable RCU_TRACE \
 			--disable SCHED_DEBUG \
@@ -194,7 +230,7 @@ build_kernel_debug() {
 		# initrd is deliberately not here: it has to be generated on
 		# the device, against the device'"'"'s own userspace.
 		rm -rf ../staging
-		mkdir -p ../staging/boot/dtb/linux-image-5.6.19-softlockup
+		mkdir -p ../staging/boot/dtb/linux-image-5.6.19-$SUFFIX
 		make INSTALL_MOD_PATH=../staging INSTALL_MOD_STRIP=1 modules_install
 		# modules_install writes to staging/lib/modules. Debian trixie is
 		# usr-merged, where /lib is a symlink to usr/lib, and GNU tar
@@ -207,32 +243,36 @@ build_kernel_debug() {
 		# entry at all.
 		mkdir -p ../staging/usr
 		mv ../staging/lib ../staging/usr/lib
-		cp arch/arm/boot/zImage ../staging/boot/vmlinuz-5.6.19-softlockup
-		cp System.map ../staging/boot/System.map-5.6.19-softlockup
-		cp .config ../staging/boot/config-5.6.19-softlockup
-		cp arch/arm/boot/dts/*.dtb ../staging/boot/dtb/linux-image-5.6.19-softlockup/
+		cp arch/arm/boot/zImage ../staging/boot/vmlinuz-5.6.19-$SUFFIX
+		cp System.map ../staging/boot/System.map-5.6.19-$SUFFIX
+		cp .config ../staging/boot/config-5.6.19-$SUFFIX
+		cp arch/arm/boot/dts/*.dtb ../staging/boot/dtb/linux-image-5.6.19-$SUFFIX/
 		# The modules tree'"'"'s build/source symlinks point into this
 		# container and would dangle on the Pyra.
-		rm -f ../staging/usr/lib/modules/5.6.19-softlockup/build \
-		      ../staging/usr/lib/modules/5.6.19-softlockup/source
+		rm -f ../staging/usr/lib/modules/5.6.19-$SUFFIX/build \
+		      ../staging/usr/lib/modules/5.6.19-$SUFFIX/source
 		cd ..
-		tar czf softlockup-kernel.tar.gz -C staging .
-		if tar tzf softlockup-kernel.tar.gz | grep -qx "./lib/"; then
+		tar czf $SUFFIX-kernel.tar.gz -C staging .
+		if tar tzf $SUFFIX-kernel.tar.gz | grep -qx "./lib/"; then
 			echo "REFUSING: the tarball contains a ./lib/ entry, which"
 			echo "would destroy the usr-merge symlink on extraction."
 			exit 1
 		fi
-		echo "staged $(du -sh staging | cut -f1), tarball $(du -h softlockup-kernel.tar.gz | cut -f1)"
+		echo "staged $(du -sh staging | cut -f1), tarball $(du -h $SUFFIX-kernel.tar.gz | cut -f1)"
 	'
 	echo
-	echo "built:   $dir/src/arch/arm/boot/zImage  (5.6.19-softlockup)"
-	echo "install: $dir/softlockup-kernel.tar.gz"
-	echo "symbols: $dir/src/vmlinux, for resolving addresses from a lockup report"
+	echo "built:   $dir/$srcdir/arch/arm/boot/zImage  (5.6.19-$suffix)"
+	echo "install: $dir/$suffix-kernel.tar.gz"
+	echo "symbols: $dir/$srcdir/vmlinux, for resolving addresses from a lockup report"
 }
+
+build_kernel_debug() { build_kernel_variant softlockup "" src; }
+build_kernel_fix()   { build_kernel_variant fix "$SELF_DIR/patches" src-fix; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
 	kernel)       shift; build_kernel "$@" ;;
 	kernel-debug) shift; build_kernel_debug ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug" ;;
+	kernel-fix)   shift; build_kernel_fix ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix" ;;
 esac

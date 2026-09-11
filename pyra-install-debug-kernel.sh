@@ -1,21 +1,31 @@
 #!/bin/bash
 #
-# pyra-install-debug-kernel.sh — install 5.6.19-softlockup beside the stock
-# kernel, on the Pyra, and add a boot menu entry for it.
+# pyra-install-debug-kernel.sh — install a test kernel beside the stock one,
+# on the Pyra, and give it a boot entry.
 #
-#   sudo ./pyra-install-debug-kernel.sh [/path/to/softlockup-kernel.tar.gz]
+#   sudo ./pyra-install-debug-kernel.sh [/path/to/something-kernel.tar.gz]
+#
+# Either of the tarballs `pyra-crossbuild.sh` produces will do:
+# `softlockup-kernel.tar.gz` or `fix-kernel.tar.gz`. The release name is read
+# out of the tarball rather than assumed, so there is nothing to keep in sync.
 #
 # Nothing here touches the stock kernel, its modules, its dtbs or its initrd,
 # and `default l0` is left alone, so the stock kernel stays what you get by
-# doing nothing. The debug kernel is chosen from the 30 second menu at each
-# boot, which means a bad one is a power cycle away from gone.
+# doing nothing. There is no boot menu on this machine — U-Boot has no display
+# driver, so the menu only exists over the serial console — which is why
+# `pyra-boot-kernel.sh` exists to choose between the two.
 #
-# Run it again to reinstall; every step is idempotent.
+# There is one test slot, `l1`. Installing a second test kernel points that
+# slot at the new one; the older kernel's files stay in /boot but drop out of
+# the boot configuration.
+#
+# Run it again to reinstall; every step is idempotent. It will not install
+# over the kernel you are currently running, to avoid replacing a live module
+# tree; boot the stock kernel first if you need to redo one.
 #
 set -euo pipefail
 
-REL=5.6.19-softlockup
-TARBALL=${1:-/home/pyra/softlockup-kernel.tar.gz}
+TARBALL=${1:-}
 CFG=/boot/extlinux/user.cfg
 STOCK=/boot/extlinux/linux.cfg
 
@@ -24,14 +34,31 @@ STOCK=/boot/extlinux/linux.cfg
 say() { printf '\n== %s\n' "$*"; }
 die() { printf '\nFAILED: %s\n' "$*" >&2; exit 1; }
 
+# With no argument, find the tarball, but only if there is exactly one. Two
+# candidates is a question for the operator, not something to guess at.
+if [ -z "$TARBALL" ]; then
+        found=$(ls -1 /home/pyra/*-kernel.tar.gz 2>/dev/null || true)
+        case $(printf '%s' "$found" | grep -c .) in
+        1) TARBALL=$found ;;
+        0) die "no *-kernel.tar.gz in /home/pyra; name one on the command line" ;;
+        *) die "more than one tarball in /home/pyra; name the one you want:
+$found" ;;
+        esac
+fi
+
 # ---------------------------------------------------------------- preflight
 say "checking this is the right machine"
 [ -f "$TARBALL" ]  || die "no tarball at $TARBALL"
+
+# The release name is whatever the tarball's kernel image is called.
+REL=$(tar tzf "$TARBALL" | sed -n 's|^\./boot/vmlinuz-||p' | head -1)
+[ -n "$REL" ] || die "$TARBALL has no ./boot/vmlinuz-* in it; is it a kernel tarball?"
+[ "$REL" != "$(uname -r)" ] || die "$REL is already the running kernel"
 [ -f "$STOCK" ]    || die "no $STOCK — this is not an extlinux Pyra card"
 [ -L /lib ]        || die "/lib is not a symlink; this rootfs is already broken"
 grep -q '^default l0' /boot/extlinux/extlinux.conf \
                    || die "extlinux.conf does not default to l0; refusing to guess"
-echo "  running $(uname -r), installing $REL beside it"
+echo "  running $(uname -r), installing $REL beside it, from $TARBALL"
 
 # The tarball must not carry a ./lib/ entry. trixie is usr-merged, /lib is a
 # symlink to usr/lib, and GNU tar extracting a ./lib/ DIRECTORY entry deletes
@@ -88,7 +115,7 @@ fi
 {
         cat <<EOF
 label l1
-	menu label trixie, kernel $REL (lockup detector)
+	menu label trixie, kernel $REL
 	linux /vmlinuz-$REL
 	append $APPEND
 	fdtdir /dtb/linux-image-$REL
@@ -123,8 +150,11 @@ df -h /boot | tail -1
 
 cat <<EOF
 
-Done. Reboot and pick "trixie, kernel $REL (lockup detector)" from the
-30 second menu. Doing nothing boots the stock kernel, as before.
+Done. It is installed but not selected: rebooting now still gets you the stock
+kernel. Choose it with
+
+    sudo pyra-boot-kernel.sh debug --once        # one boot, then back to stock
+    sudo pyra-boot-kernel.sh debug               # until you say otherwise
 
 Once it is up, confirm with:
 

@@ -1,0 +1,75 @@
+omapdrm/dsi: bound the two RX FIFO drain loops
+
+dsi_vc_flush_receive_data() and dsi_vc_flush_long_data() spin on the
+RX_FIFO_NOT_EMPTY bit of DSI_VC_CTRL with no iteration limit and no
+timeout.  They are the only unbounded busy-wait loops left in the omapdrm
+modeset path; every other wait in dsi.c, dispc.c and omap_dmm_tiler.c
+already has one.
+
+They are reached from dsi_vc_send_bta() and dsi_vc_write_common(), which
+is how every DCS write the panel driver makes during a display enable
+ends, so they sit directly under DRM_IOCTL_MODE_SETCRTC.  A loop there
+never reaches a signal check, so if the bit does not clear the calling
+process pins a CPU at 100% in state R and cannot be killed, which matches
+the modeset hang seen on the Pyra: the X server spins, the DISPC
+interrupt count drops to zero, SIGKILL does nothing and only a reboot
+recovers.
+
+Cap both loops.  The callers already have -EIO paths for a receive that
+did not work, so giving up unwinds cleanly and costs a failed modeset
+instead of a reboot.
+
+--- a/drivers/gpu/drm/omapdrm/dss/dsi.c	2026-09-10 22:19:00.603468340 -0400
++++ b/drivers/gpu/drm/omapdrm/dss/dsi.c	2026-09-10 22:19:19.914394141 -0400
+@@ -2442,10 +2442,31 @@
+ 		dsi_vc_send_null(dsi, channel);
+ }
+ 
++/*
++ * The receive FIFO is shared between the four virtual channels and holds a
++ * few tens of words, so a drain that has read several hundred is reading a
++ * status bit that is never going to clear.  Both drain loops below used to
++ * have no bound at all.  They run from the modeset path, in a kernel loop
++ * with no signal check, so a stuck RX_FIFO_NOT_EMPTY pins a CPU inside the
++ * ioctl forever: the X server spins at 100%, SIGKILL does not reach it, and
++ * the machine has to be rebooted.  Give up instead and let the callers'
++ * existing -EIO paths unwind.
++ */
++#define DSI_RX_FIFO_DRAIN_LIMIT		256
++
+ static void dsi_vc_flush_long_data(struct dsi_data *dsi, int channel)
+ {
++	int limit = DSI_RX_FIFO_DRAIN_LIMIT;
++
+ 	while (REG_GET(dsi, DSI_VC_CTRL(channel), 20, 20)) {
+ 		u32 val;
++
++		if (limit-- == 0) {
++			DSSERR("VC(%d) rx fifo will not drain, giving up\n",
++					channel);
++			return;
++		}
++
+ 		val = dsi_read_reg(dsi, DSI_VC_SHORT_PACKET_HEADER(channel));
+ 		DSSDBG("\t\tb1 %#02x b2 %#02x b3 %#02x b4 %#02x\n",
+ 				(val >> 0) & 0xff,
+@@ -2494,10 +2515,19 @@
+ 
+ static u16 dsi_vc_flush_receive_data(struct dsi_data *dsi, int channel)
+ {
++	int limit = DSI_RX_FIFO_DRAIN_LIMIT;
++
+ 	/* RX_FIFO_NOT_EMPTY */
+ 	while (REG_GET(dsi, DSI_VC_CTRL(channel), 20, 20)) {
+ 		u32 val;
+ 		u8 dt;
++
++		if (limit-- == 0) {
++			DSSERR("VC(%d) rx fifo will not drain, giving up\n",
++					channel);
++			break;
++		}
++
+ 		val = dsi_read_reg(dsi, DSI_VC_SHORT_PACKET_HEADER(channel));
+ 		DSSERR("\trawval %#08x\n", val);
+ 		dt = FLD_GET(val, 5, 0);

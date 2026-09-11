@@ -154,21 +154,132 @@ Keep the evidence first, because it is gone afterwards:
     sudo cp /var/log/Xorg.0.log ~/Xorg-modeset-hang-$(date +%Y%m%d-%H%M).log
     sudo dmesg > ~/dmesg-modeset-hang-$(date +%Y%m%d-%H%M).log
 
-### Still unknown, but two things in the path are now measured
+**Do not reboot before taking a backtrace.** The machine stays usable over SSH
+while the X server is wedged, and this is the only moment the stack can be
+read. Three dumps, a second apart, because it catches whatever is running at
+that instant:
 
-Why the modeset wedges rather than failing. The driver has no timeout on
-whatever it waits for, which is the part that turns a display glitch into a
-machine that needs rebooting, and that is where a fix should start.
+    for i in 1 2 3; do echo l | sudo tee /proc/sysrq-trigger; sleep 1; done
+    sudo dmesg | tail -120
 
-Two anomalies sit directly in that path. Both were counted on 2026-09-11 over a
-run of 1587 deliberate modesets on the lockup-detector kernel, which did not
-reproduce the hang but did measure the machinery.
+Do not expect the lockup detector to have done this for you. See below.
 
-**The DSI virtual channels are busy every single time the driver configures
-them.** `dsi_vc_initial_config()` in `dss/dsi.c` reads `DSI_VC_CTRL`, checks the
-`VC_BUSY` bit, prints `VC(n) busy when trying to configure it!` if it is set,
-and then configures the channel anyway. It does not wait, retry or refuse. Over
-400 display power-ons the count was exactly 400 for each of the four channels:
+### What is spinning: the search is down to two loops
+
+It is **the kernel** that spins, not the X driver. The log line the hang stops
+on is one `drmModeSetCrtc` call away from the kernel, so `Xorg` is stuck inside
+`DRM_IOCTL_MODE_SETCRTC` in `omapdrm`. Three things follow from the symptoms
+and together they describe the fault precisely:
+
+- It is a **busy loop, not a wait.** The task is in state `R` and accumulates
+  CPU time. A driver waiting on a completion or an interrupt would be in `D`
+  and would cost nothing.
+- **Interrupts are still on.** CPU time is only credited on timer ticks, so a
+  process that reaches 99% is being ticked. This matters: it means the
+  kernel's own soft lockup detector can see it.
+- **There is no signal check in the loop**, or `SIGKILL` would land.
+
+So: an unbounded busy-wait in the modeset path. Every wait in that path was
+then read, in `dss/dsi.c`, `dss/dispc.c`, `dss/dss.c`, `omap_crtc.c`,
+`omap_irq.c` and `omap_dmm_tiler.c`. All of them are bounded — by an iteration
+count, a `jiffies` deadline, or a `wait_for_completion_timeout` — except two,
+which are bounded by nothing at all:
+
+    dsi_vc_flush_receive_data()   dss/dsi.c
+    dsi_vc_flush_long_data()      dss/dsi.c
+
+Both drain the DSI receive FIFO by spinning on `RX_FIFO_NOT_EMPTY`, bit 20 of
+`DSI_VC_CTRL`, reading a word out of the FIFO each time round:
+
+    while (REG_GET(dsi, DSI_VC_CTRL(channel), 20, 20)) {
+            val = dsi_read_reg(dsi, DSI_VC_SHORT_PACKET_HEADER(channel));
+            ...
+    }
+
+No limit, no timeout, no way out if the bit does not clear.
+
+**They sit directly under every display enable.** `dsi_vc_write_common()` ends
+every synchronous DCS write with a bus turnaround and then checks that bit; if
+it is set it calls the drain. `dsi_vc_send_bta()` checks it before every
+turnaround and does the same. The panel driver sends its whole initialisation
+sequence through that path each time the display is powered on, which is what
+a DPMS transition does.
+
+**And writes on this panel are already known to fail.** The driver tolerates
+it explicitly — `panel-boe-w677l.c` logs `failed to configure panel` and
+carries on, with the comment *"can fail if the ssd can't forward long
+commands"*. A turnaround that timed out leaves a reply arriving with nobody
+waiting for it, which is exactly the state the drain loop exists to clean up.
+The recovery path for a known-flaky transfer is the one place in the driver
+with no way to give up.
+
+This is a hypothesis with a good fit, not a demonstration. What makes it worth
+acting on anyway is that bounding the loops is correct regardless of whether it
+is the fault: a display controller that stops answering should cost a failed
+modeset, not a reboot. `patches/0001` caps both loops at 256 reads and lets the
+callers' existing `-EIO` paths unwind, and prints `rx fifo will not drain` on
+the way out, so if it ever was the fault the log will say so.
+
+### The lockup detector will not catch this, and why
+
+This was assumed and it is wrong, so it is worth stating plainly. The
+`5.6.19-softlockup` kernel has been running for days with the soft lockup
+detector armed at a 10 second threshold, and if the hang had happened it would
+most likely have reported nothing.
+
+The detector does not watch for a busy CPU. It works by having each core's
+watchdog timer queue a job on that core's stopper thread, which is real-time
+priority and preempts everything; the job updates a timestamp, and the next
+timer that finds the timestamp stale declares a soft lockup. This kernel is
+built `CONFIG_PREEMPT=y`. A kernel loop that does not hold off preemption gets
+preempted by the stopper thread like anything else, the timestamp is updated,
+and the detector sees a healthy core.
+
+The two drain loops hold a mutex and nothing else, so they are preemptible. The
+detector is blind to exactly this shape of fault. It still earns its place —
+it is what found the two SD workers stuck since boot, which the stock kernel
+reported not at all — but it is not the instrument for this.
+
+**What does work is sysrq, while the machine is still hung.** `echo l` sends an
+inter-processor interrupt to every core and prints a backtrace of whatever that
+core is running, which for a spinning loop is the loop. That is the capture
+`pyra-modeset-hang-trap.sh` takes, and it is why the sysrq mask on this build
+was raised to include the debugging-dump bit. Take it before rebooting; see
+Recovery above.
+
+**And the patched kernel answers for itself.** If the drain loops are the
+fault, `5.6.19-fix` turns the hang into a line in the log:
+
+    sudo dmesg | grep "rx fifo will not drain"
+
+Present means the diagnosis was right and the machine survived something that
+used to need a reboot. A hang with that line absent means the loop was not it,
+and the sysrq dump is what says where to look next.
+
+### Two settings that make a live capture worth more
+
+Both are installed on this build in `/etc/sysctl.d/90-pyra-lockup-capture.conf`:
+
+| setting | stock | here | why |
+| --- | --- | --- | --- |
+| `kernel.sysrq` | 438 | 446 | 438 leaves out `0x8`, the debugging dumps, which is the bit `echo l` and `echo w` need |
+| `kernel.softlockup_all_cpu_backtrace` | 0 | 1 | if the detector ever does fire, dump both cores rather than one |
+
+    echo l | sudo tee /proc/sysrq-trigger    # backtrace every CPU
+    echo w | sudo tee /proc/sysrq-trigger    # every blocked task
+
+The journal is persistent, so whatever is captured survives the reboot that
+recovers the machine: `journalctl -k -b -1`.
+
+### Two measurements that turned out not to be the fault
+
+Both were counted over 1587 deliberate modesets on 2026-09-11, which did not
+reproduce the hang but did measure the machinery. An earlier version of this
+section put more weight on them than they turned out to deserve.
+
+**The DSI virtual channels reporting busy is harmless.** Over 400 display
+power-ons, `dsi_vc_initial_config()` found the `VC_BUSY` bit set on all four
+channels every single time — 1600 errors, a clean 400 out of 400 each:
 
 | channel | times busy at configure | out of |
 | --- | --- | --- |
@@ -177,41 +288,58 @@ and then configures the channel anyway. It does not wait, retry or refuse. Over
 | VC(2) | 400 | 400 |
 | VC(3) | 400 | 400 |
 
-An earlier note here guessed these were a separate symptom because one hang
-produced them and another did not. That reasoning does not survive the count.
-They accompany every modeset, hanging or not, so their presence cannot single
-one out — but reprogramming a transfer engine that the hardware still reports
-as busy, four times per display enable, is exactly the shape of thing that
-occasionally leaves a transfer no one can complete.
+It looks alarming and is not. Later in the same enable, `dsi_vc_config_source()`
+waits on that same bit properly, with a 500 ms deadline, and returns `-EIO` if
+it is still set. That message never appeared once in 400 enables. So the bit
+clears on its own; the earlier check simply runs before the block has settled
+and reports a state that is about to go away. It is noise in the log, not a
+fault, and making the first check wait would add seconds to every display
+power-on for nothing.
 
-**And the display controller's runtime power management sometimes fails to
-release.** `dispc_runtime_put()` at `dss/dispc.c:667` is a bare `WARN_ON` on
-`pm_runtime_put_sync()` returning an error, and it fired twice during the run,
-from the atomic commit worker:
+**The runtime PM warning is probably unrelated.** `dispc_runtime_put()` failed
+twice in 1587 modesets, from the atomic commit worker:
 
     WARNING: CPU: 0 PID: 4083 at drivers/gpu/drm/omapdrm/dss/dispc.c:667 commit_tail+0x9c/0x194
     Workqueue: events_unbound commit_work
 
-That is the modeset commit path failing to put DISPC back. Twice in 1587 is
-rare enough to match a fault seen twice in weeks of use, and a DISPC whose
-power state disagrees with what the driver believes would explain the symptom
-exactly: a later modeset waits on an interrupt from a block that is not going
-to send one. It is a hypothesis, not a demonstration — the `WARN_ON` is bare,
-so the return value that would confirm it is not printed. Capturing it needs
-one line added to that function.
+Rare in about the right proportion to a fault seen twice in weeks, which is why
+it was worth a second look. But the likely return values, `-EBUSY` and
+`-EAGAIN`, both mean only that the device declined to idle and stayed powered,
+which is harmless while the display is on. The error was also not latched —
+runtime PM remembers a failed callback and would then have failed on every
+subsequent put, and it did not. `patches/0002` prints the value so the next
+occurrence settles it, but it is no longer the leading candidate.
 
-It is now known to be **the kernel** that spins, not the X driver: the log line
-the hang stops on is one `drmModeSetCrtc` call away from the kernel, so `Xorg`
-is stuck inside `DRM_IOCTL_MODE_SETCRTC` in `omapdrm`. `building.md` has the
-reasoning, the sysrq capture that will name the function during the next hang
-without any rebuild, and how to compile a kernel with a fix in it.
-`pyra-modeset-hang-trap.sh` automates provoking it and capturing it.
+### One more thing the display does on every boot
 
-One correction to the mitigation above: it does **not** stop a program that
-toggles DPMS itself. Measured on 2026-09-10, with the config file in place and
-`xset q` reporting DPMS disabled, a single seven-test `x11perf` run still
-provoked 36 modesets. The mitigation protects an ordinary session, which never
-toggles DPMS by hand. It does not make `x11perf` safe to run.
+The L3 interconnect reports an error during the panel's power-on, once, at
+about 2.6 seconds:
+
+    44000000.ocp:L3 Custom Error: MASTER MPU TARGET L4WAKEUP (Idle):
+        Data Access in User mode during Functional access
+      l3_interrupt_handler
+      ...
+      w677l_regulator            <- the panel driver toggling its supply GPIO
+      w677l_enable
+      omapdss_device_enable
+      omap_encoder_enable
+      drm_atomic_helper_commit_modeset_enables
+
+The CPU touched a register on the wakeup interconnect while that target was
+clock-gated. The L3 answers with an error rather than hanging, so it is
+survivable and the display comes up anyway, but it means the panel enable path
+touches at least one module without holding it awake. Not chased further.
+
+### The mitigation does not cover everything
+
+It does **not** stop a program that toggles DPMS itself. Measured on
+2026-09-10, with the config file in place and `xset q` reporting DPMS disabled,
+a single seven-test `x11perf` run still provoked 36 modesets. The mitigation
+protects an ordinary session, which never toggles DPMS by hand. It does not
+make `x11perf` safe to run.
+
+`pyra-modeset-hang-trap.sh` automates provoking the hang and capturing it, and
+`building.md` has the patch set and how to build a kernel carrying it.
 
 
 ---
