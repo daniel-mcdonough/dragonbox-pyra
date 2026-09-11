@@ -193,8 +193,9 @@ Suspend works. What the kernel did is in:
 
     dmesg | grep -E "PM: suspend (entry|exit)|Freezing user space|Restarting tasks"
 
-Waking is noisy on this hardware and that is a separate, lesser bug. See
-docs/troubleshooting.md.
+Resume should be quiet. A burst of "Failed to read IRQ status" means the
+kernel is missing patches/0004. Three smaller warnings per wake are expected
+and harmless; docs/troubleshooting.md lists them.
 EOF
 	exit 0
 fi

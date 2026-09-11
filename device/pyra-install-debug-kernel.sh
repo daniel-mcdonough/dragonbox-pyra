@@ -23,9 +23,29 @@
 # over the kernel you are currently running, to avoid replacing a live module
 # tree; boot the stock kernel first if you need to redo one.
 #
+#   sudo ./pyra-install-debug-kernel.sh --replace-running fix-kernel.tar.gz
+#
+# overrides that, which is what you want while iterating on patches: a rebuilt
+# kernel keeps the same release name, so every reinstall collides with the one
+# you are running. The cost is that /lib/modules for the running release is
+# replaced underneath you, so any module loaded between now and the reboot
+# comes from the new tree. Reboot promptly, and do not use it to install a
+# kernel built from different sources than the one running.
+#
 set -euo pipefail
 
-TARBALL=${1:-}
+TARBALL=
+REPLACE_RUNNING=no
+
+while [ $# -gt 0 ]; do
+	case $1 in
+	--replace-running) REPLACE_RUNNING=yes; shift ;;
+	-h|--help)         sed -n '3,33p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	-*)                echo "unknown option: $1" >&2; exit 2 ;;
+	*)                 [ -z "$TARBALL" ] || { echo "one tarball at a time" >&2; exit 2; }
+	                   TARBALL=$1; shift ;;
+	esac
+done
 CFG=/boot/extlinux/user.cfg
 STOCK=/boot/extlinux/linux.cfg
 
@@ -53,7 +73,14 @@ say "checking this is the right machine"
 # The release name is whatever the tarball's kernel image is called.
 REL=$(tar tzf "$TARBALL" | sed -n 's|^\./boot/vmlinuz-||p' | head -1)
 [ -n "$REL" ] || die "$TARBALL has no ./boot/vmlinuz-* in it; is it a kernel tarball?"
-[ "$REL" != "$(uname -r)" ] || die "$REL is already the running kernel"
+if [ "$REL" = "$(uname -r)" ]; then
+	[ "$REPLACE_RUNNING" = yes ] || die "$REL is already the running kernel.
+  Boot the stock kernel first, or pass --replace-running if this is a rebuild
+  of the same sources and you intend to reboot straight afterwards."
+	say "replacing the running kernel's own files, as asked"
+	echo "  /lib/modules/$REL is about to be overwritten while you are running from it."
+	echo "  Reboot as soon as this finishes."
+fi
 [ -f "$STOCK" ]    || die "no $STOCK — this is not an extlinux Pyra card"
 [ -L /lib ]        || die "/lib is not a symlink; this rootfs is already broken"
 # Two defaults are expected here and no others. l0 is the stock kernel, which

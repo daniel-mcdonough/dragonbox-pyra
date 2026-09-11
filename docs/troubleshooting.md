@@ -471,25 +471,97 @@ wakeup source really is stuck on, and this says which:
 
     grep -v '	0	' /sys/kernel/debug/wakeup_sources
 
-### Resume works but it is noisy, and that is a separate bug
+### Fixed: the interrupt storm that made every resume noisy
 
-Waking up produces a burst of kernel messages. It is survivable, everything
-works afterwards, and none of it is caused by the fix; it was simply never
-visible before, because suspend never got far enough to resume from.
+Waking up used to produce a burst of kernel messages. It was survivable and
+everything worked afterwards, and it was never caused by the suspend fix; it
+was simply not visible before, because suspend never got far enough to resume
+from. Most of it is now gone.
 
-| message | count in one resume | what it is |
-| --- | --- | --- |
-| `dummy 0-0049: Failed to read IRQ status: -13` | 1722 | the PMIC's interrupt handler retrying over an i2c bus that has not resumed yet |
-| `Unbalanced enable for IRQ 144` | 1 | IRQ 144 is `SGX ISR`, so this is the PowerVR graphics blob |
-| `unbalanced disables for otg_path` | 1 | a regulator reference count in the USB OTG path |
+| message | before | after | what it is |
+| --- | --- | --- | --- |
+| `dummy 0-0049: Failed to read IRQ status: -13` | 231 to 6500 | 0 | the PMIC's interrupt handler retrying over an i2c bus that has not resumed yet |
+| `Unbalanced enable for IRQ 144` | 1 | 1 | IRQ 144 is `SGX ISR`, so this is the PowerVR graphics driver |
+| `unbalanced disables for otg_path` | 1 | 1 | a regulator reference count in the USB OTG path |
+| `DSI error: VC(n) busy when trying to configure it!` | 4 | 4 | the display link is re-initialised with all four channels still marked busy |
 
-The first one is the interesting one. The device at i2c address `0x49` is a
-second address block of the Palmas PMIC at `0x48`. Its interrupt fires during
-resume, the handler cannot read the status register to find out why, so the
-interrupt is never acknowledged and re-fires until the i2c controller is back.
-It clears itself. It also fills the kernel log, which will push older messages
-out of the buffer, so take a `dmesg` before suspending if you care about what
-is in it. Not chased further.
+**The first one is fixed by `patches/0004`.** The device at i2c address `0x49`
+is a second address block of the Palmas PMIC at `0x48`. The chain is worth
+writing down because none of the four links is obvious on its own.
+
+The Palmas node is a wakeup source, so the i2c core registers its interrupt as
+the device's wake interrupt. `suspend_device_irq()` deliberately leaves an
+armed wakeup interrupt enabled and unmasked, which is how the PMIC gets to wake
+the machine at all.
+
+On the way back, `resume_device_irqs()` re-enables the line at the end of
+`dpm_resume_noirq()`. Runtime power management for the i2c controller is not
+restored until `pm_runtime_enable()` in `device_resume_early()`, one phase
+later. In between, every transfer on that bus fails: `omap_i2c_xfer_common()`
+calls `pm_runtime_get_sync()`, which returns `-EACCES` while runtime power
+management is disabled. That is where the `-13` comes from, and it is not an
+i2c error at all.
+
+The interrupt is level triggered and its handler is threaded with
+`IRQF_ONESHOT`. `regmap_irq_thread()` cannot read the status registers, so it
+cannot acknowledge the interrupt, so it returns `IRQ_NONE`, so the oneshot
+unmask hands back a line that is still asserted. Round it goes until the i2c
+controller is resumed.
+
+The measurement that settled it counts hardware deliveries rather than log
+lines:
+
+    awk '/ palmas$/{print $2+$3}' /proc/interrupts
+
+One RTC alarm, a single nested interrupt, produced 233 deliveries of the parent
+interrupt and 231 messages. With `patches/0004` the same wake delivers it
+twice. The patch holds the interrupt off for the duration of the suspend and
+re-enables it in the driver's resume callback, which runs after
+`device_resume_early()` has put the bus back. Nothing is masked at the
+wakeup generator in the meantime, so the chip can still wake the machine, and
+the delivery that does the waking is latched pending and replayed.
+
+How long the storm ran varied a great deal, because it lasts exactly as long as
+the noirq resume phase does. A quiet machine gave 231 messages in 23
+milliseconds; one with the USB ethernet adapter and more modules loaded gave
+6500 over seven seconds.
+
+**The other three are not fixed.** `Unbalanced enable for IRQ 144` comes from
+`resume_irqs()` finding the SGX interrupt already enabled. The PowerVR driver
+in `drivers/staging/pvr` requests that interrupt and never disables it, so
+where the extra enable comes from was not determined. The `otg_path` warning
+is a regulator reference count in the USB OTG path. Both are one line per
+resume and neither has a visible effect.
+
+The DSI one is worth a second look for a different reason. It comes from
+`dsi_vc_initial_config()`, which reads `DSI_VC_CTRL`, finds `VC_BUSY` set, says
+so, and configures the channel anyway. All four channels report busy on every
+resume, so suspend leaves the display link in exactly the confused state that
+the two unbounded drain loops behind `patches/0001` are there to survive. That
+makes suspend and resume the most promising way found so far to provoke the
+display hang deliberately, which roughly 2100 ordinary modesets never managed.
+It has not provoked it yet: across the seven suspend cycles run on
+`5.6.19-fix` so far, the `rx fifo will not drain` message that `patches/0001`
+would print has not appeared once.
+
+### Suspend to RAM is not as deep as its name suggests
+
+Every suspend logs this, in both the stock and the patched kernel:
+
+    Powerdomain (core_pwrdm) didn't enter target state 1
+    Powerdomain (abe_pwrdm) didn't enter target state 1
+    Powerdomain (dss_pwrdm) didn't enter target state 1
+    Powerdomain (emu_pwrdm) didn't enter target state 0
+    Powerdomain (l3init_pwrdm) didn't enter target state 1
+    Could not enter target state in pm_suspend
+    A possible cause could be an old bootloader - try u-boot >= v2012.07
+
+preceded by seven clocks that refused to stop, five in `l4per_cm` and two in
+`l3init_cm`. The machine does sleep and does resume, but the system-on-chip
+never reaches the state it was asked for, so `mem` saves much less power than
+it should. The bootloader hint is stale: this card runs U-Boot 2016.11, far
+newer than the version it suggests. Identified, not chased, and it is a
+battery-life question rather than a correctness one.
 
 ## Fixed: two of the six SD hosts were phantoms, and they were what broke suspend
 

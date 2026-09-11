@@ -37,7 +37,8 @@ thaws it afterwards, there was no afterwards. You got a background and a
 working mouse pointer and nothing else. **Fixed by `patches/0003`, which
 deletes two characters, and confirmed on hardware on 2026-09-11.** Both kinds
 of sleep complete and resume, the session thaws, and the network comes back.
-Resume is noisy in a way that is a separate and lesser bug.
+Resume used to be noisy as well, and most of that is now gone too: see the
+fourth patch below.
 
 **The screen never dims.** MATE's backlight helper recognises four device
 names, none of which exist here, and falls back to the first entry it finds,
@@ -98,7 +99,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
-| `patches/` | Three kernel patches: the candidate display fix, the suspend fix, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
+| `patches/` | Four kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra
 

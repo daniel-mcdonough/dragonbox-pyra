@@ -397,11 +397,12 @@ Built and staged 2026-09-11.
 | ready to install | `kernel/fix-kernel.tar.gz`, 23 MB |
 | symbols | `kernel/src-fix/vmlinux`, for resolving addresses out of a report |
 
-The build reports each patch as it goes, and the result carries all three:
+The build reports each patch as it goes, and the result carries all four:
 
       applied  0001-omapdrm-dsi-bound-the-rx-fifo-drain-loops.patch
       applied  0002-omapdrm-dispc-report-the-runtime-pm-errno.patch
       applied  0003-mmc-txs02612-refuse-phantom-hosts.patch
+      applied  0004-mfd-palmas-hold-the-irq-across-suspend.patch
 
 Install it the same way as the lockup-detector kernel, with
 `pyra-install-debug-kernel.sh`. It reads the release name out of the tarball,
@@ -411,6 +412,11 @@ refuses to guess:
     scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
     sudo ./device/pyra-install-debug-kernel.sh fix-kernel.tar.gz
     sudo pyra-boot-kernel.sh debug --once
+
+A rebuilt kernel keeps the same release name, so reinstalling one while
+running it collides with the module tree you are using. That is refused by
+default. While iterating on patches, which is the case where you want it
+anyway, pass `--replace-running` and reboot straight afterwards.
 
 There is one test slot in the boot configuration, `l1`, and installing points
 it at the kernel you just installed. The older test kernel's files stay in
@@ -474,6 +480,33 @@ to blacklist and this genuinely needs a rebuild.
     ps -eo stat,comm | grep '^D'     # expect no kworker stuck in D state
 
 then unmask the sleep targets and try to suspend.
+
+### 4. Stop the PMIC's interrupt storming on every resume
+
+`0004-mfd-palmas-hold-the-irq-across-suspend.patch`. This is the fix for the
+noise on resume.
+
+The Palmas interrupt is left enabled across suspend because it is a wakeup
+source, and `resume_device_irqs()` hands it back one phase before runtime power
+management is restored on the i2c controller it has to talk to. Every register
+read in that window returns `-EACCES`, so the handler cannot acknowledge a
+level interrupt it cannot read, and the line re-fires until the bus comes back.
+The patch gives the driver suspend and resume callbacks that hold the interrupt
+off over exactly that window. `troubleshooting.md` has the full chain.
+
+**How to know it worked.** Count deliveries rather than log lines, across one
+suspend:
+
+    awk '/ palmas$/{print $2+$3}' /proc/interrupts
+    sudo pyra-sleep-test.sh --mode mem --seconds 20
+    awk '/ palmas$/{print $2+$3}' /proc/interrupts
+
+Expect a difference of about two, and no `Failed to read IRQ status` in
+`dmesg`. Before the patch, the same wake gave 233 deliveries and 231 messages.
+
+**What to check by hand.** The patch touches the interrupt that serves the
+power button, so confirm once that pressing it still wakes the machine. The
+real-time clock alarm, which is on the same chip and the same interrupt, does.
 
 ## Backups
 

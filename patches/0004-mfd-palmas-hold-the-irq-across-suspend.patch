@@ -1,0 +1,95 @@
+mfd: palmas: hold the interrupt across system suspend
+
+Every resume from suspend to RAM produces a burst of
+
+    dummy 0-0049: Failed to read IRQ status: -13
+
+a few hundred to several thousand lines long.  The machine does come back,
+so this is noise rather than a hang, but it is a real interrupt storm and
+it lands in the middle of the resume path.
+
+The palmas node is a wakeup source, so the i2c core registers the chip's
+interrupt as the device's wake interrupt and dpm_suspend_noirq() arms it.
+suspend_device_irq() leaves an armed wakeup interrupt enabled and unmasked
+on purpose, which is what lets the PMIC wake the system.
+
+On the way back, dpm_resume_noirq() calls resume_device_irqs(), which
+clears IRQD_WAKEUP_ARMED and re-enables the line.  Runtime PM for the i2c
+controller, however, is not restored until pm_runtime_enable() in
+device_resume_early(), one phase later.  In that window every transfer on
+the bus fails: omap_i2c_xfer_common() calls pm_runtime_get_sync(), which
+returns -EACCES while runtime PM is disabled.
+
+The palmas interrupt is level triggered and its handler is threaded with
+IRQF_ONESHOT.  regmap_irq_thread() cannot read the status registers, so it
+cannot ack the interrupt, so it returns IRQ_NONE, so irq_finalize_oneshot()
+unmasks a line that is still asserted, and the whole thing repeats.  It
+stops only when device_resume_early() reaches the i2c controller.
+
+Measured on a DragonBox Pyra (OMAP5432, palmas at 0-0048): a single RTC
+alarm, one nested interrupt, produced 233 deliveries of the parent
+interrupt and 231 of these messages.
+
+Disable the interrupt for the duration of the suspend and re-enable it in
+the resume callback, which runs after device_resume_early() has restored
+runtime PM on the bus.  disable_irq() here is lazy: the chip has no
+irq_disable() callback and the descriptor is not marked unlazy, so nothing
+is masked at the WUGEN until the interrupt actually arrives, and the chip
+can still wake the system.  The delivery that does the waking is latched
+pending and replayed by enable_irq(), so no event is lost.
+
+With this applied, an RTC-alarm wake on the same machine delivers the parent
+interrupt twice instead of 233 times and logs none of these messages.  Both
+suspend to idle and suspend to RAM still complete and resume.
+
+--- a/drivers/mfd/palmas.c
++++ b/drivers/mfd/palmas.c
+@@ -19,6 +19,7 @@
+ #include <linux/mfd/core.h>
+ #include <linux/mfd/palmas.h>
+ #include <linux/of_device.h>
++#include <linux/pm.h>
+ 
+ static const struct regmap_config palmas_regmap_config[PALMAS_NUM_CLIENTS] = {
+ 	{
+@@ -729,10 +730,40 @@
+ };
+ MODULE_DEVICE_TABLE(i2c, palmas_i2c_id);
+ 
++static int __maybe_unused palmas_i2c_suspend(struct device *dev)
++{
++	struct palmas *palmas = dev_get_drvdata(dev);
++
++	/*
++	 * The i2c controller this chip hangs off is unusable between
++	 * resume_device_irqs() and device_resume_early(). Keep the
++	 * interrupt held off over that window, or the handler spins
++	 * failing to read, and so failing to ack, a level interrupt.
++	 */
++	if (palmas->irq)
++		disable_irq(palmas->irq);
++
++	return 0;
++}
++
++static int __maybe_unused palmas_i2c_resume(struct device *dev)
++{
++	struct palmas *palmas = dev_get_drvdata(dev);
++
++	if (palmas->irq)
++		enable_irq(palmas->irq);
++
++	return 0;
++}
++
++static SIMPLE_DEV_PM_OPS(palmas_pm_ops, palmas_i2c_suspend,
++			 palmas_i2c_resume);
++
+ static struct i2c_driver palmas_i2c_driver = {
+ 	.driver = {
+ 		   .name = "palmas",
+ 		   .of_match_table = of_palmas_match_tbl,
++		   .pm = &palmas_pm_ops,
+ 	},
+ 	.probe = palmas_i2c_probe,
+ 	.remove = palmas_i2c_remove,

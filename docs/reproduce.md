@@ -15,7 +15,7 @@ spine, and it points at the other documents rather than repeating them.
 | --- | --- | --- |
 | Rootfs | The Pyra project's trixie image, grown onto the whole card | `procedure.md` sections 1 to 3 |
 | Five fixes | Xorg, first-run wizard, nubs, GLX, USB hub | `pc/pyra-trixie-prep.sh`, applied offline |
-| Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the three patches | `pc/pyra-crossbuild.sh kernel-fix` |
+| Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the four patches | `pc/pyra-crossbuild.sh kernel-fix` |
 | X display driver | **Stock**, unmodified, from the Pyra repository | nothing to build |
 | Helpers | Boot selector, kernel installer, suspend test, hang trap, idle dimmer, profilers | `device/pyra-install-helpers.sh` |
 | Capture settings | `kernel.sysrq = 446` and all-CPU backtraces | installed with the helpers |
@@ -132,8 +132,17 @@ the load average at 2.0.
 
 It arms the real-time clock so the machine wakes itself, tries suspend-to-idle
 first and only then suspend to RAM, and checks afterwards that the desktop
-session was thawed rather than left frozen. Waking is noisy on this hardware;
-`troubleshooting.md` says why and why it does not matter.
+session was thawed rather than left frozen.
+
+**Resume is quiet.** This is `patches/0004`. Waking the machine used to storm
+the PMIC's interrupt for as long as the resume took, hundreds to thousands of
+log lines per wake. Count the hardware deliveries across one suspend rather
+than the log lines:
+
+    awk '/ palmas$/{print $2+$3}' /proc/interrupts
+
+It should move by about two. Before the patch the same wake moved it by 233.
+`dmesg` should hold no `Failed to read IRQ status` at all.
 
 **The display patch cannot be checked this way.** It is a bound on two loops
 that should never be reached, so a healthy machine looks identical with and
