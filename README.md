@@ -91,6 +91,10 @@ need no privileges beyond reading `/proc`.
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
 | `pc/pyra-verify-card-metadata.sh` | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
+| `pc/pyra-card-diagnose.sh` | Asks whether a failing card is the card or the reader. Read-only, about a minute. |
+| `pc/pyra-card-read-stability.sh` | Reads the same block twice with the page cache bypassed, to catch a reader that invents data. Read-only. |
+| `pc/pyra-card-probe-and-image.sh` | Looks at a suspect card read-only, then images both partitions before anything else is attempted. Writes nothing to the card. |
+| `pc/pyra-repair-lib-symlink.sh` | Puts back the `/lib` symlink that a bad tar extraction destroys. Run from the PC with the card mounted, because the device cannot start a single binary once it is gone. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `patches/` | Three kernel patches: the candidate display fix, the suspend fix, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
