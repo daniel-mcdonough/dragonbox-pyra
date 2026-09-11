@@ -231,7 +231,41 @@ wants DRM master and fails identically on bookworm when X is running.
 
 ---
 
-## 7. Optional: log straight into the desktop
+## 7. Optional: set the machine up for development
+
+If you are going to work on this device rather than only use it, three things
+save a lot of time, and one script does all three against the mounted card
+before you ever boot it:
+
+    sudo ./pc/pyra-devsetup.sh /mnt
+
+It authorises your SSH key for the account, grants that account sudo without a
+password, and makes the desktop come up with no login prompt. It also makes
+sure the SSH server starts at boot, and turns on mDNS if avahi is installed, so
+you can reach the device by name instead of hunting for its address.
+
+**Do it offline, with the card in the reader.** Two of those three are what you
+need in order to get in at all, and a freshly written card has neither. Doing
+it before first boot avoids needing the access it is meant to grant. A reflash
+during this project cost network access to the device for exactly this reason.
+
+Everything it does is reversible:
+
+    sudo ./pc/pyra-devsetup.sh /mnt --undo
+
+**Be clear about the cost.** Passwordless sudo means anything that reaches the
+account is root, including something you ran by accident. Autologin means
+anyone holding the device is one power button away from the desktop and the
+session keyring. An authorised key means whoever holds the private half is in.
+These are reasonable on a development handheld on your own desk and
+unreasonable on anything else. The script does not touch password
+authentication, root login or the firewall, so it never removes a way in that
+you already had.
+
+`./pc/pyra-devsetup-selftest.sh` checks all of the above against a synthetic
+rootfs in a container, if you would rather not take the script's word for it.
+
+### Doing the autologin part by hand
 
 The image ships a login screen and no autologin. `/etc/lightdm/lightdm.conf.d/`
 already carries `90_pyra.conf` with a commented-out `autologin-user=`

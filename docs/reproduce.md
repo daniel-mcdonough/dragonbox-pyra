@@ -40,6 +40,10 @@ Follow `procedure.md` sections 0 to 6. At the end of it the machine boots to
 MATE, the rootfs fills the card, and the five fixes are in place. Do not
 continue until section 6 passes.
 
+Optional, and much easier done now than later: `procedure.md` section 7 sets
+the card up for development, with your SSH key authorised, sudo without a
+password and no login prompt. Do it while the card is still in the reader.
+
 ### 2. Build the patched kernel, on the PC
 
     ./pc/pyra-crossbuild.sh kernel-fix
