@@ -91,6 +91,7 @@ about *how* and the history is right about *when* and *why*.
     pc/          run these on your computer
     device/      run these on the Pyra, or install them onto it
     patches/     kernel source patches, applied by the build script
+    experiments/ kernel changes on trial, deliberately kept out of patches/
     docs/        one document per job, listed above
 
 Everything is idempotent and refuses to run against anything that is not what
@@ -115,6 +116,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
+| `experiments/c2-idle/` | One kernel patch on trial, restoring the processor's retention idle state, which this kernel tree removes. Built by `pc/pyra-crossbuild.sh kernel-c2` under its own release name so it boots beside the fix kernel rather than instead of it. |
 | `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra
@@ -129,6 +131,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
+| `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |

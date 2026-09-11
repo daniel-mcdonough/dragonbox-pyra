@@ -7,6 +7,7 @@
 #   ./pyra-crossbuild.sh kernel bindeb-pkg   the same, as installable .debs
 #   ./pyra-crossbuild.sh kernel-debug        a kernel that reports lockups
 #   ./pyra-crossbuild.sh kernel-fix          the same, plus everything in patches/
+#   ./pyra-crossbuild.sh kernel-c2           the fix kernel plus one experiment
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -125,6 +126,11 @@ build_kernel() {
 #
 #   kernel-debug   5.6.19-softlockup   stock source, plus a lockup detector
 #   kernel-fix     5.6.19-fix          the same, plus everything in patches/
+#   kernel-c2      5.6.19-c2           the fix set plus experiments/c2-idle
+#
+# The last one is an experiment and is meant to be bootable beside the fix
+# kernel rather than instead of it, which is why it has its own release name
+# and its own source tree. See improvements.md item 12.
 #
 # The stock config has no lockup detector of any kind, which is why two hangs
 # that pinned a core for minutes produced no kernel message at all. Both of
@@ -134,19 +140,22 @@ build_kernel() {
 # stock one stays bootable and stays the default. See building.md.
 #
 #   $1  release suffix, also the tarball name
-#   $2  directory of patches to apply, empty for none
+#   $2  directories of patches to apply, space separated, empty for none.
+#       They are gathered into one directory and applied in name order, so a
+#       patch meant to go last has to sort last.
 #   $3  source directory under the work tree, one per variant so that a
 #       patched tree never leaks into an unpatched build
 build_kernel_variant() {
-	local suffix=$1 patchdir=$2 srcdir=$3
+	local suffix=$1 patchdirs=$2 srcdir=$3 pd
 	local dir=$BUILD_DIR/kernel
 	fetch "$KERNEL_DSC" "$KERNEL_SHA" "$dir"
-	if [ -n "$patchdir" ]; then
-		ls "$patchdir"/*.patch >/dev/null 2>&1 || die "no patches in $patchdir"
-		rm -rf "$dir/patches"
-		cp -r "$patchdir" "$dir/patches"
-	else
-		rm -rf "$dir/patches"
+	rm -rf "$dir/patches"
+	if [ -n "$patchdirs" ]; then
+		mkdir -p "$dir/patches"
+		for pd in $patchdirs; do
+			ls "$pd"/*.patch >/dev/null 2>&1 || die "no patches in $pd"
+			cp "$pd"/*.patch "$dir/patches/"
+		done
 	fi
 	[ -d "$dir/$srcdir" ] || run debian:bookworm "$dir" '
 		apt-get update -qq
@@ -276,11 +285,14 @@ build_kernel_variant() {
 
 build_kernel_debug() { build_kernel_variant softlockup "" src; }
 build_kernel_fix()   { build_kernel_variant fix "$SELF_DIR/../patches" src-fix; }
+build_kernel_c2()    { build_kernel_variant c2 \
+	"$SELF_DIR/../patches $SELF_DIR/../experiments/c2-idle" src-c2; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
 	kernel)       shift; build_kernel "$@" ;;
 	kernel-debug) shift; build_kernel_debug ;;
 	kernel-fix)   shift; build_kernel_fix ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix" ;;
+	kernel-c2)    shift; build_kernel_c2 ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2" ;;
 esac

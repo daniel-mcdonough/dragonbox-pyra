@@ -1,0 +1,57 @@
+ARM: OMAP5: enable the C2 retention idle state
+
+The Pyra's kernel tree carries two #if 0 blocks that remove OMAP5's second
+cpuidle state, leaving the processor with only C1: wait for an interrupt
+with the whole MPU subsystem left powered.  Neither block has a comment and
+nothing in the packaging explains them.
+
+Upstream does not do this.  Mainline v5.6 and mainline today both define
+the state, added by 7abdb0e23e7b ("ARM: OMAP5: Add basic cpuidle MPU CSWR
+support"), whose changelog reports idle power on the omap5-uevm falling
+from about 1.7 W to about 920 mW once it is enabled.  The same tree that
+disables it here adds a separate driver for DRA7 and leaves that one's
+copy of the state switched on, so this was a decision about OMAP5 in
+particular rather than a blanket removal.
+
+Take both blocks out, restoring the state to what mainline has.
+
+This is an experiment and it is not part of the Pyra fix set.  A silent
+#if 0 around a low-power state is the shape somebody leaves behind when
+they find that it hangs, and the failure mode for a broken retention state
+is a machine that stops answering with no log.  Build it under its own
+release name, boot it one-shot so that it reverts by itself, and do not
+carry it into the default kernel until it has survived a long stretch of
+ordinary use.
+
+--- a/arch/arm/mach-omap2/cpuidle44xx.c
++++ b/arch/arm/mach-omap2/cpuidle44xx.c
+@@ -55,13 +55,11 @@
+ 		.mpu_state = PWRDM_POWER_ON,
+ 		.mpu_logic_state = PWRDM_POWER_ON,
+ 	},
+-#if 0
+ 	{
+ 		.cpu_state = PWRDM_POWER_RET,
+ 		.mpu_state = PWRDM_POWER_RET,
+ 		.mpu_logic_state = PWRDM_POWER_RET,
+ 	},
+-#endif
+ };
+ 
+ static struct idle_statedata dra7_idle_data[] = {
+@@ -281,7 +279,6 @@
+ 			.name = "C1",
+ 			.desc = "CPUx WFI, MPUSS ON"
+ 		},
+-#if 0
+ 		{
+ 			/* C2 - CPU0 RET + CPU1 RET + MPU CSWR */
+ 			.exit_latency = 48 + 60,
+@@ -291,7 +288,6 @@
+ 			.name = "C2",
+ 			.desc = "CPUx CSWR, MPUSS CSWR",
+ 		},
+-#endif
+ 	},
+ 	.state_count = ARRAY_SIZE(omap5_idle_data),
+ 	.safe_state_index = 0,

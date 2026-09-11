@@ -583,6 +583,61 @@ the old startup path never cleared it.
 A count frozen while you type is the fault. `device/pyra-keypad-rescue` clears
 it on a machine not yet running this kernel.
 
+## The experiment kernel, and why it is not in the patch set
+
+One more change exists, in `experiments/c2-idle/` rather than in `patches/`,
+and it gets its own build target and its own release name:
+
+    ./pc/pyra-crossbuild.sh kernel-c2
+
+That builds the six-patch kernel plus `0007`, and lands it as `5.6.19-c2`, in
+its own source tree at `kernel/src-c2`. Everything in `patches/` is carried, so
+this is the fix kernel with one experiment on top, not a different kernel.
+
+**What it changes.** This kernel tree removes OMAP5's second cpuidle state with
+two bare `#if 0` blocks and no comment, leaving the processor with only
+wait-for-interrupt and the whole subsystem powered. Mainline does not do that,
+now or in 5.6. The patch takes the blocks out. `docs/improvements.md` item 12
+has the reasoning and the measurement upstream reported when the state was
+added.
+
+**Why it is separate.** A silent `#if 0` around a low-power state is what
+somebody leaves behind when they find that it hangs. Keeping it out of
+`patches/` means the fix kernel cannot inherit it by accident, and the separate
+release name means both are installed and bootable at once.
+
+**How to run it without losing the machine.** There is one test boot slot, so
+installing this takes the slot the fix kernel is using. Install it, then arm a
+single boot rather than making it the default:
+
+    ./pc/pyra-push-kernel.sh \
+        --tarball ~/git/dragonbox-pyra-build/kernel/c2-kernel.tar.gz \
+        --install pyra@<address>
+    ssh pyra@<address> 'sudo pyra-boot-kernel.sh stock'
+    ssh pyra@<address> 'sudo pyra-boot-kernel.sh debug --once'
+    ssh pyra@<address> 'sudo systemctl reboot'
+
+The one-shot arms a service that puts the default back to the stock kernel
+early in the next boot, so a machine that hangs after some idle time comes back
+on the stock kernel when you power-cycle it. A kernel that never reaches
+userspace at all is the case this does not cover; that one needs the card in a
+PC.
+
+**How to know whether it helped.**
+
+    ./pyra-idle-profile.sh 3600
+
+on each kernel, on an idle machine, on battery. It prints the idle states the
+kernel offers, how often each was entered and how much of the window was spent
+in it, and what the battery did meanwhile. It refuses to pretend the power
+figures mean anything while the charger is connected.
+
+**Going back.** Reinstall the fix kernel's tarball, which points the test slot
+at it again, and set the default back:
+
+    ./pc/pyra-push-kernel.sh --install pyra@<address>
+    ssh pyra@<address> 'sudo pyra-boot-kernel.sh debug'
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card
