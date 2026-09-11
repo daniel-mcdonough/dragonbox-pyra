@@ -183,12 +183,17 @@ build_kernel_variant() {
 
 		# SOFTLOCKUP_DETECTOR depends on DEBUG_KERNEL, which the Pyra
 		# config leaves off, and selects LOCKUP_DETECTOR itself.
+		# GENERIC_IRQ_DEBUGFS costs nothing at runtime and is the only
+		# way to read the enable depth of an interrupt, which is what
+		# separates a driver that stopped talking from one switched off
+		# by an unbalanced disable_irq.
 		scripts/config --file .config \
 			--enable  DEBUG_KERNEL \
 			--enable  SOFTLOCKUP_DETECTOR \
 			--disable BOOTPARAM_SOFTLOCKUP_PANIC \
 			--enable  DETECT_HUNG_TASK \
 			--disable BOOTPARAM_HUNG_TASK_PANIC \
+			--enable  GENERIC_IRQ_DEBUGFS \
 			--set-val DEFAULT_HUNG_TASK_TIMEOUT 30 \
 			--set-str LOCALVERSION "-$SUFFIX" \
 			--disable DEBUG_PREEMPT \
@@ -211,7 +216,8 @@ build_kernel_variant() {
 		# olddefconfig silently drops anything whose dependencies are
 		# unmet, so check rather than assume.
 		fail=0
-		for opt in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR DETECT_HUNG_TASK; do
+		for opt in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR DETECT_HUNG_TASK \
+			   GENERIC_IRQ_DEBUGFS; do
 			if grep -q "^CONFIG_${opt}=y" .config; then
 				echo "  ok   CONFIG_${opt}=y"
 			else
