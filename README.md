@@ -11,13 +11,13 @@ box86 — including a 1999 Windows game under an x86 Wine.
 The eMMC is never touched, so the bookworm-7 install stays intact as a recovery
 path.
 
-### Three faults you should know about before you rely on it
+### Four faults you should know about before you rely on it
 
-All three are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. Two are now fixed. The one that is not is the display
-hang, and it has a candidate fix that cannot be confirmed until it next fails
-to happen. The kernel patches are in `patches/`, built by
-`./pc/pyra-crossbuild.sh kernel-fix`.
+All four are diagnosed in `docs/troubleshooting.md`, each with the evidence
+that identified it. Two are fixed, one has a candidate fix that cannot be
+confirmed until it next fails to happen, and the last is still open. The
+kernel patches are in `patches/`, built by `./pc/pyra-crossbuild.sh
+kernel-fix`.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
 reboot recovers it. Every DPMS transition is a modeset, so ordinary idle
@@ -44,6 +44,13 @@ fourth patch below.
 names, none of which exist here, and falls back to the first entry it finds,
 which is the keyboard light. Every dim request has been adjusting the keyboard.
 **Fixed by `pyra-idle-dim`, which names the device instead of guessing.**
+
+**The mouse nub can stop working until the machine is rebooted.** Seen twice,
+both times on a day of repeated suspend testing, which is the prime suspect and
+has not been cleared. The chip is fine when this happens: it answers, it is in
+its normal mode, and its axis registers are still moving. What stops is the
+interrupt. **Open**, with the steps to take before rebooting, and the one
+reading that would settle it, in `docs/troubleshooting.md`.
 
 ---
 

@@ -222,6 +222,7 @@ The config delta against stock is exactly this and no more:
     CONFIG_SOFTLOCKUP_DETECTOR=y
     CONFIG_DETECT_HUNG_TASK=y
     CONFIG_DEFAULT_HUNG_TASK_TIMEOUT=30
+    CONFIG_GENERIC_IRQ_DEBUGFS=y
     CONFIG_LOCALVERSION="-softlockup"
 
 Both panic-on-lockup options are off, so it prints and carries on rather than
@@ -229,6 +230,18 @@ dying. Two detectors rather than one, because the two plausible shapes of this
 fault need different ones: the softlockup detector catches a busy loop, and the
 hung-task detector catches an uninterruptible sleep, which is what a missing
 timeout in a `wait_for_*` would look like instead.
+
+`GENERIC_IRQ_DEBUGFS` is the odd one out: it has nothing to do with lockups and
+costs nothing at runtime. It fills in `/sys/kernel/debug/irq/irqs/<n>`, which
+carries an interrupt's enable depth. Without it, an interrupt somebody disabled
+and never re-enabled is indistinguishable from one that is armed and idle,
+because `handle_edge_irq()` increments the counter in `/proc/interrupts` only
+after it has checked whether the interrupt is disabled. `troubleshooting.md`
+has the case that made this worth turning on, a nub that stopped reporting.
+
+One thing to know before editing that block: the whole config sequence is
+inside a single-quoted string handed to the container, so a comment there
+cannot contain an apostrophe.
 
 `DEBUG_KERNEL` pulls several other debug options on by default, and the build
 turns four of them back off: `DEBUG_PREEMPT`, `RCU_TRACE`, `SCHED_DEBUG` and

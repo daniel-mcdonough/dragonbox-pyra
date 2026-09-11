@@ -563,6 +563,77 @@ it should. The bootloader hint is stale: this card runs U-Boot 2016.11, far
 newer than the version it suggests. Identified, not chased, and it is a
 battery-life question rather than a correctness one.
 
+## Open: the mouse nub stops working, and a reboot brings it back
+
+Seen twice, on 2026-09-10 and 2026-09-11, both on days with repeated suspend
+testing. Suspend and resume is the prime suspect and has not been cleared. The
+pointer stops responding to the nub and stays dead until the machine is
+rebooted.
+
+**The chips are not the problem.** Both nubs are AS5013 magnetic joysticks on
+i2c bus 1, at `0x40` for the left and `0x41` for the right, driven by
+`drivers/input/joystick/as5013.c`. Read them directly while the nub is dead and
+they answer normally:
+
+| register | meaning | reading while dead |
+| --- | --- | --- |
+| `0x0f` | control; `& 0xfe == 0xf0` is the mode the driver expects, bit 0 is data ready | `0xf1` on both |
+| `0x10`, `0x11` | X and Y | jittering by a count or two on the left, steady on the right |
+
+So the chip is in its normal mode, is sampling, and has data waiting. Both
+interrupt lines read idle high in `/sys/kernel/debug/gpio`, so nothing is stuck
+asserted either.
+
+**What is actually stopped is the interrupt.** Each nub has its own line:
+
+    grep Nub /proc/interrupts
+
+    184:  14  0  4805d000.gpio  27  Edge  Left-Nub
+    185:   0  0  4805d000.gpio  21  Edge  Right-Nub
+
+Fourteen deliveries in half an hour, then frozen, on a device that produces one
+per sample while it is being pushed. That is the whole symptom.
+
+**Why that reading is not conclusive on its own.** `handle_edge_irq()`
+increments the counter *after* it checks whether the interrupt is disabled, so
+a disabled edge interrupt looks exactly like one that is enabled and idle. The
+number that separates them is the enable depth, and reading it needs
+`CONFIG_GENERIC_IRQ_DEBUGFS`, which the stock Pyra config leaves off. The build
+script turns it on, so on a kernel built after 2026-09-11:
+
+    sudo cat /sys/kernel/debug/irq/irqs/184
+
+A depth above zero means something disabled the interrupt and never put it
+back, which points at `as5013_low_power_enter()` and `as5013_low_power_leave()`.
+Those are called from both the suspend and resume callbacks and from the input
+device open and close, they are the only `disable_irq()` and `enable_irq()` in
+the driver, and nothing in either path checks whether the paired call happened.
+A depth of zero means the interrupt is armed and the chip is genuinely not
+asserting, which is a different bug in a different place.
+
+**What to try before rebooting**, in this order, moving the nub after each:
+
+    grep Nub /proc/interrupts
+    sudo systemctl restart pyrainput
+    grep Nub /proc/interrupts
+
+Restarting the daemon closes and reopens the input device, which runs
+`as5013_close()` and then `as5013_open()`. If the counter starts moving again,
+the fault is above the driver. If it does not, it is in the driver or below,
+and the depth reading above is the next step. Note that a restart cannot repair
+an unbalanced disable: close disables and open re-enables, so a depth that was
+already too high comes back one higher and then unchanged.
+
+**A caution about measuring this.** The counter only moves while somebody is
+pushing the nub, so a frozen counter proves nothing unless you know the nub was
+being touched at the time. This has already produced one false reading in
+testing.
+
+**Unresolved.** It is not known what fixes it short of a reboot, whether
+restarting the daemon helps at all, or whether the right nub has a second fault
+of its own; its counter has read zero since boot on a machine where the right
+nub may simply never be used.
+
 ## Fixed: two of the six SD hosts were phantoms, and they were what broke suspend
 
 `mmc1` and `mmc2` have no hardware behind them. Everything real works: the

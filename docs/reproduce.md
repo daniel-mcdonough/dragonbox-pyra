@@ -53,7 +53,7 @@ It cross-compiles in a throwaway Debian container, so nothing is installed on
 your host beyond the image, and the Pyra is not involved. The output is
 `~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz`.
 
-The build prints each patch as it applies it. All three must say `applied` or
+The build prints each patch as it applies it. All four must say `applied` or
 `already`; a patch that will not apply stops the build rather than producing a
 kernel that is missing a fix it claims to have. `building.md` has what each
 patch does and why.
@@ -107,7 +107,7 @@ kernel fix makes that unnecessary:
 
 ## Checking you got there
 
-Each of these is one of the three faults in the README, and each has a
+Each of these covers one of the faults in the README, and each has a
 specific thing to look at.
 
 **The kernel is the patched one.**
