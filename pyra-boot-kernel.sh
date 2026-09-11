@@ -104,8 +104,14 @@ EOF
 status() {
         local cur armed
         cur=$(current_label)
-        armed=$(systemctl is-enabled pyra-boot-revert.service 2>/dev/null | head -1)
-        [ -n "$armed" ] && [ "$armed" != not-found ] || armed=disarmed
+        # Three things can come back here and only one of them is an exit
+        # status of 0. "enabled" means armed. "disabled" is what the unit
+        # reports after it has fired and turned itself off, and "not-found"
+        # is a machine that never armed it; both exit 1, and under
+        # `set -e` with pipefail that used to kill this function before it
+        # printed anything at all.
+        armed=$(systemctl is-enabled pyra-boot-revert.service 2>/dev/null | head -1) || true
+        [ "$armed" = enabled ] || armed=disarmed
         echo "running now      : $(uname -r)"
         echo "next boot        : $cur — $(describe "$cur")"
         echo "one-shot revert  : $armed"
