@@ -583,11 +583,40 @@ kernel option. Every OMAP board declares a single valid suspend state, in
 
 `suspend_valid_only_mem()` returns true for `PM_SUSPEND_MEM` and nothing else,
 and the platform's own `omap_pm_enter()` returns `-EINVAL` for any other state,
-so the two refusals agree. Offering `standby` would mean writing a second
-low-power sequence for the power and reset controller, and there is no reason
-to want one: the sequence that already exists does not reach the state it asks
-for, as the messages above say, so a deliberately shallower one would save
-nothing.
+so the two refusals agree.
+
+This is not new and it is not particular to this chip. `arch/arm/mach-omap1`
+does the same thing, with the same helper and the same single case, so no OMAP
+generation in this tree has ever offered standby. Nor is it an OMAP oddity:
+twelve platforms in the whole of `arch/arm` implement the state, and TI is
+among them only through `drivers/soc/ti/pm33xx.c`, which is the Sitara parts
+rather than the OMAPs. The state is mostly a relic of the ACPI S1 that the
+kernel's own documentation maps it to.
+
+Offering `standby` would mean writing a second low-power sequence for the power
+and reset controller, and there is little reason to want one: the sequence that
+already exists does not reach the state it asks for, as the messages above say,
+so a deliberately shallower one would be starting from behind.
+
+### The shallow state the chip does have, and does not use here
+
+Standby names a machine with its clocks stopped and its logic still powered.
+The processor can do that, and mainline uses it, just not through
+`/sys/power/state`. It is a cpuidle state, entered and left thousands of times
+a second without anything being suspended. On this kernel there is only one,
+and it is the shallowest possible:
+
+    $ cat /sys/devices/system/cpu/cpuidle/current_driver
+    omap5_idle
+    $ cat /sys/devices/system/cpu/cpu0/cpuidle/state0/desc
+    CPUx WFI, MPUSS ON
+
+Mainline has a second one, `C2`, which puts both cores and the subsystem around
+them into retention. This kernel comments it out in
+`arch/arm/mach-omap2/cpuidle44xx.c`, and that is a change carried by the Pyra's
+kernel tree, not by upstream: mainline 5.6 has it enabled, and so does mainline
+today. Whether to turn it back on is `docs/improvements.md` item 12, along with
+the reasons to be careful about it.
 
 What you have instead are the two ends:
 

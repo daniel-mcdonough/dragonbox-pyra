@@ -346,3 +346,45 @@ than the other.
 gauge's coulomb counter and the machine was on external power throughout, so
 every reading was of the charger. The procedure for measuring it properly is in
 `docs/troubleshooting.md`.
+
+## 2026-09-12, small hours — where standby went, checked against mainline
+
+Follow-up to the entry above, which established that this machine offers no
+standby state. The question was whether any OMAP ever did.
+
+**No OMAP generation in this tree offers it.** `arch/arm/mach-omap1/pm.c` and
+`arch/arm/mach-omap2/pm.c` both register `.valid = suspend_valid_only_mem` and
+both have an enter callback whose only case is `PM_SUSPEND_MEM`. Twelve
+platforms under `arch/arm` implement `PM_SUSPEND_STANDBY` at all; TI appears
+among them only as `drivers/soc/ti/pm33xx.c`, which is Sitara rather than OMAP.
+
+**The chip does have the state standby would name, and this kernel switches it
+off.** The device reports one cpuidle state:
+
+| | |
+| --- | --- |
+| driver | `omap5_idle` |
+| states | 1 |
+| `state0` | `C1`, `CPUx WFI, MPUSS ON`, latency 4 us |
+| usage at 30 min uptime | 1330364 entries |
+
+Mainline defines a second, `C2`, `CPUx CSWR, MPUSS CSWR`, which puts both cores
+and the surrounding subsystem into retention. The Pyra's tree wraps both the
+state table entry and the driver entry in `#if 0`.
+
+**That is a local change, confirmed by diff.** Mainline `v5.6`'s
+`arch/arm/mach-omap2/cpuidle44xx.c` fetched from the torvalds tree has no `#if
+0` anywhere in the file; neither does the current master. The only differences
+between mainline `v5.6` and this tree's copy are the two `#if 0`/`#endif` pairs
+around the OMAP5 `C2` state and the addition of a separate DRA7 driver, which
+keeps its own `C2` enabled. The Debian packaging diff does not touch the file,
+so the change arrived in the source tarball.
+
+**What upstream measured when it added the state.** Commit `7abdb0e23e7b`, 2016,
+reports idle power on the omap5-uevm falling from about 1.7 W to about 920 mW
+with `C2` enabled. A reference board is not a Pyra and the figure does not
+transfer, but nothing else on the performance list is of that size.
+
+**Not established.** Why this tree disables it. The `#if 0` carries no comment
+and the packaging says nothing. Treat re-enabling it as an experiment that can
+hang the machine, not as a fix.

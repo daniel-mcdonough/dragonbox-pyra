@@ -725,6 +725,69 @@ Do not bother. There is exactly one cpuidle state on this kernel, `C1`, so the
 wakeups are not blocking a deeper sleep, and the whole prize is 2–3% of one core
 for a kernel change on an out-of-tree tree. Recorded so nobody re-derives it.
 
+That single idle state is itself worth a look, but as a battery question rather
+than a throughput one. It is item 12.
+
+---
+
+### 12. The retention idle state this kernel switches off
+
+**Not attempted. Potentially the largest battery item on the list, and the one
+most likely to end in a machine that does not wake.**
+
+The processor idles in exactly one state:
+
+    $ cat /sys/devices/system/cpu/cpuidle/current_driver
+    omap5_idle
+    $ cat /sys/devices/system/cpu/cpu0/cpuidle/state0/desc
+    CPUx WFI, MPUSS ON
+
+One state, and it is the shallowest one there is: wait for an interrupt with
+the whole processor subsystem left powered. Mainline has a second one for this
+chip, `C2`, which puts both cores and the subsystem around them into retention.
+This kernel does not, because this kernel comments it out:
+
+    #if 0
+            {
+                    /* C2 - CPU0 RET + CPU1 RET + MPU CSWR */
+                    .exit_latency = 48 + 60,
+                    ...
+    #endif
+
+That is in `arch/arm/mach-omap2/cpuidle44xx.c`, and it is a change carried by
+the Pyra's kernel tree rather than anything upstream. Mainline 5.6 has the
+state enabled, and so does mainline today. The same tree adds a separate copy
+of the driver for a related chip and leaves `C2` switched on there, so this was
+a decision about this processor specifically, not a blanket removal.
+
+**Why it might be worth a lot.** The commit that added the state upstream,
+`7abdb0e23e7b` in 2016, reports the measurement that motivated it: idle power
+on the reference board fell from about 1.7 W to about 920 mW. That board is not
+a Pyra and the number will not transfer, but the fraction is not the kind of
+thing any of the other items on this list can offer.
+
+**Why it is dangerous.** The `#if 0` carries no comment, and nothing in the
+packaging explains it. A silent `#if 0` around a low-power state almost always
+means somebody found that it hung, and the failure mode for a broken retention
+state is a machine that stops answering and needs the battery pulled. It is
+also the same chip whose suspend path already declines to put five power
+domains into their target state, which is not encouraging about how well
+retention works here.
+
+**How to try it, if you try it.** Build a kernel with the two `#if 0`/`#endif`
+pairs removed, install it with `device/pyra-install-debug-kernel.sh` so the
+stock kernel keeps its boot entry, and select it with `pyra-boot-kernel.sh` in
+its one-shot mode, which reverts by itself if the machine does not come back.
+Then check that a second state appeared and that its usage count moves:
+
+    grep . /sys/devices/system/cpu/cpu0/cpuidle/state*/{name,usage}
+
+Measure before and after with the fuel gauge over an hour of idle, the same way
+`docs/troubleshooting.md` describes for suspend. Do this on a day when you can
+afford to lose the machine to a hang, and not before the display fix is
+confirmed, because a hang in the idle path and a hang in a modeset look the
+same from the outside.
+
 ---
 
 ## Not worth doing
