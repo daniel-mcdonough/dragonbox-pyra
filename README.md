@@ -114,6 +114,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
+| `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
 | `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra
@@ -164,9 +165,7 @@ the whole repository has one answer.
 
     # the patched kernel, and the helpers, once it is running
     ./pc/pyra-crossbuild.sh kernel-fix
-    scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
-    rsync -a device patches pyra@<address>:dragonbox-pyra/
-    ssh pyra@<address> 'sudo ./dragonbox-pyra/device/pyra-install-debug-kernel.sh fix-kernel.tar.gz'
+    ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
     ssh pyra@<address> 'cd dragonbox-pyra/device && sudo ./pyra-install-helpers.sh'
 
 Every step above has conditions and guards that this summary leaves out.

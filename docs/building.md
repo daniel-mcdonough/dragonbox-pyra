@@ -430,6 +430,17 @@ refuses to guess:
     sudo ./device/pyra-install-debug-kernel.sh fix-kernel.tar.gz
     sudo pyra-boot-kernel.sh debug --once
 
+`pc/pyra-push-kernel.sh` does the copy, and with `--install --reboot` the whole
+sequence, which is worth having once you are rebuilding often:
+
+    ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
+
+It reads the release name out of the tarball the same way, adds
+`--replace-running` by itself when that name matches what the device is running,
+waits for the machine to come back and checks that it came back on the kernel
+you just sent. Without `--install` it copies and stops, and prints the command
+to finish by hand.
+
 A rebuilt kernel keeps the same release name, so reinstalling one while
 running it collides with the module tree you are using. That is refused by
 default. While iterating on patches, which is the case where you want it

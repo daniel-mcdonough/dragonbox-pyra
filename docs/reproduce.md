@@ -62,6 +62,13 @@ patch does and why.
 
 The kernel installer lives in this repository, so send both in one go:
 
+    ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
+
+That copies the tarball and this repository's `device/` and `patches/`, runs
+the installer over ssh, reboots, waits, and checks the machine came back on the
+kernel you just sent. The three steps by hand, if you would rather watch each
+one:
+
     scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
     rsync -a device patches pyra@<address>:dragonbox-pyra/
 
