@@ -47,19 +47,27 @@ That is the working debug loop for this image.
 
 ---
 
-## Known cosmetic oddity: load average sits at ~2
+## Solved: the load average that sat at ~2
 
-Two kworkers on the `events_freezable` workqueue sit permanently in `D` state:
+On the stock kernel two kworkers on the `events_freezable` workqueue sit
+permanently in `D` state:
 
     D   36  kworker/1:1+events_freezable
     D 1309  kworker/1:2+events_freezable
 
 Linux counts uninterruptible tasks in the load average, so two of them pin it
-near 2.0 while the CPU is ~80% idle and nothing is actually slow. Present from
-the very first boot of this image, before any of the fixes here were applied, so
-it is not something this procedure introduces. Cause not chased down; likely a
-driver's delayed work blocking on an i2c transfer. Harmless, but it makes
-`uptime` and any monitoring that watches load average misleading on this device.
+near 2.0 while the CPU is about 80% idle and nothing is actually slow. It is
+present from the very first boot of this image, before any of the fixes here
+are applied, so it is not something this procedure introduces.
+
+It was written off here as a cosmetic oddity of unknown cause. It was not
+cosmetic and the cause turned out to matter: those two workers are the rescans
+of the two phantom SD hosts, and the same two workers are what makes this
+machine refuse to suspend. Both sections below have the full story.
+
+**Fixed by `patches/0003`.** On `5.6.19-fix`, verified 2026-09-11: no task in
+`D` state at all, four MMC hosts instead of six, and the load average settles
+where an idle machine's should.
 
 
 ---
@@ -432,10 +440,27 @@ so; the lockup-detector kernel reports them within 30 seconds of boot.
 This costs no CPU. Blocked is not spinning. What it costs is suspend, above.
 
 **The fix is one deletion**: drop the `1 || ` so the driver refuses to register
-hosts it cannot serve. The sysfs `switch` control is created earlier in the
-same function, so it survives. `CONFIG_MMC_TXS02612=y` in both kernels here, so
-there is no module to blacklist and this needs a kernel rebuild;
-`building.md` has that.
+hosts it cannot serve. It is `patches/0003`, and `CONFIG_MMC_TXS02612=y` in
+every kernel here, so there is no module to blacklist and it needs a rebuild.
+
+**Confirmed on `5.6.19-fix`, 2026-09-11.** The driver still probes, still fails
+to find its controller, and still says so, but now it stops there instead of
+registering hosts anyway:
+
+    txs02612 txs02612: probe
+    txs02612 txs02612: failed to get mmc phandle in /txs02612 node
+    txs02612 txs02612: could not get access to host port, using manual mode
+    txs02612 txs02612: probed
+
+Six MMC hosts became four, and all four are real controllers at distinct
+addresses. Nothing was lost with the phantoms: the eMMC and the card the system
+booted from are both present, WiFi is up, and the manual mux control still
+reads and writes:
+
+    $ cat /sys/devices/platform/txs02612/switch
+    eMMC
+
+No task is left in `D` state, which also settles the load average above.
 
 ## The screen never dims, and MATE's setting for it does nothing
 
