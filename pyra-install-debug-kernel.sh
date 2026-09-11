@@ -56,8 +56,19 @@ REL=$(tar tzf "$TARBALL" | sed -n 's|^\./boot/vmlinuz-||p' | head -1)
 [ "$REL" != "$(uname -r)" ] || die "$REL is already the running kernel"
 [ -f "$STOCK" ]    || die "no $STOCK — this is not an extlinux Pyra card"
 [ -L /lib ]        || die "/lib is not a symlink; this rootfs is already broken"
-grep -q '^default l0' /boot/extlinux/extlinux.conf \
-                   || die "extlinux.conf does not default to l0; refusing to guess"
+# Two defaults are expected here and no others. l0 is the stock kernel, which
+# is how a machine that has never had a test kernel is set up. l1 is the test
+# slot, which is what pyra-boot-kernel.sh selects and which this script is
+# about to repoint at a different kernel. Anything else is a boot
+# configuration this script did not write and should not edit.
+DEFAULT=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
+case "$DEFAULT" in
+l0)     echo "  default is l0, the stock kernel; this install does not change what boots" ;;
+l1)     echo "  default is l1, the test slot, and this install repoints it." ;;
+*)      die "extlinux.conf defaults to '${DEFAULT:-nothing}', which is neither the stock
+entry l0 nor the test slot l1. Refusing to guess. Put it back with
+'pyra-boot-kernel.sh stock' and try again." ;;
+esac
 echo "  running $(uname -r), installing $REL beside it, from $TARBALL"
 
 # The tarball must not carry a ./lib/ entry. trixie is usr-merged, /lib is a
@@ -136,8 +147,12 @@ n=$(ls "/boot/dtb/linux-image-$REL"/*.dtb 2>/dev/null | wc -l)
 echo "  ok   /boot/dtb/linux-image-$REL ($n dtbs)"
 [ "$n" -gt 0 ] || fail=1
 echo "  ok   /usr/lib/modules/$REL ($(find "/usr/lib/modules/$REL" -name '*.ko' | wc -l) modules)"
-grep -q "^default l0" /boot/extlinux/extlinux.conf \
-        && echo "  ok   default is still l0, the stock kernel" || fail=1
+now=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
+case "$now" in
+l0)     echo "  ok   default is l0, the stock kernel; nothing about the next boot changed" ;;
+l1)     echo "  ok   default is l1, the test slot, which now points at $REL" ;;
+*)      echo "  BAD  default is now '$now'"; fail=1 ;;
+esac
 [ -L /lib ] && echo "  ok   /lib -> $(readlink /lib)" || fail=1
 
 echo
@@ -148,13 +163,23 @@ df -h /boot | tail -1
 
 [ "$fail" = 0 ] || die "one of the checks above did not pass"
 
-cat <<EOF
-
-Done. It is installed but not selected: rebooting now still gets you the stock
-kernel. Choose it with
+if [ "$now" = l0 ]; then
+        NEXT="The default is still l0, so rebooting now gets you the stock kernel.
+Choose the new one with
 
     sudo pyra-boot-kernel.sh debug --once        # one boot, then back to stock
-    sudo pyra-boot-kernel.sh debug               # until you say otherwise
+    sudo pyra-boot-kernel.sh debug               # until you say otherwise"
+else
+        NEXT="The default is l1, the slot this install just repointed, so the next
+reboot runs $REL. Change your mind with
+
+    sudo pyra-boot-kernel.sh stock               # back to the stock kernel
+    sudo pyra-boot-kernel.sh status              # check before rebooting"
+fi
+
+cat <<EOF
+
+Done. $NEXT
 
 Once it is up, confirm with:
 
