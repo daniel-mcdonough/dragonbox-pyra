@@ -643,6 +643,41 @@ at it again, and set the default back:
     ./pc/pyra-push-kernel.sh --install pyra@<address>
     ssh pyra@<address> 'sudo pyra-boot-kernel.sh debug'
 
+## The two frequency kernels
+
+Added 2026-09-12, from `experiments/thermals-and-frequency/`. Neither has been
+booted. They use the same machinery as the experiment above, so everything in
+that section about one-shot boots and going back applies unchanged; only the
+tarball names differ.
+
+    ./pc/pyra-crossbuild.sh kernel-freq    # 5.6.19-freq, the fix set plus 0007
+    ./pc/pyra-crossbuild.sh kernel-oc      # 5.6.19-oc,   the same plus 0008
+
+Both are the fix kernel with a device tree change on top, in their own source
+trees at `kernel/src-freq` and `kernel/src-oc`. What they change is one
+property: the CPU operating points on `cpu@0`.
+
+**Why two and not one.** `0007` adds five frequency steps between the six the
+board ships with, at the voltages the board already uses either side of them,
+and raises no ceiling. `0008` raises the ceiling to 2 GHz, past the part's
+1.5 GHz rating, on voltages measured on somebody else's unit. Those are not the
+same risk and they answer different questions, so they are not the same build.
+The one worth running first is `kernel-freq`, against item 1 of
+`improvements.md`: the governor's complaint is partly that 250 MHz is the
+smallest step it has.
+
+**Watch `/boot`.** It was 41% used with three kernels installed. Each of these
+is a fourth and a fifth, and there is one test boot slot, so installing either
+takes the slot whatever is in it was using.
+
+**`kernel-oc` alone is not an overclock.** The extra points exist but
+`pyra-thermal.sh` on the device caps the maximum frequency, and it caps it at
+1500. Leave it capped on the first boot: that way the device tree is tested
+before anything actually runs faster, which is one variable rather than two.
+The directory's README has the rest, including a defect in the published
+example of that script that raises the hot-battery charge current more than
+threefold.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card

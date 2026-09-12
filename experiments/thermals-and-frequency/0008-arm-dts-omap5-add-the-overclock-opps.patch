@@ -1,0 +1,61 @@
+ARM: dts: omap5: add the operating points above the part's rating
+
+The previous patch fills in the gaps below 1.5 GHz without raising the
+ceiling.  This one raises it, to 2 GHz, and it is the half that can cost
+you hardware rather than a reboot.
+
+The OMAP5432 on this board is a 1.5 GHz-rated general purpose part.  Five
+points above that rating:
+
+	1600 MHz  1.300 V
+	1700 MHz  1.350 V
+	1800 MHz  1.350 V
+	1900 MHz  1.350 V
+	2000 MHz  1.450 V
+
+The tree already carried a 1700 MHz point behind an unexplained `#if 0`
+marked "potentially overclocking", asking for 1.25 V.  That is 100 mV
+below what the same frequency is given here.  Whoever wrote the guarded
+entry and whoever published the table disagree about the voltage that
+frequency needs, and the higher figure is the one that comes with a
+report of having been run.  Take the higher one and remove the stub, so
+there is one answer in the file rather than two.
+
+The supply is constrained to 1.5 V, so 1.45 V is inside the regulator's
+range with 50 mV to spare.  That is the only claim in this patch that has
+been checked against this board.
+
+Everything else here is unverified on this unit.  The author of the table
+says plainly that 2 GHz needs modified cooling and that they can hardly
+run it themselves, and this machine already reaches 95 C under sustained
+emulation with a 100 C passive trip, which leaves five degrees before it
+throttles and no headroom at all for a higher clock.  Adding the points
+does not by itself make the machine use them: pyra-thermal.sh caps the
+maximum frequency and must be raised separately.  Leave it alone on the
+first boot, so that the tree is tested before anything is overclocked.
+
+This is an experiment and it is not part of the Pyra fix set.
+
+--- a/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
++++ b/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
+@@ -95,9 +95,17 @@
+ 		1250000 1100000
+ 		1400000 1200000
+ 		1500000 1250000
+-#if 0	/* potentially overclocking */
+-		1700000 1250000
+-#endif
++		/*
++		 * Above this line the part is past its rating.  The 1700000
++		 * entry that used to sit here under an #if 0 asked for
++		 * 1250000 uV; these ask for 1350000, which is the voltage
++		 * the steps were reported stable at on real hardware.
++		 */
++		1600000 1300000
++		1700000 1350000
++		1800000 1350000
++		1900000 1350000
++		2000000 1450000
+ 	>;
+ };
+ 

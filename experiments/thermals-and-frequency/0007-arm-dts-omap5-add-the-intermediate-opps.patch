@@ -1,0 +1,64 @@
+ARM: dts: omap5: add the intermediate operating points below 1.5 GHz
+
+The Letux Cortex 15 device tree gives the Pyra six CPU operating points,
+250 MHz apart from 250 MHz to 1.5 GHz.  Six steps across a six-fold range
+is coarse, and it costs this board twice.  The cpufreq floor sits at
+250 MHz, six steps below the top, so every interaction pays a full ramp;
+and `ondemand` on this machine is configured to step up only at 95% load,
+so the ramp it does take is slow as well as long.
+
+Add the five steps that sit between the existing ones.  Every original
+step keeps its original voltage to the microvolt, and the new ones are
+placed on the same curve between them:
+
+	 375 MHz  0.800 V
+	 625 MHz  0.900 V
+	 875 MHz  1.000 V
+	1125 MHz  1.075 V
+	1400 MHz  1.200 V
+
+Nothing here runs faster than the OMAP5432's 1.5 GHz rating, and the top
+voltage is unchanged, so this does not raise the ceiling in either sense.
+The supply these points drive, smps123, is constrained to 1.5 V in
+omap5-board-common.dtsi and every voltage above is well inside that.
+
+The table is taken from a device tree published by a Pyra owner who had
+tuned and run it, read back out of the blob rather than retyped; see
+experiments/thermals-and-frequency/README.md for how it was verified.
+That same blob carries five further points above the part's rating, which
+are deliberately not in this patch.
+
+This is an experiment and it is not part of the Pyra fix set.  The
+voltages are somebody else's measurements on somebody else's unit, and a
+point whose voltage is too low for its frequency produces a machine that
+is unstable rather than one that refuses to boot.  Build it under its own
+release name, boot it one-shot so that it reverts by itself, and measure
+it against improvements.md item 1 before carrying it any further.
+
+--- a/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
++++ b/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
+@@ -76,13 +76,24 @@
+ };
+ 
+ &cpu0 {
++	/*
++	 * Five intermediate steps between the six the board shipped with.
++	 * Every original step keeps its original voltage; the new ones sit
++	 * on the same curve between them.  Nothing here runs faster than
++	 * the part is rated for.
++	 */
+ 	operating-points = <
+ 		/* kHz    uV */
+ 		250000 750000
++		375000 800000
+ 		500000 850000
++		625000 900000
+ 		750000 950000
++		875000 1000000
+ 		1000000 1050000
++		1125000 1075000
+ 		1250000 1100000
++		1400000 1200000
+ 		1500000 1250000
+ #if 0	/* potentially overclocking */
+ 		1700000 1250000

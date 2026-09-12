@@ -1,14 +1,22 @@
 # An unlocked device tree: 250 MHz to 2 GHz
 
 Third-party work, published on the Pyra forums and reproduced here with its
-author's warning intact. **Untested on this machine.** Nothing in this
-directory is installed by any script in this repository, and nothing in
-`docs/` depends on it.
+author's warning intact, plus the work that was made of it here.
+**Nothing in this directory has been booted on this machine.** No default
+build carries any of it: the two kernel variants that do have to be asked for
+by name, and nothing in `docs/` depends on them.
 
-Two files:
+What arrived, and what was made of it:
 
     omap5-letux-cortex15-v5.3+pyra-v5.3.dtb   the unlocked device tree, April 2022
     pyra-thermal.sh                           the author's own thermal script, March 2022
+    0007-arm-dts-omap5-add-the-intermediate-opps.patch   the safe half, as source
+    0008-arm-dts-omap5-add-the-overclock-opps.patch      the rest, as source
+
+The blob is what was published. The two patches are the same frequency table
+written back into this kernel's own device tree source, split so the half that
+is not overclocking can be built on its own. If you build your own kernel, use
+those and ignore the blob.
 
 ## The author's warning, kept as written
 
@@ -102,7 +110,11 @@ Which matters for more than a path. Each extlinux entry names its own
 treats the device tree as one file to overwrite and back up carefully. Here it
 does not have to be, and overwriting is the wrong way to do it.
 
-## A safer way to try it, using what is already here
+## A safer way to try the blob, if you are not building a kernel
+
+Skip this section if you are. Building `kernel-freq` or `kernel-oc` from the
+patches below is both safer and less work, and it survives a rebuild. What
+follows is for running the published blob on a kernel you did not build.
 
 Give the unlocked tree its own directory and its own boot entry, leave every
 existing entry untouched, and boot it once. `device/pyra-boot-kernel.sh`
@@ -163,27 +175,70 @@ If you want the author's ceiling, change `maxFreq` and the core ladder in the
 copy of the script that is already on the device, and leave its battery section
 alone.
 
-## No source was published, and that is fixable
+## No source was published, so the table was rewritten as source
 
 What the forum post offers is a compiled blob, not the device tree source it
-was built from. That is a real limitation here, because this repository builds
-its own kernel and emits its own device trees from
-`pc/pyra-crossbuild.sh kernel-fix`. A prebuilt blob cannot follow a kernel
-rebuild; it has to be copied back over the freshly built one every time, which
-is exactly the kind of step that gets forgotten once and then produces a
-confusing result.
+came from. That does not survive contact with this repository, which builds its
+own kernel and emits its own device trees. A prebuilt blob has to be copied
+back over the freshly built one after every kernel build, which is exactly the
+kind of step that gets forgotten once and then produces a confusing result.
 
-The table above is the whole functional change and it is now written down, so
-the better form of this is a patch to the device tree source in the kernel
-tree, alongside the six in `patches/`. Then the unlock is built rather than
-copied, it survives every rebuild, and the LED and backlight changes are left
-out because they were never part of it. Whoever picks this up should write that
-patch rather than install this blob permanently.
+The table is the whole functional change and it is now written down, so it is
+carried here as source instead:
+
+    0007-arm-dts-omap5-add-the-intermediate-opps.patch
+    0008-arm-dts-omap5-add-the-overclock-opps.patch
+
+Both edit `arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi`, which is where
+the board's six points are set today. They are split along the line this
+document keeps drawing, so the half that is not overclocking can be built and
+measured without the half that is. `0007` adds the five steps below 1.5 GHz and
+changes no ceiling. `0008` raises the ceiling to 2 GHz and has to be applied on
+top of `0007`.
+
+`0008` also resolves something already in the tree. The board's own device tree
+carries a 1700 MHz point behind an unexplained `#if 0` marked "potentially
+overclocking", asking 1.25 V, where the published table asks 1.35 V for the
+same frequency. Two answers for one frequency, and the patch takes the higher
+one, which is the one that comes with a report of having been run.
+
+The LED and backlight changes are deliberately left out. They were never part
+of the unlock.
+
+### Building it
+
+    ./pc/pyra-crossbuild.sh kernel-freq    # the fix set plus 0007
+    ./pc/pyra-crossbuild.sh kernel-oc      # the same, plus 0008
+
+Each builds under its own release name, `5.6.19-freq` and `5.6.19-oc`, into its
+own source tree, and installs beside the stock kernel rather than over it. From
+there it is the ordinary one-shot route in `docs/building.md`, which is what
+makes this safer than swapping a file: a kernel that hangs gets exactly one
+boot.
+
+Note that `/boot` was 41% used with three kernels on it. Each of these adds a
+fourth and a fifth.
+
+### What was checked
+
+`kernel-freq` and `kernel-oc` have been built as device trees but not booted.
+Both patches apply to a clean tree, apply in order, and are idempotent, so a
+rebuild over a patched tree reports them as already applied rather than
+failing. The resulting blob was compiled and read back: it carries the full
+sixteen-step table byte for byte, and against the forum blob it differs in
+exactly the sixteen LED and backlight properties that were left out and in
+nothing else.
+
+The one hardware claim either patch makes has also been checked. The supply
+these points drive, `smps123`, is constrained to 1.5 V in
+`omap5-board-common.dtsi`, and the device agrees at runtime, so the 1.45 V that
+the 2 GHz point asks for is inside the regulator's range. Everything else about
+the voltages is somebody else's measurement on somebody else's unit.
 
 ## Status
 
-Not tried on this machine, so there is no result section yet. It sits in
+Not booted on this machine, so there is no result section yet. It sits in
 `experiments/` for the same reason `c2-idle` does: the reasoning is recorded so
 that trying it is a decision rather than a rediscovery. Unlike `c2-idle`, this
-one has not been closed, and the sub-1.5 GHz half looks worth a measured run
-against item 1 of `docs/improvements.md`.
+one has not been closed, and `kernel-freq` looks worth a measured run against
+item 1 of `docs/improvements.md`.

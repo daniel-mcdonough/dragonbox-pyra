@@ -8,6 +8,8 @@
 #   ./pyra-crossbuild.sh kernel-debug        a kernel that reports lockups
 #   ./pyra-crossbuild.sh kernel-fix          the same, plus everything in patches/
 #   ./pyra-crossbuild.sh kernel-c2           the fix kernel plus one experiment
+#   ./pyra-crossbuild.sh kernel-freq         the fix kernel plus finer cpu steps
+#   ./pyra-crossbuild.sh kernel-oc           the same, overclocked to 2 GHz
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -127,10 +129,19 @@ build_kernel() {
 #   kernel-debug   5.6.19-softlockup   stock source, plus a lockup detector
 #   kernel-fix     5.6.19-fix          the same, plus everything in patches/
 #   kernel-c2      5.6.19-c2           the fix set plus experiments/c2-idle
+#   kernel-freq    5.6.19-freq         the fix set plus the intermediate OPPs
+#   kernel-oc      5.6.19-oc           kernel-freq plus the overclock OPPs
 #
-# The last one is an experiment and is meant to be bootable beside the fix
-# kernel rather than instead of it, which is why it has its own release name
-# and its own source tree. See improvements.md item 12.
+# The last three are experiments and are meant to be bootable beside the fix
+# kernel rather than instead of it, which is why each has its own release name
+# and its own source tree. See improvements.md item 12 for c2, and
+# experiments/thermals-and-frequency/README.md for the other two.
+#
+# kernel-freq and kernel-oc are deliberately separate. The first adds five
+# frequency steps below the part's 1.5 GHz rating at the voltages the board
+# already uses either side of them, and changes no ceiling. The second raises
+# the ceiling to 2 GHz on voltages measured on somebody else's unit. Only one
+# of those is worth building to answer a question about the governor.
 #
 # The stock config has no lockup detector of any kind, which is why two hangs
 # that pinned a core for minutes produced no kernel message at all. Both of
@@ -153,8 +164,17 @@ build_kernel_variant() {
 	if [ -n "$patchdirs" ]; then
 		mkdir -p "$dir/patches"
 		for pd in $patchdirs; do
-			ls "$pd"/*.patch >/dev/null 2>&1 || die "no patches in $pd"
-			cp "$pd"/*.patch "$dir/patches/"
+			if [ -f "$pd" ]; then
+				# A single patch, for an experiment that ships
+				# more than one and is meant to be taken in
+				# parts rather than whole.
+				cp "$pd" "$dir/patches/"
+			elif [ -d "$pd" ]; then
+				ls "$pd"/*.patch >/dev/null 2>&1 || die "no patches in $pd"
+				cp "$pd"/*.patch "$dir/patches/"
+			else
+				die "no such patch or directory: $pd"
+			fi
 		done
 	fi
 	[ -d "$dir/$srcdir" ] || run debian:bookworm "$dir" '
@@ -283,10 +303,16 @@ build_kernel_variant() {
 	echo "symbols: $dir/$srcdir/vmlinux, for resolving addresses from a lockup report"
 }
 
+OPP_DIR=$SELF_DIR/../experiments/thermals-and-frequency
+
 build_kernel_debug() { build_kernel_variant softlockup "" src; }
 build_kernel_fix()   { build_kernel_variant fix "$SELF_DIR/../patches" src-fix; }
 build_kernel_c2()    { build_kernel_variant c2 \
 	"$SELF_DIR/../patches $SELF_DIR/../experiments/c2-idle" src-c2; }
+build_kernel_freq()  { build_kernel_variant freq \
+	"$SELF_DIR/../patches $OPP_DIR/0007-arm-dts-omap5-add-the-intermediate-opps.patch" src-freq; }
+build_kernel_oc()    { build_kernel_variant oc \
+	"$SELF_DIR/../patches $OPP_DIR" src-oc; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
@@ -294,5 +320,7 @@ case "${1:-}" in
 	kernel-debug) shift; build_kernel_debug ;;
 	kernel-fix)   shift; build_kernel_fix ;;
 	kernel-c2)    shift; build_kernel_c2 ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2" ;;
+	kernel-freq)  shift; build_kernel_freq ;;
+	kernel-oc)    shift; build_kernel_oc ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc" ;;
 esac

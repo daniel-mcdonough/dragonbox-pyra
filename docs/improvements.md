@@ -221,9 +221,11 @@ with every existing step keeping its stock voltage to the microvolt. That half
 of it is not overclocking, and it speaks directly to two of the complaints
 above: the 250 MHz floor is six steps below the top because the steps are
 coarse, and a ramp that has to cross 250 MHz gaps is a slower ramp than one
-that does not. It is untested here and the same blob also carries five steps
-above the part's rating, which are a different matter entirely. Read that
-directory's write-up before installing anything from it.
+that does not. It is not booted here yet, but it is buildable:
+`./pc/pyra-crossbuild.sh kernel-freq` carries exactly those five steps and
+nothing else, so this can be measured rather than argued about. The same table
+also carries five steps above the part's rating; those are a separate patch and
+a separate build, deliberately. Read that directory's write-up first.
 
 Effort: an afternoon. Risk: thermal, real but observable.
 
