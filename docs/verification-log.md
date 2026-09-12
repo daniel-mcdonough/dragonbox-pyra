@@ -439,3 +439,31 @@ the next step would need a serial console rather than another rebuild.
 kernel as before the experiment. The experiment kernel was removed afterwards,
 leaving the stock, lockup-detector and fix kernels; `/boot` is back to 41%
 used, which is where it was before the experiment.
+
+## 2026-09-12 — the prep selftest, with the sixth fix in it
+
+`sudo ./pc/pyra-prep-selftest.sh` against a copy of the real image,
+loop-mounted, on the workstation.
+
+**31 passed, 0 failed.**
+
+This is the run that matters for fix 6, because everything before it had been
+exercised against a synthetic rootfs in a container. The selftest uses the
+genuine vendor `pyra-thermal.sh` on the genuine card layout, which is the only
+place the transformation meets the file it was written for.
+
+What it established for the new fix, beyond the two obvious assertions that no
+`cpufreq-set` call survives and that something writes `scaling_max_freq`:
+
+| Checked | Result |
+| --- | --- |
+| The vendor original is kept on the card | Present as `pyra-thermal.sh.before-pyra-thermal-fix`, so the card carries its own undo |
+| The vendor's thermal ladder is untouched | Same number of ladder decisions before and after |
+| The patched daemon parses | `bash -n` clean, so the card cannot boot with a dead daemon |
+| Prep's output matches the device script | Byte for byte against `pyra-thermal-fix.sh --emit-patched`, so there is demonstrably one implementation |
+| A second run changes nothing | Whole-rootfs snapshot identical, and the log says "already applies" |
+
+The existing guarantees held with the new fix in place: the before-and-after
+rootfs snapshots show no write outside what the six fixes claim, the second run
+leaves the filesystem byte-identical, the missing-payload abort still happens
+before fix 1 removes anything, and `fsck.f2fs` is clean afterwards.
