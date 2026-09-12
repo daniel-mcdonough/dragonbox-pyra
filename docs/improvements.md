@@ -221,11 +221,25 @@ with every existing step keeping its stock voltage to the microvolt. That half
 of it is not overclocking, and it speaks directly to two of the complaints
 above: the 250 MHz floor is six steps below the top because the steps are
 coarse, and a ramp that has to cross 250 MHz gaps is a slower ramp than one
-that does not. It is not booted here yet, but it is buildable:
+that does not. **Measured 2026-09-12, and the answer is not the one this item expected.**
 `./pc/pyra-crossbuild.sh kernel-freq` carries exactly those five steps and
-nothing else, so this can be measured rather than argued about. The same table
-also carries five steps above the part's rating; those are a separate patch and
-a separate build, deliberately. Read that directory's write-up first.
+nothing else, and two runs on each kernel say that finer steps do not improve
+responsiveness at all: bursty work is about 4% slower on the mean and 18%
+slower in the best case, because the governor now has somewhere comfortable to
+stop short of the top. What they buy instead is idle power. With six steps the
+governor spends 7.3% of an *idle* machine at 1.5 GHz, since the step above
+500 MHz is 750 and the ramp overshoots; with eleven it reaches the top 0.1% of
+the time. That is 0.27 W, about 6.5%, or roughly 21 minutes of the 21.3 Wh
+battery.
+
+So the reasoning in this item was wrong about the benefit and right that the
+step table was worth changing. It also does not overlap with the three
+misconfigurations below, which remain untested: a finer table and a tuned
+governor are separate experiments, and the second is more interesting now that
+the first exists. Full numbers in
+`experiments/thermals-and-frequency/README.md`. The same published table also
+carries five steps above the part's rating; those are a separate patch and a
+separate build, deliberately.
 
 Effort: an afternoon. Risk: thermal, real but observable.
 
@@ -248,6 +262,27 @@ Two separable pieces of work:
   `scaling_cur_freq` at 1 Hz through a sustained load. Oscillation between 1.5
   and 1.25 GHz has been reported by others on this hardware and is worse than a
   stable lower clock.
+
+  **Measured 2026-09-12, and it is worse than oscillation: the trip does not
+  hold.** `7z b` on both cores took the CPU zone from 64°C to **107°C**, seven
+  degrees past the 100°C passive trip, in under two minutes, and the run was
+  stopped by the profiler rather than by the kernel. The zone is configured
+  correctly — `cooling-maps` present, `thermal-cpufreq-0` bound with ten
+  states, `polling-delay-passive` 250 ms — so this is not a missing binding.
+  `step_wise` simply concedes one cooling state per poll, and on a fanless case
+  this load outruns it. The userspace `pyra-thermal.sh` cannot help either: it
+  polls every 20 seconds, which is an age at this heating rate.
+
+  Nothing was damaged, the critical trip at 125°C was never approached, and the
+  machine was healthy afterwards. But 107°C is the answer to "where is the real
+  limit", and it is a property of this hardware rather than of any kernel here:
+  every kernel in this repository tops out at the same 1.5 GHz. It also means
+  the five degrees of margin quoted above are not margin at all under a load
+  heavier than box86.
+
+  Two cores flat out is therefore not a benchmark this machine should be asked
+  to run repeatedly. `device/pyra-freq-profile.sh` uses one core for exactly
+  this reason and aborts at the trip rather than above it.
 - **Hardware.** Community reports of 20–23°C reductions from improved thermal
   contact are the largest single number anywhere in this document. That is a
   physical modification, out of scope for this repository, but it is the thing

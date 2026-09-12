@@ -255,32 +255,78 @@ regulator's range. Everything else about the voltages is somebody else's
 measurement on somebody else's unit, and the one of them that has now been
 tested against this board turned out to be wrong.
 
-## Status
+## Result: it buys battery, not speed
 
-**`kernel-freq` boots and the machine is healthy on it.** 2026-09-12. Two
-one-shot boots, the first of which found the 1.075 V defect and the second of
-which confirmed the correction. No failed units, no OPP rejections, network and
-desktop intact, and the system reports itself running.
+Measured 2026-09-12 with `device/pyra-freq-profile.sh`, two full runs on each
+kernel, on battery with the charger physically disconnected, governor and
+thermal daemon untouched. The two runs of each kernel agreed closely enough
+that the spread is smaller than every difference reported below.
 
-All eleven steps are used. Residency over the first minute of an idle-ish boot,
-in jiffies, with the governor and the thermal cap left exactly as they were:
+**Idle, 120 seconds of doing nothing:**
 
-| MHz | 250 | 375 | 500 | 625 | 750 | 875 | 1000 | 1125 | 1250 | 1400 | 1500 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| jiffies | 2214 | 4660 | 1174 | 382 | 299 | 182 | 166 | 199 | 195 | 221 | 2981 |
+| | `5.6.19-fix` | `5.6.19-freq` |
+| --- | --- | --- |
+| steps offered | 6 | 11 |
+| mean frequency | 447 MHz | 388 MHz |
+| power | 4.11 W | 3.84 W |
+| share of the window at 1500 MHz | 7.3% | 0.1% |
 
-3019 transitions. The shape is the interesting part: 375 MHz, which did not
-exist before, is the single most-occupied state, ahead of the 250 MHz floor the
-governor used to fall back to. That is consistent with the complaint in item 1
-of `docs/improvements.md` — the governor was not choosing 250 MHz because it
-wanted 250 MHz, it was choosing it because the next step up was a 100% jump.
+That last row is the mechanism, and it was checked twice on each kernel because
+it looked like noise the first time. It is not noise. With six steps the
+governor spends **7.3% of an idle machine at full speed**, because the step
+above 500 MHz is 750 and the ramp overshoots; with eleven it finds something
+that fits and effectively never reaches the top. The saving is 0.27 W, about
+6.5%. Against this unit's 21.3 Wh battery that is roughly **21 minutes more
+idle runtime**, 5.2 hours becoming 5.5.
 
-That is one minute on one boot and it is not a measurement of anything anyone
-cares about. It says the steps work and get used, not that the machine is
-faster or cooler. The comparison that would settle it is the same workload
-profiled on `5.6.19-fix` and `5.6.19-freq`, which has not been done.
+**Burst, 1200 short units of work with idle between them:**
 
-`kernel-oc` has still never been booted.
+| | `5.6.19-fix` | `5.6.19-freq` |
+| --- | --- | --- |
+| mean unit latency | 52.3 ms | 54.4 ms |
+| best unit | 33.5 ms | 39.6 ms |
+| p50 | 53.2 ms | 54.3 ms |
+| p99 | 62.8 ms | 61.7 ms |
+| power | 5.14 W | 4.87 W |
+
+This is the phase the extra steps were supposed to help, and it is the phase
+where they do not. Bursty work is about 4% slower on average and the best case
+is 18% slower, because the governor now has somewhere comfortable to stop short
+of the top and takes it. The tail is marginally better, 1.7% at p99. Power is
+down by the same quarter-watt as at idle.
+
+**Sustained:** no number, on either kernel. One core of `7z b` reaches the
+100°C passive trip on both, and the profiler stops there. See the thermal
+finding below; it is a property of the machine and not of either kernel.
+
+**So the honest summary is the opposite of the hypothesis.** Item 1 of
+`improvements.md` reasoned that coarse steps were making the machine sluggish,
+and that finer ones would help responsiveness. Finer steps do not help
+responsiveness; they cost a little. What they do is stop an idle machine
+visiting 1.5 GHz, which is worth about 6.5% of idle power and twenty minutes of
+battery. That is a real result and a modest one, and it is a better argument
+for this patch than the one that motivated it.
+
+None of this touches the governor's actual misconfiguration — `up_threshold 95`,
+`io_is_busy 0`, a 250 MHz floor — which is still untested and still the cheapest
+item on the list. Finer steps and a tuned governor are separate experiments, and
+the second one is now more interesting than it was, because there is a finer
+table for it to work with.
+
+**A thermal finding that is not about either kernel.** The first attempt at a
+sustained phase ran `7z b` on both cores and took the CPU zone from 64°C to
+**107°C**, seven degrees past the 100°C passive trip, in under two minutes. It
+was stopped by the profiler, not by the kernel. The zone is configured
+correctly, so this is `step_wise` conceding one cooling state per poll while a
+fanless case heats faster than that, with the userspace thermal daemon polling
+every 20 seconds on top. Nothing was damaged and the 125°C critical trip was
+never near, but the "five degrees of margin" quoted elsewhere in
+`improvements.md` is not margin under a load heavier than box86. It is recorded
+there as item 2. Every kernel here tops out at 1.5 GHz, so this belongs to the
+hardware.
+
+`kernel-oc` has still never been booted, and this finding is the strongest
+argument yet against booting it.
 
 **Note on the boot slot.** There is one test slot. Installing `kernel-freq`
 into it points that slot away from `5.6.19-fix`, so with the one-shot revert

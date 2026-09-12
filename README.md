@@ -133,6 +133,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |
+| `device/pyra-freq-profile.sh` | Compares two kernels' cpufreq behaviour: idle residency, the latency of short bursts of work, and throughput, with power when the charger is off. Changes nothing, needs no privileges. |
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
