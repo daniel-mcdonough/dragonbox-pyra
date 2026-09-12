@@ -283,6 +283,33 @@ Two separable pieces of work:
   Two cores flat out is therefore not a benchmark this machine should be asked
   to run repeatedly. `device/pyra-freq-profile.sh` uses one core for exactly
   this reason and aborts at the trip rather than above it.
+
+  **And the userspace half is not running at all.** Found 2026-09-12 while
+  asking why nothing clamped the frequency during those runs.
+  `pyra-thermal.sh` shells out to `cpufreq-set`, which is not installed,
+  because the package that provided it, `cpufrequtils`, is not in trixie at
+  all — `apt-cache policy` reports no candidate. So every 20 seconds since the
+  image's first boot the daemon has read the temperatures, decided on a
+  frequency cap, and failed to apply it:
+
+      pyra-thermal.sh[2000]: pyra-thermal.sh: 89: cpufreq-set: not found
+
+  1031 of those in the current journal. The charge-current half of the same
+  function works, because it is a plain redirection to `/dev/usb_max_current`
+  on the next line and nothing aborts in between. So the daemon has been
+  managing charging correctly and managing frequency not at all.
+
+  This means the 107°C above was the kernel's `step_wise` unassisted, and that
+  `step_wise` is the *only* frequency protection this image has. It also means
+  the thermal ladder in that script — the one everybody tunes — has never done
+  anything on trixie.
+
+  The fix needs no package. `cpufreq-set -u NMHz` is one write to
+  `scaling_max_freq`, which the daemon already runs as root and which needs
+  nothing installed. `linux-cpupower` is the packaged alternative if a
+  dependency is acceptable. Either way this is now the most valuable item in
+  this section, it is a packaging bug in the trixie image rather than anything
+  this repository did, and it should be reported upstream.
 - **Hardware.** Community reports of 20–23°C reductions from improved thermal
   contact are the largest single number anywhere in this document. That is a
   physical modification, out of scope for this repository, but it is the thing
