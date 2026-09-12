@@ -13,7 +13,7 @@
 # package or survives a reinstall of one.
 #
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
-# this script puts on the path for you. It does not apply the five card fixes
+# this script puts on the path for you. It does not apply the six card fixes
 # either: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
 #
 # Every step is idempotent. Run it again after a `git pull`.

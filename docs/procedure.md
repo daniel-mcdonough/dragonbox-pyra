@@ -14,7 +14,7 @@ the original forum writeup: fix 4 supersedes fix 1, because the documented DRI
 symlink does not work on mesa 25.x and never could, and fix 5 keeps USB alive
 across a warm reboot.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all five fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all six fixes offline.
 Fix 5 installs two files that live beside it, so run it from a checkout of the
 repository rather than copying the script somewhere on its own.
 `../pc/pyra-prep-selftest.sh` proves it does that correctly against a copy of the

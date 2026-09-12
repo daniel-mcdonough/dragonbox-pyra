@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of all five fixes, runs it a second time and requires the
+# the end state of all six fixes, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -136,7 +136,7 @@ fi
 rm -f "$OUT/.d1"
 
 ########################################################################
-i "assert the five fixes"
+i "assert the six fixes"
 ########################################################################
 # fix 1 — the ineffective symlink must be gone
 if [[ -e $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so || -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]]; then
@@ -209,6 +209,51 @@ fi
 # /usr/local/sbin must not have been re-moded
 i "fix5: /usr/local/sbin is $(stat -c '%a %u:%g' "$MNT/usr/local/sbin")"
 
+# fix 6 — the thermal daemon must apply its cap by writing sysfs, and the
+# vendor's original must still be on the card beside it.
+TH=$MNT/usr/share/pyra/scripts/pyra-thermal.sh
+if [[ ! -f $TH ]]; then
+    f "fix6: no pyra-thermal.sh on the card at all"
+else
+    if grep -qE '^[[:space:]]*cpufreq-set -u' "$TH"; then
+        f "fix6: still calls cpufreq-set, which trixie cannot install"
+    else
+        p "fix6: no cpufreq-set call left"
+    fi
+    if grep -q 'scaling_max_freq' "$TH"; then
+        p "fix6: applies the cap by writing scaling_max_freq"
+    else
+        f "fix6: nothing writes scaling_max_freq"
+    fi
+    # The ladder is the vendor's policy and fix 6 must not have touched it.
+    LADDER_BEFORE=$(grep -cE 'setMaxFreq|setMaxCharge' "$TH.before-pyra-thermal-fix" 2>/dev/null || echo 0)
+    LADDER_AFTER=$(grep -cE 'setMaxFreq|setMaxCharge' "$TH" 2>/dev/null || echo 0)
+    if [[ -e $TH.before-pyra-thermal-fix ]]; then
+        p "fix6: vendor original kept at ${TH#$MNT}.before-pyra-thermal-fix"
+    else
+        f "fix6: no vendor original kept, so the card has no undo"
+    fi
+    if [[ $LADDER_BEFORE -eq $LADDER_AFTER && $LADDER_BEFORE -gt 0 ]]; then
+        p "fix6: thermal ladder untouched ($LADDER_AFTER decisions, as shipped)"
+    else
+        f "fix6: ladder changed, $LADDER_BEFORE decisions before and $LADDER_AFTER after"
+    fi
+    # It has to parse, or the card boots with a dead thermal daemon.
+    if bash -n "$TH" 2>/dev/null; then
+        p "fix6: patched daemon is valid shell"
+    else
+        f "fix6: patched daemon does not parse"
+    fi
+    # The one change must be exactly what the device script would have made.
+    if "$PAYLOADS/pyra-thermal-fix.sh" --emit-patched "$TH.before-pyra-thermal-fix" 2>/dev/null | cmp -s - "$TH"; then
+        p "fix6: matches what pyra-thermal-fix.sh produces, byte for byte"
+    else
+        f "fix6: differs from what the device script would produce"
+    fi
+    # Mode and owner must survive: this is a packaged file.
+    i "fix6: $(stat -c '%a %u:%g' "$TH") $(basename "$TH")"
+fi
+
 ########################################################################
 i "run 2 — idempotency"
 ########################################################################
@@ -230,6 +275,7 @@ fi
 # and it must say so, rather than silently rewriting
 grep -qE 'fix5: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix5 already up to date" || f "run 2 did not report fix5 up to date"
 grep -qE 'fix5: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix5 already enabled" || f "run 2 did not report fix5 already enabled"
+grep -qE 'fix6: .*already applies' "$OUT/prep-run2.log" && p "run 2 reported fix6 already applied" || f "run 2 did not report fix6 already applied"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"

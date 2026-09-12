@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the six known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -7,8 +7,8 @@
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
 #
-# Fix 5 installs two files that live beside this script in the repository, so
-# run it from a checkout rather than copying the script somewhere on its own.
+# Fixes 5 and 6 use files that live in device/ in the repository, so run this
+# from a checkout rather than copying the script somewhere on its own.
 
 set -euo pipefail
 
@@ -48,6 +48,13 @@ USB3503_UNIT_SRC=$PAYLOADS/pyra-usb3503-rescue.service
 for f in "$USB3503_SRC" "$USB3503_UNIT_SRC"; do
     [[ -r $f ]] || die "fix5: $(basename "$f") not found (looked in $PAYLOADS)"
 done
+
+# Fix 6 does not copy a file. It transforms one that is already on the card,
+# and it calls the device script to do it so that the transformation has
+# exactly one implementation in the repository rather than two that can drift.
+THERMAL_FIX=$PAYLOADS/pyra-thermal-fix.sh
+[[ -x $THERMAL_FIX ]] || die "fix6: pyra-thermal-fix.sh not found or not executable (looked in $PAYLOADS)"
+
 
 echo
 
@@ -300,6 +307,62 @@ else
            "$WANTS/pyra-usb3503-rescue.service"
     ok "fix5: enabled in multi-user.target"
 fi
+
+########################################################################
+# Fix 6 — the thermal daemon has never capped a frequency
+########################################################################
+# /usr/share/pyra/scripts/pyra-thermal.sh reads both temperature sensors every
+# 20 seconds, decides a maximum CPU frequency, and applies it by calling
+# cpufreq-set. That program is not installed and cannot be: it came from
+# cpufrequtils, which is not in trixie and has no candidate version. So the
+# call has failed on every cycle since the image's first boot, logging a line
+# nobody reads, while the charging limit on the next line — a plain
+# redirection, with no set -e to stop in between — has worked all along. The
+# daemon has been managing the charger correctly and the CPU not at all.
+#
+# That leaves the kernel's step_wise governor as the only thing limiting
+# frequency for heat, and on its own it is not enough: two cores of `7z b`
+# take the machine seven degrees past its 100 C passive trip in under two
+# minutes. With this fix the same load peaks at 84 C and the cap visibly moves.
+#
+# The replacement is a write to scaling_max_freq, which is all cpufreq-set -u
+# ever did and needs nothing installed. The vendor's thermal ladder is left
+# exactly as it is: the ladder is the vendor's policy, and only this one line
+# was broken.
+#
+# This edits a file shipped by a package, in a location that is not a conffile,
+# so a later upgrade of the Pyra scripts will silently revert it. On the device
+# `pyra-thermal-fix.sh --check` says whether that has happened.
+
+THERMAL_DST=$ROOT/usr/share/pyra/scripts/pyra-thermal.sh
+[[ -f $THERMAL_DST ]] || die "fix6: no ${THERMAL_DST#$ROOT} on this card — is this a Pyra image?"
+
+# --emit-patched writes the fixed form to stdout and changes nothing. An input
+# that is already fixed comes back unchanged, so comparing decides whether
+# there is anything to write and makes a re-run a no-op.
+THERMAL_TMP=$(mktemp)
+if ! "$THERMAL_FIX" --emit-patched "$THERMAL_DST" > "$THERMAL_TMP" 2>/dev/null; then
+    rm -f "$THERMAL_TMP"
+    die "fix6: ${THERMAL_DST#$ROOT} has no 'cpufreq-set -u' line to replace.
+       Refusing to guess at a thermal daemon this was not written for."
+fi
+
+# Never leave a thermal daemon on the card that does not parse.
+if ! bash -n "$THERMAL_TMP" 2>/dev/null; then
+    rm -f "$THERMAL_TMP"
+    die "fix6: the patched thermal daemon is not valid shell; nothing written"
+fi
+
+if cmp -s "$THERMAL_TMP" "$THERMAL_DST"; then
+    ok "fix6: ${THERMAL_DST#$ROOT} already applies its frequency cap"
+else
+    # Keep the vendor's file alongside, once, so the card carries its own undo.
+    [[ -e $THERMAL_DST.before-pyra-thermal-fix ]] \
+        || cp -a "$THERMAL_DST" "$THERMAL_DST.before-pyra-thermal-fix"
+    cat "$THERMAL_TMP" > "$THERMAL_DST"   # keep the vendor file's mode and owner
+    ok "fix6: ${THERMAL_DST#$ROOT} now writes scaling_max_freq instead of calling cpufreq-set"
+fi
+rm -f "$THERMAL_TMP"
 
 echo
 sync

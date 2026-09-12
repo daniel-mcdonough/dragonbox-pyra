@@ -1,4 +1,4 @@
-# The five fixes, and what they actually do
+# The six fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -184,3 +184,63 @@ state it inherits. That belongs in the driver or the device tree.
 
 ---
 
+
+## Fix 6 — the thermal daemon has never capped a frequency
+
+**What is wrong.** `/usr/share/pyra/scripts/pyra-thermal.sh` reads the core and
+battery temperatures every 20 seconds, works out a maximum CPU frequency from
+its ladder, and applies it by calling `cpufreq-set`. That program is not
+installed and cannot be installed: it came from `cpufrequtils`, which is not in
+trixie and has no candidate version. So the call has failed on every cycle
+since the image's first boot:
+
+    pyra-thermal.sh[2000]: pyra-thermal.sh: 89: cpufreq-set: not found
+
+The next line of the same function writes the charging limit, and that one is a
+plain redirection with no `set -e` to stop in between, so it has worked all
+along. The daemon has been managing the charger correctly and the CPU not at
+all, while reporting itself active and healthy.
+
+**Why it matters.** It leaves the kernel's `step_wise` governor as the only
+thing limiting frequency for heat, and on its own that is not enough on a
+fanless case. Two cores of `7z b` took a working machine from 64°C to **107°C**,
+seven degrees past its 100°C passive trip, in under two minutes, and the run
+was stopped by the measuring script rather than by the kernel. The 125°C
+critical trip was never approached and nothing was damaged, but the thermal
+ladder everybody tunes has never had any effect on this image.
+
+**The fix.** Replace that one call with a write to `scaling_max_freq`, which is
+all `cpufreq-set -u` ever did and needs nothing installed. The vendor's ladder
+is left exactly as it is: the ladder is the vendor's policy, and only the one
+line was broken.
+
+Measured on hardware on 2026-09-12, same single-core load before and after:
+
+| | before | after |
+| --- | --- | --- |
+| peak CPU zone | 100°C, still climbing when stopped | **84°C, stable** |
+| cap under load | never left 1500 MHz | 1500 → 1250 → 1500 |
+
+**Where it is applied.** `pc/pyra-trixie-prep.sh` applies it offline to a
+mounted card, and `device/pyra-thermal-fix.sh` applies it to a running machine
+and verifies it by forcing the cap down and watching the daemon put it back.
+Both use the same transformation: prep calls the device script's
+`--emit-patched` mode rather than carrying a second copy of it. The vendor's
+original is kept alongside as `pyra-thermal.sh.before-pyra-thermal-fix`, so the
+card carries its own undo.
+
+**A caveat that the others do not have.** This one edits a file shipped by a
+package, in a location that is not a conffile, so a later upgrade of the Pyra
+scripts will silently put the broken version back.
+`pyra-thermal-fix.sh --check` says whether that has happened. The proper home
+for this is upstream, and it is on the report list.
+
+**One thing it exposes rather than fixes.** With the daemon capping, the
+frequency now oscillates between 1500 and 1250 MHz on a roughly 20-second
+cycle, because the ladder has a 20-second poll and no hysteresis. That is the
+oscillation others have reported on this hardware, and it could not have been
+seen on this image before, because nothing was capping. It is worth tuning with
+a release threshold below the trigger. Oscillating between the top two steps is
+a much better place to be than walking past the trip.
+
+---

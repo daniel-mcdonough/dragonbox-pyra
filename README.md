@@ -11,11 +11,11 @@ box86 — including a 1999 Windows game under an x86 Wine.
 The eMMC is never touched, so the bookworm-7 install stays intact as a recovery
 path.
 
-### Five faults you should know about before you rely on it
+### Six faults you should know about before you rely on it
 
-All five are diagnosed in `docs/troubleshooting.md`, each with the evidence
-that identified it. Four are fixed. The fifth has a candidate fix that cannot
-be confirmed until it next fails to happen. The kernel patches are in
+All six are diagnosed in `docs/troubleshooting.md`, each with the evidence
+that identified it. Five are fixed. The remaining one, the display wedge, has a
+candidate fix that cannot be confirmed until it next fails to happen. The kernel patches are in
 `patches/`, built by `./pc/pyra-crossbuild.sh kernel-fix`.
 
 **The display can wedge inside a modeset.** A core spins at 100% and only a
@@ -51,6 +51,15 @@ restart it. Only reopening the input device brings it back, which is why a
 reboot fixed it and why restarting the input daemon did too. **Fixed by
 `patches/0005`.**
 
+**The thermal daemon has never limited a frequency.** It decides a cap every
+20 seconds and applies it by calling a program that trixie does not ship and
+cannot install, so the call has failed on every cycle since the first boot
+while the charging half of the same function worked. That left the kernel's own
+governor as the only protection, and on its own it is not enough: two cores
+flat out reached 107°C, seven degrees past the passive trip. **Fixed by
+`pyra-thermal-fix.sh` and by the prep script, and confirmed on hardware: the
+same load now peaks at 84°C.**
+
 **The built-in keyboard can stop dead, silently.** The key controller signals
 with a level held asserted while anything is queued, but the device tree
 describes the line as edge triggered, so the kernel hears only the moment it
@@ -70,7 +79,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
 | [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
-| [docs/fixes.md](docs/fixes.md) | The five fixes, what each one is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The six fixes, what each one is for, and the diagnosis behind it. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
@@ -103,7 +112,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all five fixes to a mounted rootfs, before the card's first boot. |
+| `pc/pyra-trixie-prep.sh` | Applies all six fixes to a mounted rootfs, before the card's first boot. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |

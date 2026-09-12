@@ -7,6 +7,14 @@
 #   sudo ./pyra-thermal-fix.sh            apply the fix, restart, verify
 #   sudo ./pyra-thermal-fix.sh --undo     put the vendor file back
 #
+#        ./pyra-thermal-fix.sh --emit-patched FILE
+#
+# writes the fixed version of FILE to stdout and touches nothing, needs no
+# root, and does not care whether it is running on a Pyra. That mode exists so
+# `pc/pyra-trixie-prep.sh` can apply the same fix to a mounted card offline,
+# from the PC, without a second copy of the transformation existing anywhere.
+# There is one implementation and prep calls it.
+#
 # WHAT IS WRONG
 #
 # `/usr/share/pyra/scripts/pyra-thermal.sh` reads the core and battery
@@ -57,17 +65,63 @@ SERVICE=pyra-thermal.service
 CPUFREQ=/sys/devices/system/cpu/cpu0/cpufreq
 
 ACTION=apply
+EMIT_SRC=
 case "${1:-}" in
 	--check) ACTION=check ;;
 	--undo)  ACTION=undo ;;
-	-h|--help) sed -n '3,52p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	--emit-patched)
+		ACTION=emit
+		EMIT_SRC=${2:-}
+		[ -n "$EMIT_SRC" ] || { echo "--emit-patched needs a file" >&2; exit 2; }
+		;;
+	-h|--help) sed -n '3,60p' "$0" | sed 's/^# \?//'; exit 0 ;;
 	"") ;;
 	*) echo "unknown option: $1" >&2; exit 2 ;;
 esac
 
+# The whole of the change, in one place, used by every mode below and by the
+# prep script through --emit-patched. Exits 3 if the vendor line is not there.
+AWK_PROG='
+	$0 ~ /^[[:space:]]*cpufreq-set -u \$\{current_maxFreq\}MHz[[:space:]]*$/ {
+		print "\t# " marker ": cpufreq-set came from cpufrequtils, which is not in"
+		print "\t# trixie and has no candidate version, so this call failed on every"
+		print "\t# cycle since the first boot and the daemon never capped anything."
+		print "\t# Writing scaling_max_freq is what cpufreq-set -u did, and needs"
+		print "\t# nothing installed. Both cores share one policy on this SoC."
+		print "\tfor _policy in /sys/devices/system/cpu/cpufreq/policy*; do"
+		print "\t\t[ -w \"$_policy/scaling_max_freq\" ] || continue"
+		print "\t\techo $((current_maxFreq * 1000)) > \"$_policy/scaling_max_freq\""
+		print "\tdone"
+		done_patch = 1
+		next
+	}
+	{ print }
+	END { if (!done_patch) exit 3 }
+'
+
+# Write the fixed form of $1 to stdout. Already-fixed input is passed through
+# unchanged, so callers can compare and decide whether anything needs writing.
+emit_patched() {
+	local src=$1
+	if grep -q "$MARKER" "$src"; then
+		cat "$src"
+		return 0
+	fi
+	awk -v marker="$MARKER" "$AWK_PROG" "$src"
+}
+
 say()  { printf '\n== %s\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
 die()  { printf '\nFAILED: %s\n' "$*" >&2; exit 1; }
+
+# ----------------------------------------------------------------- emit ------
+# Before every other check: this mode reads one file, writes stdout, and has
+# nothing to do with the machine it runs on.
+if [ "$ACTION" = emit ]; then
+	[ -r "$EMIT_SRC" ] || die "cannot read $EMIT_SRC"
+	emit_patched "$EMIT_SRC" || die "$EMIT_SRC has no 'cpufreq-set -u' line to replace"
+	exit 0
+fi
 
 [ "$(id -u)" = 0 ] || die "run this with sudo"
 [ -f "$VENDOR" ] || die "no $VENDOR — is this a Pyra?"
@@ -133,24 +187,7 @@ broken || die "the line this fix replaces is not in $VENDOR.
 
 say "patching the one line that cannot work"
 TMP=$(mktemp)
-awk -v marker="$MARKER" '
-	# The vendor line, whatever it is indented with.
-	$0 ~ /^[[:space:]]*cpufreq-set -u \$\{current_maxFreq\}MHz[[:space:]]*$/ {
-		print "\t# " marker ": cpufreq-set came from cpufrequtils, which is not in"
-		print "\t# trixie and has no candidate version, so this call failed on every"
-		print "\t# cycle since the first boot and the daemon never capped anything."
-		print "\t# Writing scaling_max_freq is what cpufreq-set -u did, and needs"
-		print "\t# nothing installed. Both cores share one policy on this SoC."
-		print "\tfor _policy in /sys/devices/system/cpu/cpufreq/policy*; do"
-		print "\t\t[ -w \"$_policy/scaling_max_freq\" ] || continue"
-		print "\t\techo $((current_maxFreq * 1000)) > \"$_policy/scaling_max_freq\""
-		print "\tdone"
-		done_patch = 1
-		next
-	}
-	{ print }
-	END { if (!done_patch) exit 3 }
-' "$VENDOR" > "$TMP" || { rm -f "$TMP"; die "the line was not replaced; nothing changed"; }
+emit_patched "$VENDOR" > "$TMP" || { rm -f "$TMP"; die "the line was not replaced; nothing changed"; }
 
 # Never install a thermal daemon that does not parse.
 sh -n "$TMP" || { rm -f "$TMP"; die "the patched script is not valid shell; nothing changed"; }

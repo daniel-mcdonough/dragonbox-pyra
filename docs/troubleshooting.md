@@ -986,7 +986,7 @@ unreachable and the mount then fails with `Failed to read root inode` instead.
 
 ### What to do
 
-Reflash. The image, the five fixes, the grow and the verification are all
+Reflash. The image, the six fixes, the grow and the verification are all
 scripted in this repository, so a rebuild is bounded work with a known outcome,
 while this recovery is not. Image the card first if anything on it matters, and
 do the rewrite through an SD host controller rather than the reader that caused

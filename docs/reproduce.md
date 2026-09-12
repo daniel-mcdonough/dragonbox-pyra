@@ -37,7 +37,7 @@ to the card by the prep script.
 ### 1. Get a working desktop
 
 Follow `procedure.md` sections 0 to 6. At the end of it the machine boots to
-MATE, the rootfs fills the card, and the five fixes are in place. Do not
+MATE, the rootfs fills the card, and the six fixes are in place. Do not
 continue until section 6 passes.
 
 Optional, and much easier done now than later: `procedure.md` section 7 sets
