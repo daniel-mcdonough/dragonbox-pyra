@@ -22,3 +22,7 @@ modeset-hang-*/
 *-hang-*.log
 dmesg-*.log
 Xorg.*.log
+
+# Workstation-local settings: device addresses, SSH key path, agent socket.
+# Specific to one machine and one network. See the file's own header.
+pyra-local.conf
