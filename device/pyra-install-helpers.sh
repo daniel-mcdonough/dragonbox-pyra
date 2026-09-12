@@ -41,12 +41,15 @@ pyra-cpu-attribution.sh             /usr/local/sbin                    0755
 pyra-x-load-profile.sh              /usr/local/sbin                    0755
 pyra-idle-profile.sh                /usr/local/sbin                    0755
 pyra-freq-profile.sh                /usr/local/sbin                    0755
+pyra-governor-sweep.sh              /usr/local/sbin                    0755
 pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-idle-dim                       /usr/local/bin                     0755
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
+pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
+pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
 "
 
 if [ "$DRYRUN" = 2 ]; then
@@ -57,6 +60,10 @@ if [ "$DRYRUN" = 2 ]; then
 	done <<<"$MAP"
 	echo
 	echo "pyra-idle-dim.service                      ~/.config/systemd/user/ (per user)"
+	echo
+	echo "The two .c files are sources and are installed as sources. Each one"
+	echo "carries its own compile line in its header comment; both need"
+	echo "libx11-dev, which this image does not ship."
 	exit 0
 fi
 
@@ -176,6 +183,27 @@ Done. What is now on the path:
     pyra-modeset-hang-trap.sh         provoke the display hang and capture it
     pyra-cpu-attribution.sh           account for every busy cycle
     pyra-x-load-profile.sh            the X server's share of a workload
+    pyra-idle-profile.sh              where an idle machine spends its power
+    pyra-freq-profile.sh              compare two kernels' cpufreq behaviour
+    pyra-governor-sweep.sh            measure what each governor setting buys
+    pyra-thermal-fix.sh --check       is the thermal daemon's fix still applied
+    pyra-anno1602-test.sh             the box86 and Wine workload
+
+The two benchmarks are installed as source, in /usr/local/src/pyra, because
+both link against Xlib and this image does not ship libx11-dev:
+
+    pyra-exa-fallback-bench.c         what the DDX's EXA fallbacks cost
+    pyra-gles2-smoke.c                GLES2 through the SGX blob
+
+Each carries its own compile line in its header. To build them:
+
+    sudo apt install libx11-dev
+    sed -n '1,20p' /usr/local/src/pyra/pyra-exa-fallback-bench.c
+
+Two of these change the machine while they run and put it back afterwards:
+pyra-governor-sweep.sh stops the thermal daemon and pins the frequency
+ceiling, and pyra-modeset-hang-trap.sh is trying to provoke a hang. Read the
+header of either before running it unattended.
 
 docs/reproduce.md is the whole path from a blank card to this state.
 EOF

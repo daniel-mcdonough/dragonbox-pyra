@@ -128,6 +128,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container, stock or with any of the patch sets. Touches neither the host nor the Pyra. |
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
+| `pc/pyra-push-helpers.sh` | Copies the device scripts to the Pyra and installs them there, in one command from the workstation. The same thing `pyra-push-kernel.sh` does on its way past, without needing a built kernel to do it. |
 | `experiments/c2-idle/` | One kernel patch, tried and rejected: restoring the processor's retention idle state, which this kernel tree removes, hangs the machine within two minutes. Kept with its result so nobody repeats it. |
 | `experiments/thermals-and-frequency/` | Third-party, never booted here: an unlocked device tree with sixteen frequency steps from 250 MHz to 2 GHz, read out and reviewed, and rewritten as two device tree patches so the half that is not overclocking can be built on its own. Also the one change in its example thermal script that can damage a battery. |
 | `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
@@ -146,6 +147,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |
 | `device/pyra-freq-profile.sh` | Compares two kernels' cpufreq behaviour: idle residency, the latency of short bursts of work, and throughput, with power when the charger is off. Changes nothing, needs no privileges. |
+| `device/pyra-governor-sweep.sh` | Measures what each cpufreq governor setting is worth, one knob at a time, against the `performance` governor as the ceiling. Stops the thermal daemon and pins the frequency ceiling for the length of the run, because the daemon caps on battery temperature and will otherwise move the ceiling underneath the measurement; puts both back on every exit path. |
 | `device/pyra-thermal-fix.sh` | Makes the stock thermal daemon able to apply its own decision. It calls `cpufreq-set`, which trixie cannot install, so it has never capped a frequency; this writes `scaling_max_freq` instead. Peak temperature under load falls from 100°C to 84°C. Reversible with `--undo`. |
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
@@ -184,7 +186,7 @@ the whole repository has one answer.
     # the patched kernel, and the helpers, once it is running
     ./pc/pyra-crossbuild.sh kernel-fix
     ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
-    ssh pyra@<address> 'cd dragonbox-pyra/device && sudo ./pyra-install-helpers.sh'
+    ./pc/pyra-push-helpers.sh pyra@<address>
 
 Every step above has conditions and guards that this summary leaves out.
 `docs/procedure.md` is the version to actually follow for the card, and
