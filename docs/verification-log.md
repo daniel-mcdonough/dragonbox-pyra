@@ -388,3 +388,52 @@ transfer, but nothing else on the performance list is of that size.
 **Not established.** Why this tree disables it. The `#if 0` carries no comment
 and the packaging says nothing. Treat re-enabling it as an experiment that can
 hang the machine, not as a fix.
+
+## 2026-09-12, small hours — the retention idle state, tried and rejected
+
+`experiments/c2-idle` restores the OMAP5 cpuidle state this kernel tree removes.
+Built as `5.6.19-c2`, the six-patch kernel plus that one change, installed
+beside the others and booted.
+
+**The patch takes effect, provably.** In the built object, `omap5_idle_data`
+grows from 16 bytes to 32, one `idle_statedata` to two, matching
+`dra7_idle_data` which has always had both. Comparing strings does not
+distinguish the kernels: the DRA7 driver in the same file carries the same
+description text in both.
+
+**The governor uses the state heavily.** One minute after boot, first core:
+
+| state | entries | time in state |
+| --- | --- | --- |
+| `C1`, `CPUx WFI, MPUSS ON` | 24150 | 15.9 s |
+| `C2`, `CPUx CSWR, MPUSS CSWR` | 25367 | 31.7 s |
+
+**The machine hangs.** Two boots on it, from the journal's own boot list:
+
+| boot | kernel | first to last log entry |
+| --- | --- | --- |
+| -5 | `5.6.19-fix` | 1 h 15 min, ended by a clean shutdown |
+| -4 | `5.6.19-c2` | 48 s, ended mid-log |
+| -3 | `5.6.19-pyradef` | 2 min 14 s, ended by a clean shutdown |
+| -2 | `5.6.19-c2` | 1 min 14 s, ended mid-log |
+
+Both C2 boots stop with no warning, no backtrace, no watchdog line and no
+response on either address. The second one stops within seconds of a successful
+SSH command, so it was alive and answering immediately before.
+
+**Two candidate causes were checked and eliminated.** The `L3 Custom Error`
+warning from the interconnect and a `blocked for more than 30 seconds` hung
+task in the USB ethernet adapter's probe both appear on the C2 boots. Counting
+them across all eight boots in the journal shows both on every fix and stock
+boot as well, including the healthy one running now. Neither is a signature of
+this fault.
+
+**Not the display hang.** That one spins a core and leaves the machine
+reachable; its backtrace trap depends on that. This takes the network with it.
+
+**Not established.** What actually goes wrong. Nothing reaches the disk, so
+the next step would need a serial console rather than another rebuild.
+
+**Machine state afterwards.** Back on `5.6.19-fix`, SHA-256
+`f47b212128eb20cf8f1313b41a9392a29aa68f6cd3950a7e9850ba7f84ddda71`, the same
+kernel as before the experiment. `/boot` holds four kernels and is 54% full.

@@ -732,8 +732,9 @@ than a throughput one. It is item 12.
 
 ### 12. The retention idle state this kernel switches off
 
-**Not attempted. Potentially the largest battery item on the list, and the one
-most likely to end in a machine that does not wake.**
+**Tried on 2026-09-12. It hangs the machine within two minutes. Closed.** The
+rest of this item is kept because the reasoning was right and only the answer
+was disappointing; the result is at the end.
 
 The processor idles in exactly one state:
 
@@ -787,6 +788,35 @@ Measure before and after with the fuel gauge over an hour of idle, the same way
 afford to lose the machine to a hang, and not before the display fix is
 confirmed, because a hang in the idle path and a hang in a modeset look the
 same from the outside.
+
+**What happened.** The state works exactly as advertised and the machine dies
+anyway. Two boots on `5.6.19-c2`, both wedged with no warning and nothing in
+the log. The governor had been reaching for the state constantly: in the first
+minute of uptime the first core entered retention 25367 times and spent 31.7
+seconds of that minute in it, more wall clock than it spent in the shallow
+state.
+
+| kernel | boots | how long each lasted |
+| --- | --- | --- |
+| `5.6.19-fix` | 4 | hours |
+| `5.6.19-c2` | 2 | 48 s and 74 s |
+
+Neither death left anything behind. Both ended mid-log with no warning, no
+backtrace, no watchdog, and no response on either network interface, which
+rules out the display hang: that one spins a core and leaves the machine
+reachable, which is the only reason its backtrace trap works.
+
+Two things in the log looked like the cause and are not. The `L3 Custom Error`
+warning from the interconnect and a `blocked for more than 30 seconds` hung
+task in the USB ethernet adapter's probe both appear on the C2 boots, and both
+also appear on every fix and stock boot, including the healthy one running now.
+They are pre-existing noise and have nothing to do with this.
+
+So the evidence is entirely circumstantial and entirely one-sided: two for two,
+within about a minute, against a kernel that is otherwise identical and runs
+for hours. The `#if 0` in the tree is best read as somebody having found the
+same thing. Reopening this would need a serial console, because whatever
+happens takes the machine before it can write a word.
 
 ---
 

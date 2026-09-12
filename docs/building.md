@@ -585,6 +585,11 @@ it on a machine not yet running this kernel.
 
 ## The experiment kernel, and why it is not in the patch set
 
+**Tried on 2026-09-12, and it hangs the machine within two minutes.**
+`experiments/c2-idle/RESULT.md` has the evidence. Everything below still
+describes how to build and boot it, because that machinery is what any future
+experiment will use, but do not run this one expecting a working computer.
+
 One more change exists, in `experiments/c2-idle/` rather than in `patches/`,
 and it gets its own build target and its own release name:
 
