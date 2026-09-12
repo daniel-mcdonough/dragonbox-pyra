@@ -14,16 +14,26 @@ placed on the same curve between them:
 	 375 MHz  0.800 V
 	 625 MHz  0.900 V
 	 875 MHz  1.000 V
-	1125 MHz  1.075 V
+	1125 MHz  1.080 V
 	1400 MHz  1.200 V
 
 Nothing here runs faster than the OMAP5432's 1.5 GHz rating, and the top
 voltage is unchanged, so this does not raise the ceiling in either sense.
-The supply these points drive, smps123, is constrained to 1.5 V in
-omap5-board-common.dtsi and every voltage above is well inside that.
 
-The table is taken from a device tree published by a Pyra owner who had
-tuned and run it, read back out of the blob rather than retyped; see
+Every voltage above has to be one the supply can actually produce.  The
+points drive smps123, a Palmas SMPS whose low range is 510000 uV plus a
+multiple of 10000, so 10 mV is the granularity and anything off that grid
+is rejected at boot by _opp_supported_by_regulators, which drops the
+whole point with a single line in the log and leaves a table quietly
+shorter than the one in the source.  The published table this is taken
+from asks 1.075 V at 1125 MHz and loses that point exactly that way,
+confirmed on hardware.  1.080 V is the next step up and is used here
+instead; rounding up rather than down, because the voltage is there to
+hold the frequency.  The supply is constrained to 1.5 V in
+omap5-board-common.dtsi, and every voltage above is well inside that.
+
+The table is otherwise as published by a Pyra owner who had tuned and run
+it, read back out of the blob rather than retyped; see
 experiments/thermals-and-frequency/README.md for how it was verified.
 That same blob carries five further points above the part's rating, which
 are deliberately not in this patch.
@@ -56,7 +66,7 @@ it against improvements.md item 1 before carrying it any further.
  		750000 950000
 +		875000 1000000
  		1000000 1050000
-+		1125000 1075000
++		1125000 1080000
  		1250000 1100000
 +		1400000 1200000
  		1500000 1250000

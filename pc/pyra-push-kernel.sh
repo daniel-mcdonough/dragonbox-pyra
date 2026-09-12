@@ -30,7 +30,11 @@ REPO_DIR=$(cd "$SELF_DIR/.." && pwd)
 BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
 
 TARBALL=$BUILD_DIR/kernel/fix-kernel.tar.gz
-HOST=${PYRA_HOST:-}
+# PYRA_HOST is the default, not the answer: an argument on the command line
+# has to be able to override it, or setting it once in a shell makes the
+# documented form above fail with "one host at a time".
+HOST_ENV=${PYRA_HOST:-}
+HOST=
 DO_INSTALL=no
 DO_REBOOT=no
 REMOTE_DIR=dragonbox-pyra
@@ -52,6 +56,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
+[ -n "$HOST" ] || HOST=$HOST_ENV
 [ -n "$HOST" ] || die "no host. Pass one, or set PYRA_HOST.
   It is whatever you would give ssh, so pyra@<address>."
 [ -r "$TARBALL" ] || die "no tarball at $TARBALL

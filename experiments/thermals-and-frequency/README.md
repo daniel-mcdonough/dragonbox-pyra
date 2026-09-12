@@ -52,7 +52,7 @@ legacy `<kHz, microvolts>` form this kernel uses.
 | 750 | 0.950 | yes |
 | 875 | 1.000 | **new** |
 | 1000 | 1.050 | yes |
-| 1125 | 1.075 | **new** |
+| 1125 | 1.075 | **new, and rejected at boot — see below** |
 | 1250 | 1.100 | yes |
 | 1400 | 1.200 | **new** |
 | 1500 | 1.250 | yes |
@@ -71,6 +71,22 @@ gives it, to the microvolt. The five new steps underneath sit between them on
 the same curve. Nothing there is overclocking, and that half is interesting on
 its own: this machine's governor problem is a granularity problem as much as
 anything, and 250 MHz gaps are what it has to work with today.
+
+**One of those five does not work, and that was only found by booting it.**
+The supply these points drive, `smps123`, is a Palmas SMPS whose low range is
+510000 uV plus a multiple of 10000. Ten millivolts is the granularity, and
+1.075 V is not on that grid. The OPP core drops the whole point at boot:
+
+    core: _opp_supported_by_regulators: OPP minuV: 1075000 maxuV: 1075000,
+          not supported by regulator
+    cpu cpu0: _opp_add: OPP not supported by regulators (1125000000)
+
+Two lines in a log nobody reads, and a frequency table quietly one step
+shorter than the one in the source. So the published blob is a sixteen-step
+table that delivers fifteen steps, on any Pyra running it, and has been since
+2022. The patch below uses 1.080 V instead, rounding up rather than down
+because the voltage is there to hold the frequency. Every other voltage in the
+table, including all five of the overclock points, is already on the grid.
 
 **Above 1.5 GHz is genuinely new territory.** The OMAP5432 is rated to
 1.5 GHz. The top five steps are beyond that, three of them share one voltage,
@@ -221,24 +237,55 @@ fourth and a fifth.
 
 ### What was checked
 
-`kernel-freq` and `kernel-oc` have been built as device trees but not booted.
-Both patches apply to a clean tree, apply in order, and are idempotent, so a
-rebuild over a patched tree reports them as already applied rather than
-failing. The resulting blob was compiled and read back: it carries the full
-sixteen-step table byte for byte, and against the forum blob it differs in
-exactly the sixteen LED and backlight properties that were left out and in
-nothing else.
+**`kernel-freq` has been booted on the device, `kernel-oc` has not.** Both
+patches apply to a clean tree, apply in order, and are idempotent, so a rebuild
+over a patched tree reports them as already applied rather than failing. The
+compiled blob was read back and carries the table byte for byte; against the
+forum blob it differs only in the LED and backlight properties that were left
+out on purpose.
 
-The one hardware claim either patch makes has also been checked. The supply
-these points drive, `smps123`, is constrained to 1.5 V in
-`omap5-board-common.dtsi`, and the device agrees at runtime, so the 1.45 V that
-the 2 GHz point asks for is inside the regulator's range. Everything else about
-the voltages is somebody else's measurement on somebody else's unit.
+Booting it is what found the 1.075 V problem described above, which no amount
+of reading the diff would have shown. The first build offered ten frequencies
+where the source asked for eleven. That is the whole argument for the one-shot
+boot being part of the procedure rather than an optional last step.
+
+The supply is constrained to 1.5 V in `omap5-board-common.dtsi` and the device
+agrees at runtime, so the 1.45 V the 2 GHz point asks for is inside the
+regulator's range. Everything else about the voltages is somebody else's
+measurement on somebody else's unit, and the one of them that has now been
+tested against this board turned out to be wrong.
 
 ## Status
 
-Not booted on this machine, so there is no result section yet. It sits in
-`experiments/` for the same reason `c2-idle` does: the reasoning is recorded so
-that trying it is a decision rather than a rediscovery. Unlike `c2-idle`, this
-one has not been closed, and `kernel-freq` looks worth a measured run against
-item 1 of `docs/improvements.md`.
+**`kernel-freq` boots and the machine is healthy on it.** 2026-09-12. Two
+one-shot boots, the first of which found the 1.075 V defect and the second of
+which confirmed the correction. No failed units, no OPP rejections, network and
+desktop intact, and the system reports itself running.
+
+All eleven steps are used. Residency over the first minute of an idle-ish boot,
+in jiffies, with the governor and the thermal cap left exactly as they were:
+
+| MHz | 250 | 375 | 500 | 625 | 750 | 875 | 1000 | 1125 | 1250 | 1400 | 1500 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| jiffies | 2214 | 4660 | 1174 | 382 | 299 | 182 | 166 | 199 | 195 | 221 | 2981 |
+
+3019 transitions. The shape is the interesting part: 375 MHz, which did not
+exist before, is the single most-occupied state, ahead of the 250 MHz floor the
+governor used to fall back to. That is consistent with the complaint in item 1
+of `docs/improvements.md` — the governor was not choosing 250 MHz because it
+wanted 250 MHz, it was choosing it because the next step up was a 100% jump.
+
+That is one minute on one boot and it is not a measurement of anything anyone
+cares about. It says the steps work and get used, not that the machine is
+faster or cooler. The comparison that would settle it is the same workload
+profiled on `5.6.19-fix` and `5.6.19-freq`, which has not been done.
+
+`kernel-oc` has still never been booted.
+
+**Note on the boot slot.** There is one test slot. Installing `kernel-freq`
+into it points that slot away from `5.6.19-fix`, so with the one-shot revert
+armed the next ordinary boot lands on the stock `5.6.19-pyradef`, which carries
+none of the six fixes: suspend hangs, the nubs die on resume and the keyboard
+can go silent. The fix kernel's files are still in `/boot`, they are simply not
+referenced by a boot entry any more. Getting back to it is a reinstall of its
+tarball, as `docs/building.md` describes under going back.

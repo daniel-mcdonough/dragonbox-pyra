@@ -21,9 +21,11 @@ frequency needs, and the higher figure is the one that comes with a
 report of having been run.  Take the higher one and remove the stub, so
 there is one answer in the file rather than two.
 
+All five voltages sit on the supply's 10 mV grid, so unlike the 1125 MHz
+point the previous patch had to correct, none of them is dropped at boot.
 The supply is constrained to 1.5 V, so 1.45 V is inside the regulator's
-range with 50 mV to spare.  That is the only claim in this patch that has
-been checked against this board.
+range with 50 mV to spare.  Those are the only claims in this patch that
+have been checked against this board.
 
 Everything else here is unverified on this unit.  The author of the table
 says plainly that 2 GHz needs modified cooling and that they can hardly
