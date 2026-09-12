@@ -304,12 +304,43 @@ Two separable pieces of work:
   the thermal ladder in that script — the one everybody tunes — has never done
   anything on trixie.
 
-  The fix needs no package. `cpufreq-set -u NMHz` is one write to
-  `scaling_max_freq`, which the daemon already runs as root and which needs
-  nothing installed. `linux-cpupower` is the packaged alternative if a
-  dependency is acceptable. Either way this is now the most valuable item in
-  this section, it is a packaging bug in the trixie image rather than anything
-  this repository did, and it should be reported upstream.
+  **Fixed and confirmed on hardware the same day**, by
+  `device/pyra-thermal-fix.sh`, which replaces that one call with a write to
+  `scaling_max_freq` and nothing else. No package, no new dependency, and the
+  vendor's thermal ladder untouched, because the ladder is the vendor's policy
+  and only the one line was broken.
+
+  The difference is not subtle. Single-core `7z b`, the load that reached 100°C
+  before:
+
+  | | before the fix | after |
+  | --- | --- | --- |
+  | peak CPU zone | 100°C, still climbing when stopped | **84°C, stable** |
+  | frequency cap under load | never moved from 1500 MHz | 1500 → 1250 → 1500 |
+
+  Sixteen degrees below the trip instead of at it, and the cap visibly moves
+  and comes back.
+
+  **It also answers this item's original question, from the other direction.**
+  The oscillation between 1.5 and 1.25 GHz that others reported on this
+  hardware is real, and it is not `step_wise`: it is this userspace daemon,
+  which polls every 20 seconds and has no hysteresis, so it caps at 1250,
+  cools four degrees, releases to 1500, heats four degrees and caps again on a
+  roughly twenty-second cycle. That oscillation could not have been observed
+  on this image before today, because the daemon was not capping at all. It is
+  worth tuning — a hysteresis band, or a release threshold below the trigger —
+  but a machine oscillating between the top two steps is far better than one
+  that walks past its trip, so this is now an improvement rather than a fault.
+
+  Still a packaging bug in the trixie image rather than anything this
+  repository did, and still on the upstream list. Note that `/usr/share` is not
+  a conffile location, so a package upgrade will silently revert it;
+  `pyra-thermal-fix.sh --check` detects that.
+
+  **And it gives back the headroom item 1 needs.** The governor tuning above
+  was held back by five degrees of margin that turned out not to exist. With
+  the daemon actually capping, a heavy load peaks at 84°C, so there is real
+  room to raise `up_threshold` and test it.
 - **Hardware.** Community reports of 20–23°C reductions from improved thermal
   contact are the largest single number anywhere in this document. That is a
   physical modification, out of scope for this repository, but it is the thing

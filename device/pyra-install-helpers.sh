@@ -40,6 +40,8 @@ pyra-modeset-hang-trap.sh           /usr/local/sbin                    0755
 pyra-cpu-attribution.sh             /usr/local/sbin                    0755
 pyra-x-load-profile.sh              /usr/local/sbin                    0755
 pyra-idle-profile.sh                /usr/local/sbin                    0755
+pyra-freq-profile.sh                /usr/local/sbin                    0755
+pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
