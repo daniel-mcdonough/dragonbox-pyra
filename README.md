@@ -89,6 +89,8 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
 | [docs/progress.md](docs/progress.md) | The running history: what was done when, and why. Newest last. |
+| [TODO.md](TODO.md) | The short list of things that need a person: your hands on the device, your account, or your decision. |
+| [reports/](reports/) | Findings written up for submission upstream, one file each. Drafts, not sent. |
 
 Where the reference documents and the history disagree, the reference is right
 about *how* and the history is right about *when* and *why*.
@@ -101,6 +103,7 @@ about *how* and the history is right about *when* and *why*.
     device/      run these on the Pyra, or install them onto it
     patches/     kernel source patches, applied by the build script
     experiments/ kernel changes on trial, deliberately kept out of patches/
+    reports/     findings written up for upstream, drafted but not sent
     docs/        one document per job, listed above
 
 Everything is idempotent and refuses to run against anything that is not what
