@@ -117,6 +117,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container. Touches neither the host nor the Pyra. |
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
 | `experiments/c2-idle/` | One kernel patch, tried and rejected: restoring the processor's retention idle state, which this kernel tree removes, hangs the machine within two minutes. Kept with its result so nobody repeats it. |
+| `experiments/thermals-and-frequency/` | Third-party, untested here: an unlocked device tree with sixteen frequency steps from 250 MHz to 2 GHz, read out and reviewed, with the safer way to try it and the one change in its example thermal script that can damage a battery. |
 | `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
 ### On the Pyra

@@ -214,6 +214,17 @@ margin, so this change genuinely can push the machine into throttling where it
 previously was not. That is the honest cost, and it is why item 2 pairs with
 this one.
 
+**Six steps may not be all there are.** Added 2026-09-12. A third-party device
+tree in `experiments/thermals-and-frequency/` adds five steps below 1.5 GHz —
+375, 625, 875, 1125 and 1400 MHz — at voltages interpolated on the stock curve,
+with every existing step keeping its stock voltage to the microvolt. That half
+of it is not overclocking, and it speaks directly to two of the complaints
+above: the 250 MHz floor is six steps below the top because the steps are
+coarse, and a ramp that has to cross 250 MHz gaps is a slower ramp than one
+that does not. It is untested here and the same blob also carries five steps
+above the part's rating, which are a different matter entirely. Read that
+directory's write-up before installing anything from it.
+
 Effort: an afternoon. Risk: thermal, real but observable.
 
 ### 2. Thermals, and where the real limit is
@@ -241,7 +252,12 @@ Two separable pieces of work:
   that would make every software change above free.
 
 Do not chase 1.8 GHz. Sustained 1.5 GHz is worth more than a peak that
-immediately collapses, and the part is a 1.5 GHz-rated GP device.
+immediately collapses, and the part is a 1.5 GHz-rated GP device. That advice
+predates the unlocked device tree now sitting in
+`experiments/thermals-and-frequency/`, which offers 1.6 through 2.0 GHz, and it
+is unchanged by it. The blob's own author says plainly that 2 GHz needs
+modified cooling and that they can hardly run it; this unit has five degrees of
+margin at 1.5 GHz under load.
 
 Effort: measurement is an afternoon; the physical mod is a separate project.
 
