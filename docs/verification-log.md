@@ -436,4 +436,6 @@ the next step would need a serial console rather than another rebuild.
 
 **Machine state afterwards.** Back on `5.6.19-fix`, SHA-256
 `f47b212128eb20cf8f1313b41a9392a29aa68f6cd3950a7e9850ba7f84ddda71`, the same
-kernel as before the experiment. `/boot` holds four kernels and is 54% full.
+kernel as before the experiment. The experiment kernel was removed afterwards,
+leaving the stock, lockup-detector and fix kernels; `/boot` is back to 41%
+used, which is where it was before the experiment.
