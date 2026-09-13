@@ -243,6 +243,35 @@ separate build, deliberately.
 
 Effort: an afternoon. Risk: thermal, real but observable.
 
+**Measured 2026-09-13, and this item named the wrong settings.** Full numbers
+and method in `experiments/governor/README.md`. Two interleaved passes per
+configuration on `5.6.19-freq`, on battery, thermal daemon stopped and the
+ceiling pinned, pass-to-pass spread 0.0-2.3%.
+
+Of the four settings listed above, three are worth nothing: `up_threshold` at
+80 or 70 buys about 1% of burst latency, `io_is_busy` about 1%, a 500 MHz floor
+about 2%. A 750 MHz floor buys 8.4% and costs 83% more idle frequency to do it.
+
+The one that pays is `sampling_down_factor`, listed third here and passed over:
+**1 to 10 is 23.4% of burst latency and a third of the median**, 53.5 ms to
+36.0 ms, for 5.4% more idle frequency. Setting all four together is 24.5%,
+which is the same number inside the spread, so the whole win is one value.
+
+The reasoning in this item was that a core must be 95% busy across 20 ms before
+the governor steps up and that ordinary work never triggers it. That describes
+the setting correctly and draws the wrong conclusion: the work does trigger a
+step up, and the time goes on the governor stepping back *down* between units.
+`sampling_down_factor` is the setting that stops it.
+
+Two things temper it. The tail barely moves — p99 improves 6.4% against a 33%
+improvement at the median — because the clock is held up *between* units of a
+burst but the first unit after real idle still pays the full ramp, and
+"sluggish" is a description of a tail. And tuned `ondemand` is still 18% off
+the `performance` governor, a larger gap than tuning closed.
+
+Not yet applied or made persistent: these are sysfs files and a reboot restores
+the stock values.
+
 ### 2. Thermals, and where the real limit is
 
 **Measured.** Idle is 55°C CPU, 58°C GPU, 57°C core. Sustained x86 emulation was

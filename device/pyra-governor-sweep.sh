@@ -289,6 +289,21 @@ temps() {
 
 BATT=/sys/class/power_supply/bq27421-0
 on_battery() { [ "$(cat $BATT/status 2>/dev/null)" = Discharging ]; }
+
+# The backlight, because it is worth more than anything measured here. A step
+# from full to dim is about 0.45 W on this machine, and the idle dimmer will
+# take one by itself partway through a run if nobody touches the screen. In
+# the run of 2026-09-13 two adjacent windows came out 0.45 W below their own
+# first pass with nothing else to explain it, which is the size of exactly
+# that step and could not be settled afterwards. Recording it does not stop
+# the dimmer; it makes a run where the dimmer moved say so.
+backlight() {
+	local b
+	for b in /sys/class/backlight/*/brightness; do
+		[ -r "$b" ] || continue
+		printf '%s ' "$(cat "$b")"
+	done
+}
 watts_mw() {
 	local uv ua
 	on_battery || return 1
@@ -428,11 +443,13 @@ measure_one() {
 	sleep "$SETTLE_S"
 
 	# --- idle ---
-	local i_mean i_top i_bot i_pow
+	local i_mean i_top i_bot i_pow bl_before bl_after
+	bl_before=$(backlight)
 	snapshot > "$TMP/idle.before"
 	power_start
 	sleep "$IDLE_S"
 	snapshot > "$TMP/idle.after"
+	bl_after=$(backlight)
 	power_stop
 	i_pow=$(power_mean)
 	read -r i_mean i_top i_bot < <(residency_summary "$TMP/idle.before" "$TMP/idle.after")
@@ -474,6 +491,13 @@ measure_one() {
 	echo "    burst  : mean ${b_mean}ms  best ${b_min}  p50 ${b_p50}  p90 ${b_p90}  p99 ${b_p99}"
 	echo "             mean freq ${b_rmean} kHz, ${b_rtop}% at the top step${b_pow:+, ${b_pow} W}"
 	echo "    idle   : mean freq ${i_mean} kHz, ${i_top}% at the top step, ${i_bot}% at the bottom${i_pow:+, ${i_pow} W}"
+	if [ "$bl_before" != "$bl_after" ]; then
+		echo "    WARNING: the backlight changed during the idle window,"
+		echo "             [$bl_before] -> [$bl_after]. That is worth more than"
+		echo "             any governor setting, so treat this power figure as void."
+	elif [ -n "$bl_before" ]; then
+		echo "    backlight: $bl_before (unchanged across the window)"
+	fi
 	echo "             residency:"
 	residency_table "$TMP/idle.before" "$TMP/idle.after"
 	echo "    temps  : ${t_before} C before the burst, ${t_after} C after  ($(temps))"
