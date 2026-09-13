@@ -373,6 +373,25 @@ LADDER
 
 # The board rungs, and the hysteresis, in one place. See the report for how
 # each number was arrived at; every one of them is a measurement on a V5.3.
+#
+# CALIBRATED ON A STOCK MACHINE, AND OVERRIDABLE FOR THAT REASON.
+#
+# The rungs come from the worst board temperature this unit reached with
+# nothing capping it — 50.5 C — rounded up, given 3 C of margin, then stepped
+# 2 C. That is a stock V5.3: stock heatsink, factory thermal interface, no
+# conformal coating, no aftermarket compound, no added airflow, closed case.
+#
+# Cooling work moves this sensor a long way. The author of the frequency table
+# in experiments/thermals-and-frequency reports 20-23 C below stock after
+# soldering the heatsink, stripping the factory adhesive, applying high-end
+# compound and coating the board. On a board like that these rungs never fire,
+# which is harmless — the SoC rungs below are the primary control and they mean
+# the same thing whatever the case is doing. Set GAUGE_HOT1..5 in the
+# environment if you have measured your own machine and know better.
+#
+# Do NOT raise them on the strength of someone else's numbers. The whole fault
+# being fixed here is a ladder whose thresholds came from somewhere other than
+# the machine they run on.
 GAUGE_HOT1=${GAUGE_HOT1:-62000}
 GAUGE_HOT2=${GAUGE_HOT2:-60000}
 GAUGE_HOT3=${GAUGE_HOT3:-58000}

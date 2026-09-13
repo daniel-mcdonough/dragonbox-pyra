@@ -18,6 +18,107 @@ written back into this kernel's own device tree source, split so the half that
 is not overclocking can be built on its own. If you build your own kernel, use
 those and ignore the blob.
 
+## The measurements behind this table were taken on modified hardware
+
+**This came to light on 2026-09-13, after all of the thermal work in this
+repository was done, and it is the single most important piece of context for
+reading any of it.** It changes no finding here. It changes how the findings
+should be described to anyone else.
+
+An earlier post by the same author describes the cooling work done to the CPU
+board before the frequency table was tuned:
+
+- the CPU board components **conformally coated**, to allow clearances and
+  interface materials that would otherwise risk shorting;
+- the copper plate heatsink **soldered** to the main serrated copper thermal
+  element;
+- the stock thermal material removed — the author reports *"an insulating
+  adhesive coating the contact side of the heatsink, which likely significantly
+  impacts thermal transfer from the CPU/PMC to the heatsink"*;
+- high-end thermal compound applied to the heatsink and to the RAM, CPU and
+  PMC.
+
+The reported result is **"about a 20-23°C temperature delta from stock"**,
+which the author says *"now makes 1.5 GHz essentially perfectly usable outside
+of long term heavy load"*. Airflow between the inside and outside of the case
+is named as the next thing to tackle and had not been done.
+
+### What that delta does to the numbers in this repository
+
+Everything measured here was measured on a **stock, unmodified V5.3**: stock
+heatsink, stock thermal interface with the adhesive in place, no coating, no
+added airflow, closed case, room ambient. Across every run in
+`../thermal-ladder/`, the fuel gauge's die temperature — the sensor the vendor
+thermal daemon calls the battery — ranged from **43.8°C to 53.9°C**.
+
+The vendor's ladder on that sensor caps at 44, 45, 47, 49 and 50°C.
+
+| | gauge range observed | vendor's ladder |
+| --- | --- | --- |
+| this stock unit | 43.8 – 53.9°C | **permanently inside the capping band** |
+| same unit, less 20-23°C | 21 – 31°C | never reaches the first rung |
+
+So on the author's modified board that ladder never fires at all. **The
+cooling work moved the board sensor out of the range in which the software
+fault lives.** That is almost certainly why the author's own account of the
+problem is about sustained SoC heat rather than about being capped to 1250 MHz
+thirty seconds into any work, which is what a stock machine does.
+
+### The author's symptom list is the fault this repository found
+
+The same post describes, on the *unmodified* device:
+
+> Throttling after about 10 minutes of heavy use. > Pushes clock into a
+> downclock decay of 250 MHz, then cools, but immediately hits trip
+> temperature back down to 250 MHz making system crippled.
+
+250 MHz is the deepest rung of the vendor's battery ladder, at >50°C on the
+fuel gauge die. This unit reached **53.9°C** on that sensor under two cores.
+"Cools, but immediately hits trip temperature again" is the absence of
+hysteresis: measured here as twelve ceiling changes in a single run, four of
+them during the *idle* phase.
+
+That is [fault 1 and fault 2](../thermal-ladder/README.md), described from the
+outside by someone who did not have the sensor trace, and solved with copper
+rather than with a threshold. The two approaches are complementary and neither
+supersedes the other. On a stock machine the software fault is reachable
+without opening the case.
+
+### What this does and does not change
+
+**It does not invalidate anything.** Every fault in
+[docs/fixes.md](../../docs/fixes.md) is a logic fault, reproduced on stock
+hardware, and three of them — the `cpufreq-set` call that is not installed, the
+`setMaxFreq` overwrite, and the charger's input current limit — have no thermal
+content at all.
+
+**It reinforces the recommendation against `kernel-oc`.** The advice here has
+always been not to boot the 2 GHz half, on the grounds that one core at
+1.5 GHz already reaches the passive trip on this machine. The author agrees in
+the warning below and now the reason is explicit: the headroom those steps
+need is 20-23°C of hardware work that this unit has not had.
+
+**It makes fix 7 more robust across cooling configurations, not less.** The
+vendor's design makes the *board* sensor the one that decides in practice,
+which is exactly the sensor a cooling change moves. Fix 7 makes the SoC sensors
+primary and leaves the board rungs as a backstop above the worst uncapped
+board temperature measured here. SoC rungs mean the same thing on a coated
+board as on a bare one.
+
+**It changes what the upstream reports must say.** Both thermal reports now
+carry a statement of the thermal configuration they were measured on, because a
+maintainer reading them on a modified unit will not reproduce "44°C within
+thirty seconds of one core", and the board rung values proposed in them are
+calibrated to a stock machine.
+
+**It raises one cheap thing worth trying.** The insulating adhesive the author
+describes on the heatsink's contact face is stock, on every unit. Removing it
+and applying ordinary thermal compound is reversible, needs no coating and no
+solder, and is the first and least invasive part of what produced that delta.
+Nothing here has tried it and there is no measurement of it.
+
+---
+
 ## The author's warning, kept as written
 
 > I take ZERO responsibility with how running this on your Pyra turns out. As

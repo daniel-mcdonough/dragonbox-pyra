@@ -31,6 +31,34 @@ battery. The two ladders are calibrated as if for very different things:
 
 That is only sane if the second sensor is measuring a battery. So: is it?
 
+## What this was measured on
+
+**Stock V5.3, unmodified.** Stock heatsink with the factory thermal interface
+in place, no conformal coating, no aftermarket compound, no added airflow, case
+closed, room ambient, on battery except where a run says otherwise.
+
+This is stated because it is not the configuration the circulating Pyra
+frequency work was tuned on. The author of the device tree in
+[../thermals-and-frequency](../thermals-and-frequency/README.md) had soldered
+the heatsink, stripped the factory adhesive, applied high-end compound and
+conformally coated the board, and reports **20-23°C cooler than stock**.
+
+Subtract that from what was measured here and the fuel gauge's die — the sensor
+this whole document is about — moves from **43.8-53.9°C**, which is
+permanently inside the vendor's 44/45/47/49/50°C capping band, to 21-31°C,
+which never touches it. **The cooling work moves the board sensor out of the
+range where the software fault lives.** That is the likely reason this fault
+has been described from the outside as "throttles after ten minutes of heavy
+use" rather than "caps to 1250 MHz thirty seconds into anything".
+
+The board rung values chosen below are therefore stock-calibrated, and say so
+wherever they appear. The structural faults are not: a sensor that is not
+measuring what the code thinks it is, a ladder with no hysteresis, a cap that
+overwrites a deeper one, a poll slower than the transient, and a sensor that
+lags the trip are all wrong at any temperature.
+
+---
+
 ## Method
 
 `device/pyra-thermal-probe.sh`. Every thermal zone, the ceiling, the current
