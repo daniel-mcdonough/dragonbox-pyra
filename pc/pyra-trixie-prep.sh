@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the six known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the eight known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -54,6 +54,16 @@ done
 # exactly one implementation in the repository rather than two that can drift.
 THERMAL_FIX=$PAYLOADS/pyra-thermal-fix.sh
 [[ -x $THERMAL_FIX ]] || die "fix6: pyra-thermal-fix.sh not found or not executable (looked in $PAYLOADS)"
+
+# Fix 7 transforms the same file, immediately after fix 6 and through the same
+# --emit-patched door, for the same reason: one implementation of the change.
+LADDER_FIX=$PAYLOADS/pyra-thermal-ladder.sh
+[[ -x $LADDER_FIX ]] || die "fix7: pyra-thermal-ladder.sh not found or not executable (looked in $PAYLOADS)"
+
+# Fix 8 does not transform anything: it writes three new files. It goes through
+# the same kind of door for the same reason — one implementation, two callers.
+CHARGE_FIX=$PAYLOADS/pyra-charge-current.sh
+[[ -x $CHARGE_FIX ]] || die "fix8: pyra-charge-current.sh not found or not executable (looked in $PAYLOADS)"
 
 
 echo
@@ -363,6 +373,156 @@ else
     ok "fix6: ${THERMAL_DST#$ROOT} now writes scaling_max_freq instead of calling cpufreq-set"
 fi
 rm -f "$THERMAL_TMP"
+
+########################################################################
+# Fix 7 — the thermal ladder itself
+########################################################################
+# Fix 6 made the daemon able to apply a decision. This one is about the
+# decision, and about when it makes it. Five faults, none of them observable
+# before fix 6, because until then nothing was applied:
+#
+#   The sensor the daemon calls the battery is bq27421-0, the fuel gauge,
+#   reporting its own die temperature — the board it is soldered to, not the
+#   cell. Its ladder starts capping at 44 C, which one core of ordinary work
+#   reaches in half a minute, while the sensor that IS watching the SoC gives
+#   up nothing below 77 C. Measured on a V5.3: the gauge rose 2.0 C within ten
+#   seconds of one core being loaded, the ceiling fell to 1250 MHz with the
+#   core at 70.6 C, and the core never reached its own first rung at all.
+#
+#   Neither ladder had hysteresis. Same run: the ceiling changed twelve times,
+#   six of them oscillating between 1250 and 1000 MHz inside 116 seconds while
+#   the gauge sat between 44.8 and 45.5 C.
+#
+#   setMaxFreq compares against the constant maxFreq rather than against the
+#   cap already chosen, so the ladder that runs last wins whether or not it is
+#   the more restrictive. The battery ladder runs last. With the core at 98 C,
+#   asking for 250 MHz, and the board at an ordinary 44.5 C, asking for 1250,
+#   the daemon picks 1250. That one is a loss of thermal protection and is
+#   why this is here rather than left as a tuning preference: a card without
+#   it is throttled when it should not be and unprotected when it should be.
+#
+#   The poll is every 20 seconds, and two cores flat out take this machine
+#   from a 63 C idle to its 100 C passive trip in SIXTEEN. The daemon's next
+#   look arrives after the trip rather than before it.
+#
+#   It reads core_thermal, but the passive trip is on cpu_thermal, and during
+#   a fast ramp cpu_thermal leads it by up to 12 C. Even an instantaneous
+#   daemon on core_thermal would first act with cpu_thermal already at 91 C.
+#
+# The last two only matter once the first is fixed, and that is the single
+# most important thing about this fix. The broken ladder left the machine
+# PERMANENTLY PRE-CAPPED — measured at 750 MHz, where two cores flat out peak
+# at a harmless 74 C — so the daemon never needed to be quick. Correcting the
+# ladder alone, with the poll and the sensor left as they were, measured 102 C
+# on two cores with the ceiling never moving once: worse than the code it
+# replaced. All of it together measures 87 C with the load running to
+# completion. Do not split this fix up.
+#
+# The charging thresholds and currents are NOT touched.
+
+if ! "$LADDER_FIX" --emit-patched "$THERMAL_DST" > "$THERMAL_TMP" 2>/dev/null; then
+    rm -f "$THERMAL_TMP"
+    die "fix7: the ladder in ${THERMAL_DST#$ROOT} is not the one this was written
+       for. Refusing to guess at a thermal daemon this was not written for."
+fi
+
+if ! bash -n "$THERMAL_TMP" 2>/dev/null; then
+    rm -f "$THERMAL_TMP"
+    die "fix7: the patched thermal daemon is not valid shell; nothing written"
+fi
+
+if cmp -s "$THERMAL_TMP" "$THERMAL_DST"; then
+    ok "fix7: ${THERMAL_DST#$ROOT} already has the corrected ladder"
+else
+    # A second backup, under its own name, so the two fixes undo independently
+    # and in the order they were applied.
+    [[ -e $THERMAL_DST.before-pyra-thermal-ladder ]] \
+        || cp -a "$THERMAL_DST" "$THERMAL_DST.before-pyra-thermal-ladder"
+    cat "$THERMAL_TMP" > "$THERMAL_DST"   # keep the vendor file's mode and owner
+    ok "fix7: ${THERMAL_DST#$ROOT} no longer throttles on the fuel gauge, and takes the lower of its two ladders"
+fi
+rm -f "$THERMAL_TMP"
+
+########################################################################
+# Fix 8 — the machine cannot charge while it runs
+########################################################################
+# A Pyra plugged into a charger loses charge. The bq24297's input current
+# limit is never set by anything, so it stays at the 500 mA USB floor the chip
+# powers up with. This machine draws about 620 mA at idle, so the battery
+# covers the difference and drains with the cable in. Measured: -617 mA out of
+# the battery at online=1 with power-good set, down to 21% before anyone
+# looked at the right register. One write to max_current, and it charges at
+# +476 mA mean over 899 seconds on the same supply and the same cable.
+#
+# Three things were supposed to set that limit and none of them do.
+#
+#   /lib/udev/rules.d/charging.rules names twl4030 in every rule that works —
+#   the OMAP3/GTA04 charger, not the bq24297 this board has. The rules for the
+#   right chip sit beneath them under the vendor's own comment, "this is
+#   preparation for the Pyra but neither tested nor complete nor working".
+#
+#   Because those rules never ran, /dev/usb_max_current is not the symlink
+#   they were meant to create. It is an ordinary file, made by the first thing
+#   to write it as root — the thermal daemon, which puts its charge-current
+#   decision there every poll. Nothing reads it. That half of the daemon has
+#   never had an effect on any image.
+#
+#   The driver parses usb_input_current and adp_input_current out of the
+#   device tree at probe and does not apply either.
+#
+# This writes a rule in /etc/udev/rules.d, which takes precedence over the
+# stock one in /lib and leaves it alone. Unlike fixes 6 and 7 it edits no
+# packaged file, so an upgrade will not silently revert it.
+#
+# It asserts a current rather than detecting one, because nothing here can:
+# real BC1.2 detection means driving FORCE_DPDM in the charger's REG07 and
+# belongs in the driver. The hardware backstop is VINDPM at 4.36 V. The
+# default is 2000000, which is what this board's device tree already calls
+# adp_input_current.
+#
+# It deliberately does NOT connect the thermal daemon's charge ladder to the
+# working knob. That ladder reads the fuel gauge's die and caps at 500 mA
+# above 44 C, and a Pyra idles with that sensor at 46-47 C; wiring it up
+# before recalibrating it would make this bug permanent. The pack is protected
+# by the charger's TS pin, in hardware, either way.
+
+# Emit into a staging root first and install only what differs, so a second
+# run of this script writes nothing at all rather than rewriting three
+# identical files with new timestamps.
+CHARGE_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix8.XXXXXX")
+if ! CHARGE_FILES=$("$CHARGE_FIX" --emit-into "$CHARGE_STAGE" 2>&1); then
+    rm -rf "$CHARGE_STAGE"
+    die "fix8: could not generate the charge-current files:
+       $CHARGE_FILES"
+fi
+
+# The helper runs under /bin/sh on the device. Check it parses as one here,
+# before it goes on the card, rather than at the first plug event.
+if ! sh -n "$CHARGE_STAGE/usr/local/sbin/pyra-charge-current-apply" 2>/dev/null; then
+    rm -rf "$CHARGE_STAGE"
+    die "fix8: the generated charge helper is not valid shell; nothing written"
+fi
+
+CHARGE_CHANGED=0
+while read -r staged; do
+    [[ -n $staged ]] || continue
+    rel=${staged#$CHARGE_STAGE}
+    dst=$ROOT$rel
+    if [[ -e $dst ]] && cmp -s "$staged" "$dst"; then
+        ok "fix8: ${rel} already in place"
+        continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cat "$staged" > "$dst"
+    chmod --reference="$staged" "$dst"
+    ok "fix8: wrote ${rel}"
+    CHARGE_CHANGED=1
+done <<<"$CHARGE_FILES"
+rm -rf "$CHARGE_STAGE"
+
+if [[ $CHARGE_CHANGED -eq 1 ]]; then
+    ok "fix8: the card will charge while running instead of draining on the cable"
+fi
 
 echo
 sync

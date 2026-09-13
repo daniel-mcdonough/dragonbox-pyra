@@ -331,9 +331,15 @@ Two separable pieces of work:
       pyra-thermal.sh[2000]: pyra-thermal.sh: 89: cpufreq-set: not found
 
   1031 of those in the current journal. The charge-current half of the same
-  function works, because it is a plain redirection to `/dev/usb_max_current`
-  on the next line and nothing aborts in between. So the daemon has been
-  managing charging correctly and managing frequency not at all.
+  function still *runs*, because it is a plain redirection to
+  `/dev/usb_max_current` on the next line and nothing aborts in between.
+
+  **Correction, 2026-09-13.** This used to end "so the daemon has been managing
+  charging correctly and managing frequency not at all". The second half is
+  right and the first half is not. That redirection writes into an ordinary
+  file that nothing reads — the symlink it was supposed to be was never created,
+  because the udev rules that create it name `twl4030`. The daemon has been
+  managing neither. See fix 8.
 
   This means the 107°C above was the kernel's `step_wise` unassisted, and that
   `step_wise` is the *only* frequency protection this image has. It also means
@@ -377,6 +383,61 @@ Two separable pieces of work:
   was held back by five degrees of margin that turned out not to exist. With
   the daemon actually capping, a heavy load peaks at 84°C, so there is real
   room to raise `up_threshold` and test it.
+
+  **Measured 2026-09-13: the oscillation above was the small half of it, and
+  the ladder had three faults rather than one.** Full method and numbers in
+  `experiments/thermal-ladder/README.md`; fixed by
+  `device/pyra-thermal-ladder.sh` and by prep as fix 7.
+
+  The sensor this daemon calls the battery is `bq27421-0`, the fuel gauge,
+  reporting its own die temperature — the mainboard, not the cell. It rose
+  2.0°C within ten seconds of one core being loaded, which no 6000 mAh cell
+  can do. Its ladder caps from 44°C while `core_thermal` gives up nothing
+  below 77°C, so it, and not the SoC sensor, is what throttled this machine in
+  ordinary use: across that run the core peaked at 71.0°C and never reached
+  its own first rung at all. Pinned at 1500 MHz with nothing capping, the
+  board reads 48.4°C at the moment the core first reaches 77°C — by which
+  point the vendor's board ladder has already demanded 750 MHz, three rungs
+  deeper. The two ladders are inverted.
+
+  `setMaxFreq` also compares against the constant `maxFreq` rather than
+  against the cap already chosen, so the ladder that runs last wins whether or
+  not it is the more restrictive, and the battery ladder runs last. Core at
+  98°C wanting 250 MHz, board at an ordinary 44.5°C wanting 1250: the daemon
+  picks 1250. That one is a loss of thermal protection.
+
+  And the hysteresis this item asked for had to be sized against the machine
+  rather than against the ladder. This core moves up to 6°C between
+  five-second samples on one core and 10°C on two, so a 2°C band is below the
+  controller's noise floor at a 20-second poll — it released correctly and
+  still crossed the same rung six times in four minutes. A full rung, 5°C,
+  takes one core of load from twelve ceiling changes to two, and because
+  holding a cap regulates better than oscillating it also drops the peak from
+  91.3°C to 88.0°C.
+
+  **And correcting all that broke the two-core case, which is the most
+  important thing on this page.** Two cores flat out then reached 102°C with
+  the ceiling never moving once. The machine goes from a 63°C idle to its
+  100°C passive trip in sixteen seconds and the daemon polls every twenty, so
+  its next look lands after the trip. The vendor never had this problem
+  because its broken ladder left the machine permanently pre-capped — measured
+  at 750 MHz, where two cores peak at a harmless 74°C. That was real
+  protection obtained for entirely the wrong reason, and fixing the ladder
+  took it away.
+
+  So two more changes, and they are not optional: the poll goes from 20
+  seconds to 2, and the ladder reads the hotter of `core_thermal` and
+  `cpu_thermal` rather than `core_thermal` alone — the passive trip is on
+  `cpu_thermal` and it leads the other by up to 12°C during a ramp, so even an
+  instantaneous daemon on `core_thermal` would first act with `cpu_thermal`
+  already at 91°C. Together those take two cores from 102°C to 87°C with the
+  load running to completion.
+
+  The cost is honest and worth stating: the machine now runs hotter than fix 6
+  alone left it, because it is no longer giving thermal budget away to a sensor
+  with no view of the SoC. 88°C on one core and 87°C on two against a 100°C
+  trip, where fix 6 alone sat at 84°C — but it got that margin by throttling at
+  70°C for no thermal reason.
 - **Hardware.** Community reports of 20–23°C reductions from improved thermal
   contact are the largest single number anywhere in this document. That is a
   physical modification, out of scope for this repository, but it is the thing

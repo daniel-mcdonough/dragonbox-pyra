@@ -1,4 +1,4 @@
-# The six fixes, and what they actually do
+# The eight fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -197,9 +197,19 @@ since the image's first boot:
     pyra-thermal.sh[2000]: pyra-thermal.sh: 89: cpufreq-set: not found
 
 The next line of the same function writes the charging limit, and that one is a
-plain redirection with no `set -e` to stop in between, so it has worked all
-along. The daemon has been managing the charger correctly and the CPU not at
-all, while reporting itself active and healthy.
+plain redirection with no `set -e` to stop in between, so it has run all along.
+The daemon has therefore been reporting itself active and healthy while doing
+nothing to the CPU.
+
+**Correction, 2026-09-13.** This section used to go on to say that the daemon
+"has been managing the charger correctly". That is wrong, and it was wrong when
+written. The write succeeds; it reaches nothing. Its target,
+`/dev/usb_max_current`, is supposed to be a symlink into the charger's sysfs and
+on this machine it is an ordinary file that the daemon itself created on its
+first write. Every charge-current decision the daemon has ever made has gone
+into that file and stopped there. What was verified at the time was that the
+write did not fail — not that it had an effect, which is a different claim and
+the one that was made. Fix 8 is the whole story.
 
 **Why it matters.** It leaves the kernel's `step_wise` governor as the only
 thing limiting frequency for heat, and on its own that is not enough on a
@@ -242,5 +252,299 @@ oscillation others have reported on this hardware, and it could not have been
 seen on this image before, because nothing was capping. It is worth tuning with
 a release threshold below the trigger. Oscillating between the top two steps is
 a much better place to be than walking past the trip.
+
+**That last paragraph turned out to be the small half of it.** Fixing the
+ladder is fix 7.
+
+---
+
+## Fix 7 — the ladder itself: five faults in the daemon's decision
+
+Fix 6 made the daemon able to apply a decision. This one is about *which*
+decision, and *when*. None of it was observable before fix 6, because until
+then nothing was applied at all; all five were found within a day of fixing
+that.
+
+### Fault 1 — it throttles on the fuel gauge's die temperature
+
+`doThermal()` picks a ceiling from two sensors. One is `core_thermal`, the SoC.
+The other it calls the battery, and it is `bq27421-0` — the fuel gauge,
+reporting its own die temperature. It is an I²C chip on the mainboard, and what
+it measures is the board it is soldered to.
+
+The two ladders are calibrated as if for very different things:
+
+| `core_thermal` | | `bq27421-0`, "battery" | |
+| --- | --- | --- | --- |
+| > 77°C | 1250 MHz | > 44°C | 1250 MHz |
+| > 82°C | 1000 MHz | > 45°C | 1000 MHz |
+| > 87°C | 750 MHz | > 47°C | 750 MHz |
+| > 92°C | 500 MHz | > 49°C | 500 MHz |
+| > 97°C | 250 MHz | > 50°C | 250 MHz |
+
+Measured on this machine with one core loaded, everything logged every five
+seconds, on battery and discharging gently throughout:
+
+| t | `core_thermal` | `bq27421-0` | ceiling |
+| --- | --- | --- | --- |
+| 182 s — load starts | 55.4°C | 42.2°C | 1500000 |
+| 213 s | 70.6°C | 44.6°C | **1250000** |
+
+The gauge rose **2.0°C within ten seconds** of the load starting. A 6000 mAh
+cell cannot change temperature that fast, and nothing in those ten seconds put
+any current through it. The core peaked at **71.0°C** across that whole run and
+never reached its own first rung at 77°C: the entire throttling episode
+happened without the core ladder being consulted once.
+
+There is also no second opinion available while the machine is on battery. The
+other sensor on the charge path, `bq24297`, returned **exactly 22500 on all 252
+samples** of that run — but that run was on battery with the charger offline.
+Plugged in, the same zone reads 60000. It takes exactly those two values and
+neither of them is a measurement. Across
+roughly 1500 samples in both states — including 1123 taken while the pack
+warmed 1.4°C and the charge current swung between 202 and 531 mA — it has never
+once varied within a run. It is keyed to whether a charger is present, not to
+any temperature. An earlier draft called it a constant on battery-only
+evidence, and a later one over-corrected to "a real sensor" on the strength of
+it changing when the cable went in. Two values keyed on plug state are not a
+temperature either way. So no cell temperature is exposed on this machine at
+all.
+
+The cap also outlives the work that caused it, because the board cools slowly
+back through 44°C: the machine was still capped at 1250 MHz **350 seconds after
+the load stopped**, with the core back down to 57.4°C.
+
+### Fault 2 — no hysteresis
+
+A cap is handed back at the first sample below the threshold that took it, one
+poll before the heat that caused it returns. Same run: the ceiling changed nine
+times, six of them oscillating between 1250 and 1000 MHz inside a 116-second
+window while the gauge sat between 44.8°C and 45.5°C. This is the 1.5/1.25 GHz
+oscillation reported on this hardware, and fix 6 is what made it visible.
+
+### Fault 3 — the second ladder silently overwrites the first
+
+This is the serious one, and unlike the other two it is a loss of thermal
+protection rather than a loss of speed. `setMaxFreq` tests its argument against
+the constant `maxFreq`, 1500, rather than against the cap already chosen, so
+whichever ladder runs last wins whether or not it is the more restrictive. The
+battery ladder runs last. Reduced from the vendor's own helpers, unmodified:
+
+```sh
+maxFreq=1500
+setMaxFreq() { if [ "$1" -lt "$maxFreq" ]; then current_maxFreq=$1; fi; }
+
+current_maxFreq=$maxFreq
+core_temp=98000       # the core ladder's deepest rung, 250 MHz
+battery_temp=44500    # the battery ladder's shallowest rung, 1250 MHz
+
+if [ ${core_temp} -gt 97000 ]; then setMaxFreq 250; fi      # -> 250, correct
+if [ ${battery_temp} -gt 44000 ]; then setMaxFreq 1250; fi  # -> 1250
+```
+
+A core at 98°C asks for 250 MHz and gets 1250, because the board happens to be
+at an entirely ordinary 44.5°C. The deeper the core rung, the larger the
+overwrite, so the fault is worst exactly when it matters most.
+
+### Fault 4 — a 20-second poll on a machine that trips in 16
+
+Two cores flat out take this machine from a 63°C idle to its 100°C passive trip
+in **sixteen seconds**. The daemon polls every twenty. Logged every 2 seconds,
+with the ceiling as the daemon's output:
+
+| t | `core_thermal` | `cpu_thermal` | ceiling |
+| --- | --- | --- | --- |
+| 61 s — load starts | 64.6°C | 63.2°C | 1500000 |
+| 67 s | 67.0°C | **77.7°C** | 1500000 |
+| 72 s | 80.2°C | **91.7°C** | 1500000 |
+| 77 s | 85.8°C | **98.1°C** | 1500000 |
+
+The ceiling never moved, because the next poll had not arrived yet.
+
+### Fault 5 — it watches the slower sensor
+
+The passive trip is on `cpu_thermal`. The daemon reads `core_thermal`. At idle
+they agree within a degree, but during a fast ramp they do not: at t=67 above,
+`cpu_thermal` was 10.7°C ahead. Even an instantaneous daemon reading
+`core_thermal` would first act with `cpu_thermal` already at 91°C.
+
+### Why 4 and 5 only matter once fault 1 is fixed
+
+Fault 1 was masking them. Because the board sensor sits above 44°C in ordinary
+use, the machine was **permanently pre-capped** — measured at 750 MHz, where two
+cores flat out peak at a harmless 74°C. The daemon never needed to be quick,
+because its broken ladder had already put the machine somewhere nothing bad
+could happen. Real protection, obtained for entirely the wrong reason.
+
+This is why fix 7 is one change and not three. Measured on this machine:
+
+| | two cores flat out | outcome |
+| --- | --- | --- |
+| as shipped | 74°C | safe, but throttled at idle too |
+| ladder corrected, poll and sensor untouched | **102°C** | aborted by the harness |
+| ladder corrected, 2 s poll, both sensors | **87°C** | ran to completion |
+
+Correcting the ladder on its own makes this machine *less* safe than leaving it
+alone. That was measured the hard way, on hardware, before it was written down.
+
+### The fix
+
+The vendor's core rungs and the vendor's charging ladder are kept exactly as
+they are. Five things change:
+
+- the frequency rungs on the gauge move to board temperatures, derived from
+  what the board actually reads when the SoC is at full speed, so that ladder
+  becomes a backstop rather than the primary control;
+- every frequency decision goes through a helper that takes the **lower** of
+  the cap chosen so far and the one being asked for;
+- a release requires the temperature to have fallen clear of the rung that took
+  the step, rather than merely back across it, by a full rung — sized from the
+  machine, since this core moves up to 6°C between five-second samples on one
+  core and 10°C on two, which puts any smaller band below the noise floor;
+- `interval` goes from 20 seconds to 2;
+- the frequency ladder reads the hotter of `core_thermal` and `cpu_thermal`.
+
+The frequency ladder and the charging ladder are split into separate functions
+so the release hysteresis applies only to frequency. Combining them would mean
+a release pass deciding charge current from a temperature 2°C higher than the
+real one, which would clamp the charger to 500 mA at a board temperature where
+the current code allows 2 A. **The charging thresholds and currents are not
+changed**, and the selftest asserts that byte for byte.
+
+### Where it is applied
+
+`pc/pyra-trixie-prep.sh` applies it offline as fix 7, immediately after fix 6
+and through the same `--emit-patched` door, so there is one implementation.
+`device/pyra-thermal-ladder.sh` applies it to a running machine, refuses a
+ladder it does not recognise, checks the result parses as `/bin/sh` before
+installing it, and asks the daemon what it would decide right now before
+trusting it with the machine.
+
+The card ends up carrying two backups, so the two fixes undo independently and
+in the order they were applied:
+
+    pyra-thermal.sh.before-pyra-thermal-fix      the vendor's file
+    pyra-thermal.sh.before-pyra-thermal-ladder   vendor + fix 6
+    pyra-thermal.sh                              vendor + fix 6 + fix 7
+
+**Same caveat as fix 6:** it edits a packaged file in a location that is not a
+conffile, so an upgrade silently reverts it.
+`pyra-thermal-ladder.sh --check` says whether that has happened.
+
+---
+
+## Fix 8 — the machine cannot charge while it runs
+
+**What is wrong.** Plug a charger into a Pyra running this image and the
+battery goes down. Measured at idle on 2026-09-13, charger attached, `online=1`
+and the charger's power-good bit set:
+
+| | |
+| --- | --- |
+| `input_current_limit` | 500000 (500 mA, the USB floor) |
+| battery `current_now` | **−617000** (617 mA *out* of the battery) |
+| battery `status` | Discharging |
+
+This machine's idle draw is about 620 mA. The charger was admitting 500. The
+battery supplied the rest, so it drained with the cable in, and it had got down
+to 21% before anyone looked at the right register.
+
+One write is the whole fix:
+
+    echo 2000000 > /sys/bus/i2c/drivers/bq2429x_charger/*/max_current
+
+| | 500 mA | 2 A |
+| --- | --- | --- |
+| battery current | −617 mA | **+476 mA** mean over 899 s |
+| capacity | falling | 21% → 23% |
+| `REG08` | `0x0c`, not charging | `0x2c`, fast charging, on all 815 samples |
+
+Same supply, same cable, one register.
+
+**Why it sits at 500 mA.** Nothing on this machine ever sets it. Three things
+were supposed to and none of them do.
+
+1. `/lib/udev/rules.d/charging.rules` is the mechanism, and the rules in it
+   that work name **twl4030** — the OMAP3/GTA04 charger. This is an OMAP5 with
+   a bq24297. The rules for the right chip are directly beneath them, under the
+   vendor's own comment:
+
+       # 3. this is preparation for the Pyra but neither tested nor complete
+       #    nor working
+
+   They are accurate about themselves. They also try to link `/sys%p/id`, and
+   the bq24297 exposes no `id` attribute. The helper script they call,
+   `charging.sh`, reads `/dev/usb_id` and switches between 500 mA and 851 mA
+   based on the ID-pin resistance of an **Openmoko** wall charger.
+
+2. Because rule 3 never made the symlink, `/dev/usb_max_current` is not a
+   symlink:
+
+       -rw-r--r-- 1 root root 7 /dev/usb_max_current      <- regular file 0:0
+
+   It is an ordinary file, created by the first thing that wrote to it as root
+   — the thermal daemon. This is the correction to fix 6 above.
+
+3. The driver reads the right numbers out of the device tree at probe and never
+   applies them:
+
+       bq2429x_parse_dt: chg_current = 2048000 usb_input_current = 3000000
+                         adp_input_current = 2048000 bat_volt_max = 4200000
+
+So the limit stays wherever the chip powers up, which is the 500 mA USB floor,
+for the life of the boot.
+
+**What this fix does not do, deliberately.** It does not connect the thermal
+daemon's charge ladder to the real knob. That ladder reads `bq27421-0`, the
+fuel gauge's own die (fault 1 of fix 7), and it drops to 500 mA above 44°C.
+This machine idles with that sensor at 46–47°C. Wiring the daemon to the
+working knob without first recalibrating it onto a sensor that means something
+would re-impose exactly the cap this fix exists to lift, permanently, and the
+battery would drain on the charger again. The pack's thermal protection is the
+charger's TS pin, a hardware comparator on the battery thermistor, and it gates
+charging whatever the input limit says. It was always the thing doing that job.
+
+**What it assumes, which you should know before raising the number.** It
+asserts a current; it detects nothing, because nothing here can. Proper BC1.2
+detection means driving `FORCE_DPDM` in the bq24297's REG07, and that belongs
+in the driver. The hardware backstop is VINDPM at 4.36 V: when VBUS sags to
+there the chip stops taking more, which is why a weak supply browns out rather
+than burns. But 4.36 V is below the 4.75 V a USB port is entitled to, so
+pointing this at a real 500 mA port pulls that port out of spec. The default is
+2 A because that is what this board's own device tree calls
+`adp_input_current`. Do not raise it and then plug into a keyboard hub.
+
+**What the supply and cable turned out to be worth.** Raising the limit further
+buys nothing here:
+
+| limit | battery current |
+| --- | --- |
+| 2 A | 476 mA mean over 899 s |
+| 3 A | 452 mA mean over 177 s |
+
+with `DPM_STAT` set the whole time at a total input draw well under 1 A. That
+is VINDPM, not the limit — VBUS is sagging, which is the cable. A shorter or
+thicker one should be worth real charge rate; a bigger number here is not.
+
+**Where it is applied.** `device/pyra-charge-current.sh` installs three files
+and verifies the result:
+
+    /etc/default/pyra-charge-current              the number
+    /usr/local/sbin/pyra-charge-current-apply     one idempotent sysfs write
+    /etc/udev/rules.d/60-pyra-charge-current.rules
+
+The limit is a register: it resets on every unplug and every boot, which is
+what the udev rule is for. `--check` reports the state, `--undo` puts 500 mA
+and the stock rules back. `device/pyra-chgwatch.sh` watches the charge path
+once a second and changes nothing.
+
+**Unlike fixes 6 and 7, this one does not edit a packaged file**, so an upgrade
+will not silently revert it. It adds a rule in `/etc/udev/rules.d`, which takes
+precedence over the stock `/lib/udev/rules.d` and leaves it untouched.
+
+**Verified:** the rule re-applies the limit on both `add` and `change` events,
+tested by knocking the register down to 500000 and firing each event with
+`udevadm trigger`. A physical unplug and replug has **not** been tested — that
+needs hands on the device.
 
 ---

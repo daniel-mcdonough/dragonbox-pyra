@@ -45,6 +45,12 @@ pyra-governor-sweep.sh              /usr/local/sbin                    0755
 pyra-governor-tune.sh               /usr/local/sbin                    0755
 pyra-governor-tune.service          /etc/systemd/system                0644
 pyra-thermal-fix.sh                 /usr/local/sbin                    0755
+pyra-thermal-ladder.sh              /usr/local/sbin                    0755
+pyra-thermal-probe.sh               /usr/local/sbin                    0755
+pyra-ceiling-cost.sh                /usr/local/sbin                    0755
+pyra-charge-probe.sh                /usr/local/sbin                    0755
+pyra-charge-current.sh              /usr/local/sbin                    0755
+pyra-chgwatch.sh                    /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
@@ -207,6 +213,9 @@ Done. What is now on the path:
     pyra-governor-sweep.sh            measure what each governor setting buys
     pyra-governor-tune.sh --check     is the governor setting applied (--undo to revert)
     pyra-thermal-fix.sh --check       is the thermal daemon's fix still applied
+    pyra-thermal-ladder.sh --check    is its corrected ladder still applied
+    pyra-charge-current.sh --check    can the machine charge while it runs
+    pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because

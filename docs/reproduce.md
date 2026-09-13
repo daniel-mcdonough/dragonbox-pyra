@@ -14,10 +14,10 @@ spine, and it points at the other documents rather than repeating them.
 | Part | What it is | Where it comes from |
 | --- | --- | --- |
 | Rootfs | The Pyra project's trixie image, grown onto the whole card | `procedure.md` sections 1 to 3 |
-| Five fixes | Xorg, first-run wizard, nubs, GLX, USB hub | `pc/pyra-trixie-prep.sh`, applied offline |
+| Seven fixes | Xorg, first-run wizard, nubs, GLX, USB hub, the thermal daemon's broken cap, and its ladder | `pc/pyra-trixie-prep.sh`, applied offline |
 | Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the six patches | `pc/pyra-crossbuild.sh kernel-fix` |
 | X display driver | **Stock**, unmodified, from the Pyra repository | nothing to build |
-| Helpers | Boot selector, kernel installer, suspend test, hang trap, idle dimmer, profilers, governor sweep | `pc/pyra-push-helpers.sh`, or `device/pyra-install-helpers.sh` on the device |
+| Helpers | Boot selector, kernel installer, suspend test, hang trap, idle dimmer, profilers, governor sweep, thermal probe and ladder fix | `pc/pyra-push-helpers.sh`, or `device/pyra-install-helpers.sh` on the device |
 | Capture settings | `kernel.sysrq = 446` and all-CPU backtraces | installed with the helpers |
 
 **The display driver is not rebuilt and does not need to be.** This is worth
@@ -37,7 +37,7 @@ to the card by the prep script.
 ### 1. Get a working desktop
 
 Follow `procedure.md` sections 0 to 6. At the end of it the machine boots to
-MATE, the rootfs fills the card, and the six fixes are in place. Do not
+MATE, the rootfs fills the card, and the eight fixes are in place. Do not
 continue until section 6 passes.
 
 Optional, and much easier done now than later: `procedure.md` section 7 sets

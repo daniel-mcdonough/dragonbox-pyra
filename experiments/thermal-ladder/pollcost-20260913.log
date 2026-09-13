@@ -1,0 +1,14 @@
+=== 2 second poll (the fix) ===
+interval=2  daemon cpu jiffies over 300s: 349  (=3.490 s, 1.163% of one core)
+    idle mean frequency 392168 kHz, 1.35% at the top step, 30002 transitions-worth of samples
+
+=== 20 second poll (the vendor) ===
+cp: cannot create regular file '/tmp/up0': Permission denied
+interval=20  daemon cpu jiffies over 300s: 32  (=0.320 s, 0.107% of one core)
+    idle mean frequency 391899 kHz, 2.10% at the top step, 30001 transitions-worth of samples
+
+=== back to the fix ===
+cp: cannot create regular file '/tmp/up0': Permission denied
+interval=2  daemon cpu jiffies over 300s: 355  (=3.550 s, 1.183% of one core)
+    idle mean frequency 396678 kHz, 1.89% at the top step, 30003 transitions-worth of samples
+POLLCOST DONE

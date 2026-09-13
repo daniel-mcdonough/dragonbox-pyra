@@ -79,7 +79,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
 | [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
-| [docs/fixes.md](docs/fixes.md) | The six fixes, what each one is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The eight fixes, what each one is for, and the diagnosis behind it. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
@@ -115,7 +115,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all six fixes to a mounted rootfs, before the card's first boot. |
+| `pc/pyra-trixie-prep.sh` | Applies all eight fixes to a mounted rootfs, before the card's first boot. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
@@ -150,6 +150,12 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-governor-sweep.sh` | Measures what each cpufreq governor setting is worth, one knob at a time, against the `performance` governor as the ceiling. Stops the thermal daemon and pins the frequency ceiling for the length of the run, because the daemon caps on battery temperature and will otherwise move the ceiling underneath the measurement; puts both back on every exit path. |
 | `device/pyra-governor-tune.sh` | Applies the one governor setting the sweep found worth applying, `sampling_down_factor` 1 → 10: 23% off burst latency and a third off the median, for 5.4% more idle frequency. `--check` and `--undo`. Its systemd unit reapplies it at boot, because a sysfs write does not survive one. |
 | `device/pyra-thermal-fix.sh` | Makes the stock thermal daemon able to apply its own decision. It calls `cpufreq-set`, which trixie cannot install, so it has never capped a frequency; this writes `scaling_max_freq` instead. Peak temperature under load falls from 100°C to 84°C. Reversible with `--undo`. |
+| `device/pyra-thermal-ladder.sh` | Fixes five faults in the same daemon, all invisible until `pyra-thermal-fix.sh` made it able to act: it throttles on the fuel gauge's die temperature rather than the cell, it has no hysteresis, its second ladder can overwrite the first one's deeper cap, it polls every 20 s on a machine that crosses its passive trip in 16, and it watches `core_thermal` while the trip is on `cpu_thermal`. The last two only bite once the first is fixed — the broken ladder kept the machine permanently pre-capped, which was protection by accident. Anchored replacements, refuses a file it does not recognise, `--undo` puts it back. |
+| `device/pyra-thermal-probe.sh` | Logs every thermal zone and the CPU ceiling through a load cycle, twice: once with the daemon deciding, and once with it stopped and the ceiling pinned. The first arm shows what the daemon does; the second is the only way to see where the sensors actually sit at full speed, because the daemon's own capping otherwise limits the heat it is being measured against. |
+| `device/pyra-ceiling-cost.sh` | Measures what each rung of the thermal ladder costs, in burst latency, in sustained throughput and in watts. A cap that buys no battery life is costing speed for nothing, and that is not answerable from the clock ratio alone. |
+| `device/pyra-charge-probe.sh` | Finds out what is actually limiting charging, with the daemon deciding and then with it stopped and the limit lifted to the vendor's own 3 A default. Needs the charger plugged in. |
+| `device/pyra-charge-current.sh` | Fix 8. A Pyra on a charger loses charge: the bq24297's input current limit is never set by anything, so it sits at the 500 mA USB floor while the machine draws ~620 mA at idle. Installs a config, a one-line helper and a udev rule that re-applies the limit on plug — it is a register and resets every time. `--check`, `--undo`, and `--emit-into ROOT` for the card prep. |
+| `device/pyra-chgwatch.sh` | Watches the charge path once a second and changes nothing: input limit, battery current and voltage, and the charger's own status and fault registers. Needs no root. |
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
