@@ -42,6 +42,8 @@ pyra-x-load-profile.sh              /usr/local/sbin                    0755
 pyra-idle-profile.sh                /usr/local/sbin                    0755
 pyra-freq-profile.sh                /usr/local/sbin                    0755
 pyra-governor-sweep.sh              /usr/local/sbin                    0755
+pyra-governor-tune.sh               /usr/local/sbin                    0755
+pyra-governor-tune.service          /etc/systemd/system                0644
 pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
@@ -124,6 +126,23 @@ else
 	note "kernel.softlockup_all_cpu_backtrace = $(sysctl -n kernel.softlockup_all_cpu_backtrace)"
 fi
 
+# --------------------------------------------------------------- system unit
+# The governor setting is a sysfs write and does not survive a reboot, so the
+# unit is what makes it persistent. Enabling is separate from installing
+# because the map can copy a file but cannot tell systemd about it.
+say "the governor setting"
+if [ "$DRYRUN" = 1 ]; then
+	note "would enable and start pyra-governor-tune.service"
+else
+	systemctl daemon-reload
+	if systemctl enable --now pyra-governor-tune.service >/dev/null 2>&1; then
+		note "enabled and started"
+		note "$(/usr/local/sbin/pyra-governor-tune.sh --check | head -1)"
+	else
+		note "could not enable it; check: systemctl status pyra-governor-tune.service"
+	fi
+fi
+
 # ------------------------------------------------------------- desktop helper
 say "the idle dimmer"
 if [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = root ]; then
@@ -186,6 +205,7 @@ Done. What is now on the path:
     pyra-idle-profile.sh              where an idle machine spends its power
     pyra-freq-profile.sh              compare two kernels' cpufreq behaviour
     pyra-governor-sweep.sh            measure what each governor setting buys
+    pyra-governor-tune.sh --check     is the governor setting applied (--undo to revert)
     pyra-thermal-fix.sh --check       is the thermal daemon's fix still applied
     pyra-anno1602-test.sh             the box86 and Wine workload
 

@@ -269,8 +269,15 @@ burst but the first unit after real idle still pays the full ramp, and
 "sluggish" is a description of a tail. And tuned `ondemand` is still 18% off
 the `performance` governor, a larger gap than tuning closed.
 
-Not yet applied or made persistent: these are sysfs files and a reboot restores
-the stock values.
+**Applied 2026-09-13.** `device/pyra-governor-tune.sh` sets the one value and
+`pyra-governor-tune.service` reapplies it at boot, since a sysfs write does not
+survive one. Confirmed on the live machine after applying, with the ceiling
+steady at 1500 MHz: 40.9 ms against 52.5 ms at stock and 35.6 ms against 52.0
+at the median, which is -22.1% and -31.5% — the sweep predicted -23.4% and
+-32.7%. `--undo` puts it back.
+
+This item can be closed. What remains of it is the 18% gap to the `performance`
+governor, which is the ramp itself and which no `ondemand` setting reaches.
 
 ### 2. Thermals, and where the real limit is
 

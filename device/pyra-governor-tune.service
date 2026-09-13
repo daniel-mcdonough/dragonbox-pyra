@@ -1,0 +1,16 @@
+[Unit]
+Description=Apply the measured cpufreq governor setting (sampling_down_factor)
+Documentation=man:cpufreq-ondemand(7)
+After=sysinit.target
+# The ondemand tunables exist only while a policy is using ondemand. The script
+# handles their absence by itself and exits 0, but there is no reason to start
+# at all when the directory is not there.
+ConditionPathExists=/sys/devices/system/cpu/cpufreq/ondemand
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pyra-governor-tune.sh
+
+[Install]
+WantedBy=multi-user.target
