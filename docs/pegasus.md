@@ -180,8 +180,81 @@ the armhf development package; and a toolchain using
 vendored `SortFilterProxyModel`, which is a misleading place to be told about
 it.
 
-What has **not** been done is running it. The binary has never been on the
-device.
+### And it runs
+
+It was pushed to the device and started fullscreen on the real panel under
+`pyra-gles`, with a five-entry "System" collection whose games are shell
+commands — route A from above, built as a test rather than as a plan:
+
+![Pegasus on the Pyra, showing a System collection of shell commands](pyra-pegasus-grid.png)
+
+| | |
+| --- | --- |
+| Renderer | `PowerVR SGX 544MP`, `OpenGL ES 2.0 build 1.14@3699939`, threaded render loop |
+| Cold start to a steady frame | 2.7 s, of which 1.2 s is the game scan |
+| Gamepad | `pyraInput Gamepad` picked up by SDL2 with no configuration at all |
+| Resident memory | 64 MB |
+| Launch round trip, no-op command | ~1.7 s from keypress to the theme being back |
+| Sitting on the home screen | 29.5% of one core, and ~920 mA off the battery |
+
+**The idle cost is the finding to take seriously.** The same machine at the
+MATE desktop, with nothing running, draws ~455 mA and is 5.7% busy. Pegasus
+sitting on its home screen with nothing happening draws ~920 mA and is 28.8%
+busy, and the die goes from 67°C to 75°C. The launcher at rest costs about as
+much as the entire rest of the machine at rest, and on a handheld that is
+battery life rather than a benchmark. The cause is the bundled Grid theme
+animating continuously against vsync; a theme that stops animating when nothing
+moves should be much cheaper, and measuring that is the first thing to do
+before blaming Pegasus for it.
+
+That 1.7 s is the number that decides route A. It is the cost of
+`FrontendLayer::teardown()` and the rebuild that follows, for a command that
+does nothing at all, and it is what every press of a "brightness up" entry
+would cost. Fine for "reboot to the desktop". Not a settings menu.
+
+The base image needs four more runtime packages before the binary will start:
+`libqt5sql5t64`, `libqt5sql5-sqlite`, `qml-module-qtquick-layouts` and
+`qml-module-qtgraphicaleffects` (plus `qml-module-qtmultimedia` for themes that
+want it). The bundled Grid theme also logs a missing `system.svg` for a
+collection with no logo, which is cosmetic.
+
+### The launch path can abort the frontend
+
+Launching a game sometimes kills Pegasus outright:
+
+    [i] Executing command: [`/tmp/sysact.sh`,`temps`]
+    [i] Process 21306 started
+    Assertion 'close_nointr(fd) != -EBADF' failed at src/basic/fd-util.c:75,
+    function safe_close(). Aborting.
+
+That assertion is libsystemd's, and it fires on a double `close()`. Pegasus is
+not calling it: `ProcessLauncher` tears the frontend down and, on the way,
+`GamepadManagerSDL2::stop()` calls `SDL_QuitSubSystem` for both the game
+controller and the joystick subsystems, which takes SDL's udev monitor down
+with it. SDL2 links `libsystemd` for that monitor. Something in that teardown
+closes an already-closed descriptor, and libsystemd's response to a double
+close is to abort the process.
+
+It is a race, and the rate is not fixed. On an idle machine it aborted **once
+in four** launches. While the machine was loaded and the thermal daemon had the
+ceiling down at 750 MHz–1 GHz, it aborted on **four of four**. When it fires,
+either the process dies outright or it survives as a spinning orphan at 20–30%
+of a core with a stale window and a QML engine that never comes back — both
+observed.
+
+`SDL_JOYSTICK_DISABLE_UDEV=1` avoids it: **eight launches across two sessions,
+no aborts, the engine rebuilt every time**, and SDL still found the gamepad (it falls back to
+scanning `/dev/input`, which is enough for a controller that is soldered to the
+machine — hotplug of an external pad through that path is untested).
+
+Treat that variable as required for now, and treat the underlying fault as
+worth a report: nothing about it is Pyra-specific beyond the timing, and any
+Pegasus-on-Linux install with SDL2 gamepad support is standing on it.
+
+### What has not been done
+
+The menus themselves. Everything above is the frontend running as upstream
+ships it.
 
 ## Running it on the device
 
@@ -223,15 +296,24 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
       packaged: same container pattern as `ddx`, a pinned commit, the toolchain
       file, and the binary dropped where `pyra-push-helpers.sh` can carry it
       over. — *two or three hours*
-- [ ] **Get it onto the device and confirm it draws.** Under `pyra-gles`, on
-      the real panel, with the frame counter on. First paint will be slow while
-      shaders compile; what matters is the steady state and whether the theme's
-      images fit in the 4096 texture limit. — *half a day*
-- [ ] **Map the controls.** SDL2 sees `js2` as a joystick, not necessarily as a
-      recognised game controller; Pegasus has in-app mapping, but check whether
-      the shoulder buttons and the nubs land somewhere sane and whether an
-      `SDL_GAMECONTROLLERCONFIG` entry is worth writing for this device. —
-      *a few hours*
+- [x] **Get it onto the device and confirm it draws.** Done 2026-09-18: it
+      runs fullscreen on the SGX, the bundled theme renders, and a collection
+      of shell commands works. The section above has the numbers.
+- [ ] **Find out what the idle cost really is, and whether a theme fixes it.**
+      ~920 mA against the desktop's ~455 mA is the single worst number in this
+      document. Try a theme that does not animate at rest, and measure again
+      with `device/pyra-cpu-attribution.sh` to see where the cycles go. If a
+      static theme does not fix it, this is a reason not to run Pegasus as the
+      session at all. — *half a day, and do it before the C++*
+- [ ] **Deal with the SDL udev abort.** `SDL_JOYSTICK_DISABLE_UDEV=1` is the
+      workaround and it held for eight launches; confirm it holds over a longer
+      run, find out whether external pads still hotplug under it, and decide
+      whether to report the double close to SDL. This is not Pyra-specific.
+      — *a few hours, plus a report if you want one*
+- [ ] **Map the controls.** SDL2 found `pyraInput Gamepad` by itself, which is
+      further than expected; what is unchecked is whether the shoulder buttons
+      and the nubs land somewhere sane, and whether an `SDL_GAMECONTROLLERCONFIG`
+      entry is worth writing for this device. — *a few hours*
 - [ ] **Write `PyraDevice`.** The C++ object, the `Api.h` registration, the
       logind D-Bus calls for both backlights, polled reads for the rest, and
       the three rules above enforced in the class rather than in the theme. —
@@ -241,10 +323,10 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
       shown as a fact rather than a control. — *1 day*
 - [ ] **Decide where the patch series lives.** `patches/` is kernel-only today.
       A sibling directory, or a separate repository. — *your call*
-- [ ] **Measure what it costs at idle.** A QML frontend sitting on the home
-      screen with animations running is not free, and this machine's idle draw
-      is already the thing that decides its battery life.
-      `device/pyra-cpu-attribution.sh` answers it directly. — *an hour*
+- [ ] **Decide about the session.** A `.desktop` session entry running
+      `pyra-gles pegasus-fe`, X blanking off for that session, MATE left
+      installed and selectable. Trivial to write, and worth writing only once
+      the idle cost above is understood. — *an hour*
 
 ## Measured here, versus assumed
 
@@ -258,7 +340,17 @@ tools.
 Built on the workstation on 2026-09-18: Pegasus `83fd27f` for armhf, from a
 clean container, with the options above.
 
+Run on the device on 2026-09-18: fullscreen on the panel under `pyra-gles`,
+with a System collection of shell commands. Measured there: the renderer
+strings, the 2.7 s cold start, the 1.7 s launch round trip, the 64 MB resident
+set, the 29.5%-of-a-core and ~920 mA idle cost against the desktop's 5.7% and
+~455 mA, SDL2 finding the gamepad unaided, and the libsystemd abort — one in
+four launches idle, four in four under load, none in eight with
+`SDL_JOYSTICK_DISABLE_UDEV=1`.
+
 Read from the Pegasus source rather than run: the theme API surface, the engine
 teardown on launch, and the shape of the `DeviceInfo` extension point.
 
-Not done at all: running it on the device, and everything after.
+Not done at all: the menus, the session integration, and the C++ that the
+hardware pages need. Nothing in this repository has been changed to
+accommodate Pegasus, and nothing needs to be until those decisions are made.
