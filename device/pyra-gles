@@ -1,0 +1,110 @@
+#!/bin/sh
+#
+# pyra-gles — run a GLES2 program against the SGX driver instead of glvnd.
+#
+#   pyra-gles PROGRAM [ARGS...]   run PROGRAM with the blob's GLES2 in front
+#   pyra-gles --check             say what is in place, change nothing
+#   pyra-gles --undo              remove the shim directory
+#
+# WHAT IS WRONG
+#
+# Two GLES2 implementations are installed and they do not have the same
+# SONAME. The DDK blob ships `libGLESv2.so.1`; Debian ships glvnd's
+# `libGLESv2.so.2` in `libgles2`. `/etc/ld.so.conf.d/01_omap5-sgx-ddk-um-linux.conf`
+# sorts first, so `libEGL.so.1` resolves to the blob — but nothing under
+# `/opt/omap5-sgx-ddk-um-linux/lib/` is called `libGLESv2.so.2`, so a program
+# that links the distribution's GLES2, which is every Qt5 toolkit program,
+# gets glvnd for its GL calls while its EGL context comes from the blob.
+#
+# glvnd routes GL calls to the vendor that owns the current context and learns
+# its vendors from `/usr/share/glvnd/egl_vendor.d/`, which lists mesa and
+# nothing else. The blob predates glvnd and is not a vendor there. So the
+# context is real, every GL entry point is a stub, and the program fails with
+# empty `GL_VENDOR`, `GL_RENDERER` and `GL_VERSION` strings, a maximum texture
+# size of zero, and no shader that will compile. Nothing is logged as an error,
+# because from EGL's point of view nothing failed.
+#
+# Programs that link the blob directly are unaffected: `pyra-gles2-smoke.c` is
+# built with `-L/opt/omap5-sgx-ddk-um-linux/lib`, and gl4es dlopens the blob by
+# its own name. This is only about the `.so.2` name.
+#
+# WHAT THIS DOES
+#
+# Creates a directory holding one symlink, `libGLESv2.so.2` pointing at the
+# blob's `libGLESv2.so.1`, and puts that directory at the front of
+# `LD_LIBRARY_PATH` for the program it runs. Same shape as `/usr/bin/gl4es`,
+# and for the same reason: per program, not system wide. Putting the shim into
+# `ld.so.conf` would hand the blob every GLES2 program on the machine,
+# including ones that need glvnd's software fallback because they are not
+# talking to the local X server at all.
+#
+# `ldconfig` will never create this link for you. It files a library under the
+# SONAME recorded inside it, and the blob's says `libGLESv2.so.1`.
+#
+# The directory lives under the cache directory of whoever runs it, so no root
+# is needed and there is nothing to install. Override it with PYRA_GLES_DIR.
+#
+# See `docs/qt-gles.md`.
+
+set -eu
+
+DDK_LIB=${PYRA_GLES_DDK:-/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1}
+SHIM_DIR=${PYRA_GLES_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/pyra-gles}
+SHIM=$SHIM_DIR/libGLESv2.so.2
+
+die() { printf 'pyra-gles: %s\n' "$*" >&2; exit 1; }
+
+# The blob has to be there and has to be the library it claims to be. A
+# dangling symlink or a stub left by something else would otherwise be linked
+# in silently and fail the same way the bug does.
+check_ddk() {
+	[ -e "$DDK_LIB" ] || die "$DDK_LIB is missing — is the DDK installed?"
+	[ -r "$DDK_LIB" ] || die "$DDK_LIB is not readable"
+	if command -v readelf >/dev/null 2>&1; then
+		readelf -d "$DDK_LIB" 2>/dev/null | grep -q 'SONAME.*libGLESv2\.so\.1' ||
+			die "$DDK_LIB does not carry the SONAME libGLESv2.so.1"
+	fi
+}
+
+make_shim() {
+	check_ddk
+	mkdir -p "$SHIM_DIR" || die "cannot create $SHIM_DIR"
+	# Rebuilt every run rather than trusted: the blob can move under it when
+	# the DDK package is upgraded, and a stale link fails obscurely.
+	ln -sfn "$DDK_LIB" "$SHIM" || die "cannot create $SHIM"
+}
+
+case "${1:-}" in
+--check)
+	printf 'blob:  %s\n' "$DDK_LIB"
+	if [ -e "$DDK_LIB" ]; then echo '       present'; else echo '       MISSING'; fi
+	printf 'shim:  %s\n' "$SHIM"
+	if [ -L "$SHIM" ]; then
+		printf '       -> %s\n' "$(readlink "$SHIM")"
+		[ -e "$SHIM" ] || echo '       DANGLING — the next run will rebuild it'
+	else
+		echo '       not created yet — the next run will create it'
+	fi
+	printf 'glvnd: %s\n' "$(ls /usr/lib/*/libGLESv2.so.2 2>/dev/null || echo 'not installed')"
+	exit 0
+	;;
+--undo)
+	[ -e "$SHIM" ] || [ -L "$SHIM" ] || { echo "pyra-gles: nothing to remove"; exit 0; }
+	rm -f "$SHIM"
+	rmdir "$SHIM_DIR" 2>/dev/null || true
+	echo "pyra-gles: removed $SHIM"
+	exit 0
+	;;
+-*)
+	die "unknown option: $1 (try --check, --undo, or a program to run)"
+	;;
+'')
+	sed -n '3,7p' "$0" | sed 's/^# \{0,1\}//'
+	exit 2
+	;;
+esac
+
+make_shim
+LD_LIBRARY_PATH=$SHIM_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export LD_LIBRARY_PATH
+exec "$@"

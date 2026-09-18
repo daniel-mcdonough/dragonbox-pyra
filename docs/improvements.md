@@ -830,6 +830,11 @@ This is per-application work with no general answer. It is worth doing for
 whichever emulators and games get used, and worth nothing in the abstract. Pick
 targets from actual use, not from a list.
 
+One class of program turned out to need nothing built at all, only a symlink:
+anything using a toolkit that links the archive's `libGLESv2` was getting
+glvnd's dispatcher rather than the blob and rendering nothing. Qt Quick runs on
+the SGX at 117 fps once that is corrected. See `docs/qt-gles.md`.
+
 Effort: per application. Risk: none.
 
 ### 9. Selective Cortex-A15 rebuilds

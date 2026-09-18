@@ -83,8 +83,10 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
+| [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for toolkit programs, which fails silently as shipped. Qt Quick runs on the SGX after one symlink. |
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
 | [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
+| [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
@@ -143,6 +145,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-sleep-test.sh` | Suspends the machine with the clock armed to wake it, says whether it really came back, and names which sleep state the kernel used. |
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
+| `device/pyra-gles` | Runs a GLES2 program against the SGX driver instead of glvnd, which is otherwise what it gets and why it draws nothing. Needs no root and installs nothing. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |

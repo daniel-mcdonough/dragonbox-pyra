@@ -55,6 +55,7 @@ pyra-anno1602-test.sh               /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-idle-dim                       /usr/local/bin                     0755
+pyra-gles                           /usr/local/bin                     0755
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
@@ -217,6 +218,7 @@ Done. What is now on the path:
     pyra-charge-current.sh --check    can the machine charge while it runs
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload
+    pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

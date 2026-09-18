@@ -126,5 +126,12 @@ trixie archive for these tests and are not in the base image.
 `LIBGL_NOBANNER=1` silences gl4es's forty-line startup report;
 `LIBGL_DEBUG=1` expands it.
 
+### The other half: programs that link GLES2 directly
+
+gl4es is for programs that want desktop GL. A program that links the archive's
+`libGLESv2` instead — which is every Qt5 toolkit program — gets glvnd's
+dispatcher rather than the blob, and draws nothing at all, with no error.
+`docs/qt-gles.md` has the diagnosis and the one-symlink cure.
+
 ---
 
