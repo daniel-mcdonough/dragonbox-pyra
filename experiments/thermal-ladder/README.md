@@ -197,12 +197,20 @@ One core, daemon active, the machine as a person would use it:
 | --- | --- | --- | --- |
 | vendor, capping on the gauge at 44°C | 12 | 71.0°C (throttled) | — |
 | fixed, 2°C band | 7 | 85.0°C | 91.3°C |
-| **fixed, 5°C band** | **2** | **81.8°C** | **88.0°C** |
+| **fixed, 5°C band** | **2** | **81.8°C** | **88.7°C** |
 
 With a full rung it caps once when the core crosses 77°C, holds 1250 MHz for
 the whole load, and releases once idle. Holding a cap regulates better than
 oscillating, so the wider band is both quieter *and* cooler: the peak fell from
-91.3°C to 88.0°C.
+91.3°C to 88.7°C.
+
+**The 5°C `cpu_thermal` peak was published as 88.0°C until 2026-09-18**, when the
+artifacts were re-read. The file's maximum is 88.7°C, at t=86 in the load phase.
+The 2°C and vendor rows check out exactly, as do the twelve vendor ceiling
+changes, the seven inside the 116-second window and the four in the idle phase.
+Reproduce any of them with:
+
+    awk -F'\t' 'NR>1 && $1!="done" {if ($3+0 > m) m=$3} END {print m}' *.tsv
 
 Applying and reverting the fix on a live machine, within the same minute and at
 the same board temperature, moves the ceiling 1250000 ↔ 1500000. That is the
@@ -258,7 +266,7 @@ seconds and releases once idle.
 
 **The honest cost: the machine runs hotter than fix 6 alone left it.** It now
 uses thermal budget it was previously giving away to a sensor with no view of
-the SoC. 88°C on one core and 87°C on two against a 100°C passive trip, where
+the SoC. 88.7°C on one core and 87.0°C on two against a 100°C passive trip, where
 fix 6 alone sat at 84°C — but it got that margin by throttling at 70°C for no
 thermal reason. Nothing here approaches the 107°C that fix 6 was written to
 stop. If more margin is wanted, the clean knob is the core ladder's first rung
@@ -413,7 +421,7 @@ unrelated reason, and that is fix 8. Written up in
 | `probe-vendor-20260913-192420.tsv` | after the fix, 2°C band, one core |
 | `probe-vendor-20260913-193329.tsv` | after the fix, 2°C band, two cores |
 | `probe-vendor-20260913-194702.tsv` | after the fix, 5°C band, one core |
-| `charge-probe-20260913-190806.tsv` | the charging test that did not settle |
+| `../charging/charge-probe-20260913-190806.tsv` | the charging test that did not settle. Filed with the charging work, since that is what it turned out to be about |
 | `probe-vendor-20260913-195818.tsv` | two cores with the ladder fixed but the poll untouched — the 102°C run |
 | `ab-vendor/`, `ab-new/` | the two-core A/B: vendor ladder pre-capped at 750 MHz against the corrected ladder at 1500 |
 | `ab2/` | two cores with the 2-second poll and both sensors, the 87°C run |

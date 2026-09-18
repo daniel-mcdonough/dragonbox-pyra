@@ -417,7 +417,8 @@ Two separable pieces of work:
   still crossed the same rung six times in four minutes. A full rung, 5°C,
   takes one core of load from twelve ceiling changes to two, and because
   holding a cap regulates better than oscillating it also drops the peak from
-  91.3°C to 88.0°C.
+  91.3°C to 88.7°C. (Published as 88.0°C until 2026-09-18; the artifact's maximum
+  is 88.7°C. Corrected in `experiments/thermal-ladder/README.md`.)
 
   **And correcting all that broke the two-core case, which is the most
   important thing on this page.** Two cores flat out then reached 102°C with
@@ -439,7 +440,7 @@ Two separable pieces of work:
 
   The cost is honest and worth stating: the machine now runs hotter than fix 6
   alone left it, because it is no longer giving thermal budget away to a sensor
-  with no view of the SoC. 88°C on one core and 87°C on two against a 100°C
+  with no view of the SoC. 88.7°C on one core and 87.0°C on two against a 100°C
   trip, where fix 6 alone sat at 84°C — but it got that margin by throttling at
   70°C for no thermal reason.
 - **Hardware.** Community reports of 20–23°C reductions from improved thermal

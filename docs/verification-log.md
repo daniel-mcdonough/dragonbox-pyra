@@ -467,3 +467,243 @@ The existing guarantees held with the new fix in place: the before-and-after
 rootfs snapshots show no write outside what the six fixes claim, the second run
 leaves the filesystem byte-identical, the missing-payload abort still happens
 before fix 1 removes anything, and `fsck.f2fs` is clean afterwards.
+
+## 2026-09-13, evening — the thermal ladder on hardware, and the regression it caused
+
+`device/pyra-thermal-probe.sh` on the live machine. Every thermal zone, the
+frequency ceiling, the current frequency and the battery current, logged every
+five seconds through an idle → one-core-load → idle cycle. **Stock V5.3, stock
+heatsink and factory thermal interface, no coating, no aftermarket compound,
+case closed, on battery** except where a run says otherwise. Two arms: *vendor*,
+the daemon running and deciding, and *pinned*, the daemon stopped and the
+ceiling held at the top of the table, which is the only way to see where the
+sensors sit with nothing intervening.
+
+This is the run that matters for fix 7, because every fault in it is a decision
+the daemon makes at a temperature, and nothing before fix 6 could make those
+decisions visible — until `cpufreq-set` was replaced the daemon had never
+applied a cap at all.
+
+**Fault 1, the sensor.** One core of load, machine discharging gently throughout:
+
+| t | `core_thermal` | `bq27421-0` | ceiling |
+| --- | --- | --- | --- |
+| 182 s, load starts | 55.4°C | 42.2°C | 1500000 |
+| 213 s | 70.6°C | 44.6°C | **1250000** |
+
+The gauge rose 2.0°C inside ten seconds with nothing putting current through the
+cell, which settles what it is measuring: its own die, on the mainboard. Across
+that whole run the core peaked at **71.0°C** and its own ladder — first rung
+77°C — was never consulted once. The cap also outlived its cause, still at
+1250 MHz **350 s** after the load stopped with the core back to 57.4°C, because
+the board cools slowly back through 44°C.
+
+**Fault 2, no hysteresis.** Twelve ceiling changes in that single run, seven of
+them inside a 116-second window with the gauge between 44.8 and 45.5°C, and four
+more during the *idle* phase with the machine doing nothing. That is the
+1.5/1.25 GHz oscillation this hardware is known for, measured.
+
+**Where the new rungs came from.** Pinned arm, nothing capping, so the board
+sensor could be read against the core ladder it is supposed to back up:
+
+| `core_thermal` | `bq27421-0` |
+| --- | --- |
+| 59.0°C (idle) | 44.5°C — *already past the vendor's first rung* |
+| 77°C — the core ladder's first rung | **48.4°C** |
+| 86.2°C (peak) | 50.5°C |
+
+The two ladders are inverted: the board has already demanded 750 MHz, three
+rungs deeper, by the moment the core first reaches its own first rung.
+
+**Verification, one core, daemon active, the machine as a person would use it:**
+
+| ladder | ceiling changes | core peak | `cpu_thermal` peak |
+| --- | --- | --- | --- |
+| vendor, capping on the gauge at 44°C | 12 | 71.0°C (throttled) | — |
+| fixed, 2°C band | 7 | 85.0°C | 91.3°C |
+| **fixed, 5°C band** | **2** | **81.8°C** | **88.7°C** |
+
+The 2°C band was tried first and is below this controller's noise floor — the
+core moves up to 6°C between five-second samples on one core, and 10°C on two,
+so across one poll it travels further than any small band. It released correctly
+and still crossed the same rung six times in four minutes. A full rung caps once,
+holds for the load and releases on idle, and because holding regulates better
+than oscillating it is also **cooler**: peak down from 91.3°C to 88.7°C.
+
+Applying and reverting the fix on the live machine inside the same minute, at
+the same board temperature, moves the ceiling 1250000 ↔ 1500000. That is the
+cleanest single demonstration that the ladder and nothing else was responsible.
+
+**Every figure in this entry was recomputed from the committed TSVs while writing
+it**, rather than copied from the prose, and one moved: the 5°C band's
+`cpu_thermal` peak is 88.7°C, not the 88.0°C published on the day. Everything
+else reconciles exactly — both other rows of the table, the twelve vendor ceiling
+changes (a thirteenth counts only if the file's `done` terminator is mistaken for
+a sample), the seven inside the 116-second window, the four in the idle phase,
+the 71.0°C core peak, the two-core ramp sample for sample, and all three A/B
+peaks at 74.4, 102.0 and 87.0°C. The three figures the upstream report quotes
+— 74, 102 and 87°C — are the ones that check out exactly.
+
+**Then two cores failed, and it was this fix that broke them.** Recorded here
+because it is a regression this change introduced, not a pre-existing hazard it
+merely exposed — the first write-up claimed the latter, before the A/B had been
+run, and was wrong:
+
+| ladder | starting ceiling | two cores flat out | `cpu_thermal` peak |
+| --- | --- | --- | --- |
+| vendor | **750000** | ceiling never moved | **74°C** |
+| corrected, poll untouched | **1500000** | aborted | **102°C** |
+
+The vendor was sitting at 750 MHz because the board was at 47°C, and two cores
+at 750 MHz is harmless here. That accidental pre-cap was doing real safety work.
+The ramp says why 20 seconds cannot: `cpu_thermal` went 63.2 → 98.1°C in
+**sixteen seconds** from a 63°C idle, and led `core_thermal` by up to 12°C while
+doing it, so the daemon's next look landed after the trip and on the cooler of
+the two sensors.
+
+Hence faults 4 and 5 in the same change, and the end state:
+
+| configuration | two cores flat out | outcome |
+| --- | --- | --- |
+| as shipped, pre-capped at 750 MHz | 74°C | safe, but throttled at idle too |
+| ladder corrected only | 102°C | aborted |
+| **ladder corrected, 2 s poll, both sensors** | **87°C** | **ran to completion** |
+
+It caps within two seconds of the ramp, hunts briefly, holds 1000 MHz for 205 s
+and releases once idle.
+
+**What the 2-second poll costs**, since this is a fanless handheld and idle power
+is a live concern. Three 300-second windows, bracketed 2 s / 20 s / 2 s so drift
+shows up as disagreement between the first and third:
+
+| interval | daemon CPU over 300 s | share of one core | idle mean frequency |
+| --- | --- | --- | --- |
+| 2 s | 349 jiffies | 1.163% | 392 MHz |
+| 20 s | 32 jiffies | 0.107% | 392 MHz |
+| 2 s (repeat) | 355 jiffies | 1.183% | 397 MHz |
+
+About **1.07% of one core**, half a percent of the machine, and it does not
+appear in frequency residency at all — idle mean frequency is the same to within
+a percent, and the proportion of idle spent at the top step was *highest* in the
+20-second window (2.10% against 1.35% and 1.89%), which is noise in the
+direction opposite to the one a cost would predict.
+
+**The honest cost, stated because it is a cost.** The machine now runs hotter
+than fix 6 alone left it: 88.7°C on one core and 87.0°C on two, against 84°C with
+fix 6 alone. Fix 6 got that margin by throttling at 70°C for no thermal reason.
+Nothing here approaches the 107°C that fix 6 was written to stop.
+
+**Not established by this run.** The board rungs (54–62°C) are calibrated on this
+one stock unit and are overridable for exactly that reason — cooling work moves
+that sensor 20–23°C and they would never fire. And this is the live machine
+only: prep's offline application of fix 7 has not been checked, because the prep
+selftest has not been re-run since fixes 7 and 8 were added to it.
+
+**Artifacts:** `experiments/thermal-ladder/` — seven TSVs across the vendor,
+pinned, 2°C, 5°C and two-core arms, the three `ab*` A/B directories, and
+`pollcost-20260913.log` with the `pollcost.sh` that produced it.
+
+## 2026-09-13, night — the charger's input limit, and a Pyra that discharges on a charger
+
+Found while trying to answer whether the thermal daemon's charge ladder does
+anything useful. A charger was attached so the ladder would have something to
+act on, and the battery went **down**. It had been written off once as a weak USB
+port; the second time, on a different supply, the numbers got read properly.
+
+**The starting state.** Idle, charger attached, nothing running but the desktop:
+
+| | |
+| --- | --- |
+| `bq24297/online` | 1 |
+| `bq24297/status` | `Not charging` |
+| `max_current` | **500000** |
+| `bq27421-0/current_now` | **−617000** |
+| `bq27421-0/status` | `Discharging` |
+| `bq27421-0/capacity` | 21 |
+
+`REG08` read `0x0c`: power-good set, charge state `00`, and **`DPM_STAT` set** —
+the chip regulating against its input limit. The machine draws about 620 mA at
+idle and was being admitted 500 mA, so the pack covered the difference. Nothing
+is faulty; the limit is simply below the machine's own appetite, and no supply or
+cable on the other end can change that.
+
+**One write, and the A/B is unambiguous.** `echo 2000000 > …/max_current`:
+`REG00` `0x32` → `0x36` (IINLIM `010` → `110`) immediately, battery current
+−617 mA → 0 → positive, voltage 3.709 → 3.731 V inside five seconds. Then a
+sustained window, same supply and same cable:
+
+| | 899 s at a 2 A limit |
+| --- | --- |
+| battery current | mean **+476 mA**, min 202, max 531 |
+| capacity | 21% → 23% |
+| voltage | 3.766 → 3.782 V |
+| `REG08` | `0x2c` — fast charging, PG good — on **all 815 samples** |
+| `REG09` | `00` on all 815 samples, no faults |
+
+**2 A is the right number, and the cable is now the constraint.** The same run at
+the chip's 3 A ceiling gave **+455 mA** over its 267 s at that limit, 243
+samples — no gain, and lower with a pack that was fuller by then (23% against
+21%). Both arms recomputed from the TSVs on 2026-09-18; the 3 A figure published
+before that did not reconcile with its own artifact, and the derivation is in
+`experiments/charging/README.md`.
+
+`DPM_STAT` stayed set through both arms while total input draw was well under
+1 A, which has one meaning: the chip is regulating against **VINDPM** at 4.36 V,
+so VBUS is sagging. That is cable resistance. 2 A is also what this
+board's own device tree calls `adp_input_current`, so the default follows the
+hardware description rather than an opinion.
+
+**Why nothing ever set it — three mechanisms, all broken.** Every rule in
+`/lib/udev/rules.d/charging.rules` that works names `twl4030`, which is OMAP3
+GTA04 hardware; the Pyra rules below it carry the vendor's own accurate comment,
+*"neither tested nor complete nor working"*, and try to symlink an `id`
+attribute the bq24297 does not have. Because rule 3 never ran,
+`/dev/usb_max_current` is a **regular file**, `-rw-r--r-- root root 7 bytes`,
+created by the first root process to write it — the thermal daemon, which has
+written its charge decision there on every poll, into nothing, on every Pyra
+running this image. And the driver parses all four device tree values at probe
+(`usb_input_current = 3000000`, `adp_input_current = 2048000`) and applies none
+of them.
+
+**This corrects an earlier entry in this log by implication.** The 2026-09-12
+sleep session recorded the gauge gaining charge at +95 mA on external power,
+which is not contradicted and is worth reading alongside this: a mostly
+suspended machine draws less than 500 mA and does charge. It is the awake idle
+draw of ~620 mA that loses, which is why this went unnoticed for so long.
+
+**Two sysfs readings that mislead, both now documented in the scripts.** `REG09`
+came back `0x01`, which the driver logs as `HOT`, and this was briefly taken for
+an NTC fault blocking charging; the register is read-to-clear and it was a stale
+latch, reading `00` across 815 samples of an actively fast-charging pack minutes
+later. `pyra-chgwatch.sh`'s header now says not to conclude anything from one
+read of it. Separately, the charger's own `status` reads `Not charging` while it
+fast-charges and the gauge reads `Charging` — cosmetic, but any indicator
+reading the charger rather than the gauge will lie, which is the same trap as
+the 2026-09-08 note above.
+
+**What was checked about the fix itself.** `device/pyra-charge-current.sh` writes
+a config, an idempotent one-line helper and a udev rule under
+`/etc/udev/rules.d`, because the limit is a register and does not survive an
+unplug or a boot. The live path and the offline `--emit-into ROOT` tree were
+checked byte-for-byte against each other, the same one-implementation pattern
+fixes 6 and 7 use. Unlike those two it edits no packaged file, so an `apt
+upgrade` cannot silently revert it — the first fix in this project with that
+property, and the reason it is not on the post-upgrade re-check list.
+
+**Not established.** The udev rule was exercised by knocking the register down to
+500000 and firing `add` and `change` with `udevadm trigger`; it returned to
+2000000 both times. **A physical unplug and replug has not been tested**, and
+that is the one part of fix 8 needing hands on the device. Prep's offline
+application is unchecked for the same reason as fix 7: the selftest has not been
+re-run since these two fixes were added.
+
+**Deliberately not done.** The daemon's charge ladder is *not* connected to the
+working knob. It reads the fuel gauge's die — fault 1 of fix 7 — and drops to
+500 mA above 44°C, and this machine idles with that sensor at 46–47°C. Wiring
+the two together before recalibrating the ladder would re-impose exactly the cap
+this fix removes, permanently, with no way out from userspace. The pack's real
+thermal protection is the charger's TS pin, in hardware, and always was.
+
+**Artifacts:** `experiments/charging/` — `chgwatch-2A-20260913.tsv`,
+`chgwatch-3A-20260913.tsv`, and `charge-probe-20260913-190806.tsv`, the earlier
+run whose evidence was collected and misread.

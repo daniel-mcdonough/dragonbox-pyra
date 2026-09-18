@@ -519,8 +519,12 @@ buys nothing here:
 
 | limit | battery current |
 | --- | --- |
-| 2 A | 476 mA mean over 899 s |
-| 3 A | 452 mA mean over 177 s |
+| 2 A | +476 mA mean over 899 s, 815 samples |
+| 3 A | +455 mA mean over 267 s, 243 samples |
+
+The 3 A row read "452 mA over 177 s" until 2026-09-18, when it was recomputed
+from the committed TSV and did not reconcile; the derivation is in
+`experiments/charging/README.md`. Either way it is below the 2 A arm.
 
 with `DPM_STAT` set the whole time at a total input draw well under 1 A. That
 is VINDPM, not the limit — VBUS is sagging, which is the cable. A shorter or

@@ -58,15 +58,35 @@ Same supply. Same cable. One register.
 limit at 3 A, the chip's ceiling and what the device tree calls
 `usb_input_current`:
 
-| limit | battery current | window |
-| --- | --- | --- |
-| 2 A | 476 mA | 899 s |
-| 3 A | 452 mA | 177 s |
+| limit | battery current | window | pack at the start |
+| --- | --- | --- | --- |
+| 2 A | **+476 mA** | 899 s, 815 samples | 21%, 3.766 V |
+| 3 A | **+455 mA** | 267 s, 243 samples | 23%, 3.784 V |
 
-No gain — the 3 A figure is if anything lower, and the battery was fuller by
-then so some taper is expected. `DPM_STAT` stayed set throughout both arms
-while the total input draw was well under 1 A. That combination has one
-meaning: the chip is regulating against **VINDPM**, not against the limit. VBUS
+No gain — the 3 A figure is lower, and the battery was fuller by then so some
+taper is expected.
+
+**Corrected 2026-09-18.** This table read "452 mA over 177 s" for the 3 A arm
+until the numbers were recomputed from the committed TSV, which does not support
+it. Where the discrepancy came from is not recoverable; what the file says is:
+
+- The capture runs 339 s, but `iinlim` is 3000000 only for t=0–267 and drops
+  back to 2000000 for the tail, so averaging the whole file gives 454 mA over
+  339 s and is measuring two configurations at once.
+- Over the 3 A segment alone, 243 samples: **+455 mA**.
+- Discarding the first 90 s as settling, 161 samples: **+466 mA**. That is the
+  177-second window in the old table, but not the figure that was printed
+  beside it.
+
+Either reading is below the 2 A arm's 476 mA, and the 2 A arm measured the same
+way — from t=90 — gives 475 mA, so the comparison does not depend on where the
+window starts. The conclusion is unchanged and slightly stronger. Reproduce with:
+
+    awk -F'\t' 'NR>1 && $2==3000000 {n++; s+=$4} END {print s/n, n}' \
+        chgwatch-3A-20260913.tsv
+
+`DPM_STAT` stayed set throughout both arms while the total input draw was well
+under 1 A. That combination has one meaning: the chip is regulating against **VINDPM**, not against the limit. VBUS
 is sagging to the 4.36 V threshold.
 
 That is the cable. The owner had already guessed as much — "the cable is pretty
