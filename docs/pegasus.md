@@ -195,17 +195,16 @@ commands — route A from above, built as a test rather than as a plan:
 | Gamepad | `pyraInput Gamepad` picked up by SDL2 with no configuration at all |
 | Resident memory | 64 MB |
 | Launch round trip, no-op command | ~1.7 s from keypress to the theme being back |
-| Sitting on the home screen | 29.5% of one core, and ~920 mA off the battery |
+| Sitting on the home screen | 29.5% of one core as shipped, 9.1% tuned, against 6% of both cores for the desktop alone |
 
-**The idle cost is the finding to take seriously.** The same machine at the
-MATE desktop, with nothing running, draws ~455 mA and is 5.7% busy. Pegasus
-sitting on its home screen with nothing happening draws ~920 mA and is 28.8%
-busy, and the die goes from 67°C to 75°C. The launcher at rest costs about as
-much as the entire rest of the machine at rest, and on a handheld that is
-battery life rather than a benchmark. The cause is the bundled Grid theme
-animating continuously against vsync; a theme that stops animating when nothing
-moves should be much cheaper, and measuring that is the first thing to do
-before blaming Pegasus for it.
+**The idle cost is the finding to take seriously.** The machine at the MATE
+desktop with nothing running is 6% busy across both cores. Pegasus sitting on
+its home screen with nothing happening burns 29.5% of one core.
+
+That is now measured rather than guessed, and it is mostly fixable — a theme
+that does not animate and one environment variable take it to 9.1%. The whole
+comparison, including the control that rules out Qt and the driver, is in
+`experiments/pegasus-idle/RESULT.md`; the short version is below.
 
 That 1.7 s is the number that decides route A. It is the cost of
 `FrontendLayer::teardown()` and the rebuild that follows, for a command that
@@ -217,6 +216,44 @@ The base image needs four more runtime packages before the binary will start:
 `qml-module-qtgraphicaleffects` (plus `qml-module-qtmultimedia` for themes that
 want it). The bundled Grid theme also logs a missing `system.svg` for a
 collection with no logo, which is cosmetic.
+
+### What the idle cost is made of, and how to get most of it back
+
+Measured with the frontend's own CPU time, 40-second windows, the machine
+cooled below 64°C before each condition so the frequency ceiling is the same:
+
+| what is running | render loop | frontend |
+| --- | --- | --- |
+| Grid theme, as shipped | threaded (Qt's default) | **29.5%** of one core |
+| A theme with no animation at all | threaded | 21.0% |
+| Grid theme | `QSG_RENDER_LOOP=basic` | 18.2% |
+| No animation **and** `QSG_RENDER_LOOP=basic` | basic | **9.1%** |
+| *control:* `qmlscene`, static scene, no Pegasus | threaded | 0.0% |
+
+Three things fall out of that.
+
+The animation is worth about a third — real, but not the main cost. A theme
+that renders **zero** frames per second still burns 21%.
+
+Most of the rest is a render thread that renders nothing: with the static theme
+`QSGRenderThread` accounts for 11.5 of those 21 points while the frame counter
+sits at zero. `QSG_RENDER_LOOP=basic` puts rendering back on the GUI thread and
+that cost disappears, in both themes, with no visible difference on screen —
+the same screenshot, no lag. Treat it as free.
+
+And it is not Qt's fault, which is what the control is for: a bare `qmlscene`
+showing a static scene, same GLES stack, same shim, same *threaded* loop, costs
+0.0%. Qt Quick at rest on this hardware is free. Something Pegasus does keeps
+that thread awake.
+
+What is left after both changes is ~8% on the GUI thread, which is where
+`GamepadManagerSDL2` polls SDL every 16 ms on a machine whose gamepad is
+soldered on. Raising that interval is a one-line change in the same file the
+launch-abort workaround points at, and it is the next measurement rather than a
+conclusion.
+
+**So a launcher session is viable**: 9.1% of one core, not the 29.5% it ships
+with, for one theme and one environment variable.
 
 ### The launch path can abort the frontend
 
@@ -299,12 +336,13 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
 - [x] **Get it onto the device and confirm it draws.** Done 2026-09-18: it
       runs fullscreen on the SGX, the bundled theme renders, and a collection
       of shell commands works. The section above has the numbers.
-- [ ] **Find out what the idle cost really is, and whether a theme fixes it.**
-      ~920 mA against the desktop's ~455 mA is the single worst number in this
-      document. Try a theme that does not animate at rest, and measure again
-      with `device/pyra-cpu-attribution.sh` to see where the cycles go. If a
-      static theme does not fix it, this is a reason not to run Pegasus as the
-      session at all. — *half a day, and do it before the C++*
+- [x] **Find out what the idle cost really is, and whether a theme fixes it.**
+      Done 2026-09-18, and it half fixes it: 29.5% → 21% for a theme that never
+      animates, → 9.1% with `QSG_RENDER_LOOP=basic` as well.
+      `experiments/pegasus-idle/RESULT.md` has the matrix and the controls.
+- [ ] **Try the SDL poll interval.** The ~8% that survives both fixes is
+      `GamepadManagerSDL2`'s 16 ms timer, on a machine whose gamepad is
+      soldered to it. One line, then measure it the same way. — *an hour*
 - [ ] **Deal with the SDL udev abort.** `SDL_JOYSTICK_DISABLE_UDEV=1` is the
       workaround and it held for eight launches; confirm it holds over a longer
       run, find out whether external pads still hotplug under it, and decide
@@ -324,9 +362,9 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
 - [ ] **Decide where the patch series lives.** `patches/` is kernel-only today.
       A sibling directory, or a separate repository. — *your call*
 - [ ] **Decide about the session.** A `.desktop` session entry running
-      `pyra-gles pegasus-fe`, X blanking off for that session, MATE left
-      installed and selectable. Trivial to write, and worth writing only once
-      the idle cost above is understood. — *an hour*
+      `pyra-gles pegasus-fe` with `QSG_RENDER_LOOP=basic` and
+      `SDL_JOYSTICK_DISABLE_UDEV=1` set, X blanking off for that session, MATE
+      left installed and selectable. — *an hour*
 
 ## Measured here, versus assumed
 
@@ -343,10 +381,15 @@ clean container, with the options above.
 Run on the device on 2026-09-18: fullscreen on the panel under `pyra-gles`,
 with a System collection of shell commands. Measured there: the renderer
 strings, the 2.7 s cold start, the 1.7 s launch round trip, the 64 MB resident
-set, the 29.5%-of-a-core and ~920 mA idle cost against the desktop's 5.7% and
-~455 mA, SDL2 finding the gamepad unaided, and the libsystemd abort — one in
-four launches idle, four in four under load, none in eight with
-`SDL_JOYSTICK_DISABLE_UDEV=1`.
+set, SDL2 finding the gamepad unaided, and the libsystemd abort — one in four
+launches idle, four in four under load, none in eight with
+`SDL_JOYSTICK_DISABLE_UDEV=1`. The idle cost was then measured properly against
+controls, twice per condition: `experiments/pegasus-idle/RESULT.md`.
+
+Not trusted, and said so there: battery current. The same desktop-idle
+condition read 333 mA cold and 478 mA warm within one session, so at this
+resolution the gauge follows die temperature as much as load. Every conclusion
+above rests on CPU time instead.
 
 Read from the Pegasus source rather than run: the theme API surface, the engine
 teardown on launch, and the shape of the `DeviceInfo` extension point.
