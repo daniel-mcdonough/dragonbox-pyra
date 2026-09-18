@@ -409,10 +409,19 @@ battery. That is a real result and a modest one, and it is a better argument
 for this patch than the one that motivated it.
 
 None of this touches the governor's actual misconfiguration — `up_threshold 95`,
-`io_is_busy 0`, a 250 MHz floor — which is still untested and still the cheapest
-item on the list. Finer steps and a tuned governor are separate experiments, and
-the second one is now more interesting than it was, because there is a finer
-table for it to work with.
+`io_is_busy 0`, a 250 MHz floor — which was untested when this was written. Finer
+steps and a tuned governor are separate experiments, and the second one is now
+more interesting than it was, because there is a finer table for it to work
+with.
+
+**Measured 2026-09-13 on this kernel, and those three are not the
+misconfiguration.** `up_threshold` at 70 buys about 2% of burst latency,
+`io_is_busy 1` about 1%, a 500 MHz floor about 2%. The setting that pays is
+`sampling_down_factor`, which that list does not mention: 1 to 10 is 23.4% of
+the mean and a third of the median. Setting all four together beats it by 1.1
+points, which is inside the pass-to-pass spread, so the whole win is one value.
+Method and numbers in `experiments/governor/README.md`; applied by
+`device/pyra-governor-tune.sh`.
 
 **A thermal finding that is not about either kernel.** The first attempt at a
 sustained phase ran `7z b` on both cores and took the CPU zone from 64°C to

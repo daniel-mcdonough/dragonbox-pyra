@@ -19,7 +19,7 @@ what the device actually says.
 | Make 3D use the SGX, not software Mesa | Enormous | **Already done and verified.** No work left |
 | Eliminate framebuffer copies, fix TILER | Potentially enormous | **Rotation is already in hardware.** A smaller Present question remains |
 | Optimise gl4es / native GLES paths | Large | Real but unquantified. Measure before building |
-| Sustained CPU clocks and thermals | Large | **Real, and the governor is misconfigured.** Cheapest win on the list |
+| Sustained CPU clocks and thermals | Large | **Real, and measured 2026-09-13.** The governor was misconfigured, but not in any of the three ways named below — the one setting that pays is not on that list. Applied, and the thermal side became fixes 6 and 7 |
 | Optimise 2D X rendering, EXA, pixman | Medium–large | **Fills and blits are already accelerated.** The gap is image readback |
 | *(not on the original list)* Turn the compositor off | — | **Done and measured. 3.5% of all busy CPU, one command** |
 | *(not on the original list)* Fix the modeset hang | — | **Outranks everything here.** See `troubleshooting.md` |
@@ -212,7 +212,9 @@ Then compare against the `performance` governor as the upper bound. If
 sustained box86 emulation already reaches 95°C. There are five degrees of
 margin, so this change genuinely can push the machine into throttling where it
 previously was not. That is the honest cost, and it is why item 2 pairs with
-this one.
+this one. (Those five degrees turned out not to exist — a load heavier than
+box86 walks seven degrees *past* the trip, and nothing in userspace was capping
+at all. Item 2 has it.)
 
 **Six steps may not be all there are.** Added 2026-09-12. A third-party device
 tree in `experiments/thermals-and-frequency/` adds five steps below 1.5 GHz —
@@ -234,9 +236,11 @@ battery.
 
 So the reasoning in this item was wrong about the benefit and right that the
 step table was worth changing. It also does not overlap with the three
-misconfigurations below, which remain untested: a finer table and a tuned
-governor are separate experiments, and the second is more interesting now that
-the first exists. Full numbers in
+misconfigurations below, which were untested when this was written and were
+measured the next day: a finer table and a tuned governor are separate
+experiments, and the second is more interesting now that the first exists. All
+three turned out to be worth 1–2% each — see the 2026-09-13 note at the end
+of this item. Full numbers in
 `experiments/thermals-and-frequency/README.md`. The same published table also
 carries five steps above the part's rating; those are a separate patch and a
 separate build, deliberately.
@@ -448,8 +452,12 @@ immediately collapses, and the part is a 1.5 GHz-rated GP device. That advice
 predates the unlocked device tree now sitting in
 `experiments/thermals-and-frequency/`, which offers 1.6 through 2.0 GHz, and it
 is unchanged by it. The blob's own author says plainly that 2 GHz needs
-modified cooling and that they can hardly run it; this unit has five degrees of
-margin at 1.5 GHz under load.
+modified cooling and that they can hardly run it. This sentence used to end
+"this unit has five degrees of margin at 1.5 GHz under load", which is not true:
+two cores flat out reached 107°C with nothing capping, seven degrees *past* the
+passive trip, and with fix 7 doing its job they reach 87°C. There is margin at
+1.5 GHz because something is now managing it, not because the machine has it to
+spare.
 
 Effort: measurement is an afternoon; the physical mod is a separate project.
 

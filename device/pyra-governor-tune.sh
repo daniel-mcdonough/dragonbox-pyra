@@ -45,10 +45,18 @@
 # is not the thing that fixes it.
 #
 # It also does not touch scaling_max_freq, which the thermal daemon owns, or
-# the governor itself. On this machine the daemon caps the CPU on BATTERY
-# temperature — 1250 MHz above 44 C, 1000 MHz above 45 C, while the core has to
-# reach 77 C to cap anything — so a warm battery costs more top-end than this
-# setting buys in ramp. That is a separate fault and is on the upstream list.
+# the governor itself. When this was written the daemon capped the CPU on what it
+# called the BATTERY temperature — 1250 MHz above 44 C, 1000 MHz above 45 C,
+# while the core had to reach 77 C to cap anything — so a warm battery cost more
+# top-end than this setting buys in ramp.
+#
+# That sensor is the fuel gauge's own die rather than the cell, and that ladder
+# was corrected later the same day by pyra-thermal-ladder.sh, which ships as
+# fix 7: the board rungs move to 54-62 C and both ladders get a 5 C band. An idle
+# Pyra reads 42 C on that sensor, so with fix 7 applied nothing pre-caps the
+# machine and the ramp this script shortens is the ramp you actually get. On an
+# image WITHOUT fix 7 the sentence above still holds, and the pre-cap will mask
+# most of what this setting buys.
 #
 set -uo pipefail
 

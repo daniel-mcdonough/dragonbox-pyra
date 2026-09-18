@@ -379,6 +379,28 @@ its redirection succeeds where the `cpufreq-set` call does not. That is true of
 the write and unverified of its effect. Whether this daemon has ever influenced
 charging at all is now an open question.
 
+**Answered the same evening, and it makes both paragraphs above obsolete — they
+are kept because the reasoning in them is the kind that looks sound and is not.**
+The retest never needed a 2 A supply. Nothing on this machine ever sets the
+charger's input current limit, so it stays at the 500 mA USB floor the bq24297
+powers up with, against about 620 mA at idle — which is why the pack lost a
+percent with the cable in. The 500 mA in both arms above is that power-on
+default: not the source, and not the ladder. The two numbers this run could not
+tell apart were in fact three, and the third is the one that was doing it.
+
+And `/dev/usb_max_current` is an ordinary file that nothing reads, because the
+udev rules meant to make it a symlink name `twl4030` — GTA04 hardware. The write
+produced no change because it reached nothing, so this daemon's charge ladder
+has never influenced charging on any image. One write to the charger's own
+`max_current` turned −617 mA into +476 mA on the same supply and the same cable.
+
+So the prediction at the top of this section — that a warm Pyra charges at
+500 mA because this ladder demands it — is not untested. It cannot happen: the
+ladder has never reached the charger. A warm Pyra did charge at 500 mA, for an
+unrelated reason, and that is fix 8. Written up in
+`reports/pyra-hacks-charge-current.md`, measured in
+`experiments/charging/README.md`.
+
 ---
 
 ## Artifacts
