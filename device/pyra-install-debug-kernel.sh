@@ -109,11 +109,31 @@ if tar tzf "$TARBALL" | grep -qx "./lib/"; then
 fi
 echo "  no ./lib/ entry; top level is: $(tar tzf "$TARBALL" | awk -F/ 'NF>2{print $2}' | sort -u | tr '\n' ' ')"
 
-say "checking there is room in /boot"
-need=$(( $(gzip -l "$TARBALL" | awk 'NR==2{print $2}') / 1024 / 1024 + 30 ))
-free=$(df -Pm /boot | awk 'NR==2{print $4}')
-echo "  need about ${need} MB including the initrd, have ${free} MB"
-[ "$free" -gt "$need" ] || die "not enough space in /boot"
+say "checking there is room"
+# Measured per destination, because the two halves of the tarball land on
+# different filesystems: ./boot/ on the /boot partition, ./usr/lib/modules on
+# the root one. This used to charge /boot for the whole uncompressed tarball,
+# which on a machine with 74 MB free in /boot refused an install that needed
+# 17 MB there -- the other 36 MB were modules that were never going to /boot
+# at all. Undersized by design in the other direction, too: nothing checked
+# that the root filesystem could hold the modules.
+tarsize() {  # tarsize <top-level dir>
+	tar tzvf "$TARBALL" | awk -v d="$1" '
+		{ n = $NF; sub(/^\.\//, "", n)
+		  if (index(n, d "/") == 1) s += $3 }
+		END { printf "%d", (s + 0) / 1024 / 1024 }'
+}
+boot_need=$(( $(tarsize boot) + 30 ))   # +30 for the initrd this builds
+root_need=$(( $(tarsize usr) + 5 ))
+boot_free=$(df -Pm /boot | awk 'NR==2{print $4}')
+root_free=$(df -Pm /usr/lib/modules | awk 'NR==2{print $4}')
+echo "  /boot           need about ${boot_need} MB including the initrd, have ${boot_free} MB"
+echo "  /usr/lib/modules need about ${root_need} MB, have ${root_free} MB"
+[ "$boot_free" -gt "$boot_need" ] || die "not enough space in /boot.
+Kernels that have dropped out of the boot configuration still keep their
+files here; 'ls /boot' and compare against
+'grep linux /boot/extlinux/extlinux.conf /boot/extlinux/user.cfg'."
+[ "$root_free" -gt "$root_need" ] || die "not enough space for the modules"
 
 # ---------------------------------------------------------------- install
 say "extracting"

@@ -436,7 +436,15 @@ both locks to mutexes, which is safe because every site that takes either one
 is already a sleeping path — `omap_iommu_attach()`, `omap_iommu_detach()`,
 `omap_iommu_attach_dev()`, `omap_iommu_detach_dev()`, and that is the complete
 list. Neither lock is touched by `iommu_fault_handler()` or by the map/unmap
-paths. **It is compile-tested and has not been booted.**
+paths.
+
+**Built and booted on 2026-09-20, and it works.** Both splats are gone across
+two start/stop cycles, the test goes from 10 ok / 1 failed to **11 ok, 0
+failed**, and the only `WARNING` left in the log is the `omap_l3_noc` one this
+machine prints at t=2.5 s on every kernel including stock. Starting the IPU
+also got quicker — 8 ms from `powering up` to `is now up`, against about
+108 ms before, because the boot no longer goes through `__schedule_bug`
+twice.
 
 ### And a test that lied
 
@@ -757,8 +765,11 @@ are neither:
   IOMMU has now been programmed from a resource table and used, with no fault
   and no L3 error. The warning still stands for firmware that reaches outside
   its carveout, which this one deliberately does not.
-- **`0012` is compile-tested, not booted.** It is the fix for the
-  `scheduling while atomic` splats below, and no kernel has been built with it.
+- ~~**`0012` is compile-tested, not booted.**~~ **Built and booted on
+  2026-09-20**; the splats are gone and the test is clean. What is still
+  unknown is whether any *other* caller of `iommu_attach_device()` in the tree
+  is in atomic context, which the mutex conversion would now catch. Nothing on
+  this machine is — the only iommu domains here belong to the ipu and the dsp.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
 - **`git.ti.com` still does not respond from here**, so nothing was checked
   against it directly. That gap is now mostly closed a different way: the
@@ -845,7 +856,8 @@ nothing typed. `--keep` opts into that, and
 It was negative-tested against a firmware built to write the banner and then
 stop, which passes every text check and fails the counter check, and it is
 what caught the `scheduling while atomic` splats — after its first version
-reported success through them.
+reported success through them. On the kernel with `0012` it gives **11 ok, 0
+failed**.
 
 ---
 

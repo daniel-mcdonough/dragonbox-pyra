@@ -58,10 +58,19 @@ being illegal.
 linux/mutex.h is added to omap-iommu.h because the struct definitions
 there now need the complete type; omap-iommu.c already included it.
 
-Compile-tested for ARM; not yet booted.  The remaining risk is entirely
-in whether some caller of iommu_attach_device()/iommu_detach_device()
-somewhere else in the tree is in atomic context, which would previously
-have been legal and is not any more.
+Built and booted on the V5.3 unit on 2026-09-20.  Both splats are gone,
+across two start/stop cycles, and the only WARNING left in the log is the
+omap_l3_noc one this machine prints at t=2.5s on every kernel including
+stock.  device/pyra-m4-run.sh goes from 10 ok / 1 failed to 11 ok / 0
+failed.  Starting the IPU also got quicker -- 8 ms from "powering up" to
+"is now up", against about 108 ms before, because the boot no longer goes
+through __schedule_bug twice.
+
+The remaining risk is entirely in whether some caller of
+iommu_attach_device()/iommu_detach_device() somewhere else in the tree is
+in atomic context, which would previously have been legal and is not any
+more.  Nothing on this machine is: the only iommu domains here belong to
+the ipu and the dsp.
 
 ---
 --- a/drivers/iommu/omap-iommu.c	2026-09-20 15:45:18.046325073 -0400

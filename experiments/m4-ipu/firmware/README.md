@@ -87,12 +87,13 @@ The two stacks are one array so their order is defined, which is what lets
 
 ## What it found
 
-The firmware works. The kernel does not, quite: starting the IPU produces two
-`BUG: scheduling while atomic` splats every time, because `omap-iommu` sleeps
-while holding two spinlocks. That is an unfixed upstream bug, not something
-0009-0011 introduced — mainline today is identical — and
-`0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch` is the
-fix. See that patch's header; it is compile-tested and not yet booted.
+The firmware worked first time. The kernel did not, quite: starting the IPU
+produced two `BUG: scheduling while atomic` splats every time, because
+`omap-iommu` sleeps while holding two spinlocks. That is an unfixed upstream
+bug, not something 0009-0011 introduced — mainline today is identical — and
+`0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch` fixes
+it. **That patch is now built and booted**, and this test is clean on it:
+11 ok, 0 failed.
 
 The first version of `pyra-m4-run.sh` reported "10 ok, 0 failed" straight
 through both splats, because it grepped the kernel log by subsystem keyword

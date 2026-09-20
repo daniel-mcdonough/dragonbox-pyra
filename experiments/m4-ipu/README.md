@@ -56,7 +56,8 @@ IPU produces two `BUG: scheduling while atomic` splats every time, because
 spinlocks. That is an unfixed upstream bug — mainline today is identical — and
 `0010`/`0011` are simply what make it reachable on this board. The fix converts
 both locks to mutexes, which is safe because every site that takes either one
-is already a sleeping path. **Compile-tested, not booted.**
+is already a sleeping path. **Built and booted on 2026-09-20: the splats are
+gone and `pyra-m4-run.sh` goes from 10 ok / 1 failed to 11 ok / 0 failed.**
 
 Both `0009` and `0010` are GPL-2.0-only code taken from the mainline kernel,
 and `0012` modifies GPL-2.0-only kernel code.
