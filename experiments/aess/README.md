@@ -26,6 +26,7 @@ in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
 
     0013-asoc-ti-omap-abe-twl6040-build-the-aess-dai-links.patch
     0014-asoc-ti-aess-load-the-firmware-s-own-container-format.patch
+    0015-asoc-ti-aess-add-the-aess-mixer-controls.patch
 
 `container-check.c` is the 0014 walker lifted out so it can be compiled and
 run against a real firmware file with no kernel involved:
@@ -86,13 +87,36 @@ DAPM widgets — are deliberately not handled; the old container does not carry
 the element count the topology loader wants. So this makes the DSP loadable
 and runnable but does not create the topology's kcontrols.
 
+### 0015
+
+Adds the mixer controls, without which the DSP runs and nothing is audible:
+the firmware image ships all 36 gains at `GAIN_MUTE`, `omap_aess_init_gains()`
+leaves every mixer input muted deliberately, and 0014 does not parse the
+container's control blocks so the topology creates none.
+
+The values are recovered, not invented. The container's MIXER block holds 26
+elements decoding to a name plus two id pairs — `(reg, reg)` and
+`(shift, rshift)`. Mixer volumes carry the gain id in `reg`; the microphone
+and Bluetooth volumes are stereo and carry left/right ids in `shift/rshift`.
+Every id matches the `OMAP_AESS_*` constants in `aess-fw.h`: DL1 Media is 14
+which is `OMAP_AESS_MIXDL1_MM_DL`, Tones 17, Voice 16, Capture 15, and so on
+through all 26. That agreement across 26 independent elements is what makes
+the decode trustworthy. `max` is 149 and the TLV floor is −12000, matching the
+driver's own db2lin table of 151 entries from −120 dB.
+
+The existing `aess_vol_get_mixer()` and friends could not be reused: they call
+`snd_soc_dapm_kcontrol_dapm()`, so they only work on DAPM widget controls, and
+this driver defines no DAPM widgets at all — in this design the whole graph
+was meant to come from the topology. Component equivalents sit beside them.
+
+The three `* Mono Mixer` switches are omitted (also DAPM bound, and not needed
+for playback). The DL1/DL2 output gains are added although they are not in the
+MIXER block, because `omap_aess_init_gains()` sets them once and nothing could
+otherwise change them.
+
 ## What is still needed, in order
 
-1. **The kcontrols.** The AESS mixer gains still have no userspace controls,
-   because 0014 does not load the container's control blocks. Without them
-   nothing can unmute `MIXDL1_MM_DL`, which the firmware image leaves at
-   `GAIN_MUTE` along with all 36 gains.
-2. **The PCM ops conversion.** `omap_aess_platform` has `.ops =
+1. **The PCM ops conversion.** `omap_aess_platform` has `.ops =
    &omap_aess_pcm_ops` commented out, and it cannot simply be restored:
    `snd_soc_component_driver` has no `.ops` member in 5.6, the `snd_pcm_ops`
    having been flattened into per-callback members. Same class of conversion

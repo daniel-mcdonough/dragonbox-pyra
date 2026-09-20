@@ -1,0 +1,265 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: add the AESS mixer controls
+
+After 0014 the firmware loads and the DSP runs, and nothing is audible. The
+firmware image ships all 36 gains at GAIN_MUTE, omap_aess_init_gains() leaves
+every mixer input muted on purpose, and there is nothing in userspace that can
+raise them: the container's control blocks are in the pre-ABI-2 topology
+layout that 0014 does not parse, so the topology creates no kcontrols.
+
+This adds them as ordinary component controls.
+
+The values are recovered from the firmware rather than invented. The
+container's MIXER block holds 26 elements whose layout decodes to a name plus
+two id pairs, (reg, reg) and (shift, rshift). Mixer volumes carry the gain id
+in reg and leave shift/rshift zero; the microphone and Bluetooth volumes are
+stereo and carry their left/right gain ids in shift/rshift. Every id lines up
+with the OMAP_AESS_* constants in aess-fw.h -- "DL1 Media Playback Volume" is
+14, which is OMAP_AESS_MIXDL1_MM_DL; Tones is 17, Voice 16, Capture 15, and so
+on through all 26 -- and it is that agreement, across 26 independent elements,
+that makes the decode trustworthy. max is 149 and the TLV minimum is -12000,
+matching the driver's own db2lin table of 151 entries from -120 dB.
+
+They are static rather than parsed at runtime because reading them would need
+a second parser for an element layout this kernel has no other use for, and
+the data is small, fixed, and belongs to this one firmware.
+
+The existing handlers could not be reused. aess_vol_get_mixer() and friends
+call snd_soc_dapm_kcontrol_dapm(), so they only work on controls attached to a
+DAPM widget -- and this driver defines no DAPM widgets at all, because in this
+design the whole graph was supposed to come from the topology. Component
+equivalents are added beside them.
+
+Two of the 26 groups are handled differently. The three "* Mono Mixer"
+switches are omitted: they need aess_put_mono_mixer(), which is also DAPM
+bound, and they are not needed to get audio out. The DL1 and DL2 output gains
+are added even though they are not in the MIXER block, because
+omap_aess_init_gains() sets them once and nothing could ever change them
+again; they are the master volumes for the two output paths.
+
+Also fixes a macro that would have broken at any new call site:
+
+  #define aess_gain_to_val(gain) \
+	((val + OMAP_AESS_MAX_GAIN) / OMAP_AESS_GAIN_SCALE)
+
+declared its parameter as `gain` and used `val` in the body. It compiled only
+because every existing caller happened to have a local variable called val.
+
+Verified: `make sound/soc/ti/` under arm-linux-gnueabihf exits 0 with no
+errors, with 0013, 0014 and 0015 applied together to a pristine tree, and the
+resulting object carries all 25 control names. Built, not booted -- in
+particular, whether these controls actually make sound depends on the McPDM
+back ends finding a CPU DAI, which they do not yet (see 0013).
+
+--- a/sound/soc/ti/aess/omap-aess-fw.c
++++ b/sound/soc/ti/aess/omap-aess-fw.c
+@@ -50,8 +50,14 @@
+ /* Gain value conversion */
+ #define OMAP_AESS_MAX_GAIN		12000	/* 120dB */
+ #define OMAP_AESS_GAIN_SCALE		100	/* 1dB */
++/*
++ * This took its parameter as `gain` and then used `val` in the body. It
++ * compiled only because every existing caller happened to have a local
++ * variable called val, and would have silently read the wrong variable at any
++ * new call site.
++ */
+ #define aess_gain_to_val(gain) \
+-	((val + OMAP_AESS_MAX_GAIN) / OMAP_AESS_GAIN_SCALE)
++	(((gain) + OMAP_AESS_MAX_GAIN) / OMAP_AESS_GAIN_SCALE)
+ #define aess_val_to_gain(val) \
+ 	(-OMAP_AESS_MAX_GAIN + (val * OMAP_AESS_GAIN_SCALE))
+ 
+@@ -521,6 +527,160 @@
+ 	return 1;
+ }
+ 
++/*
++ * The AESS mixer controls, recovered from the firmware container.
++ *
++ * The container's MIXER block carries 26 elements whose layout decodes to a
++ * name plus two id pairs: (reg, reg) and (shift, rshift). Mixer volumes put
++ * the gain id in reg and leave shift/rshift zero; the microphone and Bluetooth
++ * volumes are stereo and put their left/right gain ids in shift/rshift. Every
++ * id matches the OMAP_AESS_* gain constants in aess-fw.h exactly, which is
++ * what makes the decode trustworthy -- DL1 Media is 14, which is
++ * OMAP_AESS_MIXDL1_MM_DL, and so on for all 26.
++ *
++ * They are static here rather than parsed at runtime because the elements are
++ * in the pre-ABI-2 topology layout, which snd_soc_tplg_component_load() cannot
++ * read (see omap_aess_load_container()) and which would need a second parser
++ * of its own. The data is small, fixed, and belongs to this firmware.
++ *
++ * The handlers above are DAPM kcontrol handlers -- they call
++ * snd_soc_dapm_kcontrol_dapm() -- and this driver defines no DAPM widgets, so
++ * they cannot serve component controls. These are the component equivalents.
++ */
++static int aess_mixer_get(struct snd_kcontrol *kcontrol,
++			  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	u32 gain;
++
++	omap_aess_read_mixer(aess, mc->reg, &gain);
++	ucontrol->value.integer.value[0] = aess_gain_to_val(gain);
++
++	return 0;
++}
++
++static int aess_mixer_put(struct snd_kcontrol *kcontrol,
++			  struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++
++	omap_aess_write_mixer(aess, mc->reg,
++			      aess_val_to_gain(ucontrol->value.integer.value[0]));
++
++	return 1;
++}
++
++static int aess_stereo_gain_get(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++	u32 gain;
++
++	omap_aess_read_gain(aess, mc->shift, &gain);
++	ucontrol->value.integer.value[0] = aess_gain_to_val(gain);
++	omap_aess_read_gain(aess, mc->rshift, &gain);
++	ucontrol->value.integer.value[1] = aess_gain_to_val(gain);
++
++	return 0;
++}
++
++static int aess_stereo_gain_put(struct snd_kcontrol *kcontrol,
++				struct snd_ctl_elem_value *ucontrol)
++{
++	struct snd_soc_component *component =
++		snd_soc_kcontrol_component(kcontrol);
++	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	struct soc_mixer_control *mc =
++		(struct soc_mixer_control *)kcontrol->private_value;
++
++	omap_aess_write_gain(aess, mc->shift,
++			     aess_val_to_gain(ucontrol->value.integer.value[0]));
++	omap_aess_write_gain(aess, mc->rshift,
++			     aess_val_to_gain(ucontrol->value.integer.value[1]));
++
++	return 1;
++}
++
++/* -120 dB to +29 dB in 1 dB steps, which is what max = 149 spans. */
++static const DECLARE_TLV_DB_SCALE(aess_mixer_tlv, -12000, 100, 1);
++
++#define AESS_MIXER_VOL(xname, xid) \
++	SOC_SINGLE_EXT_TLV(xname, xid, 0, 149, 0, \
++			   aess_mixer_get, aess_mixer_put, aess_mixer_tlv)
++
++#define AESS_STEREO_VOL(xname, xl, xr) \
++	SOC_DOUBLE_EXT_TLV(xname, 0, xl, xr, 149, 0, \
++			   aess_stereo_gain_get, aess_stereo_gain_put, \
++			   aess_mixer_tlv)
++
++static const struct snd_kcontrol_new omap_aess_controls[] = {
++	/* DL1, the headset path. "Media" is the one that carries MultiMedia1. */
++	AESS_MIXER_VOL("DL1 Media Playback Volume",    OMAP_AESS_MIXDL1_MM_DL),
++	AESS_MIXER_VOL("DL1 Tones Playback Volume",    OMAP_AESS_MIXDL1_TONES),
++	AESS_MIXER_VOL("DL1 Voice Playback Volume",    OMAP_AESS_MIXDL1_VX_DL),
++	AESS_MIXER_VOL("DL1 Capture Playback Volume",  OMAP_AESS_MIXDL1_MM_UL2),
++
++	/* DL2, the handsfree path. */
++	AESS_MIXER_VOL("DL2 Media Playback Volume",    OMAP_AESS_MIXDL2_MM_DL),
++	AESS_MIXER_VOL("DL2 Tones Playback Volume",    OMAP_AESS_MIXDL2_TONES),
++	AESS_MIXER_VOL("DL2 Voice Playback Volume",    OMAP_AESS_MIXDL2_VX_DL),
++	AESS_MIXER_VOL("DL2 Capture Playback Volume",  OMAP_AESS_MIXDL2_MM_UL2),
++
++	AESS_MIXER_VOL("VXREC Media Volume",           OMAP_AESS_MIXVXREC_MM_DL),
++	AESS_MIXER_VOL("VXREC Tones Volume",           OMAP_AESS_MIXVXREC_TONES),
++	AESS_MIXER_VOL("VXREC Voice DL Volume",        OMAP_AESS_MIXVXREC_VX_UL),
++	AESS_MIXER_VOL("VXREC Voice UL Volume",        OMAP_AESS_MIXVXREC_VX_DL),
++
++	AESS_MIXER_VOL("AUDUL Media Volume",           OMAP_AESS_MIXAUDUL_MM_DL),
++	AESS_MIXER_VOL("AUDUL Tones Volume",           OMAP_AESS_MIXAUDUL_TONES),
++	AESS_MIXER_VOL("AUDUL Voice UL Volume",        OMAP_AESS_MIXAUDUL_UPLINK),
++	AESS_MIXER_VOL("AUDUL Voice DL Volume",        OMAP_AESS_MIXAUDUL_VX_DL),
++
++	AESS_MIXER_VOL("SDT UL Volume",                OMAP_AESS_MIXSDT_UL),
++	AESS_MIXER_VOL("SDT DL Volume",                OMAP_AESS_MIXSDT_DL),
++
++	/* Stereo pairs: these carry their two gain ids in shift/rshift. */
++	AESS_STEREO_VOL("DMIC1 UL Volume", OMAP_AESS_GAIN_DMIC1_LEFT,
++			OMAP_AESS_GAIN_DMIC1_RIGHT),
++	AESS_STEREO_VOL("DMIC2 UL Volume", OMAP_AESS_GAIN_DMIC2_LEFT,
++			OMAP_AESS_GAIN_DMIC2_RIGHT),
++	AESS_STEREO_VOL("DMIC3 UL Volume", OMAP_AESS_GAIN_DMIC3_LEFT,
++			OMAP_AESS_GAIN_DMIC3_RIGHT),
++	AESS_STEREO_VOL("AMIC UL Volume",  OMAP_AESS_GAIN_AMIC_LEFT,
++			OMAP_AESS_GAIN_AMIC_RIGHT),
++	AESS_STEREO_VOL("BT UL Volume",    OMAP_AESS_GAIN_BTUL_LEFT,
++			OMAP_AESS_GAIN_BTUL_RIGHT),
++
++	/*
++	 * The DL1/DL2 output gains. These are not in the firmware's MIXER
++	 * block -- omap_aess_init_gains() sets them and nothing could change
++	 * them afterwards -- but they are the master volumes for the two
++	 * output paths, so they are exposed here too.
++	 */
++	AESS_STEREO_VOL("DL1 Playback Volume", OMAP_AESS_GAIN_DL1_LEFT,
++			OMAP_AESS_GAIN_DL1_RIGHT),
++	AESS_STEREO_VOL("DL2 Playback Volume", OMAP_AESS_GAIN_DL2_LEFT,
++			OMAP_AESS_GAIN_DL2_RIGHT),
++};
++
++int omap_aess_add_controls(struct snd_soc_component *component)
++{
++	return snd_soc_add_component_controls(component, omap_aess_controls,
++					      ARRAY_SIZE(omap_aess_controls));
++}
++
+ static const struct snd_soc_tplg_kcontrol_ops omap_aess_fw_ops[] = {
+ {OMAP_CONTROL_DEFAULT,	aess_get_mixer, aess_put_mixer, NULL},
+ {OMAP_CONTROL_VOLUME,	aess_vol_get_mixer, aess_vol_put_mixer, NULL},
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -499,6 +499,20 @@
+ 				ret);
+ 			goto out;
+ 		}
++
++		/*
++		 * The legacy container's control blocks are not parsed, so
++		 * the topology creates no kcontrols. Without them nothing can
++		 * raise the mixer gains, which the firmware image ships at
++		 * GAIN_MUTE -- the DSP would run and stay silent. Add the
++		 * equivalent component controls instead.
++		 */
++		ret = omap_aess_add_controls(component);
++		if (ret < 0) {
++			dev_err(component->dev,
++				"AESS controls could not be added: %d\n", ret);
++			goto out;
++		}
+ 	}
+ 
+ 	ret = request_threaded_irq(aess->irq, NULL,
+--- a/sound/soc/ti/aess/omap-aess-priv.h
++++ b/sound/soc/ti/aess/omap-aess-priv.h
+@@ -397,6 +397,7 @@
+ struct firmware;
+ int omap_aess_load_container(struct snd_soc_component *component,
+ 			     const struct firmware *fw);
++int omap_aess_add_controls(struct snd_soc_component *component);
+ extern struct snd_soc_dai_driver omap_aess_dai[6];
+ 
+ int aess_mixer_enable_mono(struct omap_aess *aess, int id, int enable);
