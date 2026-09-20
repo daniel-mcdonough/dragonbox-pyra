@@ -77,8 +77,15 @@ is why they are not in the list.
 
 ## What would come next
 
-Nothing here can be tested without firmware. The shortest path to a firmware
-that exists is `mobiaqua/ti-ducati-fw`, whose build targets include OMAP5 and
-which emits `omap5-ipu-fw.xem4` — the exact name `0010` asks for. Its
-toolchain downloads were verified live on 2026-09-20. Details and the
-alternative bare-metal path are in `docs/m4-ipu.md`.
+Nothing here can be tested without firmware. TI's own IPC repositories are
+cloned at `~/git/dragonbox-pyra-m4-work/`; `ipcdev` is from 2024, OMAP5 is a
+supported platform in it, and `ipc-examples` carries the OMAP5-specific AMMU
+configuration and resource tables. `mobiaqua/ti-ducati-fw` is the easiest way
+to get the toolchain, and the route to take if the goal is video decode rather
+than running your own code.
+
+Relevant to `0011` specifically: the canonical `rsc_table_omap5_ipu.h` asks for
+6 MB of text, 48 MB of data and 1 MB of IPC data — **55 MB against the 56 MB
+carveout here**, which is why upstream picked that figure. `ex41_forwardmsg`
+ships its own copy wanting 156 MB of data, which would not fit; check the table
+before assuming. Details in `docs/m4-ipu.md`.

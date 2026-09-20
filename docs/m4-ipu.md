@@ -345,9 +345,10 @@ A kernel that probes gets you `/sys/class/remoteproc/remoteproc0/` and nothing
 else. Writing `start` to it looks for `omap5-ipu-fw.xem4` in `/lib/firmware`,
 and there is no such file on this machine: `/lib/firmware/ti/` holds three
 entries, all audio codecs and a VPDMA blob, and nothing OMAP5 anywhere else.
-Debian does not package it. Whether TI's own `ti-linux-firmware` carries one
-could not be checked, because `git.ti.com` did not respond at all on
-2026-09-20 — see the unverified list at the end.
+Debian does not package it. Whether TI's own `ti-linux-firmware` carries a
+prebuilt one is still unchecked — `git.ti.com` does not respond from here — but
+it no longer matters much, because the sources to build one are now cloned
+locally. See option 1.
 
 ### The RPMsg guide in Downloads is for the wrong silicon
 
@@ -362,12 +363,79 @@ What does transfer is the shape: remoteproc loads an ELF, virtio and rpmsg ride
 on top, and you talk to the core through a character device. That part is
 accurate and worth reading for the model.
 
-### Option 1: TI's IPC stack, via MobiAqua
+### Option 1: TI's own IPC, from the real repositories
 
-The best thing found in this investigation. **MobiAqua** maintains forks of the
-whole TI IPC/SYS-BIOS stack for exactly these SoCs and is still active —
-several repositories pushed in 2024, 2025 and 2026. `mobiaqua/ti-ducati-fw` is a
-build script whose targets include:
+**Updated 2026-09-20.** The first pass could not reach `git.ti.com` and fell
+back on stale GitHub mirrors. The repositories have since been cloned locally
+to `~/git/dragonbox-pyra-m4-work/`, and they are both newer and more useful
+than anything the mirrors showed:
+
+| clone | origin | last commit |
+| --- | --- | --- |
+| `ipcdev` | `git.ti.com/git/ipc/ipcdev.git` | **2024-04-04** |
+| `ipc-examples` | `git.ti.com/git/ipc/ipc-examples.git` | 2019-12-04 |
+| `ipc-metadata` | `git.ti.com/git/ipc/ipc-metadata.git` | 2020-02-04 |
+| `ludev` | `git.ti.com/git/ipc/ludev.git` — LinuxUtils 4.0, CMEM | 2021-04-22 |
+| `luppa` | `git.ti.com/git/ipc/luppa.git` — CMEM packaging | 2015-06-26 |
+
+`ipcdev` at 2024 is a decade newer than `Hashcode/ipcdev` (2014), and OMAP5 is
+a first-class platform in it, not a leftover. `ipc-bios.bld` maps
+`PLATFORM=OMAP54XX` to `ti.platforms.sdp5430:IPU` for the M4 target and
+`ti.platforms.sdp5430:DSP` for the C66x, and `products.mak` already has the
+`ti.targets.arm.elf.M4` slot to point at a compiler.
+
+**This is the general-purpose path, and it is the one to take.** `ipc-examples`
+has `ex01_hello`, `ex02_messageq`, `ex11_ping`, `ex12_mmrpc` and others as XDC
+templates, and its makefile still carries live OMAP5 rules:
+
+    OMAP54XX_linux_elf: OMAP54XX_linux_elf_ex12_mmrpc
+    OMAP54XX_linux_elf: OMAP54XX_linux_elf_ex02_messageq
+
+Note that `OMAP54XX_linux_elf` is **commented out of the `release:` target**
+while DRA7XX and AM572X are not, so OMAP5 is carried rather than tested. The
+rules themselves are intact; expect to fix things nobody has run since 2019.
+
+**The AMMU is not the obstacle I said it was.** The first pass called the
+unicache AMMU bring-up "the part nobody hands you". It is handed to you:
+`ex02_messageq/slave/` contains `IpuAmmu_omap5.cfg`, 176 lines of OMAP5-specific
+AMMU programming — small pages, the 64 KB L2RAM mapped as four 16 KB pages
+translating VA `0x20000000` to PA `0x55020000`, write-back and cache policy per
+page — alongside `IpuAmmu_dra7xx.cfg` and the matching `DspAmmu.cfg`. There are
+also resource tables: `ipcdev/packages/ti/ipc/remoteproc/rsc_table_omap5_ipu.h`
+and `rsc_table_omap5_dsp.h`.
+
+**The carveout in `0011` is the right size, and that is not luck.** The
+canonical `rsc_table_omap5_ipu.h` asks for three `TYPE_CARVEOUT` regions:
+
+| region | size |
+| --- | --- |
+| `IPU_MEM_TEXT` | 6 MB |
+| `IPU_MEM_DATA` | 48 MB |
+| `IPU_MEM_IPC_DATA` | 1 MB |
+| **total** | **55 MB** |
+
+against the 56 MB `ipu_memory_region` — upstream's `omap5-uevm.dts` figure was
+chosen for exactly this table. It also hard-codes `PHYS_MEM_IPC_VRING` to
+`0x95800000`, the same base `0011` uses. Worth knowing that
+`ex41_forwardmsg` carries its own copy of the table with `IPU_MEM_DATA` at
+**156 MB**, which would not fit; check the table before assuming the carveout
+is big enough.
+
+**Two things that are not resolved**, and should be expected to bite:
+
+- The tables carry `TYPE_DEVMEM` entries at fixed physical addresses,
+  `PHYS_MEM_IOBUFS` at `0xBA300000` among them. Nothing in `0011` reserves
+  that, and on a 4 GB Pyra it is ordinary RAM the kernel will hand out.
+  Whether the non-multimedia examples touch it has not been checked.
+- These tables and configs were written against TI's own downstream kernel,
+  not upstream's v5.9 remoteproc. Whether they load unmodified is exactly the
+  kind of thing that cannot be settled by reading, only by trying.
+
+### Option 1b: MobiAqua, if the goal is video decode
+
+**MobiAqua** maintains forks of the same stack, still active — repositories
+pushed in 2024, 2025 and 2026 — and `mobiaqua/ti-ducati-fw` is a build script
+with a ready OMAP5 target:
 
     TARGET=ti.targets.arm.elf.M4
     PLATFORM=OMAP54XX
@@ -376,36 +444,52 @@ build script whose targets include:
     OUTEXT=xem4
     OUTNAME=omap5-ipu-fw
 
-producing `omap5-ipu-fw.xem4` — precisely the filename the upstream device tree
-`firmware-name` asks for. It fetches its own dependencies (ti-sysbios, ti-ce,
-ti-fc, ti-osal, ti-xdais, ti-codecs, ti-ipcdev, ti-ipumm) and downloads its own
-toolchain.
-
-**Both toolchain downloads were verified live on 2026-09-20**, which was the
-real risk with a 2020-vintage stack:
+producing `omap5-ipu-fw.xem4`, precisely the filename the device tree asks for.
+It fetches its own dependencies and its own toolchain, **both of which were
+verified live on 2026-09-20** — the real risk with a 2020-vintage stack:
 
 | | | |
 | --- | --- | --- |
 | XDCtools `3_62_00_08` | `HTTP 200`, 100 658 936 bytes | `software-dl.ti.com` |
 | TI CGT ARM `20.2.7.LTS` | `HTTP 200`, 45 845 018 bytes | `dr-download.ti.com` |
 
-The caveat: this builds **IPUMM**, the multimedia firmware. It is an
-application — video decode driving the IVA-HD — not a blank slate for your own
-code. For arbitrary code you want the rpmsg examples in `ti-ipcdev` instead,
-which the same toolchain builds.
+It builds **IPUMM**, the multimedia firmware: video decode driving the IVA-HD.
+That is an application, not a blank slate. Take this route if the goal is the
+video decode use case; take option 1 if the goal is running your own code.
+Either way the toolchain is the same, and `ti-ducati-fw` is the easier way to
+obtain it.
 
 ### Option 2: bare metal
 
-remoteproc will happily run a bare-metal ELF; all it requires is a
-`.resource_table` section. The obstacle is the **AMMU**, the attribute MMU
-inside the M4's unicache. It sits closest to the core, ahead of the IOMMU, and
-it is **self-programmed by the M4** in its own early boot code. Code and data
-regions have to be identity-mapped, because otherwise the remoteproc loader
-cannot line the ELF's sections up with the IOMMU mappings the kernel
-programmed for them.
+remoteproc will run a bare-metal ELF; all it requires is a `.resource_table`
+section. You would still have to program the **AMMU**, the attribute MMU inside
+the M4's unicache: it sits ahead of the IOMMU, the M4 programs it itself in
+early boot, and code and data have to be identity-mapped or the loader cannot
+line the ELF's sections up with the IOMMU mappings the kernel made.
 
-That bring-up code is the part nobody hands you, and it is the reason "just
-write a hello world" is not a weekend.
+`IpuAmmu_omap5.cfg` above is a worked example of precisely that, so this is now
+transcription from a known-good configuration rather than reverse engineering.
+It is still the long way round, and only worth it to escape XDC and SYS/BIOS.
+
+### Not a route: uClinux on the M4s
+
+`EmcraftSystems/linux-emcraft` is uClinux **2.6.33** for Cortex-M3 and M4, and
+it answers a different question: it runs Linux *on* an M-core as that chip's
+only OS. Its machine ports are `mach-stm32`, `mach-kinetis`, `mach-lpc178x`,
+`mach-lpc18xx`, `mach-a2f` and `mach-m2s` — standalone microcontrollers with
+their own boot path and their own external RAM. There is no OMAP IPU port and
+writing one would mean booting a subsystem that has no bootloader, because it
+is started by remoteproc from the host.
+
+It is also the wrong shape for what these cores are. The IPU has 64 KB of local
+RAM; anything else is DDR reached through the AMMU and the IOMMU, which the M4
+must program before any kernel could run — so the hard part does not go away,
+it just arrives before a 2010 kernel instead of before a firmware image. And it
+would take the IPU *away* from the A15 Linux rather than offering it: no
+mailbox link, no rpmsg, no trace buffer, no coredump, none of which remoteproc
+charges for.
+
+Worth knowing it exists. Not worth pointing at this SoC.
 
 ### JTAG
 
@@ -421,10 +505,17 @@ wanted for.
 ## Assessment: probably not worth it, and here is why
 
 The kernel half is genuinely cheap — a small, proven, low-risk patch, mostly
-costing hardware test time rather than development. The firmware half is a
-2020-vintage XDC/SYS-BIOS toolchain and a codebase last touched in 2021, or
-writing AMMU bring-up yourself against a TRM that TI has largely pulled from
-the web.
+costing hardware test time rather than development.
+
+The firmware half got cheaper once TI's own repositories were in hand. It is
+no longer "write AMMU bring-up against a TRM nobody has": OMAP5 is a supported
+platform in `ipcdev`, the AMMU configuration and the resource tables are
+written, and the carveout in `0011` is already the right size for them. What is
+left is a 2019-era XDC/SYS-BIOS build that upstream carries without testing on
+this platform, against a kernel driver from a different lineage than the one
+those tables were written for. That is an ordinary unpleasant porting job
+rather than a research problem — but it is still a job, and none of it has been
+built, let alone run.
 
 **What the M4s cannot do for this project.** Two cores somewhere between 200
 and 425 MHz, behind an IOMMU, with 64 KB of fast local RAM and everything else
@@ -460,13 +551,17 @@ are neither:
   failure mode for getting this wrong is not a clean error message. Have the
   recovery path from `troubleshooting.md` ready.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
-- **`git.ti.com` could not be reached** on 2026-09-20 — it fails to connect
-  entirely, not a 404 — so TI's own `ipc/ipcdev` could not be consulted
-  directly. The GitHub mirrors that do respond are stale: `Hashcode/ipcdev`
-  2014, `liyaoshi/ipcdev` 2016, `bradfa/ti-ipumm` 2016. MobiAqua's forks are
-  the live ones.
-- **Nothing about the letux route below has been booted either.** Its state was
-  read out of the tree, not run.
+- **`git.ti.com` still does not respond from here**, so nothing was checked
+  against it directly. That gap is now mostly closed a different way: the
+  repositories are cloned under `~/git/dragonbox-pyra-m4-work/` and option 1 is
+  written from those working copies, not from mirrors.
+- **Nothing in the TI stack has been built.** Option 1 is read out of
+  makefiles, `.bld` files and resource tables. `OMAP54XX_linux_elf` is carried
+  but not in the examples' `release:` target, so it has not been exercised
+  upstream since 2019 either; expect breakage, and expect the fixed-address
+  `TYPE_DEVMEM` entries to need attention.
+- **Nothing about the letux route has been booted either.** Its state was read
+  out of the tree, not run.
 
 ---
 
@@ -515,8 +610,14 @@ The letux kernel:
 
 Firmware:
 
+- `~/git/dragonbox-pyra-m4-work/` — local clones of TI's own `ipcdev`,
+  `ipc-examples`, `ipc-metadata`, `ludev` and `luppa` from `git.ti.com`, which
+  does not respond from this network. **Start here**, and specifically at
+  `ipc-examples/src/examples/templates/ex02_messageq/slave/IpuAmmu_omap5.cfg`
+  and `ipcdev/packages/ti/ipc/remoteproc/rsc_table_omap5_ipu.h`.
 - [`mobiaqua/ti-ducati-fw`](https://github.com/mobiaqua/ti-ducati-fw) — the
-  build script with the OMAP5 target; start here
+  build script with the OMAP5 target; the easiest way to get the toolchain,
+  and the route to take if the goal is video decode
 - [MobiAqua's other forks](https://github.com/orgs/mobiaqua/repositories) —
   ti-ipcdev, ti-sysbios, ti-ipumm, ti-libdce, all still maintained
 - [TI Processor SDK: IPC](https://software-dl.ti.com/processor-sdk-linux/esd/docs/06_00_00_07/linux/Foundational_Components_IPC.html)
