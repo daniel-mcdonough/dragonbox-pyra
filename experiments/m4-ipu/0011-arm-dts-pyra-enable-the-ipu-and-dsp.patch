@@ -16,9 +16,20 @@ What is NOT copied from omap5-uevm.dts is the timers.  Upstream gives
 the ipu ti,timers = <&timer3> and ti,watchdog-timers = <&timer9>,
 <&timer11>, and the dsp timer5 and timer6.  timer9 on a Pyra is the
 display backlight PWM -- pyra-display.dtsi declares pwm9 on it and the
-panel's backlight node consumes it -- and taking it for a watchdog would
-fight the backlight for the same dmtimer.  timer8 is the keyboard
-backlight for the same reason.
+panel's backlight node consumes it.  timer8 is the keyboard backlight
+for the same reason.
+
+The conflict fails safe, and it is worth stating which way round it goes.
+pwm-omap-dmtimer requests its timer in probe and frees it in remove, and
+CONFIG_PWM_OMAP_DMTIMER=y here, so the backlight reserves timer9 during
+boot and holds it.  omap_rproc_enable_timers is reached only from
+omap_rproc_start, never from probe, so the remoteproc driver asks much
+later and _omap_dm_timer_request skips a reserved timer.  The backlight
+therefore wins, the display is unaffected, and what breaks is starting
+the processor: request_by_node returns NULL and
+omap_rproc_request_timer returns -EBUSY.  A -EBUSY at start with no
+apparent connection to a backlight is a bad hour, which is the actual
+reason to leave these out rather than any risk to the panel.
 
 Both properties are optional.  omap_rproc_probe counts them with
 of_count_phandle_with_args and clamps a negative count to zero, and the

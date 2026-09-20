@@ -44,7 +44,10 @@ each is explained in the patch header.
 `0010` is upstream's two nodes, verbatim. `0011` is this board's carveouts and
 enablement, modelled on `omap5-uevm.dts` but **deliberately not copying its
 timers** — upstream gives the IPU `timer9`, which on a Pyra is the display
-backlight PWM. See the patch header and `docs/m4-ipu.md`.
+backlight PWM. The backlight wins that fight (it reserves the timer during
+boot; remoteproc only asks at `start`), so the panel is never at risk — what
+you get instead is `-EBUSY` when starting the processor, with nothing to
+connect it to a backlight. See the patch header and `docs/m4-ipu.md`.
 
 Both `0009` and `0010` are GPL-2.0-only code taken from the mainline kernel.
 

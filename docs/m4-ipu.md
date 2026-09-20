@@ -205,8 +205,28 @@ stopped.
 `ti,watchdog-timers = <&timer9>, <&timer11>`, and on a Pyra **timer9 is the
 display backlight PWM** — `pyra-display.dtsi:26` declares `pwm9` on it and the
 panel's backlight consumes it. timer8 is the keyboard backlight for the same
-reason. Taking timer9 for a watchdog puts the IPU and the backlight on the same
-dmtimer.
+reason.
+
+**It fails safe, and the backlight wins.** Traced through the source rather
+than guessed at, because "two drivers want one timer" could mean anything:
+
+- `pwm-omap-dmtimer.c` calls `request_by_node()` in its **probe** and only
+  releases in its **remove**, so it holds timer9 for the life of the system.
+  `CONFIG_PWM_OMAP_DMTIMER=y` here, so that happens during boot — before any
+  module can load. Both `pwmchip0` and `pwmchip1` are bound on the running
+  unit, and both backlights exist.
+- `_omap_dm_timer_request()` skips any timer whose `reserved` flag is set.
+- The remoteproc driver asks for its timers in `omap_rproc_enable_timers()`,
+  reached only from `omap_rproc_start()` — **not from probe**. So the request
+  happens when the processor is started, long after the backlight has claimed
+  timer9.
+
+So the ordering is deterministic rather than a race: the backlight keeps
+timer9, `request_by_node` hands remoteproc a `NULL`, `omap_rproc_request_timer`
+returns `-EBUSY`, and **starting the IPU fails**. The screen is unaffected. The
+cost of getting this wrong is a confusing `-EBUSY` at `start` that has nothing
+obviously to do with the backlight, not a dark panel — which is worth knowing
+precisely because that error would otherwise send you looking at the IOMMU.
 
 `0011` therefore omits both timer properties. They are optional:
 `omap_rproc_probe` counts them with `of_count_phandle_with_args` and clamps a
@@ -247,6 +267,13 @@ and the cores stay in reset until it is loaded:
 
 `state` should read `offline`. Do not write `start` to it until there is a
 firmware file for it to load — that is the next section, and it is not done.
+
+**One thing to know before a firmware file ever exists:** `rproc_alloc()` sets
+`auto_boot = true` and the omap driver never overrides it, so once
+`/lib/firmware/omap5-ipu-fw.xem4` is in place, `modprobe omap_remoteproc` will
+try to start the core by itself — there is no separate `start` step to think
+better of. Right now the asynchronous firmware request simply finds nothing and
+the core stays offline, which is why loading the module today is safe.
 
 ---
 
