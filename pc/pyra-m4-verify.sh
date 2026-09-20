@@ -21,9 +21,17 @@
 #     against the 56 MB here, which is one megabyte of headroom and no more.
 #     ex41_forwardmsg ships a table wanting 156 MB.
 #
-# The device-side half is device/pyra-m4-check.sh, which needs the kernel
-# actually booted. This one needs nothing but the repository, and the build
-# tree only for the checks that read a compiled DTB.
+# It also checks the test firmware in experiments/m4-ipu/firmware, if it has
+# been built. The assertion that matters there is that the trace buffer is
+# NOT in the file: the whole test rests on .bss being zeroed by the loader,
+# so that anything in the buffer afterwards must have been written by an M4.
+# Build it into the file and the on-device test would pass against a dead
+# processor.
+#
+# The device-side halves are device/pyra-m4-check.sh, which needs the kernel
+# booted, and device/pyra-m4-run.sh, which needs it booted and actually loads
+# the firmware. This one needs nothing but the repository, and the build tree
+# only for the checks that read a compiled DTB.
 #
 set -euo pipefail
 
@@ -55,7 +63,8 @@ echo "== the patch set =="
 
 for p in 0009-remoteproc-omap-backport-the-device-tree-driver.patch \
          0010-arm-dts-omap5-add-the-ipu-and-dsp-nodes.patch \
-         0011-arm-dts-pyra-enable-the-ipu-and-dsp.patch; do
+         0011-arm-dts-pyra-enable-the-ipu-and-dsp.patch \
+         0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch; do
 	[ -f "$PATCHES/$p" ] && ok "$p present" || bad "$p missing"
 done
 
@@ -84,6 +93,111 @@ fi
 grep -q 'ipu-memory@95800000' "$PATCHES"/0011-*.patch \
 	&& ok "0011 puts the ipu carveout at 0x95800000" \
 	|| bad "0011 moved the ipu carveout off 0x95800000 (rsc table hard-codes it)"
+
+echo
+echo "== the test firmware =="
+FW_DIR=$PATCHES/firmware
+FW=$FW_DIR/omap5-ipu-fw.xem4
+
+for f in start.S main.c resource_table.c m4.ld Makefile; do
+	[ -f "$FW_DIR/$f" ] && ok "firmware/$f present" || bad "firmware/$f missing"
+done
+
+# 0012 is the fix for the two BUG: scheduling while atomic splats that
+# starting the IPU produces. Assert it still says what it claims rather than
+# just that the file exists.
+P12=$PATCHES/0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch
+if [ -f "$P12" ]; then
+	if grep -q '^+	struct mutex	iommu_lock;' "$P12" && \
+	   grep -q '^+	struct mutex lock;' "$P12"; then
+		ok "0012 converts both omap-iommu locks to mutexes"
+	else
+		bad "0012 no longer converts both locks — see its header"
+	fi
+	grep -q '^+#include <linux/mutex.h>' "$P12" \
+		&& ok "0012 adds mutex.h to omap-iommu.h" \
+		|| bad "0012 dropped the mutex.h include the struct now needs"
+fi
+
+READELF=$(command -v arm-none-eabi-readelf || command -v readelf || true)
+OBJCOPY=$(command -v arm-none-eabi-objcopy || command -v objcopy || true)
+
+if [ ! -f "$FW" ]; then
+	warn "no $FW — run 'make' in experiments/m4-ipu/firmware to check it"
+elif [ -z "$READELF" ] || [ -z "$OBJCOPY" ]; then
+	warn "no readelf/objcopy — cannot check the built firmware"
+else
+	# One PT_LOAD at device address 0, because the IPU has no ti,bootreg
+	# and boots from the vector table there.
+	load=$($READELF -lW "$FW" | awk '$1 == "LOAD" { print; n++ } END { if (n != 1) print "COUNT", n }')
+	if grep -q '^COUNT' <<<"$load"; then
+		bad "expected exactly one PT_LOAD segment, got $(awk '/^COUNT/{print $2}' <<<"$load")"
+	else
+		vaddr=$(awk '{print $3}' <<<"$load")
+		filesz=$(awk '{print $5}' <<<"$load")
+		memsz=$(awk '{print $6}' <<<"$load")
+		[ "$vaddr" = "0x000000" ] || [ "$vaddr" = "0x00000000" ] || [ $((vaddr)) -eq 0 ] \
+			&& ok "the segment loads at device address 0" \
+			|| bad "the segment loads at $vaddr, not 0 — the M4 fetches its vectors from 0"
+
+		# memsz > filesz is necessary but NOT sufficient, and saying so
+		# is the point: the first version of this check stopped here,
+		# and a deliberately broken build that moved the trace buffer
+		# into the file still passed it, because .bss merely shrank
+		# rather than disappearing. What has to be true is that the
+		# TRACE BUFFER ITSELF sits past filesz, in the tail the loader
+		# zeroes. That is asserted below, once the resource table has
+		# been decoded and the buffer's address is known.
+		if [ $((memsz)) -gt $((filesz)) ]; then
+			ok "memsz $memsz > filesz $filesz (necessary, not sufficient)"
+		else
+			bad "memsz is not larger than filesz: nothing is zero-filled at all"
+		fi
+		[ $((memsz)) -le $((0x100000)) ] \
+			&& ok "the image fits the 1 MiB carveout" \
+			|| bad "the image is larger than the carveout it asks for"
+	fi
+
+	$READELF -SW "$FW" | grep -q '\.bss *NOBITS' \
+		&& ok ".bss is NOBITS, so it costs nothing in the file" \
+		|| bad ".bss is not NOBITS — the trace buffer is being shipped in the firmware"
+
+	$READELF -SW "$FW" | grep -q '\.resource_table' \
+		&& ok ".resource_table section present (remoteproc finds it by name)" \
+		|| bad "no .resource_table section — remoteproc has nothing to parse"
+
+	# Decode the table rather than trusting the source: ver, num, and the
+	# carveout the device tree has to be able to satisfy.
+	rt=$($OBJCOPY -O binary --only-section=.resource_table "$FW" /dev/stdout 2>/dev/null | od -An -tx4 -v | tr -s ' ' '\n' | grep -v '^$')
+	ver=$(sed -n 1p <<<"$rt"); num=$(sed -n 2p <<<"$rt")
+	cda=$(sed -n 8p <<<"$rt"); clen=$(sed -n 10p <<<"$rt")
+	tda=$(sed -n 22p <<<"$rt"); tlen=$(sed -n 23p <<<"$rt")
+	[ "$ver" = "00000001" ] && ok "resource table version 1" || bad "resource table version is 0x$ver"
+	[ "$num" = "00000002" ] && ok "two resources (carveout + trace)" || bad "resource count is 0x$num"
+	[ "$cda" = "00000000" ] && ok "carveout device address is 0" || bad "carveout device address is 0x$cda"
+	if [ "0x$clen" = "0x00100000" ]; then
+		ok "carveout asks for 1 MiB, well inside the 56 MiB the board reserves"
+	else
+		bad "carveout asks for 0x$clen, check it against ipu-memory@95800000 in 0011"
+	fi
+
+	# THE assertion. The trace buffer must lie entirely in the part of the
+	# segment that has no bytes in the file, because "the M4 wrote this"
+	# is the same statement as "the loader could only have zeroed this".
+	# The segment loads at 0, so an address is an offset.
+	if [ -n "${filesz:-}" ] && [[ "$tda" =~ ^[0-9a-f]+$ ]] && [[ "$tlen" =~ ^[0-9a-f]+$ ]]; then
+		if [ $((0x$tda)) -ge $((filesz)) ]; then
+			ok "the trace buffer (0x$tda) is past filesz ($filesz): it is zero-filled, never loaded"
+		else
+			bad "the trace buffer (0x$tda) is INSIDE the file image: its contents would come from the firmware, and the on-device test would pass against a dead core"
+		fi
+		[ $((0x$tda + 0x$tlen)) -le $((memsz)) ] \
+			&& ok "the trace buffer is inside the loaded segment, so the loader reaches it" \
+			|| bad "the trace buffer runs past the segment: the loader will not zero all of it"
+	else
+		warn "could not read the trace buffer address out of the resource table"
+	fi
+fi
 
 echo
 echo "== the build target =="

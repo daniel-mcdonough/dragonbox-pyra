@@ -3,19 +3,20 @@
 Written 2026-09-20, against the running unit over SSH and against the kernel
 source tree that `pyra-crossbuild.sh` unpacks.
 
-The OMAP5432 has two Cortex-M4 cores that this machine has never started. This
-document says what they are, what state the shipped software leaves them in,
-exactly what it takes to make the kernel see them — which was built and is in
-`experiments/m4-ipu/` — and what is left after that, which is the larger half
-and has not been done.
+The OMAP5432 has two Cortex-M4 cores that this machine had never started.
+**Both of them now run code.** This document says what they are, what state the
+shipped software leaves them in, exactly what it takes to make the kernel see
+them, the test firmware that proves they execute, and what is left after that.
 
 **Read the assessment at the end before starting.** The kernel side is small,
-cheap and proven. The firmware side is neither, and the payoff for this
-project's actual goals is thin.
+cheap and now proven on hardware in both halves. A useful firmware — rpmsg,
+MessageQ, video decode — is still a separate and much larger job, and the
+payoff for this project's actual goals is thin.
 
 **And read "The other route" before building anything.** The letux kernel is at
-7.3 and already carries two of the three patches here; whether to use it is a
-real choice and not a foregone one.
+7.3 and already carries `0009` and `0010`; whether to use it is a real choice
+and not a foregone one. It does not fix `0012` — nothing does, upstream
+included.
 
 ---
 
@@ -350,6 +351,110 @@ happens when firmware loads.
 
 ---
 
+## Running code on them
+
+**2026-09-20. Both Cortex-M4s execute.** The firmware is
+`experiments/m4-ipu/firmware/`, about 900 bytes of code built with plain
+`arm-none-eabi-gcc`, and this is what it puts in
+`/sys/kernel/debug/remoteproc/remoteproc1/trace0`:
+
+    pyra-m4-hello: running on the OMAP5432 IPU (2 x Cortex-M4)
+    text carveout da=0x00000000 len=0x00100000
+    trace da=0x00002368 len=4096
+    core0: state=alive beats=0000000247
+    core1: state=alive beats=0000000247
+
+`sudo ./device/pyra-m4-run.sh omap5-ipu-fw.xem4` installs it, starts the IPU,
+checks it, stops it and removes the firmware again.
+
+### Why those five lines are evidence and not decoration
+
+Three separate claims, each of which can be got wrong in a way that still
+produces output:
+
+**The M4 wrote this, not the loader.** The buffer lives in `.bss`, so it is not
+in the ELF file at all. The single `PT_LOAD` segment has `filesz 0x368` and
+`memsz 0x3368`, and `rproc_elf_load_segments()` memsets the difference to
+zero — so the buffer is zero at every boot and anything in it came from a core.
+`pyra-m4-verify.sh` asserts the buffer's address is past `filesz`, because a
+firmware that shipped the text in the file would make the on-device test pass
+against a dead processor. That assertion is negative-tested against a
+deliberately broken build.
+
+**It is still executing.** The counters are sampled a second apart and must
+have advanced. This too is negative-tested: a variant that writes the banner,
+writes one beat and then spins forever passes every text check and fails on the
+counter, which is exactly the point.
+
+**Both M4s are running.** `core1`'s counter is only ever touched by the second
+core. The device tree asks for both — `resets = <&prm_core 0>, <&prm_core 1>`
+are RM_IPU_RSTCTRL bits 0 and 1, CPU0 and CPU1 — and nothing else in this
+repository would have noticed if only one came up. TI meets the same problem
+and answers it with `BIOS.smpEnabled = true`; this firmware answers it by
+having the first core to arrive claim the name "core 0", which is safe because
+`omap_reset_deassert()` polls RSTST to completion before the second reset line
+is written.
+
+The IOMMU was exercised for the first time here, and reported no fault: the
+only thing mapped at device address 0 is the carveout, so the firmware running
+at all is itself proof the translation worked.
+
+### What it found: an upstream iommu bug
+
+Starting the IPU produces two `BUG: scheduling while atomic` splats, every
+time, with identical preempt counts:
+
+    BUG: scheduling while atomic: pyra-m4-run.sh/6110/0x00000003
+      usleep_range  <- sleeps
+      omap_reset_deassert
+      sysc_runtime_resume
+      __pm_runtime_resume
+      omap_iommu_attach_dev  <- holds two spinlocks
+      iommu_attach_device
+      rproc_boot
+
+`omap_iommu_attach_dev()` takes `spin_lock(&omap_domain->lock)`,
+`omap_iommu_attach()` takes `spin_lock(&obj->iommu_lock)`, and inside both
+`iommu_enable()` calls `pm_runtime_get_sync()` — which here resumes the MMU's
+ti-sysc target module, deasserts its hardreset line, and polls RSTST with a
+`usleep_range`. The second splat is a consequence of the first:
+`schedule_debug()` forces the count to 1, the two `spin_unlock()`s then take it
+to −1, and that is the `0xffffffff` in the second report.
+
+**This is not something `0009`–`0011` introduced.** Mainline today is
+character-for-character identical: both locks are still spinlocks and
+`iommu_enable()` still calls `pm_runtime_get_sync()` between them. What the
+Pyra's config changes is only whether anyone is told — `CONFIG_PREEMPT=y` and
+`CONFIG_SMP=y`, so `preempt_count` is maintained and `schedule_debug()`
+notices. A `PREEMPT_NONE` vendor kernel sleeps under the same held locks and
+says nothing. An OMAP5 or DRA7 that never attaches an IOMMU domain to the IPU
+or DSP never reaches the code; `0010` and `0011` are what make it reachable
+here.
+
+`0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch` converts
+both locks to mutexes, which is safe because every site that takes either one
+is already a sleeping path — `omap_iommu_attach()`, `omap_iommu_detach()`,
+`omap_iommu_attach_dev()`, `omap_iommu_detach_dev()`, and that is the complete
+list. Neither lock is touched by `iommu_fault_handler()` or by the map/unmap
+paths. **It is compile-tested and has not been booted.**
+
+### And a test that lied
+
+The first version of `pyra-m4-run.sh` reported **"10 ok, 0 failed"** straight
+through both of those splats. It grepped the kernel log for
+`remoteproc|ipu|iommu|mmu`, and a backtrace does not repeat the subsystem name
+on every line — the only line that matched was the `Modules linked in:` dump,
+which looks like noise. It now checks for `BUG:` and `WARNING:` by line prefix,
+separately from anything topical.
+
+That is the fourth defect found in these tests by attacking them rather than
+running them, and the pattern in all four is the same: the check that never
+fires is the one to distrust. Two of them were found this way in a single
+afternoon — the `memsz > filesz` assertion above was the third, and it passed
+against a firmware built specifically to violate what it claimed to check.
+
+---
+
 ## The other route: letux 7.x already has all of this
 
 **Corrected 2026-09-20, after the backport was built.** The first pass
@@ -412,11 +517,15 @@ support arriving free is a side effect of it rather than a reason for it.
 
 ---
 
-## The firmware: this is the actual work, and it is not done
+## A *useful* firmware: this is the actual work, and it is not done
+
+The test firmware above proves the path works; it does not do anything. A
+firmware that earns its keep needs the mailbox, rpmsg and a message protocol,
+and none of that has been built. This section is about where that comes from.
 
 A kernel that probes gets you `/sys/class/remoteproc/remoteproc0/` and nothing
 else. Writing `start` to it looks for `omap5-ipu-fw.xem4` in `/lib/firmware`,
-and there is no such file on this machine: `/lib/firmware/ti/` holds three
+and there was no such file on this machine: `/lib/firmware/ti/` holds three
 entries, all audio codecs and a VPDMA blob, and nothing OMAP5 anywhere else.
 Debian does not package it. Whether TI's own `ti-linux-firmware` carries a
 prebuilt one is still unchecked — `git.ti.com` does not respond from here — but
@@ -532,17 +641,30 @@ video decode use case; take option 1 if the goal is running your own code.
 Either way the toolchain is the same, and `ti-ducati-fw` is the easier way to
 obtain it.
 
-### Option 2: bare metal
+### Option 2: bare metal — done, and it works
 
 remoteproc will run a bare-metal ELF; all it requires is a `.resource_table`
-section. You would still have to program the **AMMU**, the attribute MMU inside
-the M4's unicache: it sits ahead of the IOMMU, the M4 programs it itself in
-early boot, and code and data have to be identity-mapped or the loader cannot
-line the ELF's sections up with the IOMMU mappings the kernel made.
+section. `experiments/m4-ipu/firmware/` is one, it is about 900 bytes of code,
+it builds with the `arm-none-eabi-gcc` any distribution ships, and **both M4s
+run it**. See "Running code on them" above.
 
-`IpuAmmu_omap5.cfg` above is a worked example of precisely that, so this is now
-transcription from a known-good configuration rather than reverse engineering.
-It is still the long way round, and only worth it to escape XDC and SYS/BIOS.
+**An earlier version of this section said you would still have to program the
+AMMU. That was wrong, and the firmware disproves it.** The reasoning that
+replaces it: the M4s fetch their vector table from logical address 0 *through*
+the AMMU, and SYS/BIOS's own AMMU-programming code is itself code at a low
+logical address, so large page 0 — logical `0x00000000`, 512 MB, translation
+disabled — cannot require programming or nothing could ever boot. TI's
+`IpuAmmu_omap5.cfg` only adds cacheability to it. A firmware that stays inside
+`0x00000000..0x1fffffff` and leaves the unicache off therefore needs no AMMU
+work at all, and the cache being off is also why Linux sees its writes without
+any flushing.
+
+The AMMU does come back the moment you want a peripheral, because the reset
+window does not cover the mailbox at `0x4a0f4000`. That has a way round it too:
+a `TYPE_DEVMEM` resource can map `da 0x10000000 -> pa 0x4a0f4000`, and the
+AMMU passes the low device address straight through to the IOMMU. So the AMMU
+is avoidable for longer than this document previously claimed, and TI's
+configuration is there for when it is not.
 
 ### Not a route: uClinux on the M4s
 
@@ -577,8 +699,17 @@ wanted for.
 
 ## Assessment: probably not worth it, and here is why
 
-The kernel half is genuinely cheap — a small, proven, low-risk patch, mostly
-costing hardware test time rather than development.
+The kernel half is genuinely cheap — a small, low-risk patch, now proven on
+hardware end to end: both M4s run code, the IOMMU translates, and the carveouts
+cost nothing at rest. It does carry one debt that was invisible until something
+actually started the IPU, an upstream `omap-iommu` sleep-under-spinlock; `0012`
+fixes it in twenty lines and has not been booted.
+
+**Getting a bare-metal program running turned out to be much cheaper than this
+document first estimated**, because the AMMU does not need programming for code
+that stays inside its reset window. That is a real reduction in the work, and
+it is worth being clear about what it does *not* reduce: a program that only
+writes to its own memory is a long way from one that talks to Linux.
 
 The firmware half got cheaper once TI's own repositories were in hand. It is
 no longer "write AMMU bring-up against a TRM nobody has": OMAP5 is a supported
@@ -618,12 +749,16 @@ are neither:
 
 - ~~**Nothing has run on hardware.**~~ **Booted on 2026-09-20**; see "The first
   boot" above. Both processors enumerate and sit `offline`.
-- **There is no firmware**, so nothing has been *run on* the M4s. Everything
-  past "the kernel enumerates them" is still untested, and that is the larger
-  half.
-- **A misprogrammed IOMMU on this SoC can wedge the L3 interconnect.** Nothing
-  like that happened on the first boot, but nothing has loaded firmware either,
-  which is when the IOMMU actually gets used. Have the recovery path ready.
+- ~~**There is no firmware, so nothing has been run on the M4s.**~~ **Both
+  cores ran code on 2026-09-20**; see "Running code on them" above. What is
+  still untested is everything a *useful* firmware needs: the mailbox, rpmsg,
+  MessageQ, and anything at all on the DSP.
+- ~~**A misprogrammed IOMMU on this SoC can wedge the L3 interconnect.**~~ The
+  IOMMU has now been programmed from a resource table and used, with no fault
+  and no L3 error. The warning still stands for firmware that reaches outside
+  its carveout, which this one deliberately does not.
+- **`0012` is compile-tested, not booted.** It is the fix for the
+  `scheduling while atomic` splats below, and no kernel has been built with it.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
 - **`git.ti.com` still does not respond from here**, so nothing was checked
   against it directly. That gap is now mostly closed a different way: the
@@ -641,11 +776,13 @@ are neither:
 
 ## The tests
 
-Two scripts, because the two halves fail in different places.
+Three scripts, because the halves fail in different places.
 
-    ./pc/pyra-m4-verify.sh            # the patches and the built tree, on a PC
-    ./pc/pyra-m4-verify.sh --patches  # patches only, no build needed
-    ./device/pyra-m4-check.sh         # the running machine, on the Pyra
+    ./pc/pyra-m4-verify.sh            # the patches, the built tree and the
+                                      # firmware, on a PC
+    ./pc/pyra-m4-verify.sh --patches  # patches and firmware only, no build
+    ./device/pyra-m4-check.sh         # the running machine, read-only
+    sudo ./device/pyra-m4-run.sh omap5-ipu-fw.xem4   # actually start the IPU
 
 `pyra-m4-verify.sh` asserts the findings in this document against the patch
 set and the built artifacts: the three compat fixes are still in `0009`, both
@@ -660,8 +797,13 @@ the two that the file mostly exists for —
   are present. Today that prints `table wants 55 MB: text 6, data 48, ipc 1;
   carveout is 56 MB`.
 
+It also checks the test firmware, where the load-bearing assertion is that the
+trace buffer's address is past the segment's `filesz` — i.e. that it is
+zero-filled by the loader rather than carried in the file, which is the entire
+basis for "an M4 wrote this".
+
 It needs `dtc`, and falls back to a container when the PC has none, because
-those are the assertions worth having. **27 ok, 0 failed** on 2026-09-20.
+those are the assertions worth having. **30 ok, 0 failed** on 2026-09-20.
 
 **Both of its load-bearing assertions were negative-tested**, which is the only
 way to know an assertion is wired up: reintroducing `omap5-uevm.dts`'s
@@ -673,6 +815,13 @@ worse: an unparseable carveout size printed a shell error and was counted as
 neither pass nor fail, so the check silently did not run while the script still
 reported success.
 
+The firmware assertion was negative-tested the same way, and it failed the
+test. The first version checked `memsz > filesz`, which sounds right and is
+not: a build that deliberately moved the trace buffer into the file still
+passed, because `.bss` merely shrank rather than vanishing. It now checks the
+buffer's own address against `filesz`, and that version does fail the broken
+build.
+
 `pyra-m4-check.sh` reports the machine's state and changes nothing; it never
 writes a remoteproc `state` file. It is safe on the stock kernel and detects
 that case rather than failing, so it can be run before and after installing
@@ -682,11 +831,21 @@ channels present, both backlights alive, no `ipu` node and no
 `/sys/class/remoteproc`, and the two clock rates quoted at the top of this
 document reproduced independently.
 
-**What the device script has not exercised**, because no M4 kernel has been
-booted: the `--modprobe` path, the per-processor `name`/`state`/`firmware`
-reporting, and the assertion that there are two remoteproc devices. Those
-branches are written but unproven, and the first run on `5.6.19-m4` is as much
-a test of the script as of the kernel.
+On `5.6.19-m4` it gives **13 ok, 0 failed**, which was the first exercise of
+the branches that had never run: the per-processor `name`/`state`/`firmware`
+reporting and the assertion that there are two remoteproc devices.
+
+`pyra-m4-run.sh` is the only one of the three that changes anything. It
+installs the firmware, starts the IPU, samples the trace buffer twice, stops
+the processor and **removes the firmware again** — not tidiness: `auto_boot` is
+true, so a file left in `/lib/firmware` starts both M4s during every boot with
+nothing typed. `--keep` opts into that, and
+`modprobe.blacklist=omap_remoteproc` is how to take it back.
+
+It was negative-tested against a firmware built to write the banner and then
+stop, which passes every text check and fails the counter check, and it is
+what caught the `scheduling while atomic` splats — after its first version
+reported success through them.
 
 ---
 

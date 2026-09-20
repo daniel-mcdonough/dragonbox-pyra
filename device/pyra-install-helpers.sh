@@ -52,6 +52,8 @@ pyra-charge-probe.sh                /usr/local/sbin                    0755
 pyra-charge-current.sh              /usr/local/sbin                    0755
 pyra-chgwatch.sh                    /usr/local/sbin                    0755
 pyra-anno1602-test.sh               /usr/local/sbin                    0755
+pyra-m4-check.sh                    /usr/local/sbin                    0755
+pyra-m4-run.sh                      /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-idle-dim                       /usr/local/bin                     0755

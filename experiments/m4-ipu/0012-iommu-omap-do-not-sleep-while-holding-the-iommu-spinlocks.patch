@@ -1,0 +1,188 @@
+iommu/omap: do not sleep while holding the iommu spinlocks
+
+Starting the IPU produces two "BUG: scheduling while atomic" splats on
+every single start, reproducibly, with identical preempt counts:
+
+  BUG: scheduling while atomic: pyra-m4-run.sh/6110/0x00000003
+   usleep_range           <- sleeps
+   omap_reset_deassert
+   sysc_runtime_resume
+   __rpm_callback / rpm_callback / rpm_resume / rpm_resume
+   __pm_runtime_resume
+   omap_iommu_attach_dev  <- holds two spinlocks
+   __iommu_attach_group
+   iommu_attach_device
+   rproc_boot
+   state_store
+
+omap_iommu_attach_dev() takes spin_lock(&omap_domain->lock), then
+omap_iommu_attach() takes spin_lock(&obj->iommu_lock), and inside both
+of them iommu_enable() calls pm_runtime_get_sync().  On this SoC that
+resumes the mmu's ti-sysc target module, which deasserts its hardreset
+line and polls RSTST with readl_relaxed_poll_timeout(..., 1, ...) --
+that is a usleep_range, so the kernel sleeps with two spinlocks held.
+dma_map_single() is inside the same region for the same reason.
+
+The second splat is a consequence of the first, not a separate bug.
+schedule_debug() responds to an atomic schedule by forcing the count
+with preempt_count_set(PREEMPT_DISABLED), i.e. to 1; the two
+spin_unlock()s that follow then take it 1 -> 0 -> -1, which is the
+0xffffffff in the second report.  From there every sleep in the rest of
+that syscall -- in our case the CMA allocation in rproc_alloc_carveout()
+-- reports atomic too.
+
+None of this is specific to 5.6 or to the backport in 0009.  Mainline
+today is character-for-character identical here: omap_iommu_domain still
+declares spinlock_t lock, omap_iommu still declares spinlock_t
+iommu_lock, and iommu_enable() still calls pm_runtime_get_sync() between
+them.  What the Pyra's config changes is only whether anyone is told:
+CONFIG_PREEMPT=y and CONFIG_SMP=y, so preempt_count is maintained and
+schedule_debug() notices.  A PREEMPT_NONE vendor kernel sleeps under the
+same held locks in the same place and says nothing, which is presumably
+why this has survived so long -- an OMAP5 or DRA7 that never attaches an
+iommu domain to the IPU or DSP never reaches the code at all, and 0010
+and 0011 are what make it reachable here.
+
+Both locks can simply be mutexes.  Every site that takes either one is
+already a sleeping path:
+
+  obj->iommu_lock    omap_iommu_attach(), omap_iommu_detach()
+  omap_domain->lock  omap_iommu_attach_dev(), omap_iommu_detach_dev()
+
+and that is the complete list -- neither is touched by
+iommu_fault_handler() or by any other interrupt context, and the map and
+unmap paths do not take them at all.  So this does not move work out
+from under a lock or change what is serialised; it only stops the sleep
+being illegal.
+
+linux/mutex.h is added to omap-iommu.h because the struct definitions
+there now need the complete type; omap-iommu.c already included it.
+
+Compile-tested for ARM; not yet booted.  The remaining risk is entirely
+in whether some caller of iommu_attach_device()/iommu_detach_device()
+somewhere else in the tree is in atomic context, which would previously
+have been legal and is not any more.
+
+---
+--- a/drivers/iommu/omap-iommu.c	2026-09-20 15:45:18.046325073 -0400
++++ b/drivers/iommu/omap-iommu.c	2026-09-20 15:45:18.053939428 -0400
+@@ -859,7 +859,7 @@
+ {
+ 	int err;
+ 
+-	spin_lock(&obj->iommu_lock);
++	mutex_lock(&obj->iommu_lock);
+ 
+ 	obj->pd_dma = dma_map_single(obj->dev, iopgd, IOPGD_TABLE_SIZE,
+ 				     DMA_TO_DEVICE);
+@@ -875,14 +875,14 @@
+ 		goto out_err;
+ 	flush_iotlb_all(obj);
+ 
+-	spin_unlock(&obj->iommu_lock);
++	mutex_unlock(&obj->iommu_lock);
+ 
+ 	dev_dbg(obj->dev, "%s: %s\n", __func__, obj->name);
+ 
+ 	return 0;
+ 
+ out_err:
+-	spin_unlock(&obj->iommu_lock);
++	mutex_unlock(&obj->iommu_lock);
+ 
+ 	return err;
+ }
+@@ -896,7 +896,7 @@
+ 	if (!obj || IS_ERR(obj))
+ 		return;
+ 
+-	spin_lock(&obj->iommu_lock);
++	mutex_lock(&obj->iommu_lock);
+ 
+ 	dma_unmap_single(obj->dev, obj->pd_dma, IOPGD_TABLE_SIZE,
+ 			 DMA_TO_DEVICE);
+@@ -904,7 +904,7 @@
+ 	obj->iopgd = NULL;
+ 	iommu_disable(obj);
+ 
+-	spin_unlock(&obj->iommu_lock);
++	mutex_unlock(&obj->iommu_lock);
+ 
+ 	dev_dbg(obj->dev, "%s: %s\n", __func__, obj->name);
+ }
+@@ -1215,7 +1215,7 @@
+ 	if (!obj->cr_ctx)
+ 		return -ENOMEM;
+ 
+-	spin_lock_init(&obj->iommu_lock);
++	mutex_init(&obj->iommu_lock);
+ 	spin_lock_init(&obj->page_table_lock);
+ 
+ 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+@@ -1487,7 +1487,7 @@
+ 		return -EINVAL;
+ 	}
+ 
+-	spin_lock(&omap_domain->lock);
++	mutex_lock(&omap_domain->lock);
+ 
+ 	/* only a single client device can be attached to a domain */
+ 	if (omap_domain->dev) {
+@@ -1533,7 +1533,7 @@
+ init_fail:
+ 	omap_iommu_detach_fini(omap_domain);
+ out:
+-	spin_unlock(&omap_domain->lock);
++	mutex_unlock(&omap_domain->lock);
+ 	return ret;
+ }
+ 
+@@ -1581,9 +1581,9 @@
+ {
+ 	struct omap_iommu_domain *omap_domain = to_omap_domain(domain);
+ 
+-	spin_lock(&omap_domain->lock);
++	mutex_lock(&omap_domain->lock);
+ 	_omap_iommu_detach_dev(omap_domain, dev);
+-	spin_unlock(&omap_domain->lock);
++	mutex_unlock(&omap_domain->lock);
+ }
+ 
+ static struct iommu_domain *omap_iommu_domain_alloc(unsigned type)
+@@ -1597,7 +1597,7 @@
+ 	if (!omap_domain)
+ 		return NULL;
+ 
+-	spin_lock_init(&omap_domain->lock);
++	mutex_init(&omap_domain->lock);
+ 
+ 	omap_domain->domain.geometry.aperture_start = 0;
+ 	omap_domain->domain.geometry.aperture_end   = (1ULL << 32) - 1;
+--- a/drivers/iommu/omap-iommu.h	2026-09-20 15:45:18.048700436 -0400
++++ b/drivers/iommu/omap-iommu.h	2026-09-20 15:45:34.164703919 -0400
+@@ -12,6 +12,7 @@
+ 
+ #include <linux/bitops.h>
+ #include <linux/iommu.h>
++#include <linux/mutex.h>
+ 
+ #define for_each_iotlb_cr(obj, n, __i, cr)				\
+ 	for (__i = 0;							\
+@@ -47,7 +48,7 @@
+ 	u32 num_iommus;
+ 	struct omap_iommu_device *iommus;
+ 	struct device *dev;
+-	spinlock_t lock;
++	struct mutex lock;
+ 	struct iommu_domain domain;
+ };
+ 
+@@ -59,7 +60,7 @@
+ 	struct iommu_domain *domain;
+ 	struct dentry	*debug_dir;
+ 
+-	spinlock_t	iommu_lock;	/* global for this whole object */
++	struct mutex	iommu_lock;	/* global for this whole object */
+ 
+ 	/*
+ 	 * We don't change iopgd for a situation like pgd for a task,

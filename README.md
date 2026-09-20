@@ -88,7 +88,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
 | [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
-| [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them (built, not booted), the letux 7.x alternative, and whether it is worth finishing. |
+| [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
@@ -165,6 +165,8 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-cpu-attribution.sh` | Accounts for every busy CPU cycle by process across a window, and splits the rest by kernel class. Read-only. |
 | `device/pyra-x-load-profile.sh` | The X server's share of a workload, plus whether the 2D core moved and whether clients use shared memory. Read-only. |
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
+| `device/pyra-m4-check.sh` | Reports the state of the two Cortex-M4s and the DSP. Read-only, and safe on the stock kernel, so the before and after of installing `5.6.19-m4` can be compared. |
+| `device/pyra-m4-run.sh` | Loads the test firmware onto the IPU and proves both M4s are executing it, then removes the firmware again — `auto_boot` means a file left in `/lib/firmware` starts the cores at every boot. Needs `5.6.19-m4`. |
 | `device/pyra-gles2-smoke.c` | Minimal X11, EGL and GLES2 client, to prove the SGX path works. |
 | `device/pyra-exa-fallback-bench.c` | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 

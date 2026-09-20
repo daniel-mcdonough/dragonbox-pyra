@@ -1,31 +1,31 @@
 # remoteproc for the two Cortex-M4s and the DSP
 
-The kernel half of making the OMAP5432's IPU subsystem — two Cortex-M4s — and
-its C66x DSP visible to Linux. **Nothing here has been booted on this machine,
-and there is no firmware for the cores to run**, so even a successful boot
-would produce two idle `/sys/class/remoteproc/` entries and nothing more. No
-default build carries any of it; `kernel-m4` has to be asked for by name.
+Making the OMAP5432's IPU subsystem — two Cortex-M4s — and its C66x DSP visible
+to Linux, and then running code on them. **Booted on 2026-09-20, and both M4s
+now execute**; the firmware that proves it is in `firmware/`. No default build
+carries any of this; `kernel-m4` has to be asked for by name.
 
 The reasoning, the measurements, the firmware problem and an honest assessment
 of whether this is worth finishing are all in **`docs/m4-ipu.md`**. Read that
 first. This file is only about the three patches.
 
-**Two of the three are only needed because this kernel is 5.6.19.** The letux
+**Two of the four are only needed because this kernel is 5.6.19.** The letux
 kernel is at 7.3 and already carries the device tree driver and the SoC-level
-nodes, so on that tree `0009` and `0010` are dead weight and only `0011` — and
-the timer finding behind it — still applies. Whether to move is a real choice;
-`docs/m4-ipu.md` has the comparison.
+nodes, so on that tree `0009` and `0010` are dead weight and `0011` — and the
+timer finding behind it — and `0012` still apply. Whether to move is a real
+choice; `docs/m4-ipu.md` has the comparison.
 
     ./pc/pyra-crossbuild.sh kernel-m4
 
 builds `5.6.19-m4` into its own `src-m4` tree and stages it as
 `m4-kernel.tar.gz`, beside the stock kernel like every other variant.
 
-## The three patches
+## The four patches
 
     0009-remoteproc-omap-backport-the-device-tree-driver.patch
     0010-arm-dts-omap5-add-the-ipu-and-dsp-nodes.patch
     0011-arm-dts-pyra-enable-the-ipu-and-dsp.patch
+    0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch
 
 They are numbered from 0009 because `patches/` holds 0001 to 0006 and the
 frequency experiment holds 0007 and 0008; `build_kernel_variant` gathers every
@@ -49,7 +49,17 @@ boot; remoteproc only asks at `start`), so the panel is never at risk — what
 you get instead is `-EBUSY` when starting the processor, with nothing to
 connect it to a backlight. See the patch header and `docs/m4-ipu.md`.
 
-Both `0009` and `0010` are GPL-2.0-only code taken from the mainline kernel.
+`0012` is the odd one out: it is not needed to make anything work, it is needed
+because what works is noisy in a way that should not be shipped. Starting the
+IPU produces two `BUG: scheduling while atomic` splats every time, because
+`omap_iommu_attach_dev()` sleeps in `pm_runtime_get_sync()` while holding two
+spinlocks. That is an unfixed upstream bug — mainline today is identical — and
+`0010`/`0011` are simply what make it reachable on this board. The fix converts
+both locks to mutexes, which is safe because every site that takes either one
+is already a sleeping path. **Compile-tested, not booted.**
+
+Both `0009` and `0010` are GPL-2.0-only code taken from the mainline kernel,
+and `0012` modifies GPL-2.0-only kernel code.
 
 ## The seven config symbols
 
@@ -86,9 +96,17 @@ property, and that its carveout still covers what
 `rsc_table_omap5_ipu.h` asks for. Without `--patches` it also checks the built
 tree and decompiles the DTB. `device/pyra-m4-check.sh` is the on-device half.
 
+## The firmware
+
+`firmware/` holds a test program that runs on both M4s: a heartbeat in a
+`TYPE_TRACE` buffer, about 900 bytes of code, built with plain
+`arm-none-eabi-gcc` and no TI toolchain at all. `firmware/README.md` explains
+why it needs no AMMU programming and how each of its three claims is defended.
+`device/pyra-m4-run.sh` is the end-to-end test.
+
 ## What would come next
 
-Nothing here can be tested without firmware. TI's own IPC repositories are
+Nothing past a heartbeat can be tested without a real firmware. TI's own IPC repositories are
 cloned at `~/git/dragonbox-pyra-m4-work/`; `ipcdev` is from 2024, OMAP5 is a
 supported platform in it, and `ipc-examples` carries the OMAP5-specific AMMU
 configuration and resource tables. `mobiaqua/ti-ducati-fw` is the easiest way
