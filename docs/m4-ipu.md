@@ -814,10 +814,21 @@ gauge, `ti,tca6424` for GPIO, all in `pyra-mainboard-common.dtsi`. They draw
 microamps and keep working with the OMAP powered down. An M4 in CORE cannot
 compete with a 400 µA I²C part.
 
-**If some future power claim about the IPU does need settling**, the board
-carries a `ti,ina231` power monitor that nothing in this repo currently reads.
-That is the instrument to reach for, and having never wired it up is why this
-item sat marked "unmeasured" for as long as it did.
+**If some future power claim about the IPU does need settling**, the instrument
+is the fuel gauge — `/sys/class/power_supply/bq27421-0/current_now`, which
+`pyra-idle-profile.sh` and eight other scripts already read. It measures the
+whole battery, which is the right granularity for "does this cost more than it
+saves".
+
+An earlier draft of this section pointed at the board's `ti,ina231` instead,
+calling it the power monitor to reach for. That was wrong twice over and is
+worth recording, because the mistake is an easy one to repeat. The device tree
+calls it what it is — `/* modem current sensor */` — so it watches the Gemalto
+PLS8 rail and cannot see the SoC at all. And on this unit it cannot be read
+even for that: the driver is correct and the device instantiates, but probe
+fails with `error configuring the device: -121`, `-EREMOTEIO`, because no modem
+is fitted, the rail is down, and the sensor is powered from the rail it
+measures. `device/pyra-modem-power.sh` has the full diagnosis.
 
 ---
 
