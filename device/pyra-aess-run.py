@@ -68,7 +68,13 @@ class Bank:
             raise SystemExit("REFUSING access at 0x%x+%d, past proven-safe %d" % (o, n, s.limit))
     def r32(s, o):    s._ck(o,4); return struct.unpack_from("<I", s.m, o)[0]
     def w32(s, o, v): s._ck(o,4); struct.pack_into("<I", s.m, o, v & 0xFFFFFFFF)
-    def blk(s, o, n): s._ck(o,n); return bytes(s.m[o:o+n])
+    def blk(s, o, n):
+        # 32-bit reads ONLY. A byte-wise slice copy -- bytes(s.m[o:o+n]) --
+        # of ABE memory raises asynchronous external aborts: six of them
+        # were traced to exactly that on 2026-09-20. The banks tolerate it
+        # sometimes and not others, which makes it worse, not better.
+        s._ck(o, n)
+        return [struct.unpack_from("<I", s.m, o+i)[0] for i in range(0, n-3, 4)]
     def load(s, o, data):
         s._ck(o, len(data))
         for i in range(0, len(data)-3, 4):
@@ -150,7 +156,9 @@ try:
     print("\n== loading firmware ==")
     for n in ("PMEM","CMEM","SMEM","DMEM"):
         B[n].load(0, imgs[n])
-        ok = B[n].blk(0, len(imgs[n]) & ~3) == imgs[n][:len(imgs[n]) & ~3]
+        want = [struct.unpack_from("<I", imgs[n], i)[0]
+                for i in range(0, (len(imgs[n]) & ~3) - 3, 4)]
+        ok = B[n].blk(0, len(imgs[n]) & ~3) == want
         print("  %s %6d bytes  read-back %s" % (n, len(imgs[n]), "identical" if ok else "DIFFERS (24-bit bank)"))
 
     print("\n== building the scheduler table (the stub the driver never fills in) ==")
@@ -169,7 +177,7 @@ try:
     ip.w32(EVT_START, 0); time.sleep(0.3)
     a = LC.r32(lco); d0 = B["DMEM"].blk(0, SAFE["DMEM"]); time.sleep(1.0)
     b_ = LC.r32(lco); d1 = B["DMEM"].blk(0, SAFE["DMEM"])
-    chg = sum(1 for i in range(0,SAFE["DMEM"],4) if d0[i:i+4]!=d1[i:i+4])
+    chg = sum(1 for x, y in zip(d0, d1) if x != y)
     print("  LOOPCOUNTER %d -> %d   DMEM words changed in 1 s: %d" % (a, b_, chg))
 
     print("\n== starting the audio engine ==")
@@ -199,7 +207,7 @@ try:
     ip.w32(EVT_COUNTER,2047); ip.w32(EVT_SRC,1); ip.w32(EVT_START,1); ip.w32(SCHED,0)
     time.sleep(1.0)
     d3 = B["DMEM"].blk(0, SAFE["DMEM"])
-    chg2 = sum(1 for i in range(0,SAFE["DMEM"],4) if d2[i:i+4]!=d3[i:i+4])
+    chg2 = sum(1 for x, y in zip(d2, d3) if x != y)
     print("  restarted: DMEM words changed in 1 s: %d (stopped control was %d)" % (chg2, chg))
 
     print("\n%s" % ("THE AESS DSP IS RUNNING ITS SCHEDULER LOOP."

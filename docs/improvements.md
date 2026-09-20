@@ -1212,11 +1212,47 @@ engine stopped, zero DMEM words change in a second.
 AESS, at the right rate, with the rate-family switch functioning. Everything
 between here and working audio is software in the four items above.
 
-**What is still unproven** is audio actually flowing — no port is opened, no
-McPDM link is configured, nothing is heard. The step after this one is
-`omap_aess_reset_all_ports` / `init_gains` / `select_main_port`, then a DAI
-link, and that is where the driver's dropped-writes problem has to be fixed
-first rather than worked around from `/dev/mem`.
+#### Audio does not flow yet, and the reason is specific
+
+`device/pyra-aess-dl-probe.py`, 2026-09-20. It injects a known constant into
+`SMEM_MM_DL`, runs the engine, and reads the downlink buffers back. Across all
+four phases — no injection; injection alone; plus output gains `DL1_L/R`,
+`DL2_L/R`; plus mixer gains `MIXDL1_MM_DL` and `MIXDL2_MM_DL` at 0 dB — the
+engine turns over at the correct 4000 loops/s, the injected value stays put in
+`SMEM_MM_DL`, and **every downstream buffer reads exactly the firmware image**.
+`SMEM_DL1_M_EQ`, `SMEM_EARP_48_96`, `SMEM_IHF_48_96` and `DMEM_MCPDM_DL_FIFO`
+are all still zero.
+
+That is expected once you see the mechanism. The 42 tasks in the config's
+`init_table` are only the always-resident base schedule. A port's processing
+tasks are written into `MultiFrame` when that port is *enabled*, by
+`omap_aess_enable_data_transfer()` (`sound/soc/ti/aess/aess_port.c:1159`)
+through `omap_aess_update_scheduling_table()` and `omap_aess_update_io_task()`
+at lines 234 and 250. No port is enabled, so no DL task is ever dispatched and
+the mixer gains have nothing to act on.
+
+**So the next step is the port-enable path**, which means decoding
+`struct omap_aess_port` out of the config blob — `status`, `data_format`,
+`smem_buffer1/2`, `port_protocol`, `dma_offset`, `init_task` and
+`asrc_port tsk_freq[4]` — and writing the IO descriptors. After that comes
+McPDM, which the kernel currently owns through the legacy card, and then the
+driver's dropped-writes problem has to be fixed properly rather than
+sidestepped from `/dev/mem`.
+
+**One more upstream bug found on the way.** `omap_aess_write_gain()` computes
+`map[SMEM_GTARGET1].offset + (id << 2)` for gain IDs up to 35
+(`MAX_NBGAIN_CMEM` is 36, needing 144 bytes), but this firmware declares
+`GTARGET1` as **56 bytes — 14 slots**. Every mixer gain from id 14 up, which
+is all of them, is written past the end of the declared buffer. The firmware
+image has all 36 slots zeroed, so nothing else is visibly clobbered, but the
+driver and the firmware disagree about the size of the gain table.
+
+**And a rule that cost six aborts to learn:** all ABE memory access must be
+32-bit. A byte-wise slice copy raises an asynchronous external abort. Because
+the aborts are asynchronous they surface at whatever access happens next, so
+they appear to blame innocent reads — bisecting by "which access died" leads
+somewhere wrong. `pyra-aess-run.py` was doing byte-slice reads of DMEM and
+getting away with it; that is fixed.
 
 **Caveats before anyone commits a week.** The driver is TI's out-of-tree OMAP4
 AESS code (9210 lines under `sound/soc/ti/aess/`) and the compatible is
