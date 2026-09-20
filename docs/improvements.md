@@ -943,6 +943,88 @@ playing the daemon measures 1 tick in 6 seconds — call it zero. There is no
 standing drain to reclaim. The whole cost exists only while audio is playing,
 so "turn audio off to save power at rest" has nothing to collect.
 
+#### Update 2026-09-20 (later): a real game profiled, and matching the ratio backfires
+
+The earlier numbers here were taken with `paplay` on an otherwise idle machine.
+This pass measures a real title under load — Ship of Harkinian, an ARM-native
+build, so none of item 9's box86 caveats apply.
+
+**What it asks for**, which closes one of `audio.md`'s open questions:
+`s16le 2ch 32000Hz`, resampled `trivial` to 88200. That is a ratio of
+**2.75625:1** — ragged, the case `trivial` handles worst.
+
+**What audio costs this title.** `perf record -F 999 -a` for 50 s at thermal
+equilibrium, with the thermal profile holding the clock at 1.0 GHz:
+
+| process | share of all busy CPU |
+| --- | --- |
+| the game | 55.4% |
+| `alsa-sink` + `pulseaudio` + `PulseMainloop` | **18.4%** |
+| `Xorg` + `marco` + `mate-panel` | 10.8% |
+
+Against a run with audio removed entirely, the game's own share rises to 75.1%
+and the audio stack falls to 1.2% — so **about 18 points come back**, worth
++4.1% on mean frame rate and +11% on the steady tail. That is the ceiling on
+any audio-side work, and it is the number to beat.
+
+Note it is a ratio of busy samples, so unlike a `top` reading it is not a
+governor artefact. The clock still matters for a different reason: audio work
+is fixed per wall-second because the codec must be fed 88200 Hz regardless,
+while the game's work is elastic. Holding the clock at 1.0 instead of 1.5 GHz
+therefore *grows* audio's slice of the machine by about half again. The
+frequency cap and the audio cost compound against whatever is running.
+
+**The experiment: make the ratio exact.** `trivial` at 2:1 is a clean
+zero-order hold, so moving the game from 32000 to 44100 should sound better.
+The engine takes the rate as a parameter — `gAudioSpecs[].frequency` with
+pitch corrected by `resampleRate = 32000.0f / frequency` — so it is a small
+change, and one spec row already shipped at 22050.
+
+It costs **more**. Two interleaved pairs, `pulseaudio`'s own
+`utime + stime` over a 35 s window, second pair at an identical 78->79 C:
+
+| game output rate | pulseaudio | |
+| --- | --- | --- |
+| 32000 Hz (as shipped) | 536 jiffies | 15.3% of a core |
+| 44100 Hz | 658 jiffies | **18.8% of a core** |
+| | **+122** | **+3.5 points, +22.9%** |
+
+Both pairs agreed to within a tenth of a point (+22.9%, +22.8%).
+
+The mechanism is visible in the two rates: input to the daemon rose 37.8%
+while output stayed pinned at 88200. So the cost is part input-proportional
+(format widening, stream reads) and part output-proportional (resample, mix,
+the two remaps) — and a cleaner *ratio* cannot help, because `trivial` already
+costs the same per output sample whatever the ratio is.
+
+**This partly disagrees with the `paplay` table above** and the disagreement is
+not resolved. That table has 22050 at 10.3% and 44100 at 11.1% — doubling the
+input rate for +7.8% — and concludes "the input rate barely matters". Here a
+37.8% rise in input rate cost +22.9%. The two differ in more than one variable:
+idle versus a machine with both cores loaded, `paplay`'s large file-backed
+buffers versus a game handing over one frame at a time, and a clock at 1.0 GHz
+where cache pressure from the extra input data is likelier to show. Worth
+re-running the `paplay` sweep under load before trusting either slope.
+
+**So the app-side lever is closed.** Matching the *ratio* is a quality change
+that costs CPU. Only matching the *rate* — 88200, the copy path at ~3.5% of a
+core — reaches the cheap path, and for this title that would mean synthesising
+2.76x as many samples inside the game, whose own audio routines already measure
+~2.5% of all busy CPU. A back-of-envelope on that is roughly break-even, which
+is not enough to justify the disruption. Untested.
+
+What does remain untested and now looks more valuable: **the 2-channel sink**.
+Everything downstream of conversion currently moves four channels to deliver
+two, and that pipeline is the 15% measured above rather than a rounding error.
+
+**A warning for whoever measures this next.** Two obvious-looking ways to test
+"without PulseAudio" are both traps on this machine and both produce a
+convincing, entirely false speedup — a killed `pasuspender` leaves every sink
+suspended, and `SDL_AUDIODRIVER=alsa` never opens the codec at all. Both make
+the machine silent while looking like they worked. Details in `audio.md`. The
+18-point figure above is the honest version of that measurement, and it is
+correctly labelled as "audio off", not "audio faster".
+
 **One more rate, the one that matters for games.** The table above has 22050,
 44100 and 88200 but not 48000, which is what most SDL titles and all video ask
 for:

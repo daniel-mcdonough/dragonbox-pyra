@@ -84,6 +84,15 @@ work is identical; `ondemand` reads a small steady load as idle and settles at
 `/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq` before believing any
 audio CPU figure.
 
+**A real game, measured under load rather than at idle.** Ship of Harkinian
+asks for `s16le 2ch 32000Hz` and pulse resamples it `trivial` to 88200. With
+the game running and the thermal profile holding the clock at 1.0 GHz,
+`pulseaudio` takes **15.3% of a core** (536 jiffies in a 35 s window). Taken
+system-wide with `perf record -a`, the whole audio stack — `alsa-sink`,
+`pulseaudio` and `PulseMainloop` together — is **18.4% of all busy CPU**
+against the game's own 55.4%. Killing audio outright returns about 18 points
+to the game, which is the ceiling on anything audio-side.
+
 Two further things worth knowing before anyone optimises:
 
 * **Muting saves nothing.** The stream is still resampled and mixed; the
@@ -98,6 +107,24 @@ Two further things worth knowing before anyone optimises:
 ## Diagnosing silence, in order
 
 Work down. Each step is cheap and rules out a whole class.
+
+**0. Is something holding the sinks suspended?**
+
+    pactl list short sinks
+
+If all three read `SUSPENDED` while something is playing, nothing is broken
+downstream — the sinks have simply been left suspended. `pasuspender` does this
+deliberately for the life of its child and resumes on exit, so a `pasuspender`
+that was killed rather than allowed to exit leaves the machine silent
+indefinitely. Any stream started afterwards plays into a dead sink and is never
+heard. Resume with:
+
+    for s in alsa_output.hw_CARD_L15_DEV_0 speakers headphones; do
+      pactl suspend-sink "$s" 0
+    done
+
+`SUSPENDED` with **nothing** playing is normal and expected — that is
+`module-suspend-on-idle` doing its job. Only suspended-while-playing is a fault.
 
 **1. Is there a real sink, or the silent fallback?**
 
@@ -168,6 +195,20 @@ These all look like faults and are not. Each has been chased at least once.
 
 ## Traps that will cost you an afternoon
 
+* **A killed `pasuspender` leaves the whole machine silent.** It suspends every
+  sink and resumes them from its exit path, so `timeout -s KILL ... pasuspender
+  -- prog` — or anything else that SIGKILLs it — never resumes them. The failure
+  is silent and survives until something calls `pactl suspend-sink ... 0`.
+  Everything started in between plays into a dead sink, which makes it an easy
+  way to invalidate a whole afternoon of A/B measurements without noticing.
+* **`SDL_AUDIODRIVER=alsa` does not reach the codec on this machine.** SDL
+  reports initialising happily, and every playback PCM under `/proc/asound/`
+  stays `closed` — SDL's default ALSA device resolves to nothing that drives
+  the hardware here, and the 4-channel open the Speakers/Headphones split needs
+  is not something SDL will do. "Bypass PulseAudio per-app" is therefore not
+  available out of the box, and an app configured that way is silent, not fast.
+  Confirm with `for s in /proc/asound/card*/pcm*p/sub0/status; do head -1 $s; done`
+  before believing any measurement taken that way.
 * **`hw_params` of an open stream is not the device's capability.** It reports
   the *negotiated* rate. Reading `rate: 88200` there and concluding the
   hardware does only 88200 is wrong — `--dump-hw-params` on the free device
@@ -201,5 +242,10 @@ These all look like faults and are not. Each has been chased at least once.
   everything downstream of conversion, at the cost of the headphone/speaker
   split. A product decision, not a performance one.
 * **What a given app actually asks for.** `pactl list sink-inputs` prints each
-  live stream's sample spec. Nobody has profiled the titles that matter, so
-  which of them could be moved to 88200 is unknown.
+  live stream's sample spec. Partly answered: Ship of Harkinian asks for
+  `s16le 2ch 32000Hz`, a ragged 2.75625:1 against the link. Moving it to 44100
+  for an exact 2:1 was tried and **costs 23% more**, not less — see
+  `improvements.md` item 10. Matching the *ratio* is a quality lever only;
+  only matching the *rate* (88200) reaches the cheap path, and for this title
+  that would mean synthesising 2.76x the samples in the game instead. Other
+  titles are still unprofiled.
