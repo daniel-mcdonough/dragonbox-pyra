@@ -24,6 +24,7 @@ what the device actually says.
 | *(not on the original list)* Turn the compositor off | — | **Done and measured. 3.5% of all busy CPU, one command** |
 | *(not on the original list)* Fix the modeset hang | — | **Outranks everything here.** See `troubleshooting.md` |
 | *(not on the original list)* Transparent huge pages | — | **Not built at all.** One config symbol, plausible, unmeasured. See item 13 |
+| *(not on the original list)* Kernel security options, traded for speed | — | **Surveyed 2026-09-20.** One is worth 1-3%, everything else nothing. See item 14 |
 | Cortex-A15 / NEON rebuilds | Medium | Smaller than claimed. pixman already dispatches NEON at runtime |
 | Xorg to XLibre | Small–medium | **No performance value.** Possible correctness value, see below |
 | Strip legacy code from X | Small | None. Dropped |
@@ -283,6 +284,22 @@ at the median, which is -22.1% and -31.5% — the sweep predicted -23.4% and
 
 This item can be closed. What remains of it is the 18% gap to the `performance`
 governor, which is the ramp itself and which no `ondemand` setting reaches.
+
+**One thing left in it needs a rebuild, found 2026-09-20 while surveying the
+config for item 14.** `CONFIG_CPU_FREQ_GOV_SCHEDUTIL is not set`, so the
+governor that would attack the remaining 18% is not built. Every other governor
+is. `schedutil` drives frequency from the scheduler's own utilization signal at
+scheduler events, rather than from a sampled 20 ms window, which is exactly the
+mechanism the ramp tail in this item is made of — the tail that
+`sampling_down_factor` could not touch, because it holds the clock up *between*
+units of a burst and the first unit after real idle still pays.
+
+That is a reason to try it, not a prediction that it wins. It still ramps, this
+is a two-core ARM32 without EAS, and a well-tuned `ondemand` is a harder
+baseline to beat than an untuned one. It is one symbol in the same rebuild as
+item 13 or 14 and it is measurable with the sweep already written in
+`experiments/governor/`, so the cost of finding out is small. The one number to
+beat is already recorded: 18% off `performance`.
 
 ### 2. Thermals, and where the real limit is
 
@@ -1325,6 +1342,62 @@ Effort: one config symbol, one build, one evening of measurement. Risk: low to
 the machine, real to the frame times — which is the thing to measure, not the
 thing to assume.
 
+### 14. The Spectre v2 workaround, which costs more on an A15 than on anything else
+
+**Surveyed 2026-09-20 against the config and the kernel source. Not measured.**
+The ceiling below is reasoning, not a number, and it is low enough that it may
+not clear the noise floor of any load this machine runs.
+
+Meltdown does not apply to this processor. Spectre v2 does, and the workaround
+ARM specifies for this particular core is unusually expensive.
+
+Every other ARMv7 part invalidates the branch predictor with `BPIALL`, which is
+cheap. The A15's BTB is not invalidated by `BPIALL`, so the kernel falls back to
+`ICIALLU` — invalidate the **entire 32 KB L1 instruction cache**. In
+`arch/arm/mm/proc-v7-bugs.c`, the A15 case selects
+`harden_branch_predictor_iciallu` and logs the method. Confirm it on the
+machine:
+
+    dmesg | grep -i spectre        # CPUn: Spectre v2: using ICIALLU workaround
+
+That would be cheap if it happened rarely. It does not — it is wired into the
+context switch itself:
+
+    arch/arm/mm/proc-v7.S:628
+        globl_equ  cpu_ca15_switch_mm,  cpu_v7_iciallu_switch_mm
+
+So every `switch_mm`, meaning every switch to a different address space, throws
+away the instruction cache and refills it from L2. The only other call site is
+`arch/arm/mm/fault.c:141`, which fires on a fault that is already about to
+signal the process, and is nothing.
+
+**Why the ceiling is low anyway, and this is the important paragraph.** Kernel
+threads use lazy TLB and never call `switch_mm`, so the two i2c interrupt
+threads that dominate the idle profile are not paying it at all. The game under
+box86 is one process that runs for long slices. What is left is the
+`1602.exe` / `Xorg` / `pulseaudio` rotation — a few thousand switches a second —
+and each one costs only the refill of whatever gets re-executed before the next
+switch, not a full 32 KB. The estimate is **1-3% on a context-switch-heavy load
+and close to zero on a compute-bound inner loop.** A single thermal throttle
+step is larger than that, and item 2 says this machine takes those.
+
+**There is no cmdline opt-out.** `nospectre_v2` is not parsed anywhere under
+`arch/arm` in 5.6. It is `CONFIG_HARDEN_BRANCH_PREDICTOR=n`, reached by turning
+off `CONFIG_CPU_SPECTRE`, and a rebuild — or it stays.
+
+**What is actually traded.** The realistic attacker for Spectre v2 is
+JavaScript in a web browser. If this machine browses, that is a live vector and
+not a theoretical one, and the trade is a real one for 1-3%. If it ends up a
+game appliance that never opens a browser, there is no attacker and the trade
+is free. That is a decision about how the machine gets used, not about the
+kernel.
+
+**Do not combine this with item 13.** Both change memory behaviour, one build
+carrying both makes neither result attributable, and item 13 is the one with
+the larger plausible payoff. Measure that first.
+
+Effort: one symbol, one build. Risk: none to stability.
+
 ---
 
 ## Not worth doing
@@ -1352,6 +1425,43 @@ the same list as tuning a governor.
 
 **Chasing memory bandwidth.** Already at the top CORE operating point. Nothing
 to gain.
+
+**Trading the rest of the kernel's security options for speed.** Surveyed
+2026-09-20 against `~/git/dragonbox-pyra-build/kernel/src/.config`, the config
+that built the running kernel. The conclusion is that there is almost nothing
+here, and the reason is worth recording so it is not re-derived: **this is not
+a distribution kernel.** `pyra_defconfig` has already been trimmed by somebody
+who knew what they were doing, and most of what would be worth turning off on a
+Debian kernel is either already off or not applicable to this hardware.
+
+Item 14 is the one exception and is the only one with a mechanism big enough to
+name. Everything else:
+
+| Option | State | Why it gives nothing |
+| --- | --- | --- |
+| `INIT_ON_ALLOC_DEFAULT_ON`, `INIT_ON_FREE_DEFAULT_ON` | already `n` | This is the single biggest free win on a Debian-built kernel — zeroing every allocation costs real memory bandwidth on a part that has none spare. This tree does not enable it. Nothing to turn off, and `init_on_alloc=0` on the cmdline is a no-op here |
+| `CPU_SW_DOMAIN_PAN` | not applicable | Depends on `!ARM_LPAE`, and this machine is `ARM_LPAE=y` because it has 4 GB. The DACR write around every `copy_{to,from}_user` is not happening. On a non-LPAE ARMv7 this would be worth more than item 14 |
+| `HARDENED_USERCOPY` | `y` | A bounds check per user copy (`check_object_size`, `thread_info.h:152`). Real, but it is a handful of instructions against a copy that already touches memory. Sub-1%, and the failure it catches is a kernel heap overread reaching userspace |
+| `STACKPROTECTOR_STRONG` | `y` | A canary load and compare per function with a stack array. Spread across the whole kernel, which means it is everywhere and nowhere — around 1% of kernel time, and kernel time is 35% of this machine's busy total, so the ceiling is ~0.3% overall |
+| `SLAB_FREELIST_RANDOM`, `SLAB_FREELIST_HARDENED` | `y` | Slab allocation locality and a pointer XOR. Measurable only in an allocator microbenchmark |
+| `FORTIFY_SOURCE` | `y` | Almost entirely compile-time. The runtime residue is checks the compiler could not fold, on paths with a known size |
+| `AUDIT`, `AUDITSYSCALL` | `y` | Compiled in, but gated on `TIF_SYSCALL_WORK`, which nothing sets unless audit rules are loaded. `auditd` is not installed. The cost is already zero and `audit=0` changes nothing measurable |
+| `SECCOMP_FILTER` | `y` | **Do not turn this off.** Processes without a filter pay nothing, and systemd's `SystemCallFilter=` on units depends on it. Removing it breaks service startup to buy nothing |
+| `MODULE_SIG` | `y` | Build-time only. Turning it off saves signing time in `pyra-crossbuild.sh`, not cycles on the device |
+| `SECURITY_APPARMOR` + `SELINUX` | `y`, AppArmor is `CONFIG_DEFAULT_SECURITY` | The only one worth a look, and it needs no rebuild to answer. LSM hooks sit on every `open`, `exec` and `mmap`. But the hooks cost nothing if no profiles are loaded — check `cat /sys/kernel/security/apparmor/profiles` on the device, and if it is empty there is nothing here. If it is not, `apparmor=0` on a second `extlinux` entry tests it for the price of a reboot |
+| `ARM_ERRATA_798181` | `y`, and active | Not a security option and not a candidate at any price. It is a data corruption erratum — moving a page while a process is accessing it. It is already runtime-gated: `erratum_a15_798181_init()` in `arch/arm/kernel/smp_tlb.c` reads MIDR and REVIDR at boot. This machine is **r2p2**, which lands in the branch that selects either the partial handler or the full broadcast one depending on REVIDR bit 4, so it *is* running, and the full variant adds an IPI to the other core on every `flush_tlb_*` (`broadcast_tlb_mm_a15_erratum`). Expensive, mandatory, and the failure mode is silent corruption |
+| `DEBUG_LIST`, `DEBUG_SG`, `DEBUG_PREEMPT`, `SCHED_DEBUG`, `FUNCTION_TRACER`, `UBSAN`, `KASAN` | already `n` | All of them. A distro kernel ships several of these on; this one does not |
+
+**And the knobs that are already set the way you would set them.** Recorded so
+nobody spends an afternoon on it: `CC_OPTIMIZE_FOR_PERFORMANCE=y` (not size),
+`HZ=100`, `NO_HZ_IDLE=y`, `PREEMPT=y` — which is the right choice on a machine
+running a game and an audio thread, and is also what makes the lockup detector
+work in `building.md` — `ARM_PATCH_IDIV=y`, `SLUB` rather than `SLAB`, and
+`CPU_BPREDICT_DISABLE` correctly off. `THUMB2_KERNEL` is off and would cut the
+kernel's instruction footprint by roughly a quarter, which is mildly
+interesting next to item 14's I-cache problem, but it is a large change to the
+whole kernel for an unmeasured second-order effect and it is not worth being
+the first thing tried.
 
 ---
 
