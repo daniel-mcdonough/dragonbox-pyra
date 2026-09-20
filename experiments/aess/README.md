@@ -22,9 +22,18 @@ Everything between here and working audio is software, and it is all present
 in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
 `aess_port.c` — switched off rather than missing.
 
-## The patch
+## The patches
 
     0013-asoc-ti-omap-abe-twl6040-build-the-aess-dai-links.patch
+    0014-asoc-ti-aess-load-the-firmware-s-own-container-format.patch
+
+`container-check.c` is the 0014 walker lifted out so it can be compiled and
+run against a real firmware file with no kernel involved:
+
+    cc -O1 -Wall container-check.c -o container-check
+    ./container-check /lib/firmware/omap_aess-adfw.bin
+
+### 0013
 
 fills in `omap_abe_add_aess_dai_links()`, which was an empty stub: four locals
 declared, none used, `return 0`. That emptiness is the root cause of the whole
@@ -55,19 +64,34 @@ machine where the AESS fails behaves exactly as it does today.
 with no errors, and warnings in the file drop from 34 to 14 because the
 placeholder DEFS are gone. It has not been run on hardware.
 
+### 0014
+
+Makes the firmware load. `snd_soc_tplg_component_load()` rejected the blob
+with `invalid header size for type 0 at offset 0x0 size 0x1a5e8`, and the
+failure was swallowed by an `#if 0` whose comment concluded the format had
+changed. 0x1a5e8 is 108008 — the whole file — which is the giveaway: the
+loader is reading `size` from the wrong offset. `snd_soc_tplg_hdr` is 36 bytes
+(`magic, abi, version, type, size, vendor_type, payload_size, index, count`);
+every block here carries 24 (`magic, abi, type, vendor_type, version, size`).
+
+The patch keeps trying the topology container first and falls back to walking
+the legacy one, so a future firmware that really is a topology file still
+takes the normal path. Detection is "walks to EOF exactly", because a
+mis-parse desynchronises within a block or two. `aess_load_fw_data()` also
+gains a check the topology path never had: the four image sizes plus the
+header must equal the block exactly.
+
+The standard block types the container also carries — mixers, enums, bytes,
+DAPM widgets — are deliberately not handled; the old container does not carry
+the element count the topology loader wants. So this makes the DSP loadable
+and runnable but does not create the topology's kcontrols.
+
 ## What is still needed, in order
 
-1. **A firmware container shim.** `snd_soc_tplg_component_load()` rejects the
-   blob with `invalid header size for type 0 at offset 0x0 size 0x1a5e8`.
-   0x1a5e8 is 108008 — the whole file. The firmware is **not** a changed or
-   broken format, which is the conclusion recorded upstream. It is a container
-   of 17 blocks each with a 24-byte header — `magic, abi, type, vendor_type,
-   version, size` — that walks to EOF exactly. 5.6's `snd_soc_tplg_hdr` is 36
-   bytes with a different field order, so the parser reads `size` from the
-   wrong offset. Block type 1000 is the firmware (PMEM 8192, CMEM 7852, DMEM
-   16384, SMEM 21600, summing to its own block size) and 1001 the config.
-   Parsing it by hand and loading those four images is what makes the DSP run
-   at 4 kHz, so the format is proven good.
+1. **The kcontrols.** The AESS mixer gains still have no userspace controls,
+   because 0014 does not load the container's control blocks. Without them
+   nothing can unmute `MIXDL1_MM_DL`, which the firmware image leaves at
+   `GAIN_MUTE` along with all 36 gains.
 2. **The PCM ops conversion.** `omap_aess_platform` has `.ops =
    &omap_aess_pcm_ops` commented out, and it cannot simply be restored:
    `snd_soc_component_driver` has no `.ops` member in 5.6, the `snd_pcm_ops`

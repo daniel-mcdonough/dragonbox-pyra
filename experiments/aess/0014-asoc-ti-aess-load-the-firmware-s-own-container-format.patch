@@ -1,0 +1,340 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: load the firmware's own container format
+
+The AESS firmware shipped in linux-firmware as omap_aess-adfw.bin has never
+loaded on this tree. snd_soc_tplg_component_load() rejects it with
+
+  aess 401f1000.aess: ASoC: invalid header size for type 0 at offset 0x0 size 0x1a5e8
+
+and the failure is currently swallowed by an #if 0 whose comment reads "fw
+loading fails because header size seems to be wrong". The conclusion recorded
+elsewhere is that the firmware's format changed and can no longer be read.
+
+That conclusion is wrong, and 0x1a5e8 is the clue: it is 108008, the length of
+the entire file. The loader is reading "size" out of the wrong offset.
+
+struct snd_soc_tplg_hdr is 36 bytes:
+
+	magic, abi, version, type, size, vendor_type, payload_size, index, count
+
+Every block in this file carries 24 bytes:
+
+	magic, abi, type, vendor_type, version, size
+
+Different order, fewer fields. Walking the file with the second layout lands
+on all 17 of its blocks and ends exactly at EOF -- which is the test used
+here, because a mis-parse desynchronises within a block or two and then either
+loses the magic or overruns. The two vendor blocks it finds are the firmware
+(type 1000: PMEM 8192, CMEM 7852, DMEM 16384, SMEM 21600, which with the
+20-byte fw_header sum to the block's own 54048 bytes) and the config
+(type 1001, 6160 bytes). Loaded by hand from userspace, those images run the
+DSP at its specified 4 kHz scheduling rate and the 44.1/48 kHz event-generator
+reclock tracks its divisor to four decimal places, so the firmware is good.
+
+So: keep trying the topology container first, and fall back to walking the
+legacy one. A future firmware that is a real topology file still takes the
+normal path; detection never touches driver state before it is sure.
+
+aess_load_fw() and aess_load_config() are split so the block body is shared
+between the topology path and the container path, rather than duplicated.
+aess_load_fw_data() also gains a check the topology path never had: the four
+image sizes plus the header must equal the block exactly, because if they do
+not, the block was not parsed the way its author laid it out and loading it
+would write garbage into the DSP's memories.
+
+The standard block types the container also carries -- mixers, enums, bytes
+and DAPM widgets -- are deliberately NOT handled. They would need the topology
+loader, and the old container does not carry the element count it wants. This
+patch makes the DSP loadable and runnable; it does not create the topology's
+kcontrols, so the AESS mixer gains still have no userspace controls. That is
+the next piece of work, along with converting omap_aess_pcm_ops to the
+flattened snd_soc_component_driver callbacks, since 5.6 has no .ops member.
+
+Verified: `make sound/soc/ti/` under arm-linux-gnueabihf exits 0 with no new
+warnings. The walker was additionally compiled standalone and run against the
+real omap_aess-adfw.bin, where it reports a legacy container of 17 blocks,
+finds VENDOR_FW at 0xba88 with header+images matching its block size exactly
+and VENDOR_CONFIG at 0x18dc0, and rejects a container whose size field is
+bogus. Built, not booted.
+
+--- a/sound/soc/ti/aess/omap-aess-fw.c
++++ b/sound/soc/ti/aess/omap-aess-fw.c
+@@ -37,6 +37,7 @@
+ #include <sound/tlv.h>
+ #include <sound/soc-topology.h>
+ 
++#include <linux/firmware.h>
+ #include "omap-aess-priv.h"
+ #include "aess_mem.h"
+ #include "aess_gain.h"
+@@ -597,20 +598,43 @@
+ 	return 0;
+ }
+ 
+-static int aess_load_fw(struct snd_soc_component *component,
+-			struct snd_soc_tplg_hdr *hdr)
++static int aess_load_fw_data(struct snd_soc_component *component,
++			     const void *fw_data, size_t size)
+ {
+ 	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
+-	const void *fw_data = snd_soc_tplg_get_data(hdr);
++
++	if (size < sizeof(struct fw_header)) {
++		dev_err(aess->dev, "Firmware block too small (%zu bytes)\n",
++			size);
++		return -EINVAL;
++	}
+ 
+ 	/* get firmware and coefficients header info */
+ 	memcpy(&aess->hdr, fw_data, sizeof(struct fw_header));
+-	if (hdr->size > OMAP_AESS_MAX_FW_SIZE) {
+-		dev_err(aess->dev, "Firmware too large (%d bytes)\n",
+-			hdr->size);
++	if (size > OMAP_AESS_MAX_FW_SIZE) {
++		dev_err(aess->dev, "Firmware too large (%zu bytes)\n",
++			size);
+ 		return -ENOMEM;
+ 	}
+-	dev_info(aess->dev, "AESS firmware size %d bytes\n", hdr->size);
++
++	/*
++	 * The four images follow the header back to back, so their sizes plus
++	 * the header must be exactly the block. If they are not, the block
++	 * was not parsed the way its author laid it out and loading it would
++	 * write garbage into the DSP's memories.
++	 */
++	if (sizeof(struct fw_header) + aess->hdr.pmem_size +
++	    aess->hdr.cmem_size + aess->hdr.dmem_size +
++	    aess->hdr.smem_size != size) {
++		dev_err(aess->dev,
++			"Firmware block is %zu bytes but its images sum to %zu\n",
++			size, sizeof(struct fw_header) + aess->hdr.pmem_size +
++			aess->hdr.cmem_size + aess->hdr.dmem_size +
++			aess->hdr.smem_size);
++		return -EINVAL;
++	}
++
++	dev_info(aess->dev, "AESS firmware size %zu bytes\n", size);
+ 	dev_info(aess->dev, "AESS mem P %d C %d D %d S %d bytes\n",
+ 		 aess->hdr.pmem_size, aess->hdr.cmem_size,
+ 		 aess->hdr.dmem_size, aess->hdr.smem_size);
+@@ -623,20 +647,33 @@
+ 	return 0;
+ }
+ 
+-static int aess_load_config(struct snd_soc_component *component,
+-			    struct snd_soc_tplg_hdr *hdr)
++static int aess_load_fw(struct snd_soc_component *component,
++			struct snd_soc_tplg_hdr *hdr)
++{
++	return aess_load_fw_data(component, snd_soc_tplg_get_data(hdr),
++				 hdr->size);
++}
++
++static int aess_load_config_data(struct snd_soc_component *component,
++				 const void *fw_data, size_t size)
+ {
+ 	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
+-	const void *fw_data = snd_soc_tplg_get_data(hdr);
+ 
+ 	/* store AESS config for later context restore */
+-	dev_info(aess->dev, "AESS Config size %d bytes\n", hdr->size);
++	dev_info(aess->dev, "AESS Config size %zu bytes\n", size);
+ 
+ 	aess->fw_config = fw_data;
+ 
+ 	return 0;
+ }
+ 
++static int aess_load_config(struct snd_soc_component *component,
++			    struct snd_soc_tplg_hdr *hdr)
++{
++	return aess_load_config_data(component, snd_soc_tplg_get_data(hdr),
++				     hdr->size);
++}
++
+ /* callback to handle vendor data */
+ static int aess_vendor_load(struct snd_soc_component *component,
+ 			    int index,
+@@ -659,6 +696,129 @@
+ 	return 0;
+ }
+ 
++/*
++ * omap_aess-adfw.bin is not in the topology container format this kernel
++ * parses, and it is not corrupt either -- a point worth making, because the
++ * conclusion recorded elsewhere is that "the format of the binary AESS
++ * firmware has changed so the standard firmware loader does not recognize
++ * it". What actually happens is that snd_soc_tplg_component_load() reads
++ * struct snd_soc_tplg_hdr, which is 36 bytes:
++ *
++ *	magic, abi, version, type, size, vendor_type, payload_size,
++ *	index, count
++ *
++ * while every block in this file carries a 24-byte header laid out as:
++ *
++ *	magic, abi, type, vendor_type, version, size
++ *
++ * The fields are in a different order and there are fewer of them, so the
++ * loader reads "size" out of the wrong offset. That is exactly the reported
++ * failure -- "invalid header size for type 0 at offset 0x0 size 0x1a5e8" --
++ * where 0x1a5e8 is 108008, the length of the whole file.
++ *
++ * The blob is fine. Walking it with the layout above lands on all 17 of its
++ * blocks and ends exactly at EOF, and the two vendor blocks it carries then
++ * load and run the DSP.
++ */
++struct omap_aess_fw_block {
++	__le32 magic;
++	__le32 abi;
++	__le32 type;
++	__le32 vendor_type;
++	__le32 version;
++	__le32 size;		/* payload bytes, excluding this header */
++} __packed;
++
++/*
++ * Walking to EOF exactly is the test for this format, not a guess at one
++ * field: a mis-parse desynchronises within a block or two and then either
++ * loses the magic or overruns. Returns false without touching anything if
++ * the file is a real topology container, so a future firmware still works.
++ */
++static bool omap_aess_is_legacy_container(struct omap_aess *aess,
++					  const struct firmware *fw)
++{
++	size_t off = 0;
++	int blocks = 0;
++
++	while (off + sizeof(struct omap_aess_fw_block) <= fw->size) {
++		const struct omap_aess_fw_block *b =
++			(const struct omap_aess_fw_block *)(fw->data + off);
++		size_t avail, size;
++
++		if (le32_to_cpu(b->magic) != SND_SOC_TPLG_MAGIC)
++			return false;
++
++		off += sizeof(*b);
++		avail = fw->size - off;
++		size = le32_to_cpu(b->size);
++		if (size > avail)		/* no overflow: both bounded */
++			return false;
++
++		off += size;
++		blocks++;
++	}
++
++	if (off != fw->size)
++		return false;
++
++	dev_info(aess->dev, "AESS firmware is a legacy container, %d blocks\n",
++		 blocks);
++	return true;
++}
++
++/*
++ * Load the two vendor blocks out of a legacy container.
++ *
++ * The standard block types it also carries -- mixers, enums, bytes and DAPM
++ * widgets -- are NOT handled here. Those would need the topology loader, and
++ * the old container does not carry the element count it wants. So this makes
++ * the DSP loadable and runnable; it does not create the topology's kcontrols.
++ */
++int omap_aess_load_container(struct snd_soc_component *component,
++			     const struct firmware *fw)
++{
++	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	size_t off = 0;
++	int ret;
++
++	if (!omap_aess_is_legacy_container(aess, fw))
++		return -EINVAL;
++
++	while (off + sizeof(struct omap_aess_fw_block) <= fw->size) {
++		const struct omap_aess_fw_block *b =
++			(const struct omap_aess_fw_block *)(fw->data + off);
++		const void *data = fw->data + off + sizeof(*b);
++		size_t size = le32_to_cpu(b->size);
++
++		switch (le32_to_cpu(b->type)) {
++		case SND_SOC_TPLG_TYPE_VENDOR_FW:
++			ret = aess_load_fw_data(component, data, size);
++			if (ret < 0)
++				return ret;
++			break;
++		case SND_SOC_TPLG_TYPE_VENDOR_CONFIG:
++			ret = aess_load_config_data(component, data, size);
++			if (ret < 0)
++				return ret;
++			break;
++		default:
++			break;
++		}
++
++		off += sizeof(*b) + size;
++	}
++
++	if (!aess->fw_data || !aess->fw_config) {
++		dev_err(aess->dev,
++			"AESS container has no %s block\n",
++			aess->fw_data ? "config" : "firmware");
++		return -EINVAL;
++	}
++
++	return 0;
++}
++
+ struct snd_soc_tplg_ops soc_tplg_ops = {
+ 	.vendor_load	= aess_vendor_load,
+ 	.io_ops		= omap_aess_fw_ops,
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -477,18 +477,28 @@
+ 	pm_runtime_enable(aess->dev);
+ 	pm_runtime_irq_safe(aess->dev);
+ 
++	/*
++	 * Try the standard topology container first, so a firmware that is
++	 * one keeps working. The blob shipped in linux-firmware is not: it
++	 * uses a 24-byte block header where snd_soc_tplg_hdr is 36, which is
++	 * why this used to fail with "invalid header size for type 0 at
++	 * offset 0x0 size 0x1a5e8" -- 0x1a5e8 being the whole file. Fall back
++	 * to walking that container directly; see omap_aess_load_container().
++	 */
+ 	ret = snd_soc_tplg_component_load(component, &soc_tplg_ops,
+ 					  aess->fw, 0);
+ 	if (ret < 0) {
+-		dev_err(component->dev, "request for AESS FW failed %d\n", ret);
+-#if 0
+-/*
+- * fw loading fails because header size seems to be wrong
+- *	[    7.404714] aess 401f1000.aess: ASoC: invalid header size for type 0 at offset 0x0 size 0x1a5e8.
+- */
++		dev_dbg(component->dev,
++			"AESS: not a topology container (%d), trying the legacy layout\n",
++			ret);
+ 
+-		goto out;
+-#endif
++		ret = omap_aess_load_container(component, aess->fw);
++		if (ret < 0) {
++			dev_err(component->dev,
++				"AESS firmware could not be loaded: %d\n",
++				ret);
++			goto out;
++		}
+ 	}
+ 
+ 	ret = request_threaded_irq(aess->irq, NULL,
+--- a/sound/soc/ti/aess/omap-aess-priv.h
++++ b/sound/soc/ti/aess/omap-aess-priv.h
+@@ -393,6 +393,10 @@
+ /* Extern variables, structures, functions */
+ extern struct snd_soc_tplg_ops soc_tplg_ops;
+ extern struct snd_soc_component_driver omap_aess_platform;
++
++struct firmware;
++int omap_aess_load_container(struct snd_soc_component *component,
++			     const struct firmware *fw);
+ extern struct snd_soc_dai_driver omap_aess_dai[6];
+ 
+ int aess_mixer_enable_mono(struct omap_aess *aess, int id, int enable);
