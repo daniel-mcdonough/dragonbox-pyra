@@ -79,7 +79,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
 | [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
-| [docs/fixes.md](docs/fixes.md) | The nine fixes, what each one is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The ten fixes, what each one is for, and the diagnosis behind it. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |
@@ -117,7 +117,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all nine fixes to a mounted rootfs, before the card's first boot. |
+| `pc/pyra-trixie-prep.sh` | Applies all ten fixes to a mounted rootfs, before the card's first boot. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |

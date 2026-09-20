@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the nine known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the ten known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -67,6 +67,9 @@ CHARGE_FIX=$PAYLOADS/pyra-charge-current.sh
 
 AUDIO_FIX=$PAYLOADS/pyra-audio-route.sh
 [[ -x $AUDIO_FIX ]] || die "fix9: pyra-audio-route.sh not found or not executable (looked in $PAYLOADS)"
+
+GREETER_FIX=$PAYLOADS/pyra-greeter-audio.sh
+[[ -x $GREETER_FIX ]] || die "fix10: pyra-greeter-audio.sh not found or not executable (looked in $PAYLOADS)"
 
 
 echo
@@ -590,6 +593,65 @@ rm -rf "$AUDIO_STAGE"
 
 if [[ $AUDIO_CHANGED -eq 1 ]]; then
     ok "fix9: the card will have sound on speakers and headphones from first boot"
+fi
+
+# ---------------------------------------------------------------------- fix 10
+#
+# On some boots the desktop comes up silent even with fix 9 applied, and stays
+# silent for the whole session. Measured on the hardware it hit 2 of the 6
+# boots on record:
+#
+#   15:59:38  card (L15) registers
+#   15:59:45  user@105 — the lightdm greeter — starts
+#   15:59:52  greeter pulseaudio STARTED, holding hw:CARD=L15
+#   15:59:59  user@1000 starts
+#   16:00:00  session pulseaudio FAILS: device busy
+#   16:00:14  greeter pulseaudio stops — fourteen seconds too late
+#
+# The greeter runs a PulseAudio of its own, and pyra.pa opens the codec as a
+# raw ALSA device with module-alsa-sink, which is an exclusive open. Whichever
+# instance arrives first owns the card. When the greeter wins, the session
+# daemon fails to load the sink, both remap sinks fail behind it, and the
+# session is left on the silent auto_null fallback. PulseAudio never retries.
+#
+# The card cannot be shared instead: module-udev-detect would arbitrate it
+# properly but cannot give the 4-channel open the Speakers/Headphones split
+# depends on. So the second claimant is removed rather than taught to share.
+# A login greeter on a handheld has no use for audio; the only usual consumer
+# is an accessibility reader at the login prompt, which this image does not
+# run. pyra-greeter-audio.sh --undo puts it back.
+#
+# ConditionUser=!lightdm is evaluated by each user's own systemd instance
+# against the user it runs as, so one file in /etc/systemd/user skips the unit
+# for the greeter and leaves every other user alone. It shadows the packaged
+# unit in /usr/lib rather than editing it, so an upgrade will not revert it.
+
+GREETER_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix10.XXXXXX")
+if ! GREETER_FILES=$("$GREETER_FIX" --emit-into "$GREETER_STAGE" 2>&1); then
+    rm -rf "$GREETER_STAGE"
+    die "fix10: could not generate the greeter drop-ins:
+       $GREETER_FILES"
+fi
+
+GREETER_CHANGED=0
+while read -r staged; do
+    [[ -n $staged ]] || continue
+    rel=${staged#$GREETER_STAGE}
+    dst=$ROOT$rel
+    if [[ -e $dst ]] && cmp -s "$staged" "$dst"; then
+        ok "fix10: ${rel} already in place"
+        continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cat "$staged" > "$dst"
+    chmod --reference="$staged" "$dst"
+    ok "fix10: wrote ${rel}"
+    GREETER_CHANGED=1
+done <<<"$GREETER_FILES"
+rm -rf "$GREETER_STAGE"
+
+if [[ $GREETER_CHANGED -eq 1 ]]; then
+    ok "fix10: the greeter will not take the sound card from the session"
 fi
 
 echo

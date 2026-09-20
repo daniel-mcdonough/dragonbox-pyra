@@ -1,4 +1,4 @@
-# The nine fixes, and what they actually do
+# The ten fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -660,5 +660,88 @@ The **Output** tab, which is the one that does anything here, correctly shows
 all three. Loading `module-alsa-card` to populate the Hardware tab would
 replace the 4-channel sink and destroy the speaker/headphone split, in
 exchange for a profile dropdown with one usable entry. Not worth it.
+
+## Fix 10 — the login greeter takes the sound card, and the session never gets it back
+
+With fix 9 applied the machine has sound — on most boots. On the rest the
+desktop comes up silent and stays silent for the whole session, and the only
+way back is restarting PulseAudio by hand. It hit **2 of the 6 boots on
+record**, which is what kept it hidden: it looked like fix 9 intermittently
+failing rather than a second fault sitting behind it.
+
+    15:59:38  card (L15) registers
+    15:59:45  user@105 — the lightdm greeter — starts
+    15:59:52  greeter pulseaudio STARTED, holding hw:CARD=L15
+    15:59:59  user@1000 starts
+    16:00:00  session pulseaudio FAILS: device busy
+    16:00:14  greeter pulseaudio stops — fourteen seconds too late
+
+The greeter runs a PulseAudio of its own. `/etc/pulse/pyra.pa` opens the codec
+as a raw ALSA device with `module-alsa-sink`, which is an **exclusive** open,
+so whichever instance arrives first owns the card outright. When the greeter
+wins, the session daemon logs
+
+    Failed to load module "module-alsa-sink" (...): initialization failed
+    Master sink not found
+
+and both `module-remap-sink` instances fail behind it, taking `speakers` and
+`headphones` with them. What is left is `auto_null`, the silent dummy sink
+`module-always-sink` provides as a last resort. PulseAudio does not retry, so
+the greeter releasing the card fourteen seconds later changes nothing.
+
+This is worth separating from fix 9 clearly, because the symptom is identical
+and the cause is not. Fix 9 was the codec shipping switched off, which
+silenced **every** boot. This silences a **minority** of boots on top of it.
+Neither one hides the other once both are fixed.
+
+Note also that the card's number is not stable across boots — L15 was card 4
+on one boot and card 3 on the next. Nothing here depends on it (`pyra.pa`,
+fix 9's udev rule and this fix all address the card by name or by attribute),
+but it is worth knowing before anyone writes `hw:4` somewhere.
+
+### Why not arbitrate instead
+
+A stock PulseAudio uses `module-udev-detect`, which claims cards through
+ALSA's reservation protocol and hands them over politely. `pyra.pa` cannot:
+it needs the card opened as one 4-channel device so the two remap sinks can
+split front (headphones) from rear (speakers), and that means a raw exclusive
+open with no arbitration. Going back to `module-udev-detect` would fix this
+race and destroy the separate Speakers and Headphones sinks — the same trade
+rejected under fix 9 for the MATE Hardware tab.
+
+So the fix removes the second claimant rather than teaching the two to share.
+A login greeter on a handheld has no use for audio; the usual consumer is an
+accessibility reader at the login prompt, which this image does not run.
+
+### The fix
+
+`device/pyra-greeter-audio.sh` installs two drop-ins:
+
+    /etc/systemd/user/pulseaudio.service.d/10-no-greeter.conf
+    /etc/systemd/user/pulseaudio.socket.d/10-no-greeter.conf
+
+each carrying one line, `ConditionUser=!lightdm`. That condition is evaluated
+by **each user's own systemd instance** against the user it is running as, so
+a single file in `/etc` skips the unit in the greeter's manager and leaves
+every other user untouched. The socket needs it as well as the service, or the
+socket would start the service on the first connection.
+
+`--check` reports the state, including whether the session is currently sitting
+on `auto_null`; `--undo` removes both files; `--emit-into ROOT` writes them to
+a mounted rootfs offline.
+
+**Like fixes 8 and 9, this one does not edit a packaged file.** It shadows
+`/usr/lib/systemd/user/pulseaudio.{service,socket}` from `/etc/systemd/user`,
+which takes precedence, so an upgrade will not silently revert it.
+
+**Verified, both directions, without waiting for a lucky boot.** The greeter's
+user manager was started by hand with `systemctl start user@105.service`:
+before the fix it spawned a PulseAudio owned by uid 105; after the fix it does
+not, and that manager reports `ConditionResult=no` for both units. The same
+drop-in was then checked from the desktop session, where it reports
+`ConditionResult=yes`, and `pulseaudio.service` was restarted for real and came
+back with all three sinks and `speakers` as the default. A boot that would
+otherwise have lost the race has **not** been observed since the fix — that
+needs repeated reboots to catch a 1-in-3 event.
 
 ---
