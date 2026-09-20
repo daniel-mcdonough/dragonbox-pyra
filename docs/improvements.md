@@ -23,6 +23,7 @@ what the device actually says.
 | Optimise 2D X rendering, EXA, pixman | Medium–large | **Fills and blits are already accelerated.** The gap is image readback |
 | *(not on the original list)* Turn the compositor off | — | **Done and measured. 3.5% of all busy CPU, one command** |
 | *(not on the original list)* Fix the modeset hang | — | **Outranks everything here.** See `troubleshooting.md` |
+| *(not on the original list)* Transparent huge pages | — | **Not built at all.** One config symbol, plausible, unmeasured. See item 13 |
 | Cortex-A15 / NEON rebuilds | Medium | Smaller than claimed. pixman already dispatches NEON at runtime |
 | Xorg to XLibre | Small–medium | **No performance value.** Possible correctness value, see below |
 | Strip legacy code from X | Small | None. Dropped |
@@ -1233,6 +1234,96 @@ within about a minute, against a kernel that is otherwise identical and runs
 for hours. The `#if 0` in the tree is best read as somebody having found the
 same thing. Reopening this would need a serial console, because whatever
 happens takes the machine before it can write a word.
+
+### 13. Transparent huge pages, which this kernel does not build
+
+**Written 2026-09-20 from the config, not from the device. Nothing here has
+been measured yet.** It is on this list rather than in "smaller items" because
+it is one config symbol against the machine's worst-understood cost, and
+because every part it depends on is already built.
+
+The config that built the running kernel says:
+
+    # CONFIG_TRANSPARENT_HUGEPAGE is not set
+
+Everything it needs is already on. From the same `.config`:
+
+    CONFIG_HAVE_ARCH_TRANSPARENT_HUGEPAGE=y
+    CONFIG_COMPACTION=y
+    CONFIG_MIGRATION=y
+
+So this is not a patch and not a backport. It is one symbol in
+`pyra_defconfig`, and the arch support comes free from `CONFIG_ARM_LPAE=y`,
+which this machine has because it has 4 GB of RAM. `arch/arm/Kconfig:1580`
+selects the arch capability; `pgtable-3level.h:36` sets `PMD_SHIFT` to 21, so
+the huge page here is 2 MB.
+
+**Why it should pay on this processor specifically.** The Cortex-A15 has a
+512-entry unified L2 TLB. With 4 KB pages that is 2 MB of reach — smaller than
+the working set of anything on the "what the whole machine is actually doing"
+table above. Every miss past it is a page table walk, and LPAE makes that walk
+three levels deep, so a miss costs up to three dependent memory accesses on a
+machine already at the top CORE operating point with nothing left to give on
+bandwidth. One 2 MB entry covers what 512 entries cover today.
+
+This is the one mechanism on this list that attacks the *unattributed* cost.
+The attribution table accounts for where the CPU goes by process; it cannot see
+time spent stalled in a walk, because that time is charged to whatever process
+was unlucky enough to be running.
+
+**The test is Anno 1602 under box86 and x86 Wine.** `pyra-anno1602-test.sh`
+already runs it bounded and with a thermal guard, and `docs/box86.md` has the
+setup. It is the right load for this question for a reason beyond being the
+heaviest one documented: it stacks three layers of anonymous memory that all
+want the same TLB — the game's own heap inside the Wine prefix, box86's
+dynarec blocks, and gl4es's buffers underneath both. A native ARM program with
+a small working set would show nothing here and prove nothing.
+
+    ./pyra-anno1602-test.sh -d 300 -p
+
+Use the ratio method from item 0: `1602.exe` cost relative to the machine's own
+busy total, across two runs, not absolute frame numbers. The game's own CPU
+swings from 30% to 88% of a core depending on what is on screen.
+
+**How to build it.** A `kernel-thp` variant in `pyra-crossbuild.sh` off the fix
+kernel, its own `CONFIG_LOCALVERSION`, installed beside stock with
+`pyra-install-debug-kernel.sh` and selected with `pyra-boot-kernel.sh` in
+one-shot mode, exactly as item 12 describes. Nothing about this can hang the
+machine the way C2 did — it is a memory management option, not an idle state —
+but the one-shot path costs nothing and keeps the habit.
+
+**Measure that it is actually happening before measuring whether it helps.**
+Three places say so, and the first two are free:
+
+    grep AnonHugePages /proc/meminfo
+    grep -H . /proc/$(pgrep -f 1602.exe)/smaps_rollup | grep -i huge
+    perf stat -e dTLB-load-misses,iTLB-load-misses -p $(pgrep -f 1602.exe) -- sleep 30
+
+Check `perf list` first for that third one; whether this PMU exposes those two
+event names is not known and the ARMv7 mapping is not the same on every part.
+If `AnonHugePages` is near zero the rest of the measurement is meaningless, and
+that is the likely failure mode — see the next paragraph.
+
+**Three honest caveats, all of which could make this worth nothing.**
+
+- **`madvise` mode will probably measure zero.** It is the safe default and it
+  only promotes mappings that asked. Wine, box86 and the game ask for nothing.
+  To find out whether there is an effect at all, measure with
+  `echo always > /sys/kernel/mm/transparent_hugepage/enabled`, which is a
+  runtime knob and needs no second kernel once the option is built in. Decide
+  the permanent setting afterwards, from the number.
+- **khugepaged is a jitter risk on this machine.** 4 GB, no swap, and an SD
+  card rootfs. Compaction stalls show up as frame hitches, and on a handheld a
+  stutter is worse than a mean throughput gain is good. So the acceptance test
+  is frame *consistency*, not a mean. If the mean improves and the machine
+  hitches, the answer is no.
+- **It may simply be too small to see** under the noise of a game whose own
+  cost varies by a factor of three. Two runs before and two after, ratios only,
+  and be willing to call it unproven.
+
+Effort: one config symbol, one build, one evening of measurement. Risk: low to
+the machine, real to the frame times — which is the thing to measure, not the
+thing to assume.
 
 ---
 
