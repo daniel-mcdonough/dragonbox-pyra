@@ -1159,10 +1159,18 @@ both memory banks ON.
    an empty stub — four locals declared, none used, `return 0`. This is the
    whole reason the path is dead.
 2. The aess device's runtime PM reads `unsupported`; the driver never calls
-   `pm_runtime_enable()`, so `omap_aess_pm_get()` returns `-EACCES`. Even with
-   DAI links, nothing would power the engine. The probe has to force the module
-   on through ti-sysc to read it.
-3. `abe_54xx_pwrdm` in `arch/arm/mach-omap2/powerdomains54xx_data.c` sets
+   `pm_runtime_enable()`. This is worse than it first looks. Every accessor in
+   `sound/soc/ti/aess/aess_mem.h` — `omap_aess_write`, `omap_aess_read`,
+   `omap_aess_reg_write`, `omap_aess_reg_read`, `omap_aess_clear` — is wrapped
+   in `if (pm_runtime_active(aess->dev))`, and that is false for a device whose
+   runtime PM was never enabled. So it is not merely that nothing powers the
+   engine: **every register and memory write the driver makes is silently
+   dropped, and every read returns 0.** Fixing the DAI-link stub alone would
+   produce a card that appears to work and does nothing at all.
+3. The AESS init sequence in `omap_aess_pcm_probe()` is itself inside an
+   `#if 0`, commented "failed firmware load leads to missing/wrong opp and
+   failed omap_aess_init_mem". That is the third dead switch in the same path.
+4. `abe_54xx_pwrdm` in `arch/arm/mach-omap2/powerdomains54xx_data.c` sets
    `pwrsts_mem_on` to `PWRSTS_OFF_RET` for both banks where OMAP4's
    `abe_44xx_pwrdm` sets `PWRSTS_ON`. Not biting today — `PM_ABE_PWRSTCTRL`
    has both ONSTATE fields at ON from reset and the table has never been
@@ -1178,16 +1186,52 @@ untested idea" above, for free. Ship of Harkinian asks for 32000, which
 `MultiMedia1` does not list, so that title needs its `gAudioSpecs[].frequency`
 moved to 48000 to collect anything.
 
-**What the probe does not prove** is that the DSP core executes. It shows the
-register block and all three memories respond, and that PMEM is writable —
-which is what firmware loading needs — but no code has been run on it. That is
-the next test, and it is a much larger one.
+#### The DSP core executes, and the rate mechanism works
+
+`device/pyra-aess-run.py`, run 2026-09-20 on stock `5.6.19-pyradef`. It decodes
+the firmware container, loads all four memories, **builds the scheduler table
+the driver never builds**, and starts the engine. Results, reproduced twice:
+
+| | |
+| --- | --- |
+| `LOOPCOUNTER` (map entry 77, DMEM+0x6a4) | 3601 → 5203 → 6804 → 8405 → 10006 |
+| loop rate, `EVENT_GENERATOR_COUNTER` = 2047 | **3999.3 / s** |
+| loop rate, counter = 2227 | **3676.4 / s** |
+| measured ratio | **0.9193** |
+| expected ratio 2048/2228 | **0.9192** |
+
+The ABE's scheduling loop is specified at 4 kHz. The first number is 0.015% off
+that. The ratio is the real evidence, though: a free-running counter, or memory
+moving for any reason other than the DSP, would not track the event-generator
+divisor to four decimal places. It also demonstrates the 44.1 kHz family
+reclock — the mechanism this whole item turns on — working on OMAP5 silicon.
+Stopping the generator freezes the counter; restarting resumes it; with the
+engine stopped, zero DMEM words change in a second.
+
+**So the hardware is not the risk.** The OMAP4 firmware blob runs on the OMAP5
+AESS, at the right rate, with the rate-family switch functioning. Everything
+between here and working audio is software in the four items above.
+
+**What is still unproven** is audio actually flowing — no port is opened, no
+McPDM link is configured, nothing is heard. The step after this one is
+`omap_aess_reset_all_ports` / `init_gains` / `select_main_port`, then a DAI
+link, and that is where the driver's dropped-writes problem has to be fixed
+first rather than worked around from `/dev/mem`.
 
 **Caveats before anyone commits a week.** The driver is TI's out-of-tree OMAP4
-AESS code (9210 lines under `sound/soc/ti/aess/`), the firmware blob is OMAP4's,
-the compatible is `ti,omap4-aess`, and as far as this repo can tell nobody has
-driven it on an OMAP5. Whether `letux-7.3` still carries the directory has not
-been checked.
+AESS code (9210 lines under `sound/soc/ti/aess/`) and the compatible is
+`ti,omap4-aess`. Whether `letux-7.3` still carries the directory has not been
+checked.
+
+**Two hazards, both caused on 2026-09-20, both now guarded in the scripts.**
+Reading past a bank's real size raises an asynchronous external abort that
+wedges the L4 ABE interconnect; the device tree is not a safe source for those
+sizes, because it maps PMEM and CMEM as `0x1000` when both are at least 8 KiB
+and says `CHECKME` while doing it. Once wedged, handing the module back to
+ti-sysc oopses in `sysc_disable_module`, leaves the device in `RPM_SUSPENDING`
+permanently, and then hangs systemd shutdown for minutes — which costs a forced
+power-off and an unclean unmount. Clean shutdown works fine as long as no abort
+happened, which is what the size clamps are for.
 
 ### 11. The i2c interrupt floor
 
