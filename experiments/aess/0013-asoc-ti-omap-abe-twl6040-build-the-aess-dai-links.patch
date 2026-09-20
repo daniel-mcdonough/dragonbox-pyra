@@ -1,0 +1,341 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: omap-abe-twl6040: build the AESS DAI links
+
+omap_abe_add_aess_dai_links() has been an empty stub: four locals declared,
+none used, return 0. That one emptiness kept the entire AESS path dead, and
+not in the obvious way. With no DAI link referencing the AESS component the
+component is never bound into a card; an ASoC component's .probe runs on bind,
+not on snd_soc_register_component(); so omap_aess_pcm_probe() never runs; so
+its pm_runtime_enable() is never called; so pm_runtime_active() is false; so
+every accessor in sound/soc/ti/aess/aess_mem.h silently drops its writes and
+returns 0 on reads. One root cause, several symptoms that each look like a
+separate bug.
+
+The link definitions were not missing, only stranded. sound/soc/omap/
+omap-abe-twl6040.c still carries them -- abe_fe_dai[] and abe_be_mcpdm_dai[]
+-- but that directory is not referenced from sound/soc/Makefile or Kconfig and
+is not built, and the definitions use .cpu_dai_name/.codec_name/
+.platform_name, which were replaced by snd_soc_dai_link_component arrays.
+This converts them. The placeholder SND_SOC_DAILINK_DEFS(link_fe, ...) etc.
+in this file, which carried literal COMP_CODEC("abc", "def"), are what the
+conversion was evidently meant to fill in; they are replaced with real ones.
+
+Six front ends (MultiMedia1, MultiMedia2, Voice, Tones, MODEM, MultiMedia1 LP)
+and three McPDM back ends (DL1 headset, UL1 capture, DL2 handsfree) are added.
+The legacy direct-McPDM link is no longer added unconditionally: it would
+fight the AESS back ends over the same McPDM node, so it is now added only
+when the AESS is absent or its firmware did not load. That keeps the path
+every Pyra uses today exactly as it was when the AESS does not come up.
+
+Verified to compile: arm-linux-gnueabihf, 5.6.19, `make sound/soc/ti/` exits 0
+with no errors, and warnings in this file drop from 34 to 14 because the
+placeholder DEFS are gone. All newly referenced symbols are already exported
+(omap_aess_dc_set_hf_offset, twl6040_get_trim_value).
+
+NOT sufficient on its own, and deliberately so -- this is one reviewable step:
+
+ * The firmware still will not load through snd_soc_tplg_component_load(),
+   which reports "invalid header size for type 0 at offset 0x0 size 0x1a5e8".
+   0x1a5e8 is 108008, the whole file. The blob is NOT a changed or broken
+   format: it is a container of 17 blocks with a 24-byte header each --
+   magic, abi, type, vendor_type, version, size -- which walks to EOF exactly.
+   5.6's snd_soc_tplg_hdr is 36 bytes with a different field order, so the
+   parser reads size from the wrong offset. Block type 1000 is the firmware
+   (PMEM 8192, CMEM 7852, DMEM 16384, SMEM 21600, summing to its own size) and
+   1001 the config. Loading those by hand runs the DSP at its correct 4 kHz.
+   A container shim is the next patch.
+ * omap_aess_platform still has no PCM callbacks. `.ops = &omap_aess_pcm_ops`
+   is commented out and cannot simply be restored: snd_soc_component_driver
+   has no .ops member in 5.6, the snd_pcm_ops were flattened into per-callback
+   members. That is a second conversion of the same kind.
+ * All three McPDM back ends name the one DAI that omap-mcpdm.c registers.
+   TI's design expected an "mcpdm-abe" DAI beside the legacy one; the stranded
+   original carries a FIXME saying exactly that. Splitting them is the McPDM
+   multiplexing work.
+
+--- a/sound/soc/ti/omap-abe-twl6040.c
++++ b/sound/soc/ti/omap-abe-twl6040.c
+@@ -63,39 +63,50 @@
+ 				      "dit-hifi")),
+ 	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+ 
+-SND_SOC_DAILINK_DEFS(link_fe,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+-	DAILINK_COMP_ARRAY(COMP_CODEC("abc",
+-				      "def")),
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+-
+-SND_SOC_DAILINK_DEFS(link_be_mcpdm,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+-	DAILINK_COMP_ARRAY(COMP_CODEC("abc",
+-				      "def")),
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+-
+-SND_SOC_DAILINK_DEFS(link_be_mcbsp1,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+-	DAILINK_COMP_ARRAY(COMP_CODEC("abc",
+-				      "def")),
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+-
+-SND_SOC_DAILINK_DEFS(link_be_mcbsp2,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+-	DAILINK_COMP_ARRAY(COMP_CODEC("abc",
+-				      "def")),
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()));
++/*
++ * AESS front ends. The CPU DAI is one of the AESS component's own DAIs, named
++ * here and resolved to the aess node's of_node at runtime; the platform is the
++ * same component, which is what registers the PCMs. Converted from the
++ * pre-5.0 definitions still sitting in sound/soc/omap/omap-abe-twl6040.c,
++ * which used .cpu_dai_name/.platform_name strings that no longer exist.
++ */
++#define AESS_FE_DEFS(_id, _dai)					\
++SND_SOC_DAILINK_DEFS(_id,					\
++	DAILINK_COMP_ARRAY(COMP_CPU(_dai)),			\
++	DAILINK_COMP_ARRAY(COMP_DUMMY()),			\
++	DAILINK_COMP_ARRAY(COMP_EMPTY()))
++
++AESS_FE_DEFS(fe_mm1,   "MultiMedia1");
++AESS_FE_DEFS(fe_mm2,   "MultiMedia2");
++AESS_FE_DEFS(fe_voice, "Voice");
++AESS_FE_DEFS(fe_tones, "Tones");
++AESS_FE_DEFS(fe_modem, "MODEM");
++AESS_FE_DEFS(fe_mmlp,  "MultiMedia1 LP");
++
++/*
++ * McPDM back ends. The CPU side is the McPDM node; the codec side is one of
++ * the twl6040's dl1/ul/dl2 DAIs, which already exist in sound/soc/codecs/
++ * twl6040.c. NOTE: all three name the same single McPDM DAI, because this
++ * kernel's omap-mcpdm.c registers exactly one. TI's design expected an
++ * "mcpdm-abe" DAI beside the legacy one; the original carried a FIXME saying
++ * so. Splitting them is the McPDM multiplexing work and is NOT done here.
++ */
++#define AESS_BE_PDM_DEFS(_id, _cdai)				\
++SND_SOC_DAILINK_DEFS(_id,					\
++	DAILINK_COMP_ARRAY(COMP_EMPTY()),			\
++	DAILINK_COMP_ARRAY(COMP_CODEC("twl6040-codec", _cdai)),	\
++	DAILINK_COMP_ARRAY(COMP_DUMMY()))
++
++AESS_BE_PDM_DEFS(be_dl1, "twl6040-dl1");
++AESS_BE_PDM_DEFS(be_ul1, "twl6040-ul");
++AESS_BE_PDM_DEFS(be_dl2, "twl6040-dl2");
+ 
+-SND_SOC_DAILINK_DEFS(link_be_dmic,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
+-	DAILINK_COMP_ARRAY(COMP_CODEC("abc",
+-				      "def")),
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()));
++/* 2 legacy + 6 front ends + 3 McPDM back ends, with room to spare */
++#define OMAP_ABE_MAX_DAI_LINKS	16
+ 
+ struct abe_twl6040 {
+ 	struct snd_soc_card card;
+-	struct snd_soc_dai_link dai_links[2];
++	struct snd_soc_dai_link dai_links[OMAP_ABE_MAX_DAI_LINKS];
+ 	int	jack_detection;	/* board can detect jack events */
+ 	int	mclk_freq;	/* MCLK frequency speed for twl6040 */
+ 	int twl6040_power_mode;
+@@ -447,15 +458,146 @@
+ 	_card->num_links++; \
+ 	}
+ 
+-/* called after loading firmware */
++/*
++ * An AESS front end: userspace-visible PCM, routed at runtime to whichever
++ * back end the use case needs. ops is left NULL, as the originals had it.
++ */
++#define ADD_AESS_FE(_card, _link, _name, _stream, _aess, _init, _play, _cap) { \
++	struct snd_soc_dai_link *l = &_card->dai_link[_card->num_links];      \
++	l->name = _name;						      \
++	l->stream_name = _stream;					      \
++	l->cpus = _link##_cpus;						      \
++	l->num_cpus = ARRAY_SIZE(_link##_cpus);				      \
++	l->cpus->of_node = _aess;					      \
++	l->codecs = _link##_codecs;					      \
++	l->num_codecs = ARRAY_SIZE(_link##_codecs);			      \
++	l->platforms = _link##_platforms;				      \
++	l->num_platforms = ARRAY_SIZE(_link##_platforms);		      \
++	l->platforms->of_node = _aess;					      \
++	l->init = _init;						      \
++	l->dynamic = 1;							      \
++	l->dpcm_playback = _play;					      \
++	l->dpcm_capture = _cap;						      \
++	l->trigger[0] = SND_SOC_DPCM_TRIGGER_BESPOKE;			      \
++	l->trigger[1] = SND_SOC_DPCM_TRIGGER_BESPOKE;			      \
++	l->ignore_pmdown_time = 1;					      \
++	_card->num_links++;						      \
++	}
++
++/* An AESS back end: no PCM of its own, matched to a front end at runtime. */
++#define ADD_AESS_BE(_card, _link, _name, _stream, _cpu, _id, _fixup, _ops,    \
++		    _init, _play, _cap) {				      \
++	struct snd_soc_dai_link *l = &_card->dai_link[_card->num_links];      \
++	l->name = _name;						      \
++	l->stream_name = _stream;					      \
++	l->cpus = _link##_cpus;						      \
++	l->num_cpus = ARRAY_SIZE(_link##_cpus);				      \
++	l->cpus->of_node = _cpu;					      \
++	l->codecs = _link##_codecs;					      \
++	l->num_codecs = ARRAY_SIZE(_link##_codecs);			      \
++	l->platforms = _link##_platforms;				      \
++	l->num_platforms = ARRAY_SIZE(_link##_platforms);		      \
++	l->no_pcm = 1;							      \
++	l->id = _id;							      \
++	l->be_hw_params_fixup = _fixup;					      \
++	l->ops = _ops;							      \
++	l->init = _init;						      \
++	l->dpcm_playback = _play;					      \
++	l->dpcm_capture = _cap;						      \
++	l->ignore_suspend = 1;						      \
++	l->ignore_pmdown_time = 1;					      \
++	_card->num_links++;						      \
++	}
++
++static int omap_abe_twl6040_fe_init(struct snd_soc_pcm_runtime *rtd)
++{
++	return 0;
++}
++
++/* DC offset cancellation for the handsfree path, as the DL1 init does. */
++static int omap_abe_twl6040_dl2_init(struct snd_soc_pcm_runtime *rtd)
++{
++	struct snd_soc_card *card = rtd->card;
++	struct snd_soc_dai *codec_dai = rtd->codec_dai;
++	struct snd_soc_component *component = codec_dai->component;
++	struct abe_twl6040 *priv = snd_soc_card_get_drvdata(card);
++	u32 hfotrim, left_offset, right_offset;
++
++	if (priv->aess) {
++		hfotrim = twl6040_get_trim_value(component,
++						 TWL6040_TRIM_HFOTRIM);
++		right_offset = TWL6040_HSF_TRIM_RIGHT(hfotrim);
++		left_offset = TWL6040_HSF_TRIM_LEFT(hfotrim);
++		omap_aess_dc_set_hf_offset(priv->aess, left_offset,
++					   right_offset);
++	}
++
++	return 0;
++}
++
++/*
++ * called after loading firmware
++ *
++ * Converted from the pre-5.0 abe_fe_dai[]/abe_be_mcpdm_dai[] tables that are
++ * still present, unbuilt, in sound/soc/omap/omap-abe-twl6040.c. Those used
++ * .cpu_dai_name/.codec_name/.platform_name, which 5.6 replaced with the
++ * snd_soc_dai_link_component arrays above.
++ *
++ * This is the function whose emptiness kept the whole AESS path dead: with no
++ * DAI link referencing the AESS component it was never bound into a card, so
++ * omap_aess_pcm_probe() never ran, so pm_runtime_enable() was never called,
++ * so pm_runtime_active() was false and every accessor in aess_mem.h silently
++ * dropped its writes.
++ */
+ static int omap_abe_add_aess_dai_links(struct snd_soc_card *card)
+ {
+-	struct abe_twl6040 * priv = snd_soc_card_get_drvdata(card);
+ 	struct device_node *node = card->dev->of_node;
+-	struct device_node *dai_node;
+-	int ret;
++	struct device_node *aess_node, *mcpdm_node;
++
++	aess_node = of_parse_phandle(node, "ti,aess", 0);
++	if (!aess_node) {
++		dev_err(card->dev, "ti,aess node is not provided\n");
++		return -EINVAL;
++	}
++
++	mcpdm_node = of_parse_phandle(node, "ti,mcpdm", 0);
++	if (!mcpdm_node) {
++		dev_err(card->dev, "McPDM node is not provided\n");
++		return -EINVAL;
++	}
++
++	if (card->num_links + 9 > OMAP_ABE_MAX_DAI_LINKS) {
++		dev_err(card->dev, "no room for the AESS links\n");
++		return -ENOMEM;
++	}
++
++	/* Front ends */
++	ADD_AESS_FE(card, fe_mm1, "OMAP ABE Media1", "MultiMedia1",
++		    aess_node, omap_abe_twl6040_fe_init, 1, 1);
++	ADD_AESS_FE(card, fe_mm2, "OMAP ABE Media2", "MultiMedia2",
++		    aess_node, NULL, 0, 1);
++	ADD_AESS_FE(card, fe_voice, "OMAP ABE Voice", "Voice",
++		    aess_node, NULL, 1, 1);
++	ADD_AESS_FE(card, fe_tones, "OMAP ABE Tones", "Tones",
++		    aess_node, NULL, 1, 0);
++	ADD_AESS_FE(card, fe_modem, "OMAP ABE MODEM", "MODEM",
++		    aess_node, omap_abe_twl6040_fe_init, 1, 1);
++	ADD_AESS_FE(card, fe_mmlp, "OMAP ABE Media LP", "MultiMedia1 LP",
++		    aess_node, NULL, 1, 0);
++
++	/* McPDM back ends */
++	ADD_AESS_BE(card, be_dl1, "McPDM-DL1", "HS Playback", mcpdm_node,
++		    OMAP_AESS_BE_ID_PDM_DL1, omap_mcpdm_be_hw_params_fixup,
++		    &omap_abe_ops, omap_abe_twl6040_init, 1, 0);
++	ADD_AESS_BE(card, be_ul1, "McPDM-UL1", "Analog Capture", mcpdm_node,
++		    OMAP_AESS_BE_ID_PDM_UL, omap_mcpdm_be_hw_params_fixup,
++		    &omap_abe_ops, NULL, 0, 1);
++	ADD_AESS_BE(card, be_dl2, "McPDM-DL2", "HF Playback", mcpdm_node,
++		    OMAP_AESS_BE_ID_PDM_DL2, omap_mcpdm_be_hw_params_fixup,
++		    &omap_abe_ops, omap_abe_twl6040_dl2_init, 1, 0);
++
++	dev_info(card->dev, "AESS: %d DAI links registered\n", card->num_links);
+ 
+-	/* add DAI links for AE */
+ 	return 0;
+ }
+ 
+@@ -556,6 +698,7 @@
+ 	struct device_node *node = pdev->dev.of_node;
+ 	struct snd_soc_card *card;
+ 	struct device_node *dai_node;
++	struct device_node *mcpdm_node;
+ 	struct abe_twl6040 *priv;
+ 	int ret = 0;
+ 
+@@ -589,13 +732,18 @@
+ 		return ret;
+ 	}
+ 
+-	dai_node = of_parse_phandle(node, "ti,mcpdm", 0);
+-	if (!dai_node) {
++	mcpdm_node = of_parse_phandle(node, "ti,mcpdm", 0);
++	if (!mcpdm_node) {
+ 		dev_err(&pdev->dev, "McPDM node is not provided\n");
+ 		return -EINVAL;
+ 	}
+ 
+-	ADD_DAILINK(card, link0, "DMIC", "TWL6040", dai_node, omap_abe_twl6040_init, omap_abe_ops);
++	/*
++	 * The legacy McPDM link is NOT added here any more. If the AESS comes
++	 * up it supplies its own McPDM back ends (DL1/UL1/DL2) on this same
++	 * node, and having both would mean two links fighting over one McPDM.
++	 * It is added below instead, only when the AESS did not take.
++	 */
+ 
+ 	dai_node = of_parse_phandle(node, "ti,dmic", 0);
+ 	if (dai_node)
+@@ -637,10 +785,21 @@
+ #endif
+ 	}
+ 
++	/*
++	 * Fall back to the direct McPDM link when the AESS is absent or its
++	 * firmware did not load. This is the path every Pyra has used so far.
++	 */
++	if (!priv->aess)
++		ADD_DAILINK(card, link0, "DMIC", "TWL6040", mcpdm_node,
++			    omap_abe_twl6040_init, omap_abe_ops);
++
+ 	ret = omap_abe_add_legacy_dai_links(card);
+ 	if (ret < 0)
+ 		return ret;
+ 
++	dev_info(&pdev->dev, "%s path, %d DAI links\n",
++		 priv->aess ? "AESS" : "legacy McPDM", card->num_links);
++
+ 	ret = snd_soc_register_card(card);
+ 	if (ret) {
+ 		dev_err(&pdev->dev, "card registration failed: %d\n", ret);
