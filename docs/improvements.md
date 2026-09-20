@@ -1123,6 +1123,72 @@ DirectSound mixer under box86 — and generalises less than it looks.
 `pactl list sink-inputs` prints each live stream's sample spec, so what a given
 title actually asks for is a measurement rather than a guess.
 
+#### Update 2026-09-20 (later still): "no configuration avoids it" is true, but the hardware does not need one
+
+Everything above stands as a statement about *software*. What it misses is that
+the OMAP5 has a dedicated audio DSP for exactly this job, and it is sitting
+idle: the **AESS**, whose front-end DAIs accept what applications actually
+produce —
+
+    MultiMedia1: 44100 | 48000, S16_LE | S32_LE, stereo
+
+— and whose back-end drives the codec. It handles 44.1 by reclocking its own
+scheduling loop (`EVENT_GENERATOR_COUNTER_44100 = 2228-1` against a default of
+`2048-1` in `sound/soc/ti/aess/aess_utils.c`), which is why the TWL6040 has an
+88200 mode and a 96000 mode at all. Both rate families were meant to be native;
+the software resample exists only because nothing drives the AESS.
+
+On the running machine the driver is built in (`CONFIG_SND_SOC_OMAP_AESS=y`),
+`ti,aess` is in the live device tree, `aess_fclk` is clocked at 196.608 MHz,
+`/lib/firmware/omap_aess-adfw.bin` is present and loads without error, and
+`MultiMedia1`, `MultiMedia1 LP`, `Voice`, `Tones` and `MODEM` all appear in
+`/sys/kernel/debug/asoc/dais`. Then nothing connects them, and the card
+registers with the direct McPDM link instead.
+
+**The hardware is live.** `device/pyra-aess-probe.sh`, run 2026-09-20: the
+register block reads (`REVISION` 0x40000000, `SYSCONFIG` 0x38,
+`EVENT_GENERATOR_COUNTER` 0xFFFF), all three memories round-trip, DMEM decodes
+across the full 64 KiB, and SMEM masks 0xFFFFFFFF to **0x00FFFFFF** — the
+24-bit sample width the ABE architecture specifies, which a floating or
+aliased bus cannot fake. `PM_ABE_PWRSTST` reads 0x337: domain ON, logic ON,
+both memory banks ON.
+
+**What is missing is three pieces of software**, in increasing size:
+
+1. `omap_abe_add_aess_dai_links()` in `sound/soc/ti/omap-abe-twl6040.c:451` is
+   an empty stub — four locals declared, none used, `return 0`. This is the
+   whole reason the path is dead.
+2. The aess device's runtime PM reads `unsupported`; the driver never calls
+   `pm_runtime_enable()`, so `omap_aess_pm_get()` returns `-EACCES`. Even with
+   DAI links, nothing would power the engine. The probe has to force the module
+   on through ti-sysc to read it.
+3. `abe_54xx_pwrdm` in `arch/arm/mach-omap2/powerdomains54xx_data.c` sets
+   `pwrsts_mem_on` to `PWRSTS_OFF_RET` for both banks where OMAP4's
+   `abe_44xx_pwrdm` sets `PWRSTS_ON`. Not biting today — `PM_ABE_PWRSTCTRL`
+   has both ONSTATE fields at ON from reset and the table has never been
+   applied — but it would put AESS memory into retention the moment anything
+   drives the domain's memory states.
+
+What this is worth, from the table at the top of this item: streams that match
+the sink cost 3.5% of a core against 11.1% for anything that needs conversion.
+It is a cliff, and the AESS moves every 44.1 and 48 kHz stream onto the free
+side of it. The 4-channel design that forces the two remap sinks also goes
+away, because DL1 and DL2 are separate AESS back-ends — that is the "one
+untested idea" above, for free. Ship of Harkinian asks for 32000, which
+`MultiMedia1` does not list, so that title needs its `gAudioSpecs[].frequency`
+moved to 48000 to collect anything.
+
+**What the probe does not prove** is that the DSP core executes. It shows the
+register block and all three memories respond, and that PMEM is writable —
+which is what firmware loading needs — but no code has been run on it. That is
+the next test, and it is a much larger one.
+
+**Caveats before anyone commits a week.** The driver is TI's out-of-tree OMAP4
+AESS code (9210 lines under `sound/soc/ti/aess/`), the firmware blob is OMAP4's,
+the compatible is `ti,omap4-aess`, and as far as this repo can tell nobody has
+driven it on an OMAP5. Whether `letux-7.3` still carries the directory has not
+been checked.
+
 ### 11. The i2c interrupt floor
 
 **Measured, and small enough to close.** At the login screen with no desktop
