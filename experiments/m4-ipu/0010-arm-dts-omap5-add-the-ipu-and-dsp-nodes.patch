@@ -1,0 +1,66 @@
+ARM: dts: omap5: add the ipu and dsp nodes
+
+The SoC-level description of the two remote processors, taken verbatim
+from v5.9 arch/arm/boot/dts/omap5.dtsi, where it was added alongside the
+driver rework.  Both are left status = "disabled"; a board turns on what
+it has firmware for.
+
+This applies cleanly because the surrounding text has not moved.  The
+target-module@55082000 block that the new nodes sit after, and the
+dmm@4e000000 block they sit before, are byte-identical between this tree
+and v5.9.
+
+Everything the two nodes reference already exists here, which is why
+this is two nodes and not a subsystem:
+
+  mmu_ipu, mmu_dsp   already in omap5.dtsi and omap5-l4.dtsi, and both
+                     already probe -- /sys/class/iommu on a running Pyra
+                     lists 55082000.mmu and 4a066000.mmu
+  mailbox            already in omap5-l4.dtsi, with the mbox_ipu and
+                     mbox_dsp sub-nodes these point at
+  prm_core, prm_dsp  already reset providers; target-module@55082000
+                     next door already uses <&prm_core 2>
+  scm_conf           already the syscon the dsp boot register lives in
+  ipu_clkctrl,
+  dsp_clkctrl        already clock providers
+
+The firmware-name strings are upstream's and are the names the build in
+experiments/m4-ipu/README.md produces.  Nothing loads until somebody
+writes to the remoteproc sysfs state file, so a kernel carrying this
+with no firmware installed behaves as it does today.
+
+Origin: v5.9 arch/arm/boot/dts/omap5.dtsi, GPL-2.0-only.
+See docs/m4-ipu.md.
+
+--- a/arch/arm/boot/dts/omap5.dtsi	2026-09-20 14:06:13.724952665 -0400
++++ b/arch/arm/boot/dts/omap5.dtsi	2026-09-20 14:06:13.778101154 -0400
+@@ -216,6 +216,29 @@
+ 			};
+ 		};
+ 
++		dsp: dsp {
++			compatible = "ti,omap5-dsp";
++			ti,bootreg = <&scm_conf 0x304 0>;
++			iommus = <&mmu_dsp>;
++			resets = <&prm_dsp 0>;
++			clocks = <&dsp_clkctrl OMAP5_MMU_DSP_CLKCTRL 0>;
++			firmware-name = "omap5-dsp-fw.xe64T";
++			mboxes = <&mailbox &mbox_dsp>;
++			status = "disabled";
++		};
++
++		ipu: ipu@55020000 {
++			compatible = "ti,omap5-ipu";
++			reg = <0x55020000 0x10000>;
++			reg-names = "l2ram";
++			iommus = <&mmu_ipu>;
++			resets = <&prm_core 0>, <&prm_core 1>;
++			clocks = <&ipu_clkctrl OMAP5_MMU_IPU_CLKCTRL 0>;
++			firmware-name = "omap5-ipu-fw.xem4";
++			mboxes = <&mailbox &mbox_ipu>;
++			status = "disabled";
++		};
++
+ 		dmm@4e000000 {
+ 			compatible = "ti,omap5-dmm";
+ 			reg = <0x4e000000 0x800>;

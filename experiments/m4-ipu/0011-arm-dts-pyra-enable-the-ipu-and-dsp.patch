@@ -1,0 +1,83 @@
+ARM: dts: pyra: enable the ipu and dsp
+
+Carveouts and enablement for the Pyra V5.3 board, modelled on
+omap5-uevm.dts, which is the closest upstream board and the one this
+machine already claims compatibility with: /proc/device-tree/compatible
+reads "goldelico,lc15-v5.3 goldelico,lc15 ti,omap5-uevm ti,omap5".
+
+Sizes and addresses are upstream's: 8 MB of dsp carveout at 0x95000000
+and 56 MB of ipu carveout at 0x95800000, both reusable, so the pages go
+back to the page allocator whenever the processor they belong to is
+stopped.  The Pyra has 4 GB, of which 2.8 GB was free on the unit this
+was written against, so both fit without taking anything from CMA, which
+stays at its 64 MB.
+
+What is NOT copied from omap5-uevm.dts is the timers.  Upstream gives
+the ipu ti,timers = <&timer3> and ti,watchdog-timers = <&timer9>,
+<&timer11>, and the dsp timer5 and timer6.  timer9 on a Pyra is the
+display backlight PWM -- pyra-display.dtsi declares pwm9 on it and the
+panel's backlight node consumes it -- and taking it for a watchdog would
+fight the backlight for the same dmtimer.  timer8 is the keyboard
+backlight for the same reason.
+
+Both properties are optional.  omap_rproc_probe counts them with
+of_count_phandle_with_args and clamps a negative count to zero, and the
+watchdog property is only looked at under CONFIG_OMAP_REMOTEPROC_WATCHDOG
+at all, so leaving them out costs nothing until firmware needs a tick
+source.  When something does, timer3, timer4, timer10 and timer11 are
+all unclaimed on this board.
+
+Origin: shaped after v6.6 arch/arm/boot/dts/ti/omap/omap5-uevm.dts.
+See docs/m4-ipu.md.
+
+--- a/arch/arm/boot/dts/omap5-letux-cortex15-v5.3+pyra-v5.3.dts	2026-09-20 14:06:13.726043527 -0400
++++ b/arch/arm/boot/dts/omap5-letux-cortex15-v5.3+pyra-v5.3.dts	2026-09-20 14:06:13.780934686 -0400
+@@ -23,3 +23,48 @@
+ 	pwms = <&pwm9 0 (1000000000 / 8300) 0>;
+ };
+ 
++
++/*
++ * The two Cortex-M4s (ipu) and the C66x (dsp). Both are held in reset
++ * until remoteproc loads firmware into them; see docs/m4-ipu.md.
++ *
++ * No ti,timers or ti,watchdog-timers here, deliberately. omap5-uevm.dts
++ * gives the ipu timer9 and timer11 and the dsp timer5 and timer6, and
++ * timer9 on a Pyra is the display backlight PWM (pyra-display.dtsi) --
++ * timer8 is the keyboard one. Both properties are optional: the driver
++ * counts them with of_count_phandle_with_args and treats a missing
++ * property as zero timers. Firmware that wants a tick source of its own
++ * can be given timer3, timer4, timer10 or timer11, all of which are
++ * free here.
++ */
++/ {
++	reserved-memory {
++		#address-cells = <2>;
++		#size-cells = <2>;
++		ranges;
++
++		dsp_memory_region: dsp-memory@95000000 {
++			compatible = "shared-dma-pool";
++			reg = <0 0x95000000 0 0x800000>;
++			reusable;
++			status = "okay";
++		};
++
++		ipu_memory_region: ipu-memory@95800000 {
++			compatible = "shared-dma-pool";
++			reg = <0 0x95800000 0 0x3800000>;
++			reusable;
++			status = "okay";
++		};
++	};
++};
++
++&ipu {
++	status = "okay";
++	memory-region = <&ipu_memory_region>;
++};
++
++&dsp {
++	status = "okay";
++	memory-region = <&dsp_memory_region>;
++};

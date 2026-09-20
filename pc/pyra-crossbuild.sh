@@ -10,6 +10,7 @@
 #   ./pyra-crossbuild.sh kernel-c2           the fix kernel plus one experiment
 #   ./pyra-crossbuild.sh kernel-freq         the fix kernel plus finer cpu steps
 #   ./pyra-crossbuild.sh kernel-oc           the same, overclocked to 2 GHz
+#   ./pyra-crossbuild.sh kernel-m4           the fix kernel plus the M4 stack
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -131,11 +132,13 @@ build_kernel() {
 #   kernel-c2      5.6.19-c2           the fix set plus experiments/c2-idle
 #   kernel-freq    5.6.19-freq         the fix set plus the intermediate OPPs
 #   kernel-oc      5.6.19-oc           kernel-freq plus the overclock OPPs
+#   kernel-m4      5.6.19-m4           the fix set plus remoteproc for the M4s
 #
-# The last three are experiments and are meant to be bootable beside the fix
+# The last four are experiments and are meant to be bootable beside the fix
 # kernel rather than instead of it, which is why each has its own release name
-# and its own source tree. See improvements.md item 12 for c2, and
-# experiments/thermals-and-frequency/README.md for the other two.
+# and its own source tree. See improvements.md item 12 for c2,
+# experiments/thermals-and-frequency/README.md for freq and oc, and
+# docs/m4-ipu.md for m4.
 #
 # kernel-freq and kernel-oc are deliberately separate. The first adds five
 # frequency steps below the part's 1.5 GHz rating at the voltages the board
@@ -156,8 +159,12 @@ build_kernel() {
 #       patch meant to go last has to sort last.
 #   $3  source directory under the work tree, one per variant so that a
 #       patched tree never leaks into an unpatched build
+#   $4  extra config symbols to enable, space separated, empty for none.
+#       NAME builds it in, NAME=m builds it as a module. Each is checked
+#       afterwards, because olddefconfig silently drops anything whose
+#       dependencies are unmet.
 build_kernel_variant() {
-	local suffix=$1 patchdirs=$2 srcdir=$3 pd
+	local suffix=$1 patchdirs=$2 srcdir=$3 extracfg=${4:-} pd
 	local dir=$BUILD_DIR/kernel
 	fetch "$KERNEL_DSC" "$KERNEL_SHA" "$dir"
 	rm -rf "$dir/patches"
@@ -184,6 +191,7 @@ build_kernel_variant() {
 	'
 	run debian:bookworm "$dir" '
 		export SUFFIX='"$suffix"'
+		export EXTRACFG='"'$extracfg'"'
 		apt-get update -qq
 		apt-get install -y --no-install-recommends \
 			crossbuild-essential-armhf bc rsync kmod cpio bison flex \
@@ -229,6 +237,12 @@ build_kernel_variant() {
 			--disable RCU_TRACE \
 			--disable SCHED_DEBUG \
 			--disable DEBUG_MISC
+		for opt in $EXTRACFG; do
+			case "$opt" in
+			*=m) scripts/config --file .config --module "${opt%=m}" ;;
+			*)   scripts/config --file .config --enable "$opt" ;;
+			esac
+		done
 		make olddefconfig
 
 		# DEBUG_KERNEL turns several other debug options on by default,
@@ -246,9 +260,9 @@ build_kernel_variant() {
 		# unmet, so check rather than assume.
 		fail=0
 		for opt in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR DETECT_HUNG_TASK \
-			   GENERIC_IRQ_DEBUGFS; do
-			if grep -q "^CONFIG_${opt}=y" .config; then
-				echo "  ok   CONFIG_${opt}=y"
+			   GENERIC_IRQ_DEBUGFS ${EXTRACFG//=m/}; do
+			if grep -qE "^CONFIG_${opt}=(y|m)" .config; then
+				echo "  ok   $(grep -E "^CONFIG_${opt}=" .config)"
 			else
 				echo "  FAIL CONFIG_${opt} did not stick"; fail=1
 			fi
@@ -313,6 +327,9 @@ build_kernel_freq()  { build_kernel_variant freq \
 	"$SELF_DIR/../patches $OPP_DIR/0007-arm-dts-omap5-add-the-intermediate-opps.patch" src-freq; }
 build_kernel_oc()    { build_kernel_variant oc \
 	"$SELF_DIR/../patches $OPP_DIR" src-oc; }
+build_kernel_m4()    { build_kernel_variant m4 \
+	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu" src-m4 \
+	"REMOTEPROC OMAP_REMOTEPROC=m OMAP2PLUS_MBOX RPMSG RPMSG_VIRTIO RPMSG_CHAR=m VIRTIO"; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
@@ -322,5 +339,6 @@ case "${1:-}" in
 	kernel-c2)    shift; build_kernel_c2 ;;
 	kernel-freq)  shift; build_kernel_freq ;;
 	kernel-oc)    shift; build_kernel_oc ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc" ;;
+	kernel-m4)    shift; build_kernel_m4 ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4" ;;
 esac
