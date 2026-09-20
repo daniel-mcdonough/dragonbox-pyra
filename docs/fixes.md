@@ -1,4 +1,4 @@
-# The eight fixes, and what they actually do
+# The nine fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -550,5 +550,115 @@ precedence over the stock `/lib/udev/rules.d` and leaves it untouched.
 tested by knocking the register down to 500000 and firing each event with
 `udevadm trigger`. A physical unplug and replug has **not** been tested — that
 needs hands on the device.
+
+## Fix 9 — the machine has never had sound
+
+The speakers and the headphones have been silent since the image was built.
+MATE's volume applet works, the wheel turns, `pactl` reports three unmuted
+sinks at 100%, and nothing comes out of either output.
+
+**Nothing is broken. The codec is switched off.** The TWL6040 routes its DACs
+to the amplifiers through four enumerated ALSA controls, and on a stock
+Debian 13 card all four read `Off`:
+
+| control | shipped | what it drives |
+| --- | --- | --- |
+| `Handsfree Left Playback` | `Off` | speakers |
+| `Handsfree Right Playback` | `Off` | speakers |
+| `Headset Left Playback` | `Off` | headphones |
+| `Headset Right Playback` | `Off` | headphones |
+| `Headset Playback Volume` | `0,0` | headphones, -30 dB, the floor |
+
+Everything upstream of those five controls is healthy and always was. ALSA
+enumerates the card as `hw:CARD=L15`, PulseAudio opens it, the PCM reaches
+`state: RUNNING` with a moving `hw_ptr`, `pactl list sinks` shows
+`alsa_output.hw_CARD_L15_DEV_0` plus the `speakers` and `headphones` remap
+sinks, all unmuted at 0.00 dB. The samples were arriving at a DAC that was not
+connected to anything.
+
+Setting the four routes to `HF DAC` / `HS DAC` and lifting the headset volume
+produces sound immediately, on both outputs, with no reboot and no other
+change. Confirmed by ear on the hardware, 2026-09-20.
+
+### Why it is off
+
+`/var/lib/alsa/asound.state` shipped that way, and `alsactl` restores it
+faithfully on every boot. `alsactl` is doing its job; the saved state is the
+bug. The file was captured on a machine whose codec was muted, so every boot
+since has replayed the silence.
+
+There is no UCM profile for this card to override it. `alsa-restore` logs
+
+    alsa-lib main.c:1554:(snd_use_case_mgr_open) error: failed to import hw:4
+    use case configuration -2
+
+and falls back to the state file, so the state file is the whole story. Note
+also that `alsa-state.service` is inactive on this image (`Condition: start
+condition unmet`), so nothing re-saves the state at shutdown — which is why a
+single bad capture has survived every boot since, and equally why one good
+capture sticks.
+
+### Why the volume wheel looked dead
+
+`pyra_volumed` (from `pyra-hacks`, enabled by default) reads the encoder on
+`palmas-gpadc` and writes **`Handsfree` only**, through
+`snd_mixer_selem_set_playback_volume_all` on `hw:CARD=L15`. It sets a volume;
+it never sets a route. Turning the wheel was moving the speaker volume up and
+down a path that ended at an amplifier that was switched off.
+
+Two things follow, and both matter before anyone touches these volumes:
+
+* **`Handsfree Playback Volume` belongs to `pyra_volumed`.** Whatever this fix
+  or `alsactl` writes there is overwritten the next time the wheel moves. It
+  is not ours to set, so the fix does not set it. This also explains a
+  confusing hour during diagnosis: the value kept falling back to 2 or 4
+  between measurements, because the wheel was being turned.
+* **`Headset Playback Volume` has no daemon behind it.** The wheel does not
+  reach the headphones at all; only PulseAudio's software volume does. So this
+  one does need a sane floor, and it is the one that shipped at zero.
+
+### The fix
+
+`device/pyra-audio-route.sh` installs two files and verifies the result:
+
+    /usr/local/sbin/pyra-audio-route-apply     idempotent, sets the four routes
+    /etc/udev/rules.d/95-pyra-audio-route.rules
+
+`95-` so it runs *after* `/lib/udev/rules.d/90-alsa-restore.rules`, which
+replays `asound.state`. The rule has the last word regardless of what is in
+that file, which is the point: the fix does not depend on a state blob that
+anything on the system can overwrite. The helper also runs `alsactl store`
+once at apply time, so a boot that somehow misses the rule still comes up with
+sound.
+
+The helper sets the four routes unconditionally — nothing else on the system
+manages them — but lifts `Headset Playback Volume` **only when it finds it at
+zero**, so a value the user chose is left alone.
+
+`--check` reports the state, `--undo` removes both files, `--emit-into ROOT`
+writes them to a mounted rootfs offline.
+
+**Like fix 8 and unlike fixes 6 and 7, this one does not edit a packaged
+file**, so an upgrade will not silently revert it. It adds a rule in
+`/etc/udev/rules.d`, which takes precedence over the stock `/lib/udev/rules.d`
+and leaves it untouched.
+
+**Verified:** all four routes and the headset volume were knocked back to
+`Off`/`0,0` and an `add` event fired with `udevadm trigger --subsystem-match=
+sound`; all five came back. Sound confirmed by ear on both outputs. A full
+reboot has **not** been tested — that needs the machine free.
+
+### What this fix is not
+
+The empty **Hardware** tab in MATE's Sound Preferences is not this fault and is
+not a fault at all. That tab lists PulseAudio *cards*, and this machine has
+none: `/etc/pulse/pyra.pa` deliberately skips `module-udev-detect` and loads
+`module-alsa-sink` directly, in 4 channels, so that two `module-remap-sink`
+instances can split front (headphones) from rear (speakers) into the separate
+`Speakers` and `Headphones` sinks. Sinks without a card have no card to list.
+The **Output** tab, which is the one that does anything here, correctly shows
+all three. Loading `module-alsa-card` to populate the Hardware tab would
+replace the 4-channel sink and destroy the speaker/headphone split, in
+exchange for a profile dropdown with one usable entry. Not worth it.
 
 ---

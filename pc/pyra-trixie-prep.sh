@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the eight known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the nine known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -64,6 +64,9 @@ LADDER_FIX=$PAYLOADS/pyra-thermal-ladder.sh
 # the same kind of door for the same reason — one implementation, two callers.
 CHARGE_FIX=$PAYLOADS/pyra-charge-current.sh
 [[ -x $CHARGE_FIX ]] || die "fix8: pyra-charge-current.sh not found or not executable (looked in $PAYLOADS)"
+
+AUDIO_FIX=$PAYLOADS/pyra-audio-route.sh
+[[ -x $AUDIO_FIX ]] || die "fix9: pyra-audio-route.sh not found or not executable (looked in $PAYLOADS)"
 
 
 echo
@@ -522,6 +525,71 @@ rm -rf "$CHARGE_STAGE"
 
 if [[ $CHARGE_CHANGED -eq 1 ]]; then
     ok "fix8: the card will charge while running instead of draining on the cable"
+fi
+
+# ----------------------------------------------------------------------- fix 9
+#
+# The machine has no sound and never has. Nothing is broken: the TWL6040's four
+# output routing controls ship reading Off, and Headset Playback Volume ships
+# at its 0,0 floor, so the DACs are not connected to the amplifiers.
+#
+#   Handsfree Left/Right Playback   Off   -> speakers
+#   Headset   Left/Right Playback   Off   -> headphones
+#   Headset Playback Volume         0,0
+#
+# Everything upstream is healthy and always was — the card enumerates, the PCM
+# reaches RUNNING with a moving hw_ptr, pactl shows three unmuted sinks at
+# 0.00 dB. The samples were arriving on time at a disconnected DAC.
+#
+# The source is /var/lib/alsa/asound.state, which shipped holding that silence
+# and is replayed on every boot. There is no UCM profile for this card to
+# override it, and alsa-state.service is inactive, so nothing ever re-captured
+# it; one bad snapshot has survived every boot since the image was built.
+#
+# This installs a udev rule numbered 95-, above the stock 90-alsa-restore, so
+# it has the last word over that state file rather than depending on it.
+#
+# It sets the four routes but deliberately does NOT set Handsfree Playback
+# Volume: that control belongs to pyra_volumed, which reads the encoder wheel
+# on palmas-gpadc and writes Handsfree only. It sets a volume and never sets a
+# route, which is why the wheel appeared dead — it was moving the speaker level
+# behind a switched-off amplifier. Headset Playback Volume has no daemon behind
+# it (the wheel does not reach the headphones at all) and is lifted only when
+# found at zero, so a value the user chose survives.
+
+AUDIO_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix9.XXXXXX")
+if ! AUDIO_FILES=$("$AUDIO_FIX" --emit-into "$AUDIO_STAGE" 2>&1); then
+    rm -rf "$AUDIO_STAGE"
+    die "fix9: could not generate the audio routing files:
+       $AUDIO_FILES"
+fi
+
+# The helper runs under /bin/sh on the device, from udev. Check it parses as
+# one here, before it goes on the card.
+if ! sh -n "$AUDIO_STAGE/usr/local/sbin/pyra-audio-route-apply" 2>/dev/null; then
+    rm -rf "$AUDIO_STAGE"
+    die "fix9: the generated audio helper is not valid shell; nothing written"
+fi
+
+AUDIO_CHANGED=0
+while read -r staged; do
+    [[ -n $staged ]] || continue
+    rel=${staged#$AUDIO_STAGE}
+    dst=$ROOT$rel
+    if [[ -e $dst ]] && cmp -s "$staged" "$dst"; then
+        ok "fix9: ${rel} already in place"
+        continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cat "$staged" > "$dst"
+    chmod --reference="$staged" "$dst"
+    ok "fix9: wrote ${rel}"
+    AUDIO_CHANGED=1
+done <<<"$AUDIO_FILES"
+rm -rf "$AUDIO_STAGE"
+
+if [[ $AUDIO_CHANGED -eq 1 ]]; then
+    ok "fix9: the card will have sound on speakers and headphones from first boot"
 fi
 
 echo
