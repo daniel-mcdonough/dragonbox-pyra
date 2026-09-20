@@ -854,6 +854,9 @@ maintenance cost that outlasts the speedup.
 
 ### 10. Audio: the second-largest consumer, and why it has no knob
 
+*The chain itself, the diagnostic order for silence, and the traps are in
+`audio.md`. This item is the performance survey.*
+
 **Measured 2026-09-10, and this is a negative result with a number attached.**
 
 When the game plays music, `pulseaudio` takes 14% of all busy CPU, about 16% of

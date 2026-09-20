@@ -651,9 +651,10 @@ reboot has **not** been tested — that needs the machine free.
 ### What this fix is not
 
 This fix makes the machine audible. It does not make audio cheap, and it does
-not touch the sample-rate conversion every stream pays for. **The cost of
-playback, what is and is not a hardware limit, and the levers that remain are
-in `improvements.md` item 10** — including why a reported 20–30% is the
+not touch the sample-rate conversion every stream pays for. `audio.md` is the map of the
+whole chain and the first thing to open for anything sound-related. **The cost
+of playback, what is and is not a hardware limit, and the levers that remain
+are in `improvements.md` item 10** — including why a reported 20–30% is the
 governor rather than a leak, and why muting saves nothing.
 
 The empty **Hardware** tab in MATE's Sound Preferences is not this fault and is
