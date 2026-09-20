@@ -60,15 +60,17 @@ because unmet dependencies are dropped silently:
     REMOTEPROC  OMAP_REMOTEPROC=m  OMAP2PLUS_MBOX
     RPMSG  RPMSG_VIRTIO  RPMSG_CHAR=m  VIRTIO
 
-**`OMAP_REMOTEPROC` is deliberately a module, not built in.** Built in, it
-probes during boot and there is no way to stop it; as a module nothing touches
-the IPU until somebody types `modprobe omap_remoteproc`, and it can be removed
-again. Getting an IOMMU wrong on this SoC can wedge the L3 interconnect, so for
-a first boot the difference between "load it when ready" and "it already ran
-before you got a console" is the difference between an experiment you can
-retry and one that needs the power button every time.
-`RPMSG_CHAR` is a module for the same reason. The rest are built in because
-they are inert until something registers with them.
+`OMAP_REMOTEPROC` and `RPMSG_CHAR` are modules rather than built in. **The
+original reason given for that was wrong**: it said nothing would touch the IPU
+until somebody typed `modprobe`, and the first boot showed udev loading the
+module anyway from the device tree modalias `of:NipuT(null)Cti,omap5-ipu`. The
+driver probes during boot either way.
+
+What `=m` actually buys is the ability to remove the module afterwards, and to
+prevent it loading with a `modprobe.d` blacklist or
+`modprobe.blacklist=omap_remoteproc` on the kernel command line. Since
+`auto_boot` is true, that blacklist is what you want **before** installing any
+firmware, because otherwise the cores start during boot with nothing typed.
 
 `OMAP_REMOTEPROC` already allowed `SOC_OMAP5` in the 5.6 Kconfig; it has simply
 never been turned on. `CONFIG_OMAP_IOMMU` and `CONFIG_IOMMU_API` are already on

@@ -140,11 +140,20 @@ which produces `5.6.19-m4`, installing beside the stock kernel like every other
 variant. It is the fix set from `patches/` plus the three patches below plus
 seven config symbols.
 
-`OMAP_REMOTEPROC` is set to `m` rather than `y` on purpose. Built in, it probes
-during boot with no way to intervene; as a module, nothing goes near the IPU
-until `modprobe omap_remoteproc`, and it can be unloaded again. Since getting
-an IOMMU wrong here can wedge the L3 interconnect, that is the difference
-between an experiment and a machine that needs the recovery path.
+`OMAP_REMOTEPROC` is set to `m` rather than `y`, but **the reason first given
+for that here was wrong and the first boot disproved it.** The claim was that
+as a module nothing would go near the IPU until `modprobe omap_remoteproc`.
+udev loads it anyway, from the device tree modalias:
+
+    $ cat /sys/devices/platform/44000000.ocp/55020000.ipu/modalias
+    of:NipuT(null)Cti,omap5-ipu
+
+so the driver probes during boot either way, and `=m` buys no intervention
+point at boot. What it does buy is real but different: the module can be
+removed afterwards, and it can be stopped from loading at all with a
+`modprobe.d` blacklist or `modprobe.blacklist=omap_remoteproc` on the kernel
+command line. **If you want the cores genuinely untouched during boot, that
+blacklist is the thing to use — not `=m`.**
 
 | patch | what |
 | --- | --- |
@@ -243,7 +252,25 @@ release name out of the tarball rather than assuming one:
 
     scp m4-kernel.tar.gz device/pyra-install-debug-kernel.sh pyra@<address>:
     sudo ./pyra-install-debug-kernel.sh m4-kernel.tar.gz
-    sudo ./device/pyra-boot-kernel.sh          # choose the test slot, then reboot
+    sudo pyra-boot-kernel.sh debug --once      # one boot, then back to stock
+    sudo systemctl reboot
+
+**There is one test slot, `l1`, and installing takes it.** If you already have
+a test kernel there — this machine was running `5.6.19-freq` — its extlinux
+entry is overwritten, though its `vmlinuz`, `initrd`, dtbs and modules all stay
+on disk. Save `/boot/extlinux/user.cfg` first and add the old kernel back under
+a spare label afterwards, which is all it takes to keep it bootable:
+
+    sudo cp -n /boot/extlinux/user.cfg /boot/extlinux/user.cfg.before-m4
+    # after installing, re-append the saved stanza with a different label
+
+**Use `--once`.** U-Boot on this machine has no display driver, so the boot
+menu only exists on the serial console and a test kernel has to become the
+default — see the header of `pyra-boot-kernel.sh`. `--once` arms a service that
+puts the default back to stock early in the next boot, so a kernel that boots
+gets exactly one. A kernel that never reaches userspace is not recoverable from
+the device at all: that needs the card in a PC and one word changed in
+`/boot/extlinux/extlinux.conf`.
 
 | | |
 | --- | --- |
@@ -268,12 +295,58 @@ and the cores stay in reset until it is loaded:
 `state` should read `offline`. Do not write `start` to it until there is a
 firmware file for it to load — that is the next section, and it is not done.
 
-**One thing to know before a firmware file ever exists:** `rproc_alloc()` sets
-`auto_boot = true` and the omap driver never overrides it, so once
-`/lib/firmware/omap5-ipu-fw.xem4` is in place, `modprobe omap_remoteproc` will
-try to start the core by itself — there is no separate `start` step to think
-better of. Right now the asynchronous firmware request simply finds nothing and
-the core stays offline, which is why loading the module today is safe.
+**One thing to know before a firmware file ever exists, now observed rather
+than predicted.** `rproc_alloc()` sets `auto_boot = true` and the omap driver
+never overrides it, so the core is started automatically. The first boot shows
+it trying, and failing only because the file is absent:
+
+    [   22.478413] remoteproc remoteproc1: powering up 55020000.ipu
+    [   22.515618] remoteproc remoteproc1: Direct firmware load for
+                   omap5-ipu-fw.xem4 failed with error -2
+    [   23.704182] remoteproc remoteproc1: request_firmware failed: -11
+
+Combined with the udev autoload above, that means **the day
+`/lib/firmware/omap5-ipu-fw.xem4` appears, the IPU starts during boot, with no
+command typed and no step at which to reconsider.** Put the blacklist on the
+kernel command line before installing firmware, not after.
+
+### The first boot
+
+**Booted on 2026-09-20 on the V5.3 unit, from `5.6.19-freq`.** It came back on
+the network in about 25 seconds and the desktop came up: `lightdm` active,
+`Xorg` running, `card0-DSI-1` and `card0-HDMI-A-1` present, the SGX module
+loaded, both backlights alive.
+
+Both processors enumerate, with the carveouts bound:
+
+    omap-rproc 44000000.ocp:dsp: assigned reserved memory node dsp-memory@95000000
+    remoteproc remoteproc0: 44000000.ocp:dsp is available
+    omap-rproc 55020000.ipu: assigned reserved memory node ipu-memory@95800000
+    remoteproc remoteproc1: 55020000.ipu is available
+
+    remoteproc0: name=44000000.ocp:dsp  state=offline  firmware=omap5-dsp-fw.xe64T
+    remoteproc1: name=55020000.ipu      state=offline  firmware=omap5-ipu-fw.xem4
+
+`device/pyra-m4-check.sh` gives **13 ok, 0 failed** — the first exercise of the
+branches that had never run.
+
+**The carveouts cost nothing at rest.** Both are `reusable`, so they come up as
+CMA pools the page allocator can still use:
+
+    Reserved memory: created CMA memory pool at 0x95000000, size 8 MiB
+    Reserved memory: created CMA memory pool at 0x95800000, size 56 MiB
+
+and `CmaTotal` goes from 65 536 kB on `5.6.19-freq` to 131 072 kB here — the
+global 64 MB plus these two — with `MemTotal` and free memory unchanged in
+practice. Reserving 64 MB for the processors does not take 64 MB from the
+system until something claims it.
+
+No IOMMU faults, no L3 errors, and no new warnings in `dmesg` beyond the
+`hwmod` / `ti_abb` / dummy-regulator noise this machine prints on every kernel.
+
+**What this does not show.** Nothing has been *run on* the M4s. They are
+enumerated and idle. The IOMMU is configured but never exercised, because that
+happens when firmware loads.
 
 ---
 
@@ -543,13 +616,14 @@ If neither of those is the goal, this is a curiosity.
 Stated plainly, because everything above is either measured or built and these
 are neither:
 
-- **Nothing has run on hardware.** The kernel builds; it has never been booted.
-  "It probes" is an expectation, not an observation.
-- **There is no firmware**, so the driver cannot be end-to-end tested at all.
-  The first real test needs option 1 completed first.
-- **A misprogrammed IOMMU on this SoC can wedge the L3 interconnect.** The
-  failure mode for getting this wrong is not a clean error message. Have the
-  recovery path from `troubleshooting.md` ready.
+- ~~**Nothing has run on hardware.**~~ **Booted on 2026-09-20**; see "The first
+  boot" above. Both processors enumerate and sit `offline`.
+- **There is no firmware**, so nothing has been *run on* the M4s. Everything
+  past "the kernel enumerates them" is still untested, and that is the larger
+  half.
+- **A misprogrammed IOMMU on this SoC can wedge the L3 interconnect.** Nothing
+  like that happened on the first boot, but nothing has loaded firmware either,
+  which is when the IOMMU actually gets used. Have the recovery path ready.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
 - **`git.ti.com` still does not respond from here**, so nothing was checked
   against it directly. That gap is now mostly closed a different way: the
