@@ -235,6 +235,10 @@ This was assumed and it is wrong, so it is worth stating plainly. The
 detector armed at a 10 second threshold, and if the hang had happened it would
 most likely have reported nothing.
 
+(That kernel was removed from the card on 2026-09-20 to make room in `/boot`;
+`kernel/softlockup-kernel.tar.gz` on the PC still installs it without a
+recompile. The reasoning below does not depend on it being present.)
+
 The detector does not watch for a busy CPU. It works by having each core's
 watchdog timer queue a job on that core's stopper thread, which is real-time
 priority and preempts everything; the job updates a timestamp, and the next

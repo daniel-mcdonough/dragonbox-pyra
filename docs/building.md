@@ -678,6 +678,69 @@ The directory's README has the rest, including a defect in the published
 example of that script that raises the hot-battery charge current more than
 threefold.
 
+## The M4 kernel
+
+Added 2026-09-20, from `experiments/m4-ipu/`. **Booted, and both Cortex-M4s
+have run code on it.** Same machinery as the two above; only the tarball name
+differs.
+
+    ./pc/pyra-crossbuild.sh kernel-m4      # 5.6.19-m4, in kernel/src-m4
+
+It is the fix kernel plus four patches and seven config symbols: a backport of
+v5.9's device tree `omap_remoteproc` driver, the SoC-level `ipu` and `dsp`
+nodes, this board's carveouts and enablement, and a fix for an upstream
+`omap-iommu` bug that sleeps while holding two spinlocks. Like the frequency
+kernels it starts from `patches/` 0001–0006, so everything `docs/` records
+about the display, suspend, the nubs and the keyboard still holds and the M4
+work is the only thing that changed.
+
+`docs/m4-ipu.md` is the whole story, including the firmware that runs on the
+cores and why it needs no TI toolchain. Two things worth knowing before
+building it:
+
+**`OMAP_REMOTEPROC=m` does not keep the cores untouched at boot.** udev loads
+the module from the device tree modalias, the driver probes, and `auto_boot` is
+true — so once `omap5-ipu-fw.xem4` exists in `/lib/firmware`, both M4s start
+during every boot with nothing typed. `modprobe.blacklist=omap_remoteproc` on
+the kernel command line is the control.
+
+**Do not give the IPU a timer.** The obvious template, `omap5-uevm.dts`, gives
+it `ti,watchdog-timers = <&timer9>`, and timer9 on a Pyra is the display
+backlight PWM. The backlight wins that fight, so the screen is never at risk;
+what you get is `-EBUSY` when starting the processor, with nothing to connect
+it to a backlight.
+
+### Watch /boot, and prune it
+
+`/boot` is 238 MB and four kernels are installed on this card — stock, `fix`,
+`freq` and `m4`. Each install needs about 17 MB there plus an initrd of 13 MB,
+and **a kernel that drops out of the boot configuration keeps its files** — there is one test slot, so the kernel it used
+to point at becomes invisible rather than removed. That is how this card
+reached 68% used with an orphaned `5.6.19-softlockup` in it.
+
+To find orphans, compare what is installed against what anything boots:
+
+    ls /boot/vmlinuz-* | sed 's|/boot/vmlinuz-||'
+    sudo grep -h 'linux /vmlinuz' /boot/extlinux/*.conf /boot/extlinux/*.cfg
+
+Removing one is five paths, and the `dtb` directory is the one people forget —
+it is another 7 MB in `/boot`:
+
+    REL=5.6.19-something
+    sudo rm -f  /boot/{vmlinuz,initrd.img,System.map,config}-$REL
+    sudo rm -rf /boot/dtb/linux-image-$REL /usr/lib/modules/$REL
+
+Check first that it is neither `uname -r` nor named in any boot entry. It is
+reversible as long as the build tarball is still on the PC, which costs no
+recompile.
+
+**The installer's space check used to be wrong about this**, and said so in a
+way that sent you to delete kernels you did not need to. It charged `/boot` for
+the whole uncompressed tarball, but only `./boot/` lands there — for the M4
+kernel that is 17 MB of 54, the other 36 being modules bound for the root
+filesystem. It now measures each half against the filesystem it actually lands
+on, and checks the root one too, which nothing did before.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card

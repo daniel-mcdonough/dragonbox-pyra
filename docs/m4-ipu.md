@@ -138,7 +138,7 @@ The patches are in `experiments/m4-ipu/` and the build target is:
     ./pc/pyra-crossbuild.sh kernel-m4
 
 which produces `5.6.19-m4`, installing beside the stock kernel like every other
-variant. It is the fix set from `patches/` plus the three patches below plus
+variant. It is the fix set from `patches/` plus the four patches below plus
 seven config symbols.
 
 `OMAP_REMOTEPROC` is set to `m` rather than `y`, but **the reason first given
@@ -504,7 +504,7 @@ Not the same question as "which kernel is newer", and the backport is not
 obviously the loser.
 
 **The backport keeps one variable.** `5.6.19-m4` is this project's known-good
-kernel plus three patches. Everything `docs/` says about the display, the SGX,
+kernel plus four patches. Everything `docs/` says about the display, the SGX,
 suspend, the nubs, the thermal behaviour and the governor still holds, because
 it is the same kernel. If the M4s misbehave, the M4s are what changed.
 
@@ -516,7 +516,7 @@ blob the card's userspace links against, the `armsoc` X driver ABI. The SGX
 driver being in-tree at the right version is a good sign and nothing more —
 **letux 7.3 has never been booted on this unit, and neither has any letux
 kernel.** Finding out is its own project, and a considerably larger one than
-the three patches here.
+the four patches here.
 
 The honest ordering: if the goal is to try the M4s, build `kernel-m4` and keep
 every other variable fixed. If the goal is to modernise the Pyra's kernel, that
@@ -711,7 +711,7 @@ The kernel half is genuinely cheap — a small, low-risk patch, now proven on
 hardware end to end: both M4s run code, the IOMMU translates, and the carveouts
 cost nothing at rest. It does carry one debt that was invisible until something
 actually started the IPU, an upstream `omap-iommu` sleep-under-spinlock; `0012`
-fixes it in twenty lines and has not been booted.
+fixes it in twenty lines, and that fix is built and booted too.
 
 **Getting a bare-metal program running turned out to be much cheaper than this
 document first estimated**, because the AMMU does not need programming for code
@@ -931,7 +931,8 @@ Hardware:
 
 ## See also
 
-- `experiments/m4-ipu/` — the three patches, each with its reasoning in the header
+- `experiments/m4-ipu/` — the four patches, each with its reasoning in the
+  header, and `firmware/`, the test program that runs on both cores
 - `docs/building.md` — how `pyra-crossbuild.sh` works and why the kernel builds
   in a bookworm container
 - `docs/improvements.md` — the performance work these cores do *not* help with

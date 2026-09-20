@@ -7,7 +7,8 @@ carries any of this; `kernel-m4` has to be asked for by name.
 
 The reasoning, the measurements, the firmware problem and an honest assessment
 of whether this is worth finishing are all in **`docs/m4-ipu.md`**. Read that
-first. This file is only about the three patches.
+first. This file is about the four patches; `firmware/README.md` is about the
+test program.
 
 **Two of the four are only needed because this kernel is 5.6.19.** The letux
 kernel is at 7.3 and already carries the device tree driver and the SoC-level

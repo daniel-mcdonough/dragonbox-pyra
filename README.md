@@ -133,8 +133,10 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container, stock or with any of the patch sets. Touches neither the host nor the Pyra. |
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
 | `pc/pyra-push-helpers.sh` | Copies the device scripts to the Pyra and installs them there, in one command from the workstation. The same thing `pyra-push-kernel.sh` does on its way past, without needing a built kernel to do it. |
+| `pc/pyra-m4-verify.sh` | Asserts the M4 patch set and the test firmware still say what `docs/m4-ipu.md` claims they say. Needs no Pyra; `--patches` needs no build either. |
 | `experiments/pegasus-idle/` | What a QML launcher costs this machine at rest, and how much of that is recoverable: a deliberately inert theme, the measurement scripts, and the controls that rule out Qt and the driver. |
 | `experiments/c2-idle/` | One kernel patch, tried and rejected: restoring the processor's retention idle state, which this kernel tree removes, hangs the machine within two minutes. Kept with its result so nobody repeats it. |
+| `experiments/m4-ipu/` | The OMAP5's two Cortex-M4s and its DSP, made visible to Linux and then made to run code: four kernel patches, a bare-metal test firmware that runs on both cores, and the unfixed upstream `omap-iommu` bug that starting the IPU turned up. |
 | `experiments/thermals-and-frequency/` | Third-party, never booted here: an unlocked device tree with sixteen frequency steps from 250 MHz to 2 GHz, read out and reviewed, and rewritten as two device tree patches so the half that is not overclocking can be built on its own. Also the one change in its example thermal script that can damage a battery. |
 | `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
 
