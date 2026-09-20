@@ -911,6 +911,115 @@ downstream of the conversion, at the cost of the output switching. `CHANNELS:
 [1 5]` says the hardware allows it. Whether it is worth losing the headphone
 split is a product decision, not a performance one.
 
+#### Update 2026-09-20: the percentage you see is mostly the governor
+
+Everything above still measures true. What it does not say is that **the
+number on screen depends on the clock the governor happens to be at**, and
+that turns out to explain the gap between "16% of one core" here and the
+20–30% a user actually reports seeing in `top`.
+
+Same single stereo 44.1 kHz sine, same machine, cost taken from
+`/proc/<pid>/stat`:
+
+| condition | pulseaudio | clock |
+| --- | --- | --- |
+| `ondemand`, as shipped | **26%** of a core | 625 MHz |
+| `performance` | **11%** of a core | 1500 MHz |
+
+Identical absolute work — only the denominator moved. Audio is a small steady
+load and `ondemand` reads it as idle, settling at 625–750 MHz, so the
+percentage roughly doubles. This matters for item 1 above: the governor fix is
+worth more than its own benchmark suggests, because it also silently halves the
+apparent cost of everything that behaves like audio.
+
+It also means **20–30% is the correct reading for this configuration and is not
+a leak**, which is the first thing to tell anyone who reports it.
+
+**Idle is genuinely free.** `module-suspend-on-idle` is loaded, and with nothing
+playing the daemon measures 1 tick in 6 seconds — call it zero. There is no
+standing drain to reclaim. The whole cost exists only while audio is playing,
+so "turn audio off to save power at rest" has nothing to collect.
+
+**One more rate, the one that matters for games.** The table above has 22050,
+44100 and 88200 but not 48000, which is what most SDL titles and all video ask
+for:
+
+| stream | pulseaudio |
+| --- | --- |
+| 44100 | 10% of a core |
+| 48000 | **10%** |
+| 88200 (matches the sink) | 2% |
+
+Which confirms the cliff from the other side: 48000 is no cheaper than 44100
+despite being no further from the sink rate. Context-switch rate stayed at
+30–42/s across all three, so this is data-path cost and not wakeups.
+
+#### A correction, and a quality lever the original entry missed
+
+The entry above reads `RATE: [88200 96000]` as "there is no 44100", which is
+right. But the second number is not decoration, and it is selectable: the
+TWL6040 runs its PDM link at **88200 in Low-Power PLL mode and 96000 in
+High-Performance**, exposed as the `PLL Selection` and `TWL6040 Power Mode`
+mixer enums. This machine is in Low-Power.
+
+That does **not** buy back any CPU. By the cliff finding above, cost tracks
+output samples, and 96000 is more of them than 88200, so switching would cost
+slightly *more* and draw more power in the bargain. What it changes is
+**which content converts cleanly**:
+
+| link rate | 44.1 kHz content | 48 kHz content |
+| --- | --- | --- |
+| 88200 (now) | exact 2:1 | ragged non-integer |
+| 96000 | ragged non-integer | exact 2:1 |
+
+This matters because `resample-method` is `trivial` — nearest source sample.
+At an exact 2:1 that is a clean zero-order hold, every sample used twice. At a
+non-integer ratio it duplicates irregularly, which is audible as aliasing and
+zipper artifacts. So the machine is currently tuned for 44.1 kHz music and
+against 48 kHz games, and N64-era content at 32 kHz is ragged in either mode.
+
+**Untested.** The rate range comes from `--dump-hw-params` and the mode enums
+are visible in `amixer`, but nobody has flipped them and listened, or measured
+what High-Performance costs at the battery. If game audio on this machine
+sounds gritty, this is the first thing to try, and it is two mixer writes and
+fully reversible.
+
+The quality dimension deserves stating plainly on its own: **`trivial` is the
+cheapest resampler and also the worst**, and the original entry's "nothing to
+gain" is true only about CPU. `speex-fixed-1` would sound considerably better
+and cost some of that 8-point conversion penalty back. Nobody has decided that
+trade deliberately; it was inherited.
+
+#### If the goal is to switch audio off
+
+Worth writing down because the obvious method does not work:
+
+- **Muting saves nothing.** PulseAudio still resamples and mixes the stream and
+  multiplies by zero at the end. If the goal is CPU, mute is the wrong lever.
+- **`SDL_AUDIODRIVER=dummy` is the one that works**, per app. It removes the
+  app's own decode and mixing *and* the conversion PulseAudio would do behind
+  it. No system state changed, nothing to undo.
+- Stopping the daemon outright reclaims the same, but some apps hang or fail
+  against a missing server rather than running silently, so it wants the dummy
+  driver anyway — at which point the dummy driver alone was enough.
+
+#### Can an app avoid the conversion by sending 88200?
+
+Sometimes, and it is worth being precise about when, because the answer above
+("making the source match backfires") was reasoned from one case — Wine's
+DirectSound mixer under box86 — and generalises less than it looks.
+
+- **An app that synthesises audio** and will render at whatever rate it is
+  asked for genuinely skips the conversion: that is the 10% → 2% row.
+- **An app with a fixed native rate** — 32 kHz for N64 content, 44.1 for music
+  files, 48 for video — does not. Asking it for 88200 relocates the resample
+  into the app, where it is likely *more* expensive, because PulseAudio's is
+  `trivial` while the app's is probably properly filtered. That is a quality
+  gain paid for in CPU, not a saving.
+
+`pactl list sink-inputs` prints each live stream's sample spec, so what a given
+title actually asks for is a measurement rather than a guess.
+
 ### 11. The i2c interrupt floor
 
 **Measured, and small enough to close.** At the login screen with no desktop
