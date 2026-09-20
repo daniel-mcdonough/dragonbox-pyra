@@ -75,6 +75,15 @@ never been turned on. `CONFIG_OMAP_IOMMU` and `CONFIG_IOMMU_API` are already on
 in the stock config and both MMUs already probe on the running machine, which
 is why they are not in the list.
 
+## Checking it still says what it should
+
+    ../../pc/pyra-m4-verify.sh --patches
+
+asserts the three compat fixes are still in `0009`, that `0011` adds no timer
+property, and that its carveout still covers what
+`rsc_table_omap5_ipu.h` asks for. Without `--patches` it also checks the built
+tree and decompiles the DTB. `device/pyra-m4-check.sh` is the on-device half.
+
 ## What would come next
 
 Nothing here can be tested without firmware. TI's own IPC repositories are

@@ -565,6 +565,57 @@ are neither:
 
 ---
 
+## The tests
+
+Two scripts, because the two halves fail in different places.
+
+    ./pc/pyra-m4-verify.sh            # the patches and the built tree, on a PC
+    ./pc/pyra-m4-verify.sh --patches  # patches only, no build needed
+    ./device/pyra-m4-check.sh         # the running machine, on the Pyra
+
+`pyra-m4-verify.sh` asserts the findings in this document against the patch
+set and the built artifacts: the three compat fixes are still in `0009`, both
+processors are `okay` in the compiled DTB, `OMAP_REMOTEPROC` is still `m`, and
+the two that the file mostly exists for —
+
+- **no timer property on `ipu` or `dsp`**, checked both in `0011` and in the
+  compiled blob, where the assertion is that the *only* two `ti,timers` in the
+  whole tree are `pwm8` and `pwm9`;
+- **the carveout still covers the resource table**, read live out of
+  `ipcdev/packages/ti/ipc/remoteproc/rsc_table_omap5_ipu.h` when TI's clones
+  are present. Today that prints `table wants 55 MB: text 6, data 48, ipc 1;
+  carveout is 56 MB`.
+
+It needs `dtc`, and falls back to a container when the PC has none, because
+those are the assertions worth having. **27 ok, 0 failed** on 2026-09-20.
+
+**Both of its load-bearing assertions were negative-tested**, which is the only
+way to know an assertion is wired up: reintroducing `omap5-uevm.dts`'s
+`ti,watchdog-timers = <&timer9>, <&timer11>` and shrinking the carveout to
+16 MB each produce a `FAIL` and a non-zero exit. That found a real bug — the
+first version of the timer check matched the patch's own comment explaining
+why the property is absent, and so failed a correct patch. A second bug was
+worse: an unparseable carveout size printed a shell error and was counted as
+neither pass nor fail, so the check silently did not run while the script still
+reported success.
+
+`pyra-m4-check.sh` reports the machine's state and changes nothing; it never
+writes a remoteproc `state` file. It is safe on the stock kernel and detects
+that case rather than failing, so it can be run before and after installing
+`5.6.19-m4` and the outputs compared. Run on `5.6.19-freq` on 2026-09-20 it
+gives **10 ok, 0 failed, 1 skipped**: both IOMMUs bound, the mailbox and both
+channels present, both backlights alive, no `ipu` node and no
+`/sys/class/remoteproc`, and the two clock rates quoted at the top of this
+document reproduced independently.
+
+**What the device script has not exercised**, because no M4 kernel has been
+booted: the `--modprobe` path, the per-processor `name`/`state`/`firmware`
+reporting, and the assertion that there are two remoteproc devices. Those
+branches are written but unproven, and the first run on `5.6.19-m4` is as much
+a test of the script as of the kernel.
+
+---
+
 ## Reproducing the survey
 
 Everything in the "what state it is in today" section, on the device:
