@@ -1158,18 +1158,27 @@ both memory banks ON.
 1. `omap_abe_add_aess_dai_links()` in `sound/soc/ti/omap-abe-twl6040.c:451` is
    an empty stub — four locals declared, none used, `return 0`. This is the
    whole reason the path is dead.
-2. The aess device's runtime PM reads `unsupported`; the driver never calls
-   `pm_runtime_enable()`. This is worse than it first looks. Every accessor in
-   `sound/soc/ti/aess/aess_mem.h` — `omap_aess_write`, `omap_aess_read`,
-   `omap_aess_reg_write`, `omap_aess_reg_read`, `omap_aess_clear` — is wrapped
-   in `if (pm_runtime_active(aess->dev))`, and that is false for a device whose
-   runtime PM was never enabled. So it is not merely that nothing powers the
-   engine: **every register and memory write the driver makes is silently
-   dropped, and every read returns 0.** Fixing the DAI-link stub alone would
-   produce a card that appears to work and does nothing at all.
-3. The AESS init sequence in `omap_aess_pcm_probe()` is itself inside an
-   `#if 0`, commented "failed firmware load leads to missing/wrong opp and
-   failed omap_aess_init_mem". That is the third dead switch in the same path.
+2. The aess device's runtime PM reads `unsupported`, so `pm_runtime_active()`
+   is false — and every accessor in `sound/soc/ti/aess/aess_mem.h`
+   (`omap_aess_write`, `omap_aess_read`, `omap_aess_reg_write`,
+   `omap_aess_reg_read`, `omap_aess_clear`) is wrapped in
+   `if (pm_runtime_active(aess->dev))`. **Every register and memory write the
+   driver makes is silently dropped and every read returns 0.**
+3. The AESS init sequence in `omap_aess_pcm_probe()` sits inside an `#if 0`,
+   commented "failed firmware load leads to missing/wrong opp and failed
+   omap_aess_init_mem".
+**Corrected 2026-09-20: items 2 and 3 are not independent blockers — they are
+consequences of item 1.** `omap_aess_pcm_probe()` *does* call
+`pm_runtime_enable()`, at `omap-aess-pcm.c:475`, and the `#if 0` init sits
+inside that same function. It is simply never executed: it is the `.probe` of
+`omap_aess_platform`, and an ASoC component's probe runs when the component is
+bound **into a card**, not when `snd_soc_register_component()` is called. With
+the DAI-link stub empty, nothing references the AESS component, so it is never
+bound, so the probe never runs, so runtime PM is never enabled. One root cause,
+two consequences. An earlier revision of this section presented them as three
+separate dead switches; that was wrong, and it matters, because it means the
+fix is to fill in the stub rather than to sprinkle `pm_runtime_enable()` calls.
+
 4. `abe_54xx_pwrdm` in `arch/arm/mach-omap2/powerdomains54xx_data.c` sets
    `pwrsts_mem_on` to `PWRSTS_OFF_RET` for both banks where OMAP4's
    `abe_44xx_pwrdm` sets `PWRSTS_ON`. Not biting today — `PM_ABE_PWRSTCTRL`
@@ -1231,13 +1240,34 @@ through `omap_aess_update_scheduling_table()` and `omap_aess_update_io_task()`
 at lines 234 and 250. No port is enabled, so no DL task is ever dispatched and
 the mixer gains have nothing to act on.
 
-**So the next step is the port-enable path**, which means decoding
-`struct omap_aess_port` out of the config blob — `status`, `data_format`,
-`smem_buffer1/2`, `port_protocol`, `dma_offset`, `init_task` and
-`asrc_port tsk_freq[4]` — and writing the IO descriptors. After that comes
-McPDM, which the kernel currently owns through the legacy card, and then the
-driver's dropped-writes problem has to be fixed properly rather than
-sidestepped from `/dev/mem`.
+**The port-enable path was tried next, and it is where `/dev/mem` stops paying.**
+`device/pyra-aess-port-enable.py` decodes the config's port table — 17 entries
+of `struct omap_aess_port`, 228 bytes each, a stride confirmed by the compiler
+and by the decoded fields being obviously sane (rates of 96000/48000/8000,
+plausible protocols, the trailing entries landing exactly inside the blob):
+
+| id | port | rate | dir | protocol | tasks |
+| --- | --- | --- | --- | --- | --- |
+| 6 | `MM_DL` | 48000 | in | DMAREQ | `MultiFrame[18][0] = 0x0d14` |
+| 11 | `PDM_DL` | 96000 | out | MCPDMDL | `MultiFrame[7][0]`, `[19][0] = 0x0d64` |
+| — | ping-pong | 48000 | in | — | `MultiFrame[18][0] = 0x0ca4` |
+
+Adding `MM_DL`'s task to the schedule works — the engine dispatches it — and
+still nothing moves, because that is only the `update_scheduling_table()` half
+of `omap_aess_enable_data_transfer()`. A port must first be *connected*:
+`omap_aess_connect_cbpr_dmareq_port()` → `omap_aess_init_io_tasks()` and
+`omap_aess_init_atc()` write the port's IO descriptor and ATC descriptors into
+DMEM. Reimplementing those means `init_atc` (~104 lines),
+`clean_temporary_buffers` (~114), `init_io_tasks`, plus two descriptor layouts
+— 400+ lines of intricate undocumented work in a place where every mistake is
+an asynchronous external abort.
+
+**That is the wrong direction, and the recommendation is to stop it.** The
+kernel already holds all of it, working, in `aess_port.c`'s 1683 lines. The
+`/dev/mem` work has done its job: it has removed the hardware risk, which was
+the only question it could answer cheaply. Everything past this point is
+reachable by filling in one empty function, and re-deriving it in userspace is
+strictly worse than that.
 
 **One more upstream bug found on the way.** `omap_aess_write_gain()` computes
 `map[SMEM_GTARGET1].offset + (id << 2)` for gain IDs up to 35
