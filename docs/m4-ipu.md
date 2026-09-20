@@ -735,18 +735,89 @@ across a cached carveout, will not help box86, gl4es, X rendering, or any game.
 They are not general-purpose compute you can throw work at. Nothing in
 `improvements.md` gets faster because of them.
 
-**What they might plausibly do.** Two things, both needing measurement first:
+**What they might plausibly do.** One thing, and it needs measurement first:
 
 - **Video decode.** Option 1's firmware already exists and does exactly this.
   This is the one path where the work is mostly already written.
-- **Low-power background offload** — polling sensors, input, or an audio loop
-  so the A15s can reach a deeper C-state. This connects to the `c2-idle` and
-  governor experiments. But it is only a win if the IPU power domain costs less
-  than the A15 residency it buys, and **that has not been measured**. It is
-  entirely possible that waking a 425 MHz subsystem to avoid waking an A15 is a
-  net loss.
 
-If neither of those is the goal, this is a curiosity.
+There used to be a second entry here — low-power background offload, to let the
+A15s idle deeper — carried as "plausible, but unmeasured". **It is now refuted,
+and not for want of measuring it.** The next section is why.
+
+If video decode is not the goal, this is a curiosity.
+
+### Why the M4s cannot buy the A15s a deeper sleep
+
+Asked on 2026-09-20: could an M4 take over background work so the A15s reach a
+deeper idle state, the way a microcontroller does on other SoCs? No — and it
+fails twice over, on two independent grounds. This is read out of the kernel
+tree rather than measured, because both are topology facts with nothing to
+measure.
+
+**The M4s are in the wrong power domain.** The IPU is not an island:
+
+    /* arch/arm/mach-omap2/clockdomains54xx_data.c */
+    static struct clockdomain ipu_54xx_clkdm = {
+            .name   = "ipu_clkdm",
+            .pwrdm  = { .name = "core_pwrdm" },
+
+It sits inside CORE, and its 64 KB of L2 RAM is not even its own memory — it is
+a retention bank of the CORE power domain, next to the unicache:
+
+    /* arch/arm/mach-omap2/powerdomains54xx_data.c */
+    static struct powerdomain core_54xx_pwrdm = {
+            .pwrsts         = PWRSTS_RET_ON,
+            .pwrsts_mem_ret = {
+                    [3] = PWRSTS_OFF_RET,   /* ipu_l2ram    */
+                    [4] = PWRSTS_OFF_RET,   /* ipu_unicache */
+
+So an executing M4 pins CORE at ON, which holds the L3 interconnect clocked;
+and because only 64 KB is local, any real workload reaches DDR across the AMMU
+and the IOMMU, which holds EMIF out of self-refresh. The offload would burn the
+expensive half of the chip in order to run the cheap half. The same fact kills
+the other shape of the idea — an M4 left running as a wakeup source across a
+suspend — since CORE cannot reach RET while the IPU is in it.
+
+TI did build the part this idea wants; it is just not this one. On AM335x the
+power-management coprocessor sits in the always-on domain with its own SRAM:
+
+    /* arch/arm/mach-omap2/omap_hwmod_33xx_data.c */
+    .clkdm_name = "l4_wkup_aon_clkdm"
+
+    /* arch/arm/boot/dts/am33xx.dtsi */
+    wkup_m3: wkup_m3@100000 {
+            compatible   = "ti,am3352-wkup-m3";
+            reg-names    = "umem", "dmem";
+            ti,pm-firmware = "am335x-pm-firmware.elf";
+
+That M3 stays alive while everything else including DDR goes down, which is the
+whole trick, and precisely what a coprocessor inside CORE cannot do. Ducati is
+a media accelerator that happens to be a CPU.
+
+**And there is no deeper A15 state to unlock in the first place.** This machine
+idles in exactly one state, `C1 — CPUx WFI, MPUSS ON`. The retention state
+below it is `#if 0` in this kernel tree, and `experiments/c2-idle/` has already
+tried switching it back on: it works exactly as advertised, the governor
+reaches for it constantly — and **the machine hangs within two minutes**, twice
+out of two attempts. `docs/improvements.md` item 12 has the detail.
+
+That is the part that settles it. Offload cannot deepen a state that is
+unreachable, so the M4 can only ever be *additive*: the A15s go on paying
+MPU-ON no matter what the M4 does, and the IPU's CORE-domain draw is added on
+top of that. There is no trade here, only a second bill.
+
+**A third reason, smaller but real: there is nothing left worth moving.** The
+duties anyone would hand to a microcontroller already live in dedicated silicon
+with interrupt lines — `ti,tca8418` scans the key matrix in hardware,
+`ams,as5013` for the nubs, `ti,bq24297` for charging, `ti,bq27421` for the fuel
+gauge, `ti,tca6424` for GPIO, all in `pyra-mainboard-common.dtsi`. They draw
+microamps and keep working with the OMAP powered down. An M4 in CORE cannot
+compete with a 400 µA I²C part.
+
+**If some future power claim about the IPU does need settling**, the board
+carries a `ti,ina231` power monitor that nothing in this repo currently reads.
+That is the instrument to reach for, and having never wired it up is why this
+item sat marked "unmeasured" for as long as it did.
 
 ---
 

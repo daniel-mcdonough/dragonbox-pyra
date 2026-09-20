@@ -1252,6 +1252,15 @@ for hours. The `#if 0` in the tree is best read as somebody having found the
 same thing. Reopening this would need a serial console, because whatever
 happens takes the machine before it can write a word.
 
+**One escape hatch that is not one.** With C2 unreachable, the tempting move is
+to offload background work onto one of the SoC's Cortex-M4s so the A15s need to
+wake less often. That was examined on 2026-09-20 and fails twice over: the IPU
+lives in the CORE power domain, so an executing M4 holds CORE at ON and DDR out
+of self-refresh; and — the decisive half — with C1 the only reachable A15 state
+there is nothing for offload to deepen, so the M4 can only be an additional
+consumer rather than a trade. `docs/m4-ipu.md` carries the citations, under
+"Why the M4s cannot buy the A15s a deeper sleep".
+
 ### 13. Transparent huge pages, which this kernel does not build
 
 **Written 2026-09-20 from the config, not from the device. Nothing here has

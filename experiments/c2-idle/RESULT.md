@@ -37,4 +37,12 @@ the experiment; it is not kept as something to enable.
 Reopening it needs a serial console. Whatever goes wrong takes the machine
 before it can write anything to disk.
 
+**And the M4s are not a way around this.** The obvious next thought — offload
+background work to a Cortex-M4 so the A15s can sleep deeper — was examined on
+2026-09-20 and does not work, for reasons that have nothing to do with effort.
+The IPU is inside the CORE power domain, so running it keeps CORE at ON and DDR
+out of self-refresh; and since C1 is the only reachable A15 state, offload
+cannot deepen anything anyway, it can only add a second consumer. The argument
+is in `docs/m4-ipu.md`, under "Why the M4s cannot buy the A15s a deeper sleep".
+
 See `docs/improvements.md` item 12 and `docs/verification-log.md`.
