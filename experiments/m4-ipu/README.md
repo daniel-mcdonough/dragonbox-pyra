@@ -10,6 +10,12 @@ The reasoning, the measurements, the firmware problem and an honest assessment
 of whether this is worth finishing are all in **`docs/m4-ipu.md`**. Read that
 first. This file is only about the three patches.
 
+**Two of the three are only needed because this kernel is 5.6.19.** The letux
+kernel is at 7.3 and already carries the device tree driver and the SoC-level
+nodes, so on that tree `0009` and `0010` are dead weight and only `0011` — and
+the timer finding behind it — still applies. Whether to move is a real choice;
+`docs/m4-ipu.md` has the comparison.
+
     ./pc/pyra-crossbuild.sh kernel-m4
 
 builds `5.6.19-m4` into its own `src-m4` tree and stages it as

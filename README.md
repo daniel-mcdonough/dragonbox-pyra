@@ -88,7 +88,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
 | [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
-| [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them (built, not booted), and whether it is worth finishing. |
+| [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them (built, not booted), the letux 7.x alternative, and whether it is worth finishing. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |

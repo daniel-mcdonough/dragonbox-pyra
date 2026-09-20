@@ -13,6 +13,10 @@ and has not been done.
 cheap and proven. The firmware side is neither, and the payoff for this
 project's actual goals is thin.
 
+**And read "The other route" before building anything.** The letux kernel is at
+7.3 and already carries two of the three patches here; whether to use it is a
+real choice and not a foregone one.
+
 ---
 
 ## What the hardware is
@@ -246,6 +250,68 @@ firmware file for it to load — that is the next section, and it is not done.
 
 ---
 
+## The other route: letux 7.x already has all of this
+
+**Corrected 2026-09-20, after the backport was built.** The first pass
+concluded that whether a newer letux tree existed "could not be checked",
+because `git.goldelico.com` serves a placeholder page. That was a failure of
+searching, not a fact about the world: **the tree is mirrored on GitHub at
+`goldelico/letux-kernel`**, it has about 2 480 branches, and it is at
+**letux-7.3-rc3**. It tracks mainline closely and is actively maintained.
+
+Read out of `letux-7.3-rc3`:
+
+| | |
+| --- | --- |
+| `drivers/remoteproc/omap_remoteproc.c` | 37 614 bytes — the DT driver, not the 6 448-byte stub |
+| `ipu`/`dsp` in `omap5.dtsi` | both present |
+| this machine's board file | `omap5-letux-cortex15-v5.3+pyra-v5.3.dts`, present |
+| `drivers/gpu/drm/pvrsgx/` | present, including `1.14.3699939` — the version this card's DDK blob wants — and newer |
+
+So **patches `0009` and `0010` are unnecessary on letux 7.x.** They exist to
+put into 5.6.19 what that tree already has.
+
+Two things survive the move, and they are the two findings that were actually
+this project's own rather than upstream's:
+
+- **`0011` is still needed.** No letux board file enables the two processors —
+  checked across `omap5-letux-cortex15-v5.3+pyra-v5.3.dts`, its parents,
+  `pyra-mainboard-*.dtsi` and `omap5-board-common.dtsi`, and none of them
+  mentions `&ipu`, `&dsp` or `reserved-memory`. Upstream only ever enables them
+  on `omap5-uevm`. The carveouts and the enablement stanza still have to be
+  written.
+- **The timer trap is still there.** `pyra-display.dtsi` in letux 7.3 still
+  puts `pwm9` on `timer9` and still feeds the panel backlight from it, so
+  copying `omap5-uevm.dts`'s timer properties is just as wrong at 7.3 as at
+  5.6.19.
+
+### Which route to take
+
+Not the same question as "which kernel is newer", and the backport is not
+obviously the loser.
+
+**The backport keeps one variable.** `5.6.19-m4` is this project's known-good
+kernel plus three patches. Everything `docs/` says about the display, the SGX,
+suspend, the nubs, the thermal behaviour and the governor still holds, because
+it is the same kernel. If the M4s misbehave, the M4s are what changed.
+
+**letux 7.x changes everything at once.** It is eighteen months of kernel
+between this machine's known behaviour and the new one, and this repository's
+entire display and GL stack is characterised against 5.6.19: the `omapdrm`
+modeset race in `troubleshooting.md`, the six patches in `patches/`, the DDK
+blob the card's userspace links against, the `armsoc` X driver ABI. The SGX
+driver being in-tree at the right version is a good sign and nothing more —
+**letux 7.3 has never been booted on this unit, and neither has any letux
+kernel.** Finding out is its own project, and a considerably larger one than
+the three patches here.
+
+The honest ordering: if the goal is to try the M4s, build `kernel-m4` and keep
+every other variable fixed. If the goal is to modernise the Pyra's kernel, that
+is a separate piece of work with its own risks and its own payoff, and the M4
+support arriving free is a side effect of it rather than a reason for it.
+
+---
+
 ## The firmware: this is the actual work, and it is not done
 
 A kernel that probes gets you `/sys/class/remoteproc/remoteproc0/` and nothing
@@ -367,18 +433,13 @@ are neither:
   failure mode for getting this wrong is not a clean error message. Have the
   recovery path from `troubleshooting.md` ready.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
-- **Two sources could not be reached** on 2026-09-20, both of which would
-  change the recommendation if they say something unexpected:
-  - `git.ti.com` fails to connect entirely (not a 404 — no response), so TI's
-    own `ipc/ipcdev` could not be consulted directly. The GitHub mirrors that
-    do respond are stale: `Hashcode/ipcdev` 2014, `liyaoshi/ipcdev` 2016,
-    `bradfa/ti-ipumm` 2016. MobiAqua's forks are the live ones.
-  - `git.goldelico.com` serves a macOS Server placeholder page, so **whether a
-    letux 6.x tree exists could not be checked**. This matters: a letux kernel
-    at 5.9 or newer would have all of the kernel work above natively and make
-    `experiments/m4-ipu/` unnecessary. Worth five minutes before committing to
-    the backport. The Pyra repository itself offers only `5.6.19-pyradef` plus
-    Debian's generic `6.12` armmp kernels, and the latter carry no Pyra DTB.
+- **`git.ti.com` could not be reached** on 2026-09-20 — it fails to connect
+  entirely, not a 404 — so TI's own `ipc/ipcdev` could not be consulted
+  directly. The GitHub mirrors that do respond are stale: `Hashcode/ipcdev`
+  2014, `liyaoshi/ipcdev` 2016, `bradfa/ti-ipumm` 2016. MobiAqua's forks are
+  the live ones.
+- **Nothing about the letux route below has been booted either.** Its state was
+  read out of the tree, not run.
 
 ---
 
@@ -412,6 +473,18 @@ Kernel:
 - [v5.9 `omap5.dtsi`](https://raw.githubusercontent.com/torvalds/linux/v5.9/arch/arm/boot/dts/omap5.dtsi)
   and [v6.6 `omap5-uevm.dts`](https://raw.githubusercontent.com/torvalds/linux/v6.6/arch/arm/boot/dts/ti/omap/omap5-uevm.dts)
   — the two node sets, and the carveout template
+
+The letux kernel:
+
+- [`goldelico/letux-kernel` on GitHub](https://github.com/goldelico/letux-kernel)
+  — the mirror. `git.goldelico.com` serves a placeholder page and is not the
+  way in; this is.
+- [`letux-7.3-rc3` `drivers/remoteproc`](https://github.com/goldelico/letux-kernel/tree/letux-7.3-rc3/drivers/remoteproc)
+  and [its `arch/arm/boot/dts/ti/omap`](https://github.com/goldelico/letux-kernel/tree/letux-7.3-rc3/arch/arm/boot/dts/ti/omap)
+  — the driver and the Pyra board files, for checking the table above
+- Note that `work/hns/pyrav5` is a **4.4.0-rc6** work branch and carries the
+  same dead stub 5.6.19 does; it is older than this machine's kernel, not
+  newer. Branch names in that tree do not imply recency.
 
 Firmware:
 
