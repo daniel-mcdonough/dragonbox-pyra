@@ -1,0 +1,302 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: add the DAPM graph
+
+With 0018 the card comes up, the firmware loads, all nine DAI links bind and
+the 25 mixer controls appear -- and opening a PCM returns -EINVAL, because the
+AESS component's DAPM holds only the stream widgets ASoC creates from the DAI
+list. There is no MM_DL, no DL1 Mixer, no PDM_DL1, so dpcm_path_get() finds no
+path from a front end to a back end. That is the direct consequence of 0014
+loading the container's two vendor blocks and skipping the rest.
+
+This is the rest, for playback, and like 0015 it is recovered rather than
+invented.
+
+The widget block declares 46 widgets as {id, name[32], sname[32], reg, shift,
+x, y, num_kcontrols} followed by their kcontrols. The kcontrols carry no size
+word; their length comes from the widget type, 1088 bytes for a mux's enum and
+80 for a switch. Those two numbers are the observed distances between
+consecutive widget headers -- MUX_UL00 to MUX_UL01 is 1176, which is 88 +
+1088, and DL1 Mixer to DL2 Mixer is 408, which is 88 + 4*80 -- and with them
+the walk lands on 16532, the block's own size, to the byte. The `id` is a
+snd_soc_dapm_type from before regulator_supply entered that enum, shifting
+everything after supply down one: 2 mux, 3 virt_mux, 5 mixer, 21 aif_in,
+22 aif_out.
+
+The route block is a count followed by {sink[32], control[32], source[32]},
+and 4 + 205*96 is its size to the byte.
+
+The two blocks agree, which is the reason to trust either. DL1 Mixer's
+kcontrols decode as {Tones, Voice, Capture, Multimedia}, and those are exactly
+the control strings the routes use when they sink into DL1 Mixer. Different
+layouts, different rules, same answer. experiments/aess/decode-topology.py
+reads both back out of a firmware file.
+
+What the graph gives, end to end:
+
+  MM1 Playback -> MM VMixer -> MM_DL -> DL1 Mixer("Multimedia")
+    -> Sidetone Mixer("Playback") -> DL1 PDM("Switch") -> PDM_DL1 -> BE_OUT
+
+MM1 Playback, Tones Playback, Voice Playback and the rest are the stream
+widgets the MultiMedia1/Tones/Voice DAIs already create, so the recovered
+graph joins onto what 0013 built without adjustment.
+
+The firmware's virt_mux widgets become DAPM mixers: each carries independent
+switch controls, which is what a mixer is. Their switches bind to the AESS
+gain ids through the driver's existing aess_get_mixer/aess_put_mixer, and the
+three routing switches to aess_put_switch.
+
+DELIBERATELY OMITTED: the ten uplink routers MUX_UL00..05, MUX_UL10/11,
+MUX_VX0/1 and the 156 routes feeding them. They are capture-side, each needs a
+fifteen-item enum, and none is on the path to a speaker. The 49 routes here
+are the whole playback graph plus the uplink mixers that do not depend on a
+router.
+
+Verified to compile: `make sound/soc/ti/` exits 0 with 0013 through 0019
+applied to a pristine tree.
+
+STILL NOT ENOUGH ON ITS OWN. omap5-letux-cortex15-common.dtsi overrides
+ti,audio-routing and drops the AESS board routes that omap5-board-common.dtsi
+has -- "Headset Playback" to PDM_DL1 and "Handsfree Playback" to PDM_DL2.
+Without those the graph ends at PDM_DL1 and never reaches the codec.
+
+--- a/sound/soc/ti/aess/omap-aess-fw.c
++++ b/sound/soc/ti/aess/omap-aess-fw.c
+@@ -675,6 +675,208 @@
+ 			OMAP_AESS_GAIN_DL2_RIGHT),
+ };
+ 
++/*
++ * The AESS DAPM graph, decoded out of the firmware container.
++ *
++ * Without it the component has only the stream widgets ASoC creates from the
++ * DAI list, so DPCM finds no path from a front end to a back end and opening
++ * a PCM returns -EINVAL. 0014 loads the container's two vendor blocks and
++ * skips the rest; this is the rest, for playback.
++ *
++ * Both halves are recovered, not invented. The widget block declares 46
++ * widgets as {id, name[32], sname[32], reg, shift, x, y, num_kcontrols}
++ * followed by its kcontrols -- 1088 bytes each for a mux's enum, 80 for a
++ * switch -- and walks to the block's own size exactly. The route block is a
++ * count followed by {sink[32], control[32], source[32]} triples, and
++ * 4 + 205*96 is its size to the byte. experiments/aess/decode-topology.py in
++ * this repo reads both back out of a firmware file.
++ *
++ * The two blocks agree with each other, which is the reason to trust them:
++ * DL1 Mixer's kcontrols decode as {Tones, Voice, Capture, Multimedia}, and
++ * those are exactly the control strings the routes use when they sink into
++ * DL1 Mixer. Two blocks, different layouts, same answer.
++ *
++ * NOT INCLUDED: the ten uplink routers MUX_UL00..05, MUX_UL10/11, MUX_VX0/1
++ * and the 156 routes that feed them. They are capture-side, they need
++ * fifteen-item enums apiece, and none of them is on the path to a speaker.
++ * The 49 routes here are the whole playback graph and the uplink mixers that
++ * do not depend on a router.
++ */
++#define AESS_MIX(xname, xgain)						\
++{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname,		\
++	.info = snd_soc_info_volsw,					\
++	.get = aess_get_mixer, .put = aess_put_mixer,			\
++	.private_value = SOC_SINGLE_VALUE(xgain, 0, 1, 0, 0) }
++
++#define AESS_SWITCH(xname, xreg, xshift)				\
++{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname,		\
++	.info = snd_soc_info_volsw,					\
++	.get = snd_soc_dapm_get_volsw, .put = aess_put_switch,		\
++	.private_value = SOC_SINGLE_VALUE(xreg, xshift, 1, 0, 0) }
++
++static const struct snd_kcontrol_new dl1_mixer_controls[] = {
++	AESS_MIX("Tones",      OMAP_AESS_MIXDL1_TONES),
++	AESS_MIX("Voice",      OMAP_AESS_MIXDL1_VX_DL),
++	AESS_MIX("Capture",    OMAP_AESS_MIXDL1_MM_UL2),
++	AESS_MIX("Multimedia", OMAP_AESS_MIXDL1_MM_DL),
++};
++
++static const struct snd_kcontrol_new dl2_mixer_controls[] = {
++	AESS_MIX("Tones",      OMAP_AESS_MIXDL2_TONES),
++	AESS_MIX("Voice",      OMAP_AESS_MIXDL2_VX_DL),
++	AESS_MIX("Capture",    OMAP_AESS_MIXDL2_MM_UL2),
++	AESS_MIX("Multimedia", OMAP_AESS_MIXDL2_MM_DL),
++};
++
++static const struct snd_kcontrol_new audul_mixer_controls[] = {
++	AESS_MIX("Tones",          OMAP_AESS_MIXAUDUL_TONES),
++	AESS_MIX("Voice Playback", OMAP_AESS_MIXAUDUL_VX_DL),
++	AESS_MIX("Voice Capture",  OMAP_AESS_MIXAUDUL_UPLINK),
++	AESS_MIX("Media Playback", OMAP_AESS_MIXAUDUL_MM_DL),
++};
++
++static const struct snd_kcontrol_new vxrec_mixer_controls[] = {
++	AESS_MIX("Tones Playback", OMAP_AESS_MIXVXREC_TONES),
++	AESS_MIX("Media Playback", OMAP_AESS_MIXVXREC_MM_DL),
++	AESS_MIX("Capture",        OMAP_AESS_MIXVXREC_VX_UL),
++};
++
++static const struct snd_kcontrol_new sdt_mixer_controls[] = {
++	AESS_MIX("Capture",  OMAP_AESS_MIXSDT_UL),
++	AESS_MIX("Playback", OMAP_AESS_MIXSDT_DL),
++};
++
++static const struct snd_kcontrol_new pdm_dl1_switch =
++	AESS_SWITCH("Switch", OMAP_AESS_MIX_SWITCH_PDM_DL, 0);
++static const struct snd_kcontrol_new bt_vx_dl_switch =
++	AESS_SWITCH("Switch", OMAP_AESS_MIX_SWITCH_BT_VX_DL, 0);
++static const struct snd_kcontrol_new mm_ext_dl_switch =
++	AESS_SWITCH("Switch", OMAP_AESS_MIX_SWITCH_MM_EXT_DL, 0);
++
++/* A pass-through node: a mixer with no controls of its own. */
++#define AESS_VMIXER(wname) \
++	SND_SOC_DAPM_MIXER(wname, SND_SOC_NOPM, 0, 0, NULL, 0)
++
++static const struct snd_soc_dapm_widget omap_aess_dapm_widgets[] = {
++	/* Front-end and back-end ports. The ones that name a stream attach to
++	 * the DAIs; the rest are graph nodes the routes below connect. */
++	SND_SOC_DAPM_AIF_IN("TONES_DL",  NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("VX_DL",     NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("MM_DL",     NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("MODEM_DL",  NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("PDM_UL1",   NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("BT_VX_UL",  "BT Capture",   0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("MM_EXT_UL", "FM Capture",   0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("DMIC0",     "DMIC0 Capture", 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("DMIC1",     "DMIC1 Capture", 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_IN("DMIC2",     "DMIC2 Capture", 0, SND_SOC_NOPM, 0, 0),
++
++	SND_SOC_DAPM_AIF_OUT("VX_UL",     NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("MM_UL1",    NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("MM_UL2",    NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("MODEM_UL",  NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("PDM_DL1",   NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("PDM_DL2",   NULL, 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("BT_VX_DL",  "BT Playback", 0, SND_SOC_NOPM, 0, 0),
++	SND_SOC_DAPM_AIF_OUT("MM_EXT_DL", "FM Playback", 0, SND_SOC_NOPM, 0, 0),
++
++	/* Mixers. The firmware calls these virt_mux; each carries independent
++	 * switch controls, which is a DAPM mixer. */
++	SND_SOC_DAPM_MIXER("DL1 Mixer", SND_SOC_NOPM, 0, 0,
++			   dl1_mixer_controls, ARRAY_SIZE(dl1_mixer_controls)),
++	SND_SOC_DAPM_MIXER("DL2 Mixer", SND_SOC_NOPM, 0, 0,
++			   dl2_mixer_controls, ARRAY_SIZE(dl2_mixer_controls)),
++	SND_SOC_DAPM_MIXER("Capture Mixer", SND_SOC_NOPM, 0, 0,
++			   audul_mixer_controls, ARRAY_SIZE(audul_mixer_controls)),
++	SND_SOC_DAPM_MIXER("Voice Capture Mixer", SND_SOC_NOPM, 0, 0,
++			   vxrec_mixer_controls, ARRAY_SIZE(vxrec_mixer_controls)),
++	SND_SOC_DAPM_MIXER("Sidetone Mixer", SND_SOC_NOPM, 0, 0,
++			   sdt_mixer_controls, ARRAY_SIZE(sdt_mixer_controls)),
++
++	SND_SOC_DAPM_MIXER("DL1 PDM",    SND_SOC_NOPM, 0, 0, &pdm_dl1_switch, 1),
++	SND_SOC_DAPM_MIXER("DL1 BT_VX",  SND_SOC_NOPM, 0, 0, &bt_vx_dl_switch, 1),
++	SND_SOC_DAPM_MIXER("DL1 MM_EXT", SND_SOC_NOPM, 0, 0, &mm_ext_dl_switch, 1),
++
++	AESS_VMIXER("DL1 Media Volume"),
++	AESS_VMIXER("Sidetone Capture VMixer"),
++	AESS_VMIXER("Voice Capture VMixer"),
++	AESS_VMIXER("DL1 Capture VMixer"),
++	AESS_VMIXER("DL2 Capture VMixer"),
++	AESS_VMIXER("VX UL VMixer"),
++	AESS_VMIXER("VX DL VMixer"),
++	AESS_VMIXER("MM VMixer"),
++
++	SND_SOC_DAPM_OUTPUT("BE_OUT"),
++	SND_SOC_DAPM_INPUT("BE_IN"),
++};
++
++static const struct snd_soc_dapm_route omap_aess_dapm_routes[] = {
++	{"DL1 Mixer", "Tones", "TONES_DL"},
++	{"DL1 Mixer", "Voice", "VX DL VMixer"},
++	{"DL1 Mixer", "Capture", "DL1 Capture VMixer"},
++	{"DL1 Mixer", "Multimedia", "MM_DL"},
++	{"Sidetone Mixer", "Playback", "DL1 Mixer"},
++	{"Sidetone Mixer", "Capture", "Sidetone Capture VMixer"},
++	{"DL1 BT_VX", "Switch", "Sidetone Mixer"},
++	{"DL1 MM_EXT", "Switch", "Sidetone Mixer"},
++	{"DL1 PDM", "Switch", "Sidetone Mixer"},
++	{"PDM_DL1", NULL, "DL1 PDM"},
++	{"BT_VX_DL", NULL, "DL1 BT_VX"},
++	{"MM_EXT_DL", NULL, "DL1 MM_EXT"},
++	{"DL2 Mixer", "Tones", "TONES_DL"},
++	{"DL2 Mixer", "Voice", "VX DL VMixer"},
++	{"DL2 Mixer", "Capture", "DL2 Capture VMixer"},
++	{"DL2 Mixer", "Multimedia", "MM_DL"},
++	{"PDM_DL2", NULL, "DL2 Mixer"},
++	{"Capture Mixer", "Tones", "TONES_DL"},
++	{"Capture Mixer", "Voice Playback", "VX DL VMixer"},
++	{"Capture Mixer", "Voice Capture", "VX UL VMixer"},
++	{"Capture Mixer", "Media Playback", "MM_DL"},
++	{"Voice Capture Mixer", "Tones Playback", "TONES_DL"},
++	{"Voice Capture Mixer", "Media Playback", "MM_DL"},
++	{"Voice Capture Mixer", "Capture", "Voice Capture VMixer"},
++	{"VX UL VMixer", NULL, "Voice Capture Mixer"},
++	{"VX_UL", NULL, "VX UL VMixer"},
++	{"MODEM_UL", NULL, "VX UL VMixer"},
++	{"VX DL VMixer", NULL, "VX_DL"},
++	{"VX DL VMixer", NULL, "MODEM_DL"},
++	{"MM1 Capture", NULL, "MM_UL1"},
++	{"MM2 Capture", NULL, "MM_UL2"},
++	{"TONES_DL", NULL, "Tones Playback"},
++	{"MM_DL", NULL, "MM VMixer"},
++	{"MM VMixer", NULL, "MMLP Playback"},
++	{"MM VMixer", NULL, "MM1 Playback"},
++	{"VX_DL", NULL, "Voice Playback"},
++	{"Voice Capture", NULL, "VX_UL"},
++	{"MODEM_DL", NULL, "Modem Playback"},
++	{"Modem Capture", NULL, "MODEM_UL"},
++	{"BE_OUT", NULL, "PDM_DL1"},
++	{"BE_OUT", NULL, "PDM_DL2"},
++	{"BE_OUT", NULL, "MM_EXT_DL"},
++	{"BE_OUT", NULL, "BT_VX_DL"},
++	{"PDM_UL1", NULL, "BE_IN"},
++	{"BT_VX_UL", NULL, "BE_IN"},
++	{"MM_EXT_UL", NULL, "BE_IN"},
++	{"DMIC0", NULL, "BE_IN"},
++	{"DMIC1", NULL, "BE_IN"},
++	{"DMIC2", NULL, "BE_IN"},
++};
++
++int omap_aess_add_dapm(struct snd_soc_component *component)
++{
++	struct snd_soc_dapm_context *dapm =
++		snd_soc_component_get_dapm(component);
++	int ret;
++
++	ret = snd_soc_dapm_new_controls(dapm, omap_aess_dapm_widgets,
++					ARRAY_SIZE(omap_aess_dapm_widgets));
++	if (ret < 0)
++		return ret;
++
++	return snd_soc_dapm_add_routes(dapm, omap_aess_dapm_routes,
++				       ARRAY_SIZE(omap_aess_dapm_routes));
++}
++
+ int omap_aess_add_controls(struct snd_soc_component *component)
+ {
+ 	return snd_soc_add_component_controls(component, omap_aess_controls,
+--- a/sound/soc/ti/aess/omap-aess-priv.h
++++ b/sound/soc/ti/aess/omap-aess-priv.h
+@@ -400,6 +400,7 @@
+ int omap_aess_load_container(struct snd_soc_component *component,
+ 			     const struct firmware *fw);
+ int omap_aess_add_controls(struct snd_soc_component *component);
++int omap_aess_add_dapm(struct snd_soc_component *component);
+ extern struct snd_soc_dai_driver omap_aess_dai[6];
+ 
+ int aess_mixer_enable_mono(struct omap_aess *aess, int id, int enable);
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -513,6 +513,17 @@
+ 				"AESS controls could not be added: %d\n", ret);
+ 			goto out;
+ 		}
++
++		/*
++		 * And the graph, without which DPCM has no path from a front
++		 * end to a back end and opening a PCM returns -EINVAL.
++		 */
++		ret = omap_aess_add_dapm(component);
++		if (ret < 0) {
++			dev_err(component->dev,
++				"AESS DAPM graph could not be added: %d\n", ret);
++			goto out;
++		}
+ 	}
+ 
+ 	ret = request_threaded_irq(aess->irq, NULL,

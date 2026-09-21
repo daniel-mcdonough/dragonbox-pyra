@@ -21,35 +21,34 @@ the downlink path this whole exercise is about:
     {"DL1 PDM",   "Switch",     "Sidetone Mixer"}
     {"PDM_DL2",   "",           "DL2 Mixer"}    {"BE_OUT", "", "PDM_DL1"}
 
-WIDGETS (block type 3) are decoded as far as their identity:
+WIDGETS (block type 3) are fully decoded:
 
     u32 count, then count * { u32 id; char name[32]; char sname[32];
                               u32 reg, shift, x, y, num_kcontrols;
                               <num_kcontrols embedded kcontrols> }
 
-count is 46. The base element is 88 bytes and the first 18 -- all AIF widgets
-with no kcontrols -- walk exactly. The `id` is a snd_soc_dapm_type from before
-regulator_supply was added to that enum, which shifts everything after
-snd_soc_dapm_supply down by one:
+count is 46 and all 46 walk to exactly the block's end. The embedded
+kcontrols carry no size word, so their length comes from the widget type:
 
-    2 = mux        21 = aif_in        22 = aif_out        5 = mixer
+    a mux's enum kcontrol  1088 bytes = name[32] + 8*u32 + 32 text slots[32]
+    everything else           80 bytes per switch kcontrol
 
-That reading is what makes every widget make sense -- MM_DL and TONES_DL are
-aif_in, PDM_DL1 and MM_UL1 are aif_out, MUX_UL00 is a mux -- and it is the
-part that would be easiest to get quietly wrong, so it is worth restating that
-it is inferred from consistency across 19 widgets, not read from the file.
+Those two numbers are not guesses; they are the observed distances between
+consecutive widget headers -- MUX_UL00 to MUX_UL01 is 1176 = 88 + 1088, and
+DL1 Mixer to DL2 Mixer is 408 = 88 + 4*80 -- and with them the walk lands on
+16532, the block's own size, to the byte.
 
-WHAT IS NOT DECODED: the embedded kcontrols, and therefore the widget walk
-past the first 18. They begin with a name[32] and no leading size word, so
-their length depends on their type -- a mux's enum kcontrol carries its item
-texts inline (15 * 32 bytes for MUX_UL00's "Route"), a mixer's does not. Until
-that is decoded the widget list cannot be walked to the end.
+The `id` is a snd_soc_dapm_type from before regulator_supply was added to that
+enum, which shifts everything after snd_soc_dapm_supply down by one:
 
-It may not need to be. The routes already name every widget that matters and,
-in their `control` field, every mixer kcontrol name; a mixer's kcontrols can be
-derived as the distinct controls of the routes that sink into it. That would
-mean emitting the graph as static tables from recovered names -- the same shape
-0015 took for the controls -- with only the widget types inferred.
+    2 = mux    3 = virt_mux    5 = mixer    21 = aif_in    22 = aif_out
+
+That reading is what makes every widget make sense -- MM_DL and TONES_DL as
+aif_in, PDM_DL1 and MM_UL1 as aif_out, MUX_UL00 as a mux -- and the decoded
+kcontrol names confirm it independently: DL1 Mixer comes out carrying
+{Tones, Voice, Capture, Multimedia}, which is exactly the set of `control`
+strings the routes use when they sink into DL1 Mixer. Two separate blocks,
+decoded by different rules, agreeing.
 """
 import struct, sys, re
 
@@ -77,20 +76,22 @@ def routes(b):
     return [(s32(b, 4 + i * 96), s32(b, 36 + i * 96), s32(b, 68 + i * 96))
             for i in range(n)]
 
-TYPES = {2: "mux", 5: "mixer", 21: "aif_in", 22: "aif_out"}
+TYPES = {0: "input", 1: "output", 2: "mux", 3: "virt_mux", 5: "mixer",
+         21: "aif_in", 22: "aif_out"}
+KCONTROL_SIZE = {2: 1088}          # a mux's enum; every other kcontrol is 80
 
 def widgets(b):
     n = struct.unpack_from("<I", b, 0)[0]
     out, o = [], 4
-    while o + 88 <= len(b) and len(out) < n:
+    while len(out) < n and o + 88 <= len(b):
         wid = struct.unpack_from("<I", b, o)[0]
-        if wid not in TYPES:
-            break                      # an embedded kcontrol we cannot size
         nk = struct.unpack_from("<I", b, o + 84)[0]
-        out.append((wid, s32(b, o + 4), s32(b, o + 36), nk))
-        if nk:
-            break                      # see the module docstring
-        o += 88
+        ks = KCONTROL_SIZE.get(wid, 80)
+        kc = [s32(b, o + 88 + k * ks) for k in range(nk)]
+        out.append((TYPES.get(wid, wid), s32(b, o + 4), s32(b, o + 36), kc))
+        o += 88 + nk * ks
+    if o != len(b):
+        raise SystemExit("widget walk ended at %d, block is %d" % (o, len(b)))
     return n, out
 
 def main():
@@ -107,12 +108,9 @@ def main():
 
     if want in ("--all", "--widgets"):
         n, w = widgets(b[3][0])
-        print("\n== %d DAPM widgets declared, %d decoded ==" % (n, len(w)))
-        for wid, name, sname, nk in w:
-            print("   %-8s %-22s stream=%-16s kcontrols=%d"
-                  % (TYPES.get(wid, wid), name, sname or "-", nk))
-        if len(w) < n:
-            print("   ... stopped: the next widget embeds kcontrols, which are")
-            print("       not sized yet. See the docstring.")
+        print("\n== %d DAPM widgets, all decoded ==" % n)
+        for typ, name, sname, kc in w:
+            print("   %-9s %-24s stream=%-16s %s"
+                  % (typ, name, sname or "-", kc if kc else ""))
 
 main()
