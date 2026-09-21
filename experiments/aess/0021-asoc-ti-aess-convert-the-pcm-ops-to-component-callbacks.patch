@@ -1,0 +1,151 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: convert the PCM ops to component callbacks
+
+With 0020 the graph is complete and DPCM connects the front end to both McPDM
+back ends -- and opening it still returns -EINVAL. The log says where: there
+is no "failed to start FE", the ASoC open succeeds and ALSA then closes it,
+which is snd_pcm_hw_refine finding an empty parameter space.
+
+dpcm_set_fe_runtime() fills runtime->hw from the front end's own DAI and
+nothing more. Period and buffer limits come from the platform component, and
+omap_aess_platform supplied none, because its PCM ops were commented out:
+
+	//	.ops		= &omap_aess_pcm_ops,
+
+They could not simply be restored. snd_soc_component_driver has no .ops member
+in 5.6; the snd_pcm_ops were flattened into per-callback members -- open,
+close, hw_params, hw_free, prepare, trigger, pointer, mmap -- each taking a
+leading struct snd_soc_component *, with pcm_new and pcm_free becoming
+pcm_construct and pcm_destruct. This is the same conversion 0013 did for DAI
+links and 0015 for controls, and the third time the same API change is what
+had switched something off.
+
+The six existing callbacks are re-signatured and wired up. Their bodies are
+untouched: they already derive the component from rtd->cpu_dai->component,
+which is the same device, so the new parameter is deliberately named `comp`
+and left unused rather than have the bodies rewritten in the same patch.
+
+WHAT THIS IS AND IS NOT. omap_aess_pcm_hw_params() returns immediately for any
+DAI but OMAP_AESS_DAI_MM1_LP, so this is the low-power ping-pong PCM: the MPU
+writes straight into the AESS's DMEM and takes one interrupt per buffer. It is
+the path worth having -- it is the one that lets the MPU idle between buffer
+refills -- but it is MultiMedia1 LP, hw:L15,5, not MultiMedia1.
+
+The other front ends are DMA ones. TI gave them platform "omap-pcm-audio",
+the generic OMAP sDMA PCM, and only MODEM and MultiMedia1 LP got "aess"; 0013
+pointed all six at the aess node instead. Giving the DMA front ends an sDMA
+PCM is a separate patch and a separate question from this conversion.
+
+Verified to compile: `make sound/soc/ti/` exits 0 with 0013 through 0021 on a
+pristine tree.
+
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -291,7 +291,8 @@
+ 	return IRQ_HANDLED;
+ }
+ 
+-static int omap_aess_pcm_open(struct snd_pcm_substream *substream)
++static int omap_aess_pcm_open(struct snd_soc_component *comp,
++			      struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+ 	struct snd_soc_dai *dai = rtd->cpu_dai;
+@@ -318,7 +319,8 @@
+ 	return 0;
+ }
+ 
+-static int omap_aess_pcm_hw_params(struct snd_pcm_substream *substream,
++static int omap_aess_pcm_hw_params(struct snd_soc_component *comp,
++				   struct snd_pcm_substream *substream,
+ 				   struct snd_pcm_hw_params *params)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+@@ -364,7 +366,8 @@
+ 	return ret;
+ }
+ 
+-static int omap_aess_pcm_prepare(struct snd_pcm_substream *substream)
++static int omap_aess_pcm_prepare(struct snd_soc_component *comp,
++				 struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+ 	struct snd_soc_dai *dai = rtd->cpu_dai;
+@@ -386,7 +389,8 @@
+ 	return 0;
+ }
+ 
+-static int omap_aess_pcm_close(struct snd_pcm_substream *substream)
++static int omap_aess_pcm_close(struct snd_soc_component *comp,
++			       struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+ 	struct snd_soc_dai *dai = rtd->cpu_dai;
+@@ -415,7 +419,8 @@
+ 	return 0;
+ }
+ 
+-static int omap_aess_pcm_mmap(struct snd_pcm_substream *substream,
++static int omap_aess_pcm_mmap(struct snd_soc_component *comp,
++			      struct snd_pcm_substream *substream,
+ 			      struct vm_area_struct *vma)
+ {
+ 	struct snd_soc_pcm_runtime  *rtd = substream->private_data;
+@@ -441,7 +446,8 @@
+ 	return 0;
+ }
+ 
+-static snd_pcm_uframes_t omap_aess_pcm_pointer(struct snd_pcm_substream *substream)
++static snd_pcm_uframes_t omap_aess_pcm_pointer(struct snd_soc_component *comp,
++					       struct snd_pcm_substream *substream)
+ {
+ 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+ 	struct snd_soc_dai *dai = rtd->cpu_dai;
+@@ -460,15 +466,6 @@
+ 	return offset;
+ }
+ 
+-static struct snd_pcm_ops omap_aess_pcm_ops = {
+-	.open           = omap_aess_pcm_open,
+-	.hw_params	= omap_aess_pcm_hw_params,
+-	.prepare	= omap_aess_pcm_prepare,
+-	.close	        = omap_aess_pcm_close,
+-	.pointer	= omap_aess_pcm_pointer,
+-	.mmap		= omap_aess_pcm_mmap,
+-};
+-
+ static int omap_aess_pcm_probe(struct snd_soc_component *component)
+ {
+ 	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
+@@ -694,8 +691,30 @@
+ #define omap_aess_pcm_resume	NULL
+ #endif
+ 
++/*
++ * 5.6 has no .ops member: the snd_pcm_ops were flattened into per-callback
++ * members of snd_soc_component_driver, each taking a leading component, and
++ * pcm_new/pcm_free became pcm_construct/pcm_destruct. So the old
++ *
++ *	.ops = &omap_aess_pcm_ops,
++ *
++ * could not simply be restored. Without it the component contributed nothing
++ * to runtime->hw, so the parameter space came out empty and opening a front
++ * end returned -EINVAL after DPCM had already connected its back ends.
++ *
++ * Note what this PCM is and is not. omap_aess_pcm_hw_params() returns
++ * immediately for anything but OMAP_AESS_DAI_MM1_LP: this is the low-power
++ * ping-pong path, where the MPU writes PCM straight into the AESS's DMEM and
++ * is interrupted once per buffer. The other front ends are DMA ones and want
++ * an sDMA PCM, which is a separate question from this conversion.
++ */
+ struct snd_soc_component_driver omap_aess_platform = {
+-//	.ops		= &omap_aess_pcm_ops,
++	.open		= omap_aess_pcm_open,
++	.close		= omap_aess_pcm_close,
++	.hw_params	= omap_aess_pcm_hw_params,
++	.prepare	= omap_aess_pcm_prepare,
++	.pointer	= omap_aess_pcm_pointer,
++	.mmap		= omap_aess_pcm_mmap,
+ 	.probe		= omap_aess_pcm_probe,
+ 	.remove		= omap_aess_pcm_remove,
+ 	.read		= omap_aess_oppwidget_read,
