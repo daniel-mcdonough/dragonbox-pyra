@@ -1,0 +1,74 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: size the ping-pong buffer from the firmware
+
+Playing real audio through the AESS produced pulsing noise. A steady sine
+sounded fine, which is why this survived so long: a sine is identical
+whether you play it once or replay one buffer forever.
+
+omap_aess_set_ping_pong_buffer() hands the firmware a base address from
+pp->buf_addr[], cycling buf_id_next over FOUR entries laid out at
+offset + i * period_bytes. So the window in use spans 4 * period_bytes --
+not the two that "ping-pong" suggests, and not the two that the n_buffers=2
+argument sets up in base_address[].
+
+The driver advertised period_bytes_max of 24 KiB, so ALSA picked a
+12288-byte period and the window became 49152 bytes. The firmware reserves
+24576 for D_PING, so buf_addr[2] and [3] landed at 0xA000 and 0xD000 --
+past the region, in the middle of other DMEM. The DSP replayed the first
+buffers while the writes corrupted what followed.
+
+Cap a period at a quarter of the region, read from the firmware's own map
+at open() so a different firmware cannot silently reintroduce this.
+---
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -74,10 +74,27 @@
+ 	.formats		= SNDRV_PCM_FMTBIT_S16_LE |
+ 				  SNDRV_PCM_FMTBIT_S32_LE,
+ 	.period_bytes_min	= 4 * 1024,
+-	.period_bytes_max	= 24 * 1024,
++	/*
++	 * A period may be at most a quarter of the DMEM ping-pong region, and
++	 * the real limit is computed from the firmware map in
++	 * omap_aess_pcm_open() -- these are only the fallback ceilings.
++	 *
++	 * omap_aess_set_ping_pong_buffer() hands the firmware a base address
++	 * from pp->buf_addr[], cycling buf_id_next over FOUR entries laid out
++	 * at offset + i * period_bytes. So the window actually in use spans
++	 * 4 * period_bytes, not the two that "ping-pong" suggests and not the
++	 * two that the n_buffers=2 argument sets up in base_address[].
++	 *
++	 * With the 24576-byte region this firmware reserves, the old 24 KiB
++	 * ceiling let ALSA pick a 12288-byte period, so buf_addr[2] and [3]
++	 * landed at 0xA000 and 0xD000 -- past the region, in the middle of
++	 * other DMEM. The DSP replayed the first buffers and the writes
++	 * corrupted whatever followed. It sounded like pulsing noise.
++	 */
++	.period_bytes_max	= 6 * 1024,
+ 	.periods_min		= 4,
+ 	.periods_max		= 4,
+-	.buffer_bytes_max	= 24 * 1024 * 2,
++	.buffer_bytes_max	= 6 * 1024 * 4,
+ };
+ 
+ static int aess_save_context(struct omap_aess *aess)
+@@ -303,8 +320,17 @@
+ 
+ 	dev_dbg(dai->dev, "%s: %s\n", __func__, dai->name);
+ 
+-	if (dai->id == OMAP_AESS_DAI_MM1_LP)
+-		snd_soc_set_runtime_hwparams(substream, &omap_aess_hardware);
++	if (dai->id == OMAP_AESS_DAI_MM1_LP) {
++		struct snd_pcm_hardware hw = omap_aess_hardware;
++		u32 ping = aess->fw_info.map[OMAP_AESS_DMEM_PING_ID].bytes;
++
++		/* Four rotating buffers have to fit the reserved region. */
++		if (ping / 4 < hw.period_bytes_max)
++			hw.period_bytes_max = ping / 4;
++		hw.buffer_bytes_max = hw.period_bytes_max * 4;
++
++		snd_soc_set_runtime_hwparams(substream, &hw);
++	}
+ 
+ 	pm_runtime_get_sync(aess->dev);
+ 

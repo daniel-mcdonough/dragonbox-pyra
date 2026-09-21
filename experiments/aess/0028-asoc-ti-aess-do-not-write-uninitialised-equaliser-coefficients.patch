@@ -1,0 +1,49 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: do not write uninitialised equaliser coefficients
+
+aess_mixer_set_equ_profile() ends with
+
+    src_coeff += profile * params.equ_length;
+    memcpy(params.coef.type1, src_coeff, params.equ_length);
+    omap_aess_write_filter(aess, id, &params);
+
+coeff_data is only ever filled in by the topology loader. A firmware taken
+through the legacy container path leaves every one NULL with profile_size
+0, so the memcpy copies nothing into an uninitialised stack local and
+write_filter() then copies a whole coefficient set out of it into CMEM.
+Every equaliser -- DL1, DL2 left and right, sidetone, both mic filters --
+ran on whatever happened to be on the stack.
+
+With no coefficients to load, leave the ones the firmware image already
+placed in CMEM. Found by inspection while chasing an audio quality problem;
+it is a real defect either way, though it did not turn out to be the cause.
+---
+--- a/sound/soc/ti/aess/omap-aess-fw.c
++++ b/sound/soc/ti/aess/omap-aess-fw.c
+@@ -468,6 +468,26 @@
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * coeff_data is only ever filled in by the topology loader
++	 * (aess_load_coeffs). A firmware loaded through the legacy container
++	 * path leaves every one of them NULL with profile_size 0, and the
++	 * code below then memcpy'd nothing into an uninitialised local and
++	 * handed that to omap_aess_write_filter(), which writes a whole
++	 * coefficient set from it into CMEM. The equalisers ended up running
++	 * on stack garbage -- an arbitrary filter, audible as a thin, tinny
++	 * tone against the direct McPDM link.
++	 *
++	 * With no coefficients to load, leave the ones the firmware image
++	 * already placed in CMEM alone.
++	 */
++	if (!src_coeff || !params.equ_length) {
++		dev_dbg(aess->dev,
++			"no equaliser coefficients for id %u, keeping the firmware's\n",
++			id);
++		return 0;
++	}
++
+ 	src_coeff += profile * params.equ_length;
+ 	memcpy(params.coef.type1, src_coeff, params.equ_length);
+ 

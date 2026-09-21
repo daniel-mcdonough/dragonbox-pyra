@@ -1,0 +1,96 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: omap-mcpdm: stop the ABE back ends from the trigger
+
+Audio ended with a burst of static. The front end's trigger disables the
+AESS port, so nothing refills the DMEM FIFO, but McPDM kept running until
+close() and transmitted whatever was left there.
+
+Stop from the trigger instead, which is also the order the HAL addendum
+requires in this direction: stop the AESS port, wait, then stop the serial
+port. A small counter tracks running ABE streams so the last one out does
+the stopping; the link masks are left alone because a restart after stop
+does not necessarily run hw_params() again.
+
+shutdown() also skipped close_streams() whenever McPDM had already been
+stopped, leaving the IRQ and DMA request enables set. Run it either way.
+---
+--- a/sound/soc/ti/omap-mcpdm.c
++++ b/sound/soc/ti/omap-mcpdm.c
+@@ -85,6 +85,13 @@
+ 
+ 	/* DAIs with an open stream, so the link is opened and stopped once */
+ 	int dais_active;
++	/*
++	 * Running ABE streams. They start and stop from the trigger rather
++	 * than prepare/shutdown, so McPDM can be brought up after the AESS
++	 * port and taken down before it, which is the order the HAL addendum
++	 * requires in both directions.
++	 */
++	int abe_running;
+ 
+ 	/* the one-time hardware setup below is per device, not per DAI */
+ 	bool hw_initialised;
+@@ -332,12 +339,16 @@
+ 	mcpdm->dai_link_mask[dai->id][stream1] = 0;
+ 
+ 	if (mcpdm->dais_active && !--mcpdm->dais_active) {
+-		if (omap_mcpdm_active(mcpdm)) {
++		/*
++		 * close_streams() must run even when the trigger already
++		 * stopped us, or the IRQ and DMA request enables stay set.
++		 */
++		if (omap_mcpdm_active(mcpdm))
+ 			omap_mcpdm_stop(mcpdm);
+-			omap_mcpdm_close_streams(mcpdm);
+-			mcpdm->config[0].link_mask = 0;
+-			mcpdm->config[1].link_mask = 0;
+-		}
++		omap_mcpdm_close_streams(mcpdm);
++		mcpdm->config[0].link_mask = 0;
++		mcpdm->config[1].link_mask = 0;
++		mcpdm->abe_running = 0;
+ 	} else {
+ 		u32 mask = omap_mcpdm_combined_mask(mcpdm, stream1);
+ 
+@@ -541,17 +552,39 @@
+ 	if (dai->id == OMAP_MCPDM_DAI_LEGACY)
+ 		return 0;
+ 
++	mutex_lock(&mcpdm->mutex);
++
+ 	switch (cmd) {
+ 	case SNDRV_PCM_TRIGGER_START:
+ 	case SNDRV_PCM_TRIGGER_RESUME:
+ 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+-		omap_mcpdm_start_if_needed(mcpdm);
++		if (!mcpdm->abe_running++)
++			omap_mcpdm_start_if_needed(mcpdm);
++		break;
++	case SNDRV_PCM_TRIGGER_STOP:
++	case SNDRV_PCM_TRIGGER_SUSPEND:
++	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
++		/*
++		 * Stop here, not in shutdown(). By this point the front end's
++		 * trigger has already disabled the AESS port, so nothing is
++		 * refilling the DMEM FIFO; leaving McPDM running until close()
++		 * makes it transmit whatever is left there, which comes out as
++		 * static after the audio ends.
++		 *
++		 * The link masks are deliberately left alone: a restart after
++		 * stop does not necessarily run hw_params() again, and they
++		 * are what carries the channel assignment.
++		 */
++		if (mcpdm->abe_running && !--mcpdm->abe_running &&
++		    omap_mcpdm_active(mcpdm))
++			omap_mcpdm_stop(mcpdm);
+ 		break;
+ 	default:
+-		/* Stopping stays in shutdown(), which refcounts the DAIs. */
+ 		break;
+ 	}
+ 
++	mutex_unlock(&mcpdm->mutex);
++
+ 	return 0;
+ }
+ 
