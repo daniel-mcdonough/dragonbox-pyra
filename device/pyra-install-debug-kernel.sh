@@ -88,12 +88,21 @@ fi
 # slot, which is what pyra-boot-kernel.sh selects and which this script is
 # about to repoint at a different kernel. Anything else is a boot
 # configuration this script did not write and should not edit.
+# The machine's everyday kernel is no longer always l0: pyra-boot-kernel.sh
+# can name another entry as the base, and does on this machine because the
+# distro kernel's thermal behaviour stops the battery charging. So the
+# acceptable defaults are the test slot and whatever the base currently is.
+BASE=l0
+[ -r /boot/extlinux/pyra-base-label ] &&
+        BASE=$(tr -dc 'a-z0-9' < /boot/extlinux/pyra-base-label)
+[ -n "$BASE" ] || BASE=l0
+
 DEFAULT=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
 case "$DEFAULT" in
-l0)     echo "  default is l0, the stock kernel; this install does not change what boots" ;;
 l1)     echo "  default is l1, the test slot, and this install repoints it." ;;
-*)      die "extlinux.conf defaults to '${DEFAULT:-nothing}', which is neither the stock
-entry l0 nor the test slot l1. Refusing to guess. Put it back with
+"$BASE") echo "  default is $BASE, the base kernel; this install does not change what boots" ;;
+*)      die "extlinux.conf defaults to '${DEFAULT:-nothing}', which is neither the test
+slot l1 nor the base kernel $BASE. Refusing to guess. Put it back with
 'pyra-boot-kernel.sh stock' and try again." ;;
 esac
 echo "  running $(uname -r), installing $REL beside it, from $TARBALL"
@@ -196,9 +205,9 @@ echo "  ok   /boot/dtb/linux-image-$REL ($n dtbs)"
 echo "  ok   /usr/lib/modules/$REL ($(find "/usr/lib/modules/$REL" -name '*.ko' | wc -l) modules)"
 now=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
 case "$now" in
-l0)     echo "  ok   default is l0, the stock kernel; nothing about the next boot changed" ;;
-l1)     echo "  ok   default is l1, the test slot, which now points at $REL" ;;
-*)      echo "  BAD  default is now '$now'"; fail=1 ;;
+l1)      echo "  ok   default is l1, the test slot, which now points at $REL" ;;
+"$BASE") echo "  ok   default is $BASE, the base kernel; nothing about the next boot changed" ;;
+*)       echo "  BAD  default is now '$now'"; fail=1 ;;
 esac
 [ -L /lib ] && echo "  ok   /lib -> $(readlink /lib)" || fail=1
 

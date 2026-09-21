@@ -146,7 +146,7 @@ need no privileges beyond reading `/proc`.
 | --- | --- |
 | `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings and the idle dimmer's user service. |
 | `device/pyra-install-debug-kernel.sh` | Installs a built kernel beside the stock one and gives it a boot entry, without making it the default. |
-| `device/pyra-boot-kernel.sh` | Chooses which kernel boots next, with a one-shot mode that reverts to the stock kernel by itself. |
+| `device/pyra-boot-kernel.sh` | Chooses which kernel boots next, since U-Boot's menu only exists on the serial console. `debug --once` gives a test kernel exactly one boot. `base <label>` sets which kernel the machine returns to, which is no longer always the distro one — its thermal behaviour stops the battery charging. |
 | `device/pyra-sleep-test.sh` | Suspends the machine with the clock armed to wake it, says whether it really came back, and names which sleep state the kernel used. |
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. |
