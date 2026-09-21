@@ -1,0 +1,94 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: mcpdm: pop every downlink slot for the ABE
+
+omap_mcpdm_dai_hw_params() gave each ABE downlink back end only the slot
+pair it owns, so DL1 and DL2 together enabled four downlink slots. The
+ABE's PDM_DL port is SIX_MSB: the DSP writes six samples per frame into
+the downlink FIFO -- DL1 left and right, DL2 left and right, and two more
+-- and the ATC hands all six to the link. Popping four against six leaves
+the reader lapped.
+
+What that sounded like, recorded off the headphone jack into a line input:
+a zero-order hold at 8000 / (slots - 1) = 2666.67 Hz, with images at every
+n * 2666.67 +/- f. With a 1 kHz tone the first image, at 1666.7 Hz, came
+out 6.0 dB below the tone; a 5 kHz tone folded down to an alias at 2333 Hz
+*louder than the tone*; a 300 Hz tone was quieter than the 2666.67 Hz
+carrier itself. Forcing five slots by hand moved the hold to 2000.00 Hz,
+which is what identified the slot count as the mechanism -- the rate fits
+8000 / (slots - 1) to under 1 Hz across fourteen lines.
+
+The sixth slot is not a sixth audio channel. Enabling six downlink
+channels was tried: it matches the rates and drops the imaging by 40 dB,
+then scrambles the frame instead, because the sixth slot is the command
+word. MCPDM_CMD_INT is what tells the link to expect it. Both constants
+were already in omap-mcpdm.h, unused.
+
+So set the ABE downlink mask to MCPDM_PDM_DN_MASK | MCPDM_CMD_INT -- all
+five downlink channels plus the command word -- which is what the AESS
+forward port in goldelico/omap-aess does.
+
+Measured at the jack with a 1 kHz tone, relative to the loudest line:
+
+                        1666.7 Hz    2f       3f     junk/tone
+  before (4 slots)        -5.5     -58.5    -65.9     -2.5 dB
+  direct McPDM link      -90.9     -84.0    -85.7    -57.1 dB
+  after                  -96.5     -94.2    -87.6    -58.6 dB
+
+and the 5 kHz alias goes from 0.0 dB, louder than the tone, to -83.1 dB.
+The DSP path now measures slightly cleaner than the direct link it was
+being compared against.
+---
+--- a/sound/soc/ti/omap-mcpdm.c
++++ b/sound/soc/ti/omap-mcpdm.c
+@@ -51,12 +51,8 @@
+ 
+ /*
+  * Downlink slots sit at bits 3 and up, uplink at bits 0..2 -- which is why
+- * the legacy path shifts its computed mask left by 3 for playback. DL1 is the
+- * first downlink pair, DL2 the second.
++ * the legacy path shifts its computed mask left by 3 for playback.
+  */
+-#define MCPDM_LINK_DL1		(0x3 << 3)
+-#define MCPDM_LINK_DL2		(0x3 << 5)
+-#define MCPDM_LINK_UL1		(0x3 << 0)
+ 
+ struct mcpdm_link_config {
+ 	u32 link_mask; /* channel mask for the direction */
+@@ -392,14 +388,33 @@
+ 		u32 mask;
+ 
+ 		switch (dai->id) {
++		/*
++		 * Every downlink slot, plus CMD_INT -- not just the pair this
++		 * back end owns. The ABE's PDM_DL port is SIX_MSB and the DSP
++		 * writes six samples per frame into the downlink FIFO, so the
++		 * link has to pop six: the five downlink channels and, with
++		 * CMD_INT set, the command word that goes with them.
++		 *
++		 * Enabling only DL1 and DL2 pops four against the six being
++		 * written, the reader is lapped, and the headphone output
++		 * becomes a zero-order hold at 8000 / (slots - 1) = 2666.67 Hz
++		 * with images at every n * 2666.67 +/- f. Measured at the jack
++		 * with a 1 kHz tone the first of those came out 6 dB below the
++		 * tone, where the direct McPDM link puts it at -91 dB, and a
++		 * 5 kHz tone folded down to an alias louder than itself.
++		 *
++		 * Six audio channels is not the answer either; that was tried
++		 * and it scrambles the frame, because the sixth slot is the
++		 * command word and not a channel. This is what the AESS
++		 * forward port in goldelico/omap-aess does, and both constants
++		 * were already in omap-mcpdm.h here, unused.
++		 */
+ 		case OMAP_MCPDM_DAI_ABE_DL1:
+-			mask = MCPDM_LINK_DL1;
+-			break;
+ 		case OMAP_MCPDM_DAI_ABE_DL2:
+-			mask = MCPDM_LINK_DL2;
++			mask = MCPDM_PDM_DN_MASK | MCPDM_CMD_INT;
+ 			break;
+ 		default:
+-			mask = MCPDM_LINK_UL1;
++			mask = MCPDM_PDM_UPLINK_EN(1) | MCPDM_PDM_UPLINK_EN(2);
+ 			break;
+ 		}
+ 
