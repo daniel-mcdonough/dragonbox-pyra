@@ -249,3 +249,52 @@ These all look like faults and are not. Each has been chased at least once.
   only matching the *rate* (88200) reaches the cheap path, and for this title
   that would mean synthesising 2.76x the samples in the game instead. Other
   titles are still unprofiled.
+
+## Reference code and documents
+
+This page describes the **direct McPDM path**, which is what the machine uses
+on the stock kernel. The audio DSP (AESS) path is a separate piece of work and
+lives in `progress.md` sections 22 to 34; the links below are what that work
+drew on, in the order they turned out to be worth.
+
+* **https://github.com/goldelico/omap-aess** — the one that matters. A
+  complete kernel tree by the Letux maintainer with the AESS forward-ported to
+  7.2, branches `letux/aess-v17`, `letux/aess-asoc-fw-v5`,
+  `letux/aess-audio-test-v3` and `letux/aess-abefw-v4` merged into
+  `omap-aess-7.2`. Earlier `letux/aess-v14`, `aess-v16` and
+  `work-aess-module-v11` are there too.
+
+  This tree gave up the fix for the tinny DSP output in about ten minutes
+  after two days of measurement had not: the ABE back ends must set the McPDM
+  downlink mask to `MCPDM_PDM_DN_MASK | MCPDM_CMD_INT`, all five downlink
+  channels plus the command word, not the slot pair each back end owns. See
+  `experiments/aess/0030` and `progress.md` section 32. **Check anything
+  AESS-shaped against this tree before investigating it from scratch.**
+
+* **https://github.com/goldelico/letux-rootfs** — the matching Letux
+  userspace, 27 Debian source packages. Checked for AESS audio configuration
+  and there is none: no `asound.state`, no PulseAudio scripts, no `aess`
+  anything. Recorded so nobody looks twice.
+
+* **https://github.com/omap-audio/abefw** — the ABE/AESS firmware *and the
+  tools that generate it*, from the omap-audio project. The generator is the
+  part that matters: `/lib/firmware/omap_aess-adfw.bin` is otherwise a binary
+  with no source, and a firmware-side processing setting cannot be changed any
+  other way. Its `peter/bnw` branch is Peter Ujfalusi's.
+
+* **https://www.pyra-handheld.com/wiki/index.php/ABE** — the Pyra wiki's ABE
+  page. Records that Ujfalusi, who maintains McPDM and twl6040, recommended
+  forward-porting the 3.15 branch of `omap-audio` rather than the 3.8 one this
+  driver descends from — which is what `goldelico/omap-aess` is.
+
+* **https://github.com/TI-OpenLink/kernel-omap** — TI's OMAP4 kernel sources,
+  where `sound/soc/omap/aess` originated.
+
+* **https://www.ti.com/pdfs/wtbu/OMAP4430_4460_4470_PUBLIC_TRM_Addendum_ABE_HAL_vF.pdf**
+  — the ABE/HAL TRM addendum. Source of the start order in section 4.13.2 that
+  fixed the original silence, the DL2 -6 dB rule in section 3.8, and the ATC
+  descriptor bitfields. Worth reading further; section 3 on the processing
+  chain and gains is the useful part.
+
+* The Pyra forum's **"Audio Driver (with bounty!)"** thread, where Ujfalusi and
+  Marek Belisko discuss recompiling the AESS firmware from source.
