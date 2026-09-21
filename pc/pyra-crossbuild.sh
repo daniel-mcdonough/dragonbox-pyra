@@ -132,7 +132,14 @@ build_kernel() {
 #   kernel-c2      5.6.19-c2           the fix set plus experiments/c2-idle
 #   kernel-freq    5.6.19-freq         the fix set plus the intermediate OPPs
 #   kernel-oc      5.6.19-oc           kernel-freq plus the overclock OPPs
-#   kernel-m4      5.6.19-m4           the fix set plus remoteproc for the M4s
+#   kernel-m4      5.6.19-m4           the fix set plus remoteproc for the M4s,
+#                                      the AESS series and the intermediate OPPs
+#
+# kernel-m4 carries 0007 as well, so that the thermal daemon's frequency cap
+# has the same eleven steps to land on that kernel-freq gave it. It takes 0007
+# alone and never the directory: 0008 raises the ceiling to 2 GHz on voltages
+# measured on a unit with soldered heatsink and replaced thermal interface, and
+# that is the last thing to put under a kernel that also runs the IPU.
 #
 # The last four are experiments and are meant to be bootable beside the fix
 # kernel rather than instead of it, which is why each has its own release name
@@ -348,7 +355,8 @@ build_kernel_oc()    { build_kernel_variant oc \
 # audio work in it, which is exactly what it did until now -- 0013..0023 had
 # only ever been hand-applied in src-m4.
 build_kernel_m4()    { build_kernel_variant m4 \
-	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu $SELF_DIR/../experiments/aess" src-m4 \
+	"$SELF_DIR/../patches $OPP_DIR/0007-arm-dts-omap5-add-the-intermediate-opps.patch \
+	 $SELF_DIR/../experiments/m4-ipu $SELF_DIR/../experiments/aess" src-m4 \
 	"REMOTEPROC OMAP_REMOTEPROC=m OMAP2PLUS_MBOX RPMSG RPMSG_VIRTIO RPMSG_CHAR=m VIRTIO"; }
 
 case "${1:-}" in

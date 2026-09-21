@@ -139,7 +139,13 @@ The patches are in `experiments/m4-ipu/` and the build target is:
 
 which produces `5.6.19-m4`, installing beside the stock kernel like every other
 variant. It is the fix set from `patches/` plus the four patches below plus
-seven config symbols.
+seven config symbols, and it also carries two things that are not about the
+M4s at all: the AESS series from `experiments/aess/`, because `l1` is the only
+test slot on the device and both are wanted in the same boot, and
+`0007-arm-dts-omap5-add-the-intermediate-opps.patch` from
+`experiments/thermals-and-frequency/`, so that the vendor thermal daemon's
+frequency cap has eleven steps to land on here rather than six. It does not
+carry `0008`; nothing but `kernel-oc` raises the ceiling.
 
 `OMAP_REMOTEPROC` is set to `m` rather than `y`, but **the reason first given
 for that here was wrong and the first boot disproved it.** The claim was that
