@@ -128,6 +128,35 @@ else
 	wait $st 2>/dev/null
 fi
 
+hr "the AESS internals, while it was playing"
+# Collected in one pass so a boot costs one command's worth of battery.
+speaker-test -D hw:L15,5 -c 2 -r 48000 -t sine \
+	>${TMPDIR:-/var/tmp}/aess-st2.log 2>&1 &
+st2=$!
+sleep 2
+if kill -0 $st2 2>/dev/null; then
+	for mode in opp flow atc sched sweep; do
+		echo "-- $mode --"
+		pyra-aess-trace.py $mode 2>&1 | head -30
+	done
+	kill $st2 2>/dev/null
+	wait $st2 2>/dev/null
+else
+	echo "  the second stream did not open:"
+	tail -3 ${TMPDIR:-/var/tmp}/aess-st2.log
+fi
+
+hr "the reference path (bypasses the AESS entirely)"
+# Needs legacy_link=1; see /etc/modprobe.d/pyra-aess-reference.conf.
+if aplay -l 2>/dev/null | grep -q "TWL6040 Direct"; then
+	echo "  playing 4 s on the direct McPDM link -- this one is known to work"
+	timeout 6 speaker-test -D hw:L15,9 -c 2 -r 96000 -F S32_LE -t sine -l 1 \
+		>/dev/null 2>&1
+	echo "  done; if THAT was inaudible the problem is not the AESS"
+else
+	echo "  not present -- boot with legacy_link=1 to get it"
+fi
+
 hr "speaker-test said"
 tail -15 ${TMPDIR:-/var/tmp}/aess-st.log
 

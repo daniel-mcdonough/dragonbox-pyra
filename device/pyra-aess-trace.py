@@ -7,6 +7,7 @@
     sudo ./pyra-aess-trace.py sched      the DSP's MultiFrame task schedule
     sudo ./pyra-aess-trace.py atc        the ATC descriptors, and whether they move
     sudo ./pyra-aess-trace.py flow       the event generator's synchronisation source
+    sudo ./pyra-aess-trace.py opp        how much of each scheduler slot runs
 
 Run any of these while something is playing; they say nothing useful idle.
 Everything here is read-only.
@@ -202,6 +203,24 @@ def flow():
                          "synchronised to some other port"))
 
 
+def opp():
+    """MAXTASKBYTESINSLOT throttles how much of each MultiFrame slot the DSP
+    executes. aess_set_opp_processing() writes 0x10 for OPP100, 0x0C for
+    OPP50, 0x04 for OPP25.
+
+    The "opp: no OPP data" and "No OPP definition" messages at probe are
+    benign for this: they come from the voltage/frequency table being absent,
+    and aess->device_scale is never assigned anywhere in the tree, so
+    aess_opp_set_level() skips scaling entirely and calls
+    aess_set_opp_processing(OPP_100) unconditionally. Do not chase them."""
+    bank, base, by = MAP[69]
+    v = struct.unpack_from("<I", MM[bank], base)[0]
+    name = {0x10: "OPP100", 0x0C: "OPP50", 0x04: "OPP25"}.get(v, "unexpected")
+    print("  MAXTASKBYTESINSLOT = 0x%08x  (%s)" % (v, name))
+    if v != 0x10:
+        print("  The DSP is throttled: tasks late in a slot may never run.")
+
+
 {"sweep": sweep, "fifo": fifo, "gains": gains, "sched": sched,
- "atc": atc, "flow": flow}[
+ "atc": atc, "flow": flow, "opp": opp}[
     sys.argv[1] if len(sys.argv) > 1 else "sweep"]()
