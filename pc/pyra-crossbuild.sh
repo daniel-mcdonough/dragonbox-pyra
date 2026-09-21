@@ -201,17 +201,32 @@ build_kernel_variant() {
 		export KERNELRELEASE=5.6.19-$SUFFIX KBUILD_BUILD_VERSION=10
 
 		# Apply the patch set, if there is one. A rebuild must not fail
-		# just because the tree is already patched, so check both
-		# directions and only stop if it is neither.
+		# just because the tree is already patched, so record what has
+		# been applied and skip those.
+		#
+		# The obvious test -- "does it reverse cleanly?" -- is wrong
+		# for a series. 0013 edits omap-abe-twl6040.c and 0016 edits
+		# it again; once both are in, 0013 no longer applies forward
+		# OR reverse, because its context has moved. That is a correct
+		# tree failing the check, and it is what a stamp file avoids.
+		stamp=.patches-applied
+		touch $stamp
 		for p in ../patches/*.patch; do
 			[ -e "$p" ] || break
-			if patch -p1 --dry-run --forward --silent <"$p" >/dev/null 2>&1; then
+			b=$(basename $p)
+			if grep -qxF "$b" $stamp; then
+				echo "  already  $b"
+			elif patch -p1 --dry-run --forward --silent <"$p" >/dev/null 2>&1; then
 				patch -p1 --forward --silent <"$p"
-				echo "  applied  $(basename $p)"
+				echo "$b" >> $stamp
+				echo "  applied  $b"
 			elif patch -p1 --dry-run --reverse --silent <"$p" >/dev/null 2>&1; then
-				echo "  already  $(basename $p)"
+				# An already-patched tree from before the stamp
+				# existed. Record it so this costs one pass.
+				echo "$b" >> $stamp
+				echo "  already  $b (stamped)"
 			else
-				echo "  FAIL     $(basename $p) does not apply"; exit 1
+				echo "  FAIL     $b does not apply"; exit 1
 			fi
 		done
 
@@ -327,8 +342,13 @@ build_kernel_freq()  { build_kernel_variant freq \
 	"$SELF_DIR/../patches $OPP_DIR/0007-arm-dts-omap5-add-the-intermediate-opps.patch" src-freq; }
 build_kernel_oc()    { build_kernel_variant oc \
 	"$SELF_DIR/../patches $OPP_DIR" src-oc; }
+# The AESS series rides along with the M4 kernel because l1 is the only test
+# slot on the device and both are wanted in the same boot. Without the aess
+# directory here a clean tree would build an "audio kernel" with none of the
+# audio work in it, which is exactly what it did until now -- 0013..0023 had
+# only ever been hand-applied in src-m4.
 build_kernel_m4()    { build_kernel_variant m4 \
-	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu" src-m4 \
+	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu $SELF_DIR/../experiments/aess" src-m4 \
 	"REMOTEPROC OMAP_REMOTEPROC=m OMAP2PLUS_MBOX RPMSG RPMSG_VIRTIO RPMSG_CHAR=m VIRTIO"; }
 
 case "${1:-}" in

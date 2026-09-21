@@ -1,0 +1,66 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: enable the McPDM back-end ports
+
+enable_be_port() and disable_be_port() skipped all three McPDM back ends
+with the comment "McPDM is a special case, handled by McPDM driver". No
+driver in this tree handles it. sound/soc/ti/omap-mcpdm.c knows nothing
+about the AESS port manager, and the unbuilt sound/soc/omap/ -- where the
+rest of the stranded AESS code was recovered from -- has no mcpdm.c at all.
+
+So omap_aess_enable_data_transfer() never ran for PDM_DL1. The DSP's
+downlink processing tasks are written into MultiFrame by the port enable
+path, so they were never dispatched: the front end ran, the DL1 buffer in
+SMEM filled, and McPDM faithfully transmitted the silence it was handed.
+Observed directly -- with a stream running, debugfs showed mm_dl_lp at
+PORT_ENABLED and pdmdl1 still PORT_DISABLED.
+
+Patch 0022 opened these ports; this enables them. They need no port
+configuration: unlike BT_VX and MM_EXT there is no serial port to connect,
+so this matches the DMIC cases immediately below.
+---
+--- a/sound/soc/ti/aess/omap-aess-dai.c
++++ b/sound/soc/ti/aess/omap-aess-dai.c
+@@ -193,10 +193,25 @@
+ 	dev_dbg(be->dev, "%s: %s %d\n", __func__, be->cpu_dai->name, stream);
+ 
+ 	switch (be->dai_link->id) {
++	/*
++	 * The comment these three used to carry said McPDM was "handled by
++	 * McPDM driver". No driver in this tree handles it: sound/soc/ti/
++	 * omap-mcpdm.c knows nothing about the AESS port manager, and the
++	 * unbuilt sound/soc/omap/ has no mcpdm.c at all. So nothing ever
++	 * called omap_aess_enable_data_transfer() for the PDM ports, the
++	 * DSP's downlink tasks were never dispatched, and McPDM faithfully
++	 * transmitted the silence it was handed. Enable them here with the
++	 * rest. They need no port configuration -- unlike BT_VX and MM_EXT
++	 * there is no serial port to connect, so this matches the DMIC case.
++	 */
+ 	case OMAP_AESS_BE_ID_PDM_DL1:
++		omap_aess_port_enable(aess, OMAP_AESS_BE_PORT_PDM_DL1);
++		break;
+ 	case OMAP_AESS_BE_ID_PDM_DL2:
++		omap_aess_port_enable(aess, OMAP_AESS_BE_PORT_PDM_DL2);
++		break;
+ 	case OMAP_AESS_BE_ID_PDM_UL:
+-		/* McPDM is a special case, handled by McPDM driver */
++		omap_aess_port_enable(aess, OMAP_AESS_BE_PORT_PDM_UL1);
+ 		break;
+ 	case OMAP_AESS_BE_ID_BT_VX:
+ 		if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
+@@ -322,10 +337,15 @@
+ 	dev_dbg(be->dev, "%s: %s %d\n", __func__, be->cpu_dai->name, stream);
+ 
+ 	switch (be->dai_link->id) {
+-	/* McPDM is a special case, handled by McPDM driver */
++	/* See enable_be_port(): nothing else disables these either. */
+ 	case OMAP_AESS_BE_ID_PDM_DL1:
++		omap_aess_port_disable(aess, OMAP_AESS_BE_PORT_PDM_DL1);
++		break;
+ 	case OMAP_AESS_BE_ID_PDM_DL2:
++		omap_aess_port_disable(aess, OMAP_AESS_BE_PORT_PDM_DL2);
++		break;
+ 	case OMAP_AESS_BE_ID_PDM_UL:
++		omap_aess_port_disable(aess, OMAP_AESS_BE_PORT_PDM_UL1);
+ 		break;
+ 	case OMAP_AESS_BE_ID_BT_VX:
+ 		if (stream == SNDRV_PCM_STREAM_PLAYBACK)
