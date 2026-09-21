@@ -1,0 +1,91 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [EXPERIMENT, NOT A FIX] ASoC: ti: mcpdm: pop six downlink slots for the ABE
+
+NOT APPLIED. Kept because of what it proves and what it exposes.
+
+MCPDM_LINK_DL1 | MCPDM_LINK_DL2 is four downlink slots. The ABE's PDM_DL
+port is SIX_MSB: the DSP writes six samples per frame into the downlink
+FIFO. With four slots the link pops 4 * 96000 samples/s against the
+6 * 96000 the ABE produces, and the reader is lapped.
+
+Measured at the headphone jack into a PC line input, 1 kHz tone:
+
+  slots   modulation      first image (1666.7 Hz)
+  4       2666.67 Hz      -5.5 dB      (direct McPDM link: -90.9 dB)
+  5       2000.00 Hz      -50.3 dB     (forced by poking CTRL mid-stream)
+  6       -- none --      -45.6 dB     (this patch)
+
+The hold rate follows 8000 / (slots - 1) and fits to under 1 Hz, which is
+what identifies the slot count as the mechanism. At six slots the rates
+match exactly and the imaging is gone: 40 dB of improvement on the first
+image.
+
+It is not a fix because it trades that for something worse. With six
+slots the output grows harmonics of the tone at full level -- 2f at
+-0.5 dB, 3f at -2.8 dB, and the loudest line in the output at 14 kHz --
+where four slots had 2f at -58.5 dB. Overall junk-to-tone goes from
+-2.5 dB to +12.6 dB, so it sounds worse, not better.
+
+That second artefact is harmonic rather than an image, so it is not a
+rate mismatch; it looks like the headset slot receiving the wrong
+sample, i.e. frame alignment at link start. omap_mcpdm_start() resets
+the downlink, sets the slot mask and releases the reset, with no regard
+for where the ABE's port is in its own frame -- the same class of
+problem as the start-order bug in 0025.
+
+Whoever picks this up: the slot count is established, the alignment is
+the open question.
+---
+--- a/sound/soc/ti/omap-mcpdm.c
++++ b/sound/soc/ti/omap-mcpdm.c
+@@ -57,6 +57,13 @@
+ #define MCPDM_LINK_DL1		(0x3 << 3)
+ #define MCPDM_LINK_DL2		(0x3 << 5)
+ #define MCPDM_LINK_UL1		(0x3 << 0)
++/*
++ * The two downlink slots past DL2. Nothing is wired to them, but the ABE's
++ * PDM_DL port writes SIX_MSB -- six samples per frame -- and the link has to
++ * pop all six or the frame rates do not match. See the comment in
++ * omap_mcpdm_dai_hw_params().
++ */
++#define MCPDM_LINK_DL_PAD	(0x3 << 7)
+ 
+ struct mcpdm_link_config {
+ 	u32 link_mask; /* channel mask for the direction */
+@@ -392,11 +399,34 @@
+ 		u32 mask;
+ 
+ 		switch (dai->id) {
++		/*
++		 * Four downlink slots is what DL1 and DL2 add up to, and it is
++		 * the wrong number. The ABE's PDM_DL port is SIX_MSB: the DSP
++		 * writes six samples per frame into the downlink FIFO and the
++		 * ATC hands them to this link. With four slots enabled the
++		 * link pops four per frame against the six being written, so
++		 * it consumes 4 * 96000 where the ABE produces 6 * 96000, and
++		 * the reader is lapped.
++		 *
++		 * What that sounds like, measured at the headphone jack with
++		 * a 1 kHz tone: the output is a zero-order hold at 8000 / 3 =
++		 * 2666.67 Hz, with images at every n * 2666.67 +/- 1000 Hz.
++		 * The first of them, at 1666.7 Hz, comes out 6 dB below the
++		 * tone -- the direct McPDM link puts it at -85 dB -- and a
++		 * 5 kHz tone folds down to an alias at 2333 Hz louder than
++		 * the tone itself. The hold rate follows the slot count as
++		 * 8000 / (slots - 1), confirmed by forcing five slots and
++		 * watching it move to 2000 Hz exactly.
++		 *
++		 * So pad the downlink mask out to six. The two extra slots
++		 * carry the zeros the DSP already writes in SIX_MSB's unused
++		 * channels, and the rates match: 6 * 96000 either side.
++		 */
+ 		case OMAP_MCPDM_DAI_ABE_DL1:
+-			mask = MCPDM_LINK_DL1;
++			mask = MCPDM_LINK_DL1 | MCPDM_LINK_DL_PAD;
+ 			break;
+ 		case OMAP_MCPDM_DAI_ABE_DL2:
+-			mask = MCPDM_LINK_DL2;
++			mask = MCPDM_LINK_DL2 | MCPDM_LINK_DL_PAD;
+ 			break;
+ 		default:
+ 			mask = MCPDM_LINK_UL1;
