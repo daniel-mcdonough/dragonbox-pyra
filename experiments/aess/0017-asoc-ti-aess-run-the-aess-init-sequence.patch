@@ -1,0 +1,85 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: run the AESS init sequence
+
+Unlike 0013 to 0016 this one is written from an observed failure rather than
+from reading, because 0013-0016 booted.
+
+What they did, on 5.6.19-m4:
+
+  omap-abe-twl6040 sound: AESS: 9 DAI links registered
+  aess 401f1000.aess: ASoC: invalid header size for type 0 at offset 0x0 size 0x1a5e8.
+  aess 401f1000.aess: AESS firmware is a legacy container, 17 blocks
+  aess 401f1000.aess: AESS mem P 8192 C 7852 D 16384 S 21600 bytes
+  aess 401f1000.aess: AESS Firmware version 9590
+  omap-abe-twl6040 sound: snd-soc-dummy-dai <-> MultiMedia1 mapping ok
+  omap-abe-twl6040 sound: twl6040-dl1 <-> mcpdm-abe-dl1 mapping ok
+  omap-abe-twl6040 sound: twl6040-ul <-> mcpdm-abe-ul1 mapping ok
+  omap-abe-twl6040 sound: twl6040-dl2 <-> mcpdm-abe-dl2 mapping ok
+
+and then, on closing a PCM:
+
+  PC is at aess_set_opp_processing+0x40/0xd8
+  LR is at omap_aess_dai_shutdown+0x84/0xf0
+  [<c09d382c>] (soc_pcm_close+0x90/0x1c0)
+
+aess_set_opp_processing() ends in omap_aess_write_map(), which indexes
+aess->fw_info.map. That array is populated by omap_aess_init_mem() from the
+config blob -- and omap_aess_init_mem() sits inside an #if 0 in
+omap_aess_pcm_probe(), so the map is NULL and closing a stream dereferences
+it. The card is left with a PCM mutex held, after which anything touching it,
+amixer and aplay included, blocks forever.
+
+That #if 0 carries the note "failed firmware load leads to missing/wrong opp
+and failed omap_aess_init_mem". It described the consequence accurately and it
+is no longer true: 0014 makes the firmware load, so the block can and must
+run. Leaving it disabled was survivable only while nothing bound the AESS
+component into a card; 0013 changed that.
+
+Enabling it runs what the /dev/mem experiments in device/pyra-aess-run.py
+already showed working: initialise the OPP table, init_mem to build fw_info
+from the config, reset_hal, load the four memories and build the scheduler
+table, tick the event generator once and stop it. pm_runtime is genuinely
+enabled by this point -- omap_aess_pcm_probe() runs only because the component
+is now bound -- so the pm_runtime_active() test in aess_mem.h is true and the
+writes actually reach the hardware instead of being dropped.
+
+Verified to compile: `make sound/soc/ti/` exits 0 with no errors, with 0013
+through 0017 applied to a pristine tree. Whether it makes sound is the next
+boot's question; what it should fix is the oops and the wedged card.
+
+--- a/sound/soc/ti/aess/omap-aess-pcm.c
++++ b/sound/soc/ti/aess/omap-aess-pcm.c
+@@ -524,7 +524,23 @@
+ 		goto out;
+ 	}
+ 
+-#if 0	// failed firmware load leads to missing/wrong opp and failed omap_aess_init_mem
++	/*
++	 * This used to be #if 0'd, with the note "failed firmware load leads
++	 * to missing/wrong opp and failed omap_aess_init_mem". That was an
++	 * accurate description of the consequence and it is no longer true:
++	 * the firmware loads.
++	 *
++	 * Leaving it disabled is not harmless now that the AESS component is
++	 * bound into a card. omap_aess_init_mem() is what populates
++	 * fw_info.map from the config blob, and omap_aess_write_map() indexes
++	 * that array. Closing a PCM calls omap_aess_dai_shutdown() ->
++	 * aess_set_opp_processing() -> omap_aess_write_map(), which with a
++	 * NULL map dereferences it and oopses:
++	 *
++	 *   PC is at aess_set_opp_processing+0x40/0xd8
++	 *   LR is at omap_aess_dai_shutdown+0x84/0xf0
++	 *   ... from soc_pcm_close+0x90/0x1c0
++	 */
+ 	ret = aess_opp_init_initial_opp(aess);
+ 	if (ret < 0) {
+ 		dev_info(component->dev, "No OPP definition\n");
+@@ -554,7 +570,7 @@
+ 	omap_aess_disable_irq(aess);
+ 
+ 	pm_runtime_put_sync(aess->dev);
+-#endif
++
+ 	aess_init_debugfs(aess);
+ 
+ out:
