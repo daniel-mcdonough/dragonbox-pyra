@@ -1,0 +1,177 @@
+# pyra-aess.pa -- PulseAudio through the OMAP5 audio DSP.
+#
+# Selected by /etc/pulse/daemon.conf.d/zz-pyra-aess.conf, which overrides the
+# default-script-file set by the pyra-config-pulseaudio package. That package's
+# own /etc/pulse/pyra.pa is left untouched, so an upgrade cannot fight this and
+# reverting is one file deletion.
+#
+# Why this file exists: the packaged script loads hw:CARD=L15,DEV=0 with a
+# four-channel map and splits it into "speakers" (rear pair) and "headphones"
+# (front pair). That was the direct McPDM link, where DL1 and DL2 show up as
+# channel pairs. On an AESS kernel device 0 is a front end that does not serve
+# audio, the open fails, and PulseAudio falls back to auto_null -- which is the
+# "dummy output" the desktop shows.
+#
+# The AESS front end that works is device 5, MultiMedia1 LP. It is stereo and
+# takes 44100 or 48000 S16_LE, which is what applications already produce, so
+# nothing resamples. Measured with the same 48 kHz file: PulseAudio's own CPU
+# went from 12% of a core to 4%, and aplay's from 14.4% to 1.1%.
+#
+# Headphone versus speaker is NOT a channel-map choice here. The DSP decides it,
+# through the DL1 (headset) and DL2 (handsfree) mixers:
+#
+#     amixer -c L15 cset name='DL1 Mixer Multimedia' on    # headset
+#     amixer -c L15 cset name='DL2 Mixer Multimedia' on    # speakers
+#
+# Use cset name=, never sset: sset takes the *simple* control name and silently
+# does nothing for these.
+#
+# 'DL1 PDM Switch' and 'Sidetone Mixer Playback' must also be on or the PCM will
+# not open at all -- the graph routes DL1 through the sidetone mixer, so without
+# them dpcm_path_get() finds no back end. They live in /var/lib/alsa/asound.state
+# and alsa-restore brings them back at boot.
+
+.fail
+
+### Automatically restore the volume of streams and devices
+load-module module-device-restore
+load-module module-stream-restore
+load-module module-card-restore
+
+### Automatically augment property information from .desktop files
+### stored in /usr/share/application
+load-module module-augment-properties
+
+### Should be after module-*-restore but before module-*-detect
+load-module module-switch-on-port-available
+
+### Load audio drivers statically
+### (it's probably better to not load these drivers manually, but instead
+### use module-udev-detect -- see below -- for doing this automatically)
+# The AESS front end. tsched=0 because this path's buffer is small and fixed
+# (period 1024-3072 frames, buffer 4096-12288); timer-based scheduling has no
+# room to work with. 4 x 2048 frames sits inside both ranges.
+load-module module-alsa-sink device=hw:L15,5 sink_name=aess rate=48000 format=s16le channels=2 tsched=0 fragments=4 fragment_size=8192 sink_properties="device.description='Audio DSP (AESS)'"
+
+# The direct McPDM link, bypassing the DSP. Costs about 12% of a core for a
+# 48 kHz stream because everything is converted to 96 kHz S32_LE, but it is
+# independent of all the AESS machinery. Uncomment if the DSP path misbehaves.
+#load-module module-alsa-sink device=hw:L15,9 sink_name=direct rate=96000 format=s32le channels=2 tsched=0 sink_properties="device.description='Direct McPDM (no DSP)'"
+#load-module module-alsa-sink device=plughw:CARD=L15,DEV=0
+#load-module module-alsa-source device=hw:CARD=L15,DEV=0
+#load-module module-oss device="/dev/dsp" sink_name=output source_name=input
+#load-module module-oss-mmap device="/dev/dsp" sink_name=output source_name=input
+#load-module module-null-sink
+#load-module module-pipe-sink
+
+### Automatically load driver modules depending on the hardware available
+.ifexists module-udev-detect.so
+#load-module module-udev-detect
+.else
+### Use the static hardware detection module (for systems that lack udev support)
+#load-module module-detect
+.endif
+
+### Automatically connect sink and source if JACK server is present
+.ifexists module-jackdbus-detect.so
+.nofail
+load-module module-jackdbus-detect channels=2
+.fail
+.endif
+
+### Automatically load driver modules for Bluetooth hardware
+.ifexists module-bluetooth-policy.so
+load-module module-bluetooth-policy
+.endif
+
+.ifexists module-bluetooth-discover.so
+load-module module-bluetooth-discover
+.endif
+
+### Load several protocols
+.ifexists module-esound-protocol-unix.so
+load-module module-esound-protocol-unix
+.endif
+load-module module-native-protocol-unix
+
+### Network access (may be configured with paprefs, so leave this commented
+### here if you plan to use paprefs)
+#load-module module-esound-protocol-tcp
+#load-module module-native-protocol-tcp
+#load-module module-zeroconf-publish
+
+### Load the RTP receiver module (also configured via paprefs, see above)
+#load-module module-rtp-recv
+
+### Load the RTP sender module (also configured via paprefs, see above)
+#load-module module-null-sink sink_name=rtp format=s16be channels=2 rate=44100 sink_properties="device.description='RTP Multicast Sink'"
+#load-module module-rtp-send source=rtp.monitor
+
+### Load additional modules from GConf settings. This can be configured with the paprefs tool.
+### Please keep in mind that the modules configured by paprefs might conflict with manually
+### loaded modules.
+.ifexists module-gconf.so
+.nofail
+load-module module-gconf
+.fail
+.endif
+
+### Automatically restore the default sink/source when changed by the user
+### during runtime
+### NOTE: This should be loaded as early as possible so that subsequent modules
+### that look up the default sink/source get the right value
+load-module module-default-device-restore
+
+### Automatically move streams to the default sink if the sink they are
+### connected to dies, similar for sources
+load-module module-rescue-streams
+
+### Make sure we always have a sink around, even if it is a null sink.
+load-module module-always-sink
+
+### Honour intended role device property
+load-module module-intended-roles
+
+### Automatically suspend sinks/sources that become idle for too long
+load-module module-suspend-on-idle
+
+### If autoexit on idle is enabled we want to make sure we only quit
+### when no local session needs us anymore.
+.ifexists module-console-kit.so
+load-module module-console-kit
+.endif
+.ifexists module-systemd-login.so
+load-module module-systemd-login
+.endif
+
+### Enable positioned event sounds
+load-module module-position-event-sounds
+
+### Cork music/video streams when a phone stream is active
+load-module module-role-cork
+
+### Modules to allow autoloading of filters (such as echo cancellation)
+### on demand. module-filter-heuristics tries to determine what filters
+### make sense, and module-filter-apply does the heavy-lifting of
+### loading modules and rerouting streams.
+load-module module-filter-heuristics
+load-module module-filter-apply
+
+### Make some devices default
+#set-default-sink output
+#set-default-source input
+
+#load-module module-remap-sink master=alsa_output.hw_4_0 sink_name="Pyra1" channels=2 master_channel_map=front-center,rear-center channel_map=front-left,front-right 
+
+
+# The old "speakers" and "headphones" sinks were remaps of the four-channel
+# direct link: rear pair to the handsfree amp, front pair to the headset. The
+# AESS front end is stereo, so there are no channels to split -- the DL1 and
+# DL2 mixers do that job now. See the header.
+
+#load-module module-remap-sink sink_name=Headphone master=alsa_output.hw_CARD_L15_DEV_0 channels=2 channel_map=front-left,front-right remix=no
+#load-module module-remap-sink sink_name=Speaker master=alsa_output.hw_CARD_L15_DEV_0 channels=2 channel_map=rear-left,rear-right remix=no
+#update-sink-proplist Headphone device.description=Headphone
+#update-sink-proplist Speaker device.description=Speaker
+set-default-sink aess
+
