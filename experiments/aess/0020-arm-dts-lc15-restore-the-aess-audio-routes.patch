@@ -1,0 +1,53 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] arm: dts: lc15: restore the AESS audio routes
+
+omap5-board-common.dtsi routes the codec's downlink stream widgets to the
+AESS back ends:
+
+	"Headset Playback", "PDM_DL1",
+	"Handsfree Playback", "PDM_DL2",
+
+omap5-letux-cortex15-common.dtsi overrides ti,audio-routing wholesale and does
+not carry them. That was harmless for as long as the AESS was dead. With 0019
+putting the AESS graph in place it is the last missing link: the path runs
+MM1 Playback -> MM VMixer -> MM_DL -> DL1 Mixer -> Sidetone Mixer -> DL1 PDM
+-> PDM_DL1 and then stops, because nothing joins PDM_DL1 to the codec.
+
+"Headset Playback" and "Handsfree Playback" are the stream names of the
+twl6040's twl6040-dl1 and twl6040-dl2 DAIs, so these two routes connect the
+graph recovered from the AESS firmware to the codec the board actually has.
+
+The board's other dropped routes are not restored here. "PDM_UL1", "Analog
+Capture" names a widget this codec does not have -- twl6040-ul's stream is
+"Capture" -- and the McBSP routes belong to the bluetooth and FM cards, which
+have their own simple-card links on this board. Only the two that playback
+needs are added, and only those are verified.
+
+The DTB builds.
+
+--- a/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
++++ b/arch/arm/boot/dts/omap5-letux-cortex15-common.dtsi
+@@ -432,7 +432,22 @@
+ 		"HSMIC", "Headset Mic",
+ 		"Headset Mic", "Headset Mic Bias",
+ 		"MAINMIC", "Main Handset Mic",
+-		"Main Handset Mic", "Main Mic Bias";
++		"Main Handset Mic", "Main Mic Bias",
++
++		/*
++		 * The AESS back ends. omap5-board-common.dtsi has these and
++		 * this override dropped them, which was harmless while the
++		 * AESS was dead: with it running they are the last link in
++		 * the chain, joining the codec's DL1 and DL2 stream widgets
++		 * to the AESS graph, and without them the path ends at
++		 * PDM_DL1 and never reaches the twl6040.
++		 *
++		 * "Headset Playback" and "Handsfree Playback" are the stream
++		 * names of the codec's twl6040-dl1 and twl6040-dl2 DAIs; the
++		 * AESS side comes from its firmware's own widget list.
++		 */
++		"Headset Playback", "PDM_DL1",
++		"Handsfree Playback", "PDM_DL2";
+ };
+ 
+ &twl6040_pins {
