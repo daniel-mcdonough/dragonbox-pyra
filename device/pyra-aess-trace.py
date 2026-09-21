@@ -61,6 +61,17 @@ GAINS = {0: "DMIC1_L", 1: "DMIC1_R", 2: "DMIC2_L", 3: "DMIC2_R",
 UNITY = 0x00040000
 
 
+MODE_NAMES = ("sweep", "fifo", "gains", "sched", "atc", "flow", "opp")
+_want = sys.argv[1] if len(sys.argv) > 1 else "sweep"
+if _want not in MODE_NAMES:
+    # Print usage before touching /dev/mem, so --help works as any user.
+    if _want not in ("-h", "--help", "help"):
+        print("no such mode: %s\n" % _want, file=sys.stderr)
+    print(__doc__)
+    print("modes: %s" % ", ".join(MODE_NAMES))
+    sys.exit(0 if _want in ("-h", "--help", "help") else 2)
+
+
 def load_map():
     d = open(FW, "rb").read()
     off, bl = 0, {}
@@ -222,5 +233,4 @@ def opp():
 
 
 {"sweep": sweep, "fifo": fifo, "gains": gains, "sched": sched,
- "atc": atc, "flow": flow, "opp": opp}[
-    sys.argv[1] if len(sys.argv) > 1 else "sweep"]()
+ "atc": atc, "flow": flow, "opp": opp}[_want]()
