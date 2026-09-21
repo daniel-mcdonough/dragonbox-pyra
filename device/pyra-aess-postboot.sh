@@ -65,6 +65,21 @@ port_states() {
 	done
 }
 
+hr "the playback path"
+# None of these survive a reboot, and without them dpcm_path_get() finds no
+# back end and the PCM will not even open ("no backend DAIs enabled").
+# The graph runs MMLP Playback -> MM VMixer -> MM_DL -> DL1 Mixer[Multimedia]
+# -> Sidetone Mixer[Playback] -> DL1 PDM[Switch] -> PDM_DL1 -> BE_OUT, so the
+# Sidetone Mixer sits in the path whether or not sidetone is wanted.
+for c in 'DL1 Mixer Multimedia' 'Sidetone Mixer Playback' 'DL1 PDM Switch'; do
+	amixer -c L15 sset "$c" on >/dev/null 2>&1 &&
+		echo "  on   $c" || echo "  MISSING  $c"
+done
+for c in 'DL1 Media Playback Volume' 'DL1 Playback Volume'; do
+	amixer -c L15 sset "$c" 120 >/dev/null 2>&1 &&
+		echo "  120  $c" || echo "  MISSING  $c"
+done
+
 hr "ports, idle"
 port_states
 
@@ -84,14 +99,13 @@ fifo() {
 	echo
 }
 
-hr "McPDM CTRL"
-# CTRL is at +0x44, not +0x0c. 0x4018 is WD_EN with the DL1 pair enabled.
-mc=$(awk -F- '/mcpdm/{gsub(/ /,"",$1); print "0x"$1; exit}' /proc/iomem)
-if [ -n "$mc" ]; then
-	echo "  base $mc  CTRL $($devmem $(printf '0x%x' $((mc + 0x44))) 32)"
-else
-	echo "  mcpdm not in /proc/iomem (module not bound?)"
-fi
+# McPDM's registers are NOT readable from /dev/mem here. Its target module is
+# clock-gated whenever the driver is runtime-suspended, and a read then raises
+# an asynchronous external abort -- which, being asynchronous, lands on some
+# later unrelated access and blames it. An earlier version of this script did
+# that and produced "Bus error" against an innocent line. Read the port state
+# and the DMEM FIFO instead; between them they say the same thing without
+# touching a gated bus.
 
 hr "FIFO, idle"
 fifo
@@ -99,16 +113,15 @@ fifo
 hr "playing ${DUR}s"
 # No -l: let it run and kill it, so the samples below are taken while the
 # stream is definitely still open rather than racing its exit.
-speaker-test -D hw:L15,5 -c 2 -r 48000 -t sine >/tmp/st.log 2>&1 &
+speaker-test -D hw:L15,5 -c 2 -r 48000 -t sine >${TMPDIR:-/var/tmp}/aess-st.log 2>&1 &
 st=$!
 sleep 2
 if ! kill -0 $st 2>/dev/null; then
 	echo "  speaker-test already exited -- it failed to open the device:"
-	tail -5 /tmp/st.log
+	tail -5 ${TMPDIR:-/var/tmp}/aess-st.log
 else
 	echo "-- ports, playing --"; port_states
 	echo "-- fifo, playing --"; fifo
-	[ -n "$mc" ] && echo "-- McPDM CTRL, playing -- $($devmem $(printf '0x%x' $((mc + 0x44))) 32)"
 	sleep 1
 	echo "-- fifo, playing, second sample --"; fifo
 	kill $st 2>/dev/null
@@ -116,7 +129,7 @@ else
 fi
 
 hr "speaker-test said"
-tail -15 /tmp/st.log
+tail -15 ${TMPDIR:-/var/tmp}/aess-st.log
 
 hr "dmesg since"
 dmesg | grep -iE 'aess|mcpdm|not open|underrun|xrun' | tail -20
