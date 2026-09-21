@@ -1,0 +1,86 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: omap-abe-twl6040: keep a known-good reference path
+
+With the AESS in play this kernel has no audio path that is known to work,
+because 0013 suppresses the direct McPDM link whenever the AESS is present.
+That makes "the DSP is silent" indistinguishable from "the codec, the jack
+or the speakers are silent", and two wrong diagnoses have already come out
+of debugging without a reference.
+
+legacy_link=1 adds the direct link beside the AESS links, as a second PCM
+that bypasses the DSP. Only one may play at a time; they share McPDM. Its
+init is deliberately NULL: omap_abe_twl6040_init() registers the headset
+jack and the card controls, and the AESS DL1 link has already run it.
+
+Also fixes the fallback that was supposed to exist. When request_firmware()
+failed, omap_abe_load_fw() returned the error without releasing the AESS
+handle, so the caller -- which only warns and carries on -- then saw
+priv->aess still set, skipped the direct link too, and registered a card
+with no DAI links at all. Release the handle and return 0 so the fallback
+happens, which is what the "warn only but continue" comment intends.
+---
+--- a/sound/soc/ti/omap-abe-twl6040.c
++++ b/sound/soc/ti/omap-abe-twl6040.c
+@@ -116,6 +116,19 @@
+ 	struct omap_aess	*aess;
+ };
+ 
++/*
++ * Debugging aid, and the only reference this kernel has. With the AESS in
++ * play there is no path known to work, so nothing distinguishes "the DSP is
++ * silent" from "the codec, the jack or the speakers are silent". Setting this
++ * adds the direct McPDM link beside the AESS links, giving a second PCM that
++ * bypasses the DSP entirely. Only one of them may play at a time -- they share
++ * the McPDM hardware.
++ */
++static bool legacy_link;
++module_param(legacy_link, bool, 0444);
++MODULE_PARM_DESC(legacy_link,
++		 "Add the direct McPDM link alongside the AESS links, as a known-good reference");
++
+ static struct platform_device *dmic_codec_dev;
+ static struct platform_device *spdif_codec_dev;
+ 
+@@ -673,8 +686,17 @@
+ 
+ 	ret = request_firmware(&fw, AESS_FW_NAME, card->dev);
+ 	if (ret) {
+-		dev_err(card->dev, "FW request failed: %d\n", ret);
+-		return ret;
++		/*
++		 * Drop the AESS and let the caller fall back to the direct
++		 * McPDM link. Returning the error here instead left priv->aess
++		 * set, so the caller -- which only warns and continues -- then
++		 * skipped the fallback too and registered a card with no links.
++		 */
++		dev_err(card->dev, "FW request failed: %d, falling back to direct McPDM\n",
++			ret);
++		omap_aess_put_handle(priv->aess);
++		priv->aess = NULL;
++		return 0;
+ 	}
+ 
+ 	ret = omap_aess_load_firmware(priv->aess, AESS_FW_NAME);
+@@ -792,9 +814,21 @@
+ 	 * Fall back to the direct McPDM link when the AESS is absent or its
+ 	 * firmware did not load. This is the path every Pyra has used so far.
+ 	 */
+-	if (!priv->aess)
++	if (!priv->aess) {
+ 		ADD_DAILINK(card, link0, "DMIC", "TWL6040", mcpdm_node,
+ 			    omap_abe_twl6040_init, omap_abe_ops);
++	} else if (legacy_link) {
++		/*
++		 * NULL init on purpose: omap_abe_twl6040_init() registers the
++		 * headset jack and the card controls, and the AESS DL1 link
++		 * has already run it. Running it twice would register both a
++		 * second time.
++		 */
++		ADD_DAILINK(card, link0, "McPDM-direct", "TWL6040 Direct",
++			    mcpdm_node, NULL, omap_abe_ops);
++		dev_info(&pdev->dev,
++			 "added the direct McPDM link as a reference\n");
++	}
+ 
+ 	ret = omap_abe_add_legacy_dai_links(card);
+ 	if (ret < 0)
