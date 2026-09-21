@@ -1,0 +1,106 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: open the McPDM back-end ports
+
+With 0021 the PCM runs: MultiMedia1 LP opens, hw_params is accepted, the
+stream reaches RUNNING and hw_ptr advances at 48156 frames a second. The DSP
+processes it -- the DL1 buffer in SMEM carries changing sample data -- McPDM
+is clocked and transmitting with exactly the DL1 pair enabled
+(CTRL 0x4018 = WD_EN | bits 3,4), and no underflow is flagged.
+
+And it is silent, because nothing puts anything in McPDM's FIFO. With the
+port manager's debug on:
+
+	port mm_dl_lp phy port 6 enabled
+	aess 401f1000.aess: Port pdmdl1 is not open.
+	McPDM-DL1: enable_be_port: mcpdm-abe-dl1 0
+
+The front-end port enables. The back-end port does not, because it was never
+opened, so omap_aess_port_enable() returns -EINVAL and
+omap_aess_enable_data_transfer() never runs for PDM_DL. The AESS therefore
+never starts pushing into the McPDM downlink FIFO, which stays zero while
+McPDM faithfully transmits it.
+
+omap_aess_dai_probe() opened every logical port except two:
+
+	/* Skip McPDM DL1 and UL1 since they are handled differently */
+
+Nothing in this tree handles them differently, or at all. Neither the built
+machine driver nor the unbuilt copy in sound/soc/omap/ mentions them.
+
+Opening them here is safe. omap_aess_port_open() touches no hardware: it
+allocates the bookkeeping, marks the port PORT_DISABLED, adds it to a list and
+makes some debugfs files. The hardware is only touched by
+omap_aess_port_enable() from the back-end trigger, by which point DAPM has
+powered the codec -- which is the ordering the original comment was presumably
+protecting, and which opening a port does not disturb.
+
+Verified to compile: `make sound/soc/ti/` exits 0 with 0013 through 0022 on a
+pristine tree.
+
+--- a/sound/soc/ti/aess/omap-aess-dai.c
++++ b/sound/soc/ti/aess/omap-aess-dai.c
+@@ -1094,12 +1094,27 @@
+ 	int ret = 0;
+ 	int i;
+ 
++	/*
++	 * Every logical port, McPDM DL1 and UL1 included. They used to be
++	 * skipped here, with the note that they "are handled differently" --
++	 * and nothing in this tree handles them, so they were never opened at
++	 * all. The cost was silence with no error: the front-end port enables
++	 * on trigger, the DSP processes the stream, McPDM runs with the right
++	 * channels, and enable_be_port() then fails with
++	 *
++	 *	aess 401f1000.aess: Port pdmdl1 is not open.
++	 *
++	 * so omap_aess_enable_data_transfer() never runs for PDM_DL, the
++	 * AESS never pushes into McPDM's FIFO, and McPDM transmits zeroes.
++	 *
++	 * Opening a port here is safe because it touches no hardware:
++	 * omap_aess_port_open() allocates the bookkeeping, marks the port
++	 * PORT_DISABLED and adds it to a list. The hardware is only touched
++	 * by omap_aess_port_enable() from the back-end trigger, by which time
++	 * DAPM has powered the codec -- which is the ordering the original
++	 * comment was presumably protecting.
++	 */
+ 	for (i = 0; i < OMAP_AESS_LAST_LOGICAL_PORT_ID; i++) {
+-		/* Skip McPDM DL1 and UL1 since they are handled differently */
+-		if (i == OMAP_AESS_BE_PORT_PDM_DL1 ||
+-		    i == OMAP_AESS_BE_PORT_PDM_UL1)
+-			continue;
+-
+ 		ret = omap_aess_port_open(aess, i);
+ 		if (ret)
+ 			goto err_port;
+@@ -1108,14 +1123,8 @@
+ 	return 0;
+ 
+ err_port:
+-	for (--i; i >= 0; i--) {
+-		/* Skip McPDM DL1 and UL1 since they are handled differently */
+-		if (i == OMAP_AESS_BE_PORT_PDM_DL1 ||
+-		    i == OMAP_AESS_BE_PORT_PDM_UL1)
+-			continue;
+-
++	for (--i; i >= 0; i--)
+ 		omap_aess_port_close(aess, i);
+-	}
+ 
+ 	return ret;
+ }
+@@ -1125,14 +1134,8 @@
+ 	struct omap_aess *aess = snd_soc_dai_get_drvdata(dai);
+ 	int i;
+ 
+-	for (i = 0; i < OMAP_AESS_LAST_LOGICAL_PORT_ID; i++) {
+-		/* Skip McPDM DL1 and UL1 since they are handled differently */
+-		if (i == OMAP_AESS_BE_PORT_PDM_DL1 ||
+-		    i == OMAP_AESS_BE_PORT_PDM_UL1)
+-			continue;
+-
++	for (i = 0; i < OMAP_AESS_LAST_LOGICAL_PORT_ID; i++)
+ 		omap_aess_port_close(aess, i);
+-	}
+ 
+ 	return 0;
+ }
