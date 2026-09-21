@@ -13,9 +13,11 @@
 # "dummy output" the desktop shows.
 #
 # The AESS front end that works is device 5, MultiMedia1 LP. It is stereo and
-# takes 44100 or 48000 S16_LE, which is what applications already produce, so
-# nothing resamples. Measured with the same 48 kHz file: PulseAudio's own CPU
-# went from 12% of a core to 4%, and aplay's from 14.4% to 1.1%.
+# takes 48000 S16_LE. It used to advertise 44100 as well and could not play it
+# -- see experiments/aess/0029 -- so 44.1 kHz material is resampled here, by
+# speex, and the sink is pinned at 48 kHz in zz-pyra-aess.conf. Measured with
+# a 48 kHz file: PulseAudio's own CPU went from 12% of a core to 4%, and
+# aplay's from 14.4% to 1.1%.
 #
 # Headphone versus speaker is NOT a channel-map choice here. The DSP decides it,
 # through the DL1 (headset) and DL2 (handsfree) mixers:
@@ -133,7 +135,24 @@ load-module module-always-sink
 load-module module-intended-roles
 
 ### Automatically suspend sinks/sources that become idle for too long
-load-module module-suspend-on-idle
+#
+# timeout=300 rather than the default 5 seconds, because suspending the sink
+# powers the twl6040 headset driver down and bringing it back up is a very
+# audible pop: measured at the jack it peaks at -1.9 dBFS and lasts about two
+# seconds. It happens on the direct McPDM link exactly as much as through the
+# DSP, so it is the codec, not the AESS, and it is there on the stock
+# configuration too.
+#
+# There are no pops while the sink stays open -- three sounds played back to
+# back through a held sink produce none at all, with the noise floor 35 dB
+# lower than when the codec is cycling. So the fix is to stop cycling it
+# during use. Five minutes means a listening or gaming session never pops and
+# an idle machine still powers the codec down.
+#
+# The power cost of holding it open has NOT been measured. If the Pyra turns
+# out to idle worse for it, lower this or delete the argument to get the
+# packaged behaviour back.
+load-module module-suspend-on-idle timeout=300
 
 ### If autoexit on idle is enabled we want to make sure we only quit
 ### when no local session needs us anymore.
