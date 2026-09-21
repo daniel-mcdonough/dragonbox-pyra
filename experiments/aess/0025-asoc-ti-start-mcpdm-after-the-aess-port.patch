@@ -1,0 +1,171 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: start McPDM after the AESS port, not before
+
+The AESS HAL addendum (SWPU245F, 4.13.2 "START sequences" and 4.13.3.1)
+fixes the order for a downlink path:
+
+    1) start AESS ports : HAL API "abe_enable_data_transfer()"
+    2) wait 250us
+    3) start the serial ports : call the device driver of McPDM, ...
+
+This tree did it backwards. omap_mcpdm_prepare() starts McPDM, and prepare
+runs before the front end's trigger, which is where the AESS port is
+actually enabled. So McPDM came up against an empty DMEM FIFO with no ATC
+feeding it, and never recovered: its downlink FIFO pointer register stayed
+frozen at 0x0002 for the whole stream while the same register on the direct
+McPDM link churned (A282, 71C2, 8202, 30C2, B2C2). One buffer of samples
+reached the FIFO -- the ATC descriptor's wrpt sat at 102, exactly its
+initial 30 plus one x_io of 72 -- and nothing ever drained it, which is a
+pop followed by silence.
+
+Confirmed on hardware before writing this: with a stream running, stopping
+and restarting McPDM by hand through MCPDM_REG_CTRL, at a point where the
+AESS port was already enabled, made the FIFO pointer churn immediately and
+made the tone audible.
+
+The 250us wait was already in playback_trigger(), but the call it was
+waiting for had been #ifdef FIXME'd out during the forward port, with the
+note "was never upstream". With a bespoke front-end trigger DPCM does not
+trigger the back ends at all -- soc-pcm.c says "bespoke trigger() - handles
+both FE and BEs" -- so nothing else was going to start them. Restore all
+four calls, with the argument order 5.6 uses.
+
+Upstream McPDM has no trigger op because upstream has no ABE, so add one
+and move the start of the ABE back ends into it. The legacy link keeps
+starting from prepare() exactly as before.
+---
+--- a/sound/soc/ti/omap-mcpdm.c
++++ b/sound/soc/ti/omap-mcpdm.c
+@@ -479,6 +479,19 @@
+ 	return 0;
+ }
+ 
++static void omap_mcpdm_start_if_needed(struct omap_mcpdm *mcpdm)
++{
++	if (!omap_mcpdm_active(mcpdm)) {
++		omap_mcpdm_start(mcpdm);
++		omap_mcpdm_reg_dump(mcpdm);
++	} else if (mcpdm->restart) {
++		omap_mcpdm_stop(mcpdm);
++		omap_mcpdm_start(mcpdm);
++		mcpdm->restart = false;
++		omap_mcpdm_reg_dump(mcpdm);
++	}
++}
++
+ static int omap_mcpdm_prepare(struct snd_pcm_substream *substream,
+ 				  struct snd_soc_dai *dai)
+ {
+@@ -498,14 +511,45 @@
+ 	else if (latency)
+ 		pm_qos_add_request(pm_qos_req, PM_QOS_CPU_DMA_LATENCY, latency);
+ 
+-	if (!omap_mcpdm_active(mcpdm)) {
+-		omap_mcpdm_start(mcpdm);
+-		omap_mcpdm_reg_dump(mcpdm);
+-	} else if (mcpdm->restart) {
+-		omap_mcpdm_stop(mcpdm);
+-		omap_mcpdm_start(mcpdm);
+-		mcpdm->restart = false;
+-		omap_mcpdm_reg_dump(mcpdm);
++	/*
++	 * The ABE back ends must NOT be started here. The AESS HAL addendum
++	 * (SWPU245F 4.13.3.1) fixes the order as: enable the AESS port, wait
++	 * 250us, then start the serial port. prepare() runs before the front
++	 * end's trigger, which is where the AESS port is enabled, so starting
++	 * McPDM here puts it against an empty FIFO with no ATC feeding it and
++	 * it never recovers -- the McPDM downlink FIFO pointer simply never
++	 * moves. Measured: restarting McPDM by hand once the AESS port was up
++	 * made the pointer churn and the audio audible.
++	 *
++	 * The legacy link keeps starting here, as upstream does.
++	 */
++	if (dai->id == OMAP_MCPDM_DAI_LEGACY)
++		omap_mcpdm_start_if_needed(mcpdm);
++
++	return 0;
++}
++
++/*
++ * The ABE back ends start here instead, which the front end's bespoke trigger
++ * reaches only after omap_aess_enable_data_transfer() and its 250us wait.
++ */
++static int omap_mcpdm_dai_trigger(struct snd_pcm_substream *substream, int cmd,
++				  struct snd_soc_dai *dai)
++{
++	struct omap_mcpdm *mcpdm = snd_soc_dai_get_drvdata(dai);
++
++	if (dai->id == OMAP_MCPDM_DAI_LEGACY)
++		return 0;
++
++	switch (cmd) {
++	case SNDRV_PCM_TRIGGER_START:
++	case SNDRV_PCM_TRIGGER_RESUME:
++	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
++		omap_mcpdm_start_if_needed(mcpdm);
++		break;
++	default:
++		/* Stopping stays in shutdown(), which refcounts the DAIs. */
++		break;
+ 	}
+ 
+ 	return 0;
+@@ -516,6 +560,7 @@
+ 	.shutdown	= omap_mcpdm_dai_shutdown,
+ 	.hw_params	= omap_mcpdm_dai_hw_params,
+ 	.prepare	= omap_mcpdm_prepare,
++	.trigger	= omap_mcpdm_dai_trigger,
+ };
+ 
+ static int omap_mcpdm_probe(struct snd_soc_dai *dai)
+--- a/sound/soc/ti/aess/omap-aess-dai.c
++++ b/sound/soc/ti/aess/omap-aess-dai.c
+@@ -561,10 +561,8 @@
+ 			/* DAI work must be started at least 250us after AESS */
+ 			udelay(250);
+ 
+-#ifdef FIXME	// was never upstream
+ 			/* trigger the BE port */
+-			snd_soc_dai_trigger(be_substream, cmd, be->cpu_dai);
+-#endif
++			snd_soc_dai_trigger(be->cpu_dai, be_substream, cmd);
+ 			snd_soc_dpcm_be_set_state(be, stream,
+ 						  SND_SOC_DPCM_STATE_START);
+ 		}
+@@ -647,10 +645,8 @@
+ 			/* DAI work must be stopped at least 250us after AESS */
+ 			udelay(250);
+ 
+-#ifdef FIXME	// was never upstream
+ 			/* trigger BE port */
+-			snd_soc_dai_trigger(be_substream, cmd, be->cpu_dai);
+-#endif
++			snd_soc_dai_trigger(be->cpu_dai, be_substream, cmd);
+ 			snd_soc_dpcm_be_set_state(be, stream,
+ 						  SND_SOC_DPCM_STATE_STOP);
+ 		}
+@@ -701,10 +697,8 @@
+ 			/* DAI work must be started at least 250us after AESS */
+ 			udelay(250);
+ 
+-#ifdef FIXME	// was never upstream
+ 			/* trigger BE port */
+-			snd_soc_dai_trigger(be_substream, cmd, be->cpu_dai);
+-#endif
++			snd_soc_dai_trigger(be->cpu_dai, be_substream, cmd);
+ 			/* unmute the BE port */
+ 			unmute_be(be, dai, stream);
+ 
+@@ -787,10 +781,8 @@
+ 			/* DAI work must be stopped at least 250us after AESS */
+ 			udelay(250);
+ 
+-#ifdef FIXME	// was never upstream
+-			/*  trigger the BE port */
+-			snd_soc_dai_trigger(be_substream, cmd, be->cpu_dai);
+-#endif
++			/* trigger the BE port */
++			snd_soc_dai_trigger(be->cpu_dai, be_substream, cmd);
+ 			snd_soc_dpcm_be_set_state(be, stream,
+ 						  SND_SOC_DPCM_STATE_STOP);
+ 		}
