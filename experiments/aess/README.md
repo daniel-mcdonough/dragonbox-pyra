@@ -27,6 +27,7 @@ in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
     0013-asoc-ti-omap-abe-twl6040-build-the-aess-dai-links.patch
     0014-asoc-ti-aess-load-the-firmware-s-own-container-format.patch
     0015-asoc-ti-aess-add-the-aess-mixer-controls.patch
+    0016-asoc-ti-omap-mcpdm-one-dai-per-path.patch
 
 `container-check.c` is the 0014 walker lifted out so it can be compiled and
 run against a real firmware file with no kernel involved:
@@ -113,6 +114,30 @@ The three `* Mono Mixer` switches are omitted (also DAPM bound, and not needed
 for playback). The DL1/DL2 output gains are added although they are not in the
 MIXER block, because `omap_aess_init_gains()` sets them once and nothing could
 otherwise change them.
+
+### 0016
+
+Splits McPDM into one DAI per path. It carries the headset pair, the handsfree
+pair and the uplink on a single PDM link and registered one DAI for all of it,
+deriving the link mask from the channel count counting up from the first slot
+— so it could express DL1, and DL1+DL2, but never DL2 alone. The AESS needs
+DL1 and DL2 as independently fed back ends, so each must own its own slots
+while the others may or may not be running.
+
+Four DAIs now: `mcpdm-legacy` unchanged, plus `mcpdm-abe-dl1`, `-dl2`, `-ul1`
+with fixed masks. The driver keeps what each DAI claims in
+`dai_link_mask[dai][direction]` and programs the OR, so starting or stopping
+one only adds or removes its own slots. Three things that are easy to miss are
+handled: startup/shutdown are refcounted across DAIs rather than on
+`dai->active`; the ABE DAIs do no CPU-side DMA, because the ABE feeds the link
+through its own port; and the per-DAI `.probe` now runs four times, so the
+one-time `pm_runtime_enable()`/`request_irq()` is guarded.
+
+**This is the patch to distrust.** 0013 and 0015 converted or recovered code
+that already existed and 0014 decoded a format checkable against a real file.
+This one is new code written against the register model and the slot layout,
+with no reference implementation and no way to observe a PDM link from a
+compiler.
 
 ## What is still needed, in order
 

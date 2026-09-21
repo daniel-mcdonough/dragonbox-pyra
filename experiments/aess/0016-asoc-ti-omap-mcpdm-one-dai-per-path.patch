@@ -1,0 +1,416 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: omap-mcpdm: one DAI per path, so the ABE can drive DL1 and DL2 separately
+
+McPDM carries the headset pair, the handsfree pair and the uplink on one PDM
+link, and registers one DAI for all of it. That DAI derives its link mask from
+the channel count, counting up from the first slot: two channels means the
+first downlink pair, four means both pairs. It can express "DL1" and
+"DL1+DL2", and it cannot express "DL2".
+
+That is exactly what the AESS needs. With the ABE in the path, DL1 and DL2 are
+separate back ends fed independently, so each has to own its own slots of the
+link while the others may or may not be running. 0013 added those back ends
+and had all three name the one DAI this driver registers, with a note that
+splitting them was still to do. This is that split.
+
+Four DAIs now: mcpdm-legacy, unchanged in behaviour, plus mcpdm-abe-dl1,
+-dl2 and -ul1 with fixed slot masks. The driver keeps what each DAI claims in
+dai_link_mask[dai][direction] and programs the OR of them, so a DAI starting
+or stopping only ever adds or removes its own slots, and a change to the
+combined mask sets the existing ->restart flag that prepare() already acts on.
+
+Three consequences that are easy to miss, all handled:
+
+ * startup/shutdown refcounted across DAIs. They tested dai->active, which is
+   per DAI and would have let the second back end reopen a link the first had
+   already opened, or the first to close one the second was still using.
+ * The ABE DAIs do no CPU-side DMA. The ABE feeds the link through its own
+   port, so there is no dma_data to size and no burst to set, and hw_params
+   returns before touching any of it.
+ * The per-DAI .probe now runs four times. Enabling runtime PM or requesting
+   the IRQ again would warn and then fail with -EBUSY, so the one-time setup
+   is guarded and only the DMA data is initialised per DAI.
+
+The legacy DAI gains a name. It did not need one while it was the only DAI on
+the component, but a link supplying just an of_node would now match whichever
+DAI came first, so the direct McPDM link in omap-abe-twl6040.c names it
+explicitly. Its behaviour is otherwise untouched: the same sequential mask
+computation, the same channel counts, the same ops.
+
+Verified to compile: `make sound/soc/ti/` under arm-linux-gnueabihf exits 0
+with no errors, with 0013 through 0016 applied in sequence to a pristine tree.
+
+NOT verified on hardware, and this patch deserves more suspicion than the
+three before it. 0013 and 0015 converted or recovered code that already
+existed; 0014 decoded a format that could be checked against a real file. This
+one is new code written against the register model in this driver and the
+TRM's slot layout, with no reference implementation to compare against and no
+way to observe a PDM link from a compiler. The slot assignment in particular
+-- DL1 as bits 3,4 and DL2 as bits 5,6 -- follows from the legacy path
+shifting playback left by 3 and counting up, but it has not been seen working.
+
+--- a/sound/soc/ti/omap-mcpdm.c
++++ b/sound/soc/ti/omap-mcpdm.c
+@@ -30,6 +30,34 @@
+ #include "omap-mcpdm.h"
+ #include "sdma-pcm.h"
+ 
++/*
++ * McPDM carries the headset pair, the handsfree pair and the uplink on one
++ * PDM link. The legacy DAI presents all of them as a single stream whose
++ * channel count decides how many of the link's slots are used, counting up
++ * from the first. That cannot express "the handsfree pair only", which is
++ * what the AESS needs: with the ABE in the path, DL1 and DL2 are separate
++ * back ends fed independently, so each needs to own its own slots of the one
++ * link while the others may or may not be running.
++ *
++ * So there are four DAIs. The legacy one behaves exactly as before. The three
++ * ABE ones have fixed slot masks, and the driver combines whichever are
++ * active into the link mask the hardware is actually programmed with.
++ */
++#define OMAP_MCPDM_DAI_LEGACY	0
++#define OMAP_MCPDM_DAI_ABE_DL1	1
++#define OMAP_MCPDM_DAI_ABE_DL2	2
++#define OMAP_MCPDM_DAI_ABE_UL1	3
++#define OMAP_MCPDM_DAI_COUNT	4
++
++/*
++ * Downlink slots sit at bits 3 and up, uplink at bits 0..2 -- which is why
++ * the legacy path shifts its computed mask left by 3 for playback. DL1 is the
++ * first downlink pair, DL2 the second.
++ */
++#define MCPDM_LINK_DL1		(0x3 << 3)
++#define MCPDM_LINK_DL2		(0x3 << 5)
++#define MCPDM_LINK_UL1		(0x3 << 0)
++
+ struct mcpdm_link_config {
+ 	u32 link_mask; /* channel mask for the direction */
+ 	u32 threshold; /* FIFO threshold */
+@@ -48,6 +76,19 @@
+ 	/* Playback/Capture configuration */
+ 	struct mcpdm_link_config config[2];
+ 
++	/*
++	 * What each DAI currently claims, per direction. config[].link_mask is
++	 * the OR of these, so a DAI starting or stopping only ever adds or
++	 * removes its own slots.
++	 */
++	u32 dai_link_mask[OMAP_MCPDM_DAI_COUNT][2];
++
++	/* DAIs with an open stream, so the link is opened and stopped once */
++	int dais_active;
++
++	/* the one-time hardware setup below is per device, not per DAI */
++	bool hw_initialised;
++
+ 	/* McPDM dn offsets for rx1, and 2 channels */
+ 	u32 dn_rx_offset;
+ 
+@@ -114,6 +155,18 @@
+  * Enables the transfer through the PDM interface to/from the Phoenix
+  * codec by enabling the corresponding UP or DN channels.
+  */
++/* The link mask actually programmed: everything the active DAIs claim. */
++static u32 omap_mcpdm_combined_mask(struct omap_mcpdm *mcpdm, int stream)
++{
++	u32 mask = 0;
++	int i;
++
++	for (i = 0; i < OMAP_MCPDM_DAI_COUNT; i++)
++		mask |= mcpdm->dai_link_mask[i][stream];
++
++	return mask;
++}
++
+ static void omap_mcpdm_start(struct omap_mcpdm *mcpdm)
+ {
+ 	u32 ctrl = omap_mcpdm_read(mcpdm, MCPDM_REG_CTRL);
+@@ -253,7 +306,11 @@
+ 
+ 	mutex_lock(&mcpdm->mutex);
+ 
+-	if (!dai->active)
++	/*
++	 * dai->active is per DAI and no longer enough: with the ABE back ends
++	 * another DAI may already have the link open.
++	 */
++	if (!mcpdm->dais_active++)
+ 		omap_mcpdm_open_streams(mcpdm);
+ 
+ 	mutex_unlock(&mcpdm->mutex);
+@@ -271,13 +328,24 @@
+ 
+ 	mutex_lock(&mcpdm->mutex);
+ 
+-	if (!dai->active) {
++	/* Give up only this DAI's slots; others may still be running. */
++	mcpdm->dai_link_mask[dai->id][stream1] = 0;
++
++	if (mcpdm->dais_active && !--mcpdm->dais_active) {
+ 		if (omap_mcpdm_active(mcpdm)) {
+ 			omap_mcpdm_stop(mcpdm);
+ 			omap_mcpdm_close_streams(mcpdm);
+ 			mcpdm->config[0].link_mask = 0;
+ 			mcpdm->config[1].link_mask = 0;
+ 		}
++	} else {
++		u32 mask = omap_mcpdm_combined_mask(mcpdm, stream1);
++
++		/* Still running, but with fewer slots than a moment ago. */
++		if (mcpdm->config[stream1].link_mask != mask) {
++			mcpdm->config[stream1].link_mask = mask;
++			mcpdm->restart = true;
++		}
+ 	}
+ 
+ 	if (mcpdm->latency[stream2])
+@@ -303,6 +371,42 @@
+ 	int link_mask = 0;
+ 
+ 	channels = params_channels(params);
++
++	/*
++	 * The ABE back ends own fixed slots and do no DMA of their own: the
++	 * ABE feeds the link through its own port, so there is no
++	 * snd_soc_dai_get_dma_data() to size here and no burst to set.
++	 */
++	if (dai->id != OMAP_MCPDM_DAI_LEGACY) {
++		u32 mask;
++
++		switch (dai->id) {
++		case OMAP_MCPDM_DAI_ABE_DL1:
++			mask = MCPDM_LINK_DL1;
++			break;
++		case OMAP_MCPDM_DAI_ABE_DL2:
++			mask = MCPDM_LINK_DL2;
++			break;
++		default:
++			mask = MCPDM_LINK_UL1;
++			break;
++		}
++
++		if (channels > 2)
++			return -EINVAL;
++
++		mcpdm->dai_link_mask[dai->id][stream] = mask;
++		mask = omap_mcpdm_combined_mask(mcpdm, stream);
++
++		if (mcpdm->config[stream].link_mask &&
++		    mcpdm->config[stream].link_mask != mask)
++			mcpdm->restart = true;
++
++		mcpdm->config[stream].link_mask = mask;
++
++		return 0;
++	}
++
+ 	switch (channels) {
+ 	case 5:
+ 		if (stream == SNDRV_PCM_STREAM_CAPTURE)
+@@ -338,7 +442,7 @@
+ 		link_mask <<= 3;
+ 
+ 		/* If capture is not running assume a stereo stream to come */
+-		if (!mcpdm->config[!stream].link_mask)
++		if (!omap_mcpdm_combined_mask(mcpdm, !stream))
+ 			mcpdm->config[!stream].link_mask = 0x3;
+ 
+ 		dma_data->maxburst =
+@@ -346,7 +450,7 @@
+ 		latency = threshold;
+ 	} else {
+ 		/* If playback is not running assume a stereo stream to come */
+-		if (!mcpdm->config[!stream].link_mask)
++		if (!omap_mcpdm_combined_mask(mcpdm, !stream))
+ 			mcpdm->config[!stream].link_mask = (0x3 << 3);
+ 
+ 		dma_data->maxburst = threshold * channels;
+@@ -362,6 +466,9 @@
+ 	if (!mcpdm->latency[stream])
+ 		mcpdm->latency[stream] = 10;
+ 
++	mcpdm->dai_link_mask[OMAP_MCPDM_DAI_LEGACY][stream] = link_mask;
++	link_mask = omap_mcpdm_combined_mask(mcpdm, stream);
++
+ 	/* Check if we need to restart McPDM with this stream */
+ 	if (mcpdm->config[stream].link_mask &&
+ 	    mcpdm->config[stream].link_mask != link_mask)
+@@ -416,6 +523,18 @@
+ 	struct omap_mcpdm *mcpdm = snd_soc_dai_get_drvdata(dai);
+ 	int ret;
+ 
++	/*
++	 * There are four DAIs on one device now, and this runs for each of
++	 * them. Enabling runtime PM or requesting the IRQ more than once
++	 * would warn and then fail with -EBUSY.
++	 */
++	if (mcpdm->hw_initialised) {
++		snd_soc_dai_init_dma_data(dai,
++			&mcpdm->dma_data[SNDRV_PCM_STREAM_PLAYBACK],
++			&mcpdm->dma_data[SNDRV_PCM_STREAM_CAPTURE]);
++		return 0;
++	}
++
+ 	pm_runtime_enable(mcpdm->dev);
+ 
+ 	/* Disable lines while request is ongoing */
+@@ -430,8 +549,11 @@
+ 	if (ret) {
+ 		dev_err(mcpdm->dev, "Request for IRQ failed\n");
+ 		pm_runtime_disable(mcpdm->dev);
++		return ret;
+ 	}
+ 
++	mcpdm->hw_initialised = true;
++
+ 	/* Configure McPDM threshold values */
+ 	mcpdm->config[SNDRV_PCM_STREAM_PLAYBACK].threshold = 2;
+ 	mcpdm->config[SNDRV_PCM_STREAM_CAPTURE].threshold =
+@@ -501,12 +623,25 @@
+ #define OMAP_MCPDM_RATES	(SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000)
+ #define OMAP_MCPDM_FORMATS	SNDRV_PCM_FMTBIT_S32_LE
+ 
+-static struct snd_soc_dai_driver omap_mcpdm_dai = {
+-	.probe = omap_mcpdm_probe,
+-	.remove = omap_mcpdm_remove,
+-	.probe_order = SND_SOC_COMP_ORDER_LATE,
+-	.remove_order = SND_SOC_COMP_ORDER_EARLY,
++#define OMAP_MCPDM_DAI_COMMON						\
++	.probe = omap_mcpdm_probe,					\
++	.remove = omap_mcpdm_remove,					\
++	.probe_order = SND_SOC_COMP_ORDER_LATE,				\
++	.remove_order = SND_SOC_COMP_ORDER_EARLY,			\
++	.ops = &omap_mcpdm_dai_ops
++
++/*
++ * The legacy DAI is unchanged and is still what the board uses when the AESS
++ * is not in the path -- it is named now only because with four DAIs on one
++ * component a link that gives just an of_node would no longer be unambiguous.
++ */
++static struct snd_soc_dai_driver omap_mcpdm_dai[] = {
++{
++	.name = "mcpdm-legacy",
++	.id = OMAP_MCPDM_DAI_LEGACY,
++	OMAP_MCPDM_DAI_COMMON,
+ 	.playback = {
++		.stream_name = "McPDM Playback",
+ 		.channels_min = 1,
+ 		.channels_max = 5,
+ 		.rates = OMAP_MCPDM_RATES,
+@@ -514,13 +649,56 @@
+ 		.sig_bits = 24,
+ 	},
+ 	.capture = {
++		.stream_name = "McPDM Capture",
+ 		.channels_min = 1,
+ 		.channels_max = 3,
+ 		.rates = OMAP_MCPDM_RATES,
+ 		.formats = OMAP_MCPDM_FORMATS,
+ 		.sig_bits = 24,
+ 	},
+-	.ops = &omap_mcpdm_dai_ops,
++},
++{
++	/* Headset, the first downlink pair */
++	.name = "mcpdm-abe-dl1",
++	.id = OMAP_MCPDM_DAI_ABE_DL1,
++	OMAP_MCPDM_DAI_COMMON,
++	.playback = {
++		.stream_name = "McPDM DL1 Playback",
++		.channels_min = 1,
++		.channels_max = 2,
++		.rates = OMAP_MCPDM_RATES,
++		.formats = OMAP_MCPDM_FORMATS,
++		.sig_bits = 24,
++	},
++},
++{
++	/* Handsfree, the second downlink pair */
++	.name = "mcpdm-abe-dl2",
++	.id = OMAP_MCPDM_DAI_ABE_DL2,
++	OMAP_MCPDM_DAI_COMMON,
++	.playback = {
++		.stream_name = "McPDM DL2 Playback",
++		.channels_min = 1,
++		.channels_max = 2,
++		.rates = OMAP_MCPDM_RATES,
++		.formats = OMAP_MCPDM_FORMATS,
++		.sig_bits = 24,
++	},
++},
++{
++	/* Analogue capture */
++	.name = "mcpdm-abe-ul1",
++	.id = OMAP_MCPDM_DAI_ABE_UL1,
++	OMAP_MCPDM_DAI_COMMON,
++	.capture = {
++		.stream_name = "McPDM UL1 Capture",
++		.channels_min = 1,
++		.channels_max = 2,
++		.rates = OMAP_MCPDM_RATES,
++		.formats = OMAP_MCPDM_FORMATS,
++		.sig_bits = 24,
++	},
++},
+ };
+ 
+ static const struct snd_soc_component_driver omap_mcpdm_component = {
+@@ -575,7 +753,8 @@
+ 
+ 	ret =  devm_snd_soc_register_component(&pdev->dev,
+ 					       &omap_mcpdm_component,
+-					       &omap_mcpdm_dai, 1);
++					       omap_mcpdm_dai,
++					       ARRAY_SIZE(omap_mcpdm_dai));
+ 	if (ret)
+ 		return ret;
+ 
+--- a/sound/soc/ti/omap-abe-twl6040.c
++++ b/sound/soc/ti/omap-abe-twl6040.c
+@@ -39,8 +39,13 @@
+ 
+ #define AESS_FW_NAME   "omap_aess-adfw.bin"
+ 
++/*
++ * The direct McPDM link. Its CPU DAI has to be named now: with four DAIs on
++ * the McPDM component, a link that supplies only an of_node would match
++ * whichever one came first.
++ */
+ SND_SOC_DAILINK_DEFS(link0,
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),
++	DAILINK_COMP_ARRAY(COMP_CPU("mcpdm-legacy")),
+ 	DAILINK_COMP_ARRAY(COMP_CODEC("twl6040-codec",
+ 				      "twl6040-legacy")),
+ 	DAILINK_COMP_ARRAY(COMP_EMPTY()));
+@@ -84,22 +89,20 @@
+ AESS_FE_DEFS(fe_mmlp,  "MultiMedia1 LP");
+ 
+ /*
+- * McPDM back ends. The CPU side is the McPDM node; the codec side is one of
+- * the twl6040's dl1/ul/dl2 DAIs, which already exist in sound/soc/codecs/
+- * twl6040.c. NOTE: all three name the same single McPDM DAI, because this
+- * kernel's omap-mcpdm.c registers exactly one. TI's design expected an
+- * "mcpdm-abe" DAI beside the legacy one; the original carried a FIXME saying
+- * so. Splitting them is the McPDM multiplexing work and is NOT done here.
++ * McPDM back ends. The CPU side is one of the McPDM DAIs, the codec side one
++ * of the twl6040's dl1/ul/dl2 DAIs. omap-mcpdm.c used to register a single
++ * DAI, so DL1 and DL2 could not be driven independently; it now registers one
++ * per path and combines whichever are active into the link mask.
+  */
+-#define AESS_BE_PDM_DEFS(_id, _cdai)				\
++#define AESS_BE_PDM_DEFS(_id, _cpudai, _cdai)			\
+ SND_SOC_DAILINK_DEFS(_id,					\
+-	DAILINK_COMP_ARRAY(COMP_EMPTY()),			\
++	DAILINK_COMP_ARRAY(COMP_CPU(_cpudai)),			\
+ 	DAILINK_COMP_ARRAY(COMP_CODEC("twl6040-codec", _cdai)),	\
+ 	DAILINK_COMP_ARRAY(COMP_DUMMY()))
+ 
+-AESS_BE_PDM_DEFS(be_dl1, "twl6040-dl1");
+-AESS_BE_PDM_DEFS(be_ul1, "twl6040-ul");
+-AESS_BE_PDM_DEFS(be_dl2, "twl6040-dl2");
++AESS_BE_PDM_DEFS(be_dl1, "mcpdm-abe-dl1", "twl6040-dl1");
++AESS_BE_PDM_DEFS(be_ul1, "mcpdm-abe-ul1", "twl6040-ul");
++AESS_BE_PDM_DEFS(be_dl2, "mcpdm-abe-dl2", "twl6040-dl2");
+ 
+ /* 2 legacy + 6 front ends + 3 McPDM back ends, with room to spare */
+ #define OMAP_ABE_MAX_DAI_LINKS	16
