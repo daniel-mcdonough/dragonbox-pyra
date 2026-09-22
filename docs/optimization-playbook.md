@@ -1,0 +1,241 @@
+# The Pyra optimisation playbook
+
+Index and triage for the hardware knowledge base. Two things live here:
+
+1. **What the ten documents are**, and which to read for what.
+2. **A triage of every optimisation proposed on this hardware so far** — across
+   the system work in this repository and the Ship of Harkinian port in
+   `~/git/Shipwright/docs/pyra/` — saying which are worth pursuing, which are
+   closed, and which are refuted by evidence that already exists.
+
+Written on 2026-09-22 against the state of both projects on that date.
+
+---
+
+## 1. The documents
+
+| Document | What it is for |
+| --- | --- |
+| [hardware-overview.md](hardware-overview.md) | **Start here.** The machine, the numbers, and the seven ways it differs from anything modern |
+| [cpu-optimization.md](cpu-optimization.md) | Cortex-A15, NEON, the TLB, and why the CPU is usually not the problem |
+| [gpu-optimization.md](gpu-optimization.md) | SGX544MP2, TBDR behaviour, measured limits, what costs and what is free |
+| [memory-optimization.md](memory-optimization.md) | Shared bandwidth, the readback cliff, and why traffic reduction has not paid |
+| [rendering-guidelines.md](rendering-guidelines.md) | The display pipeline, and adapting a desktop renderer |
+| [compiler-flags.md](compiler-flags.md) | What to build with, and what is not worth adding |
+| [profiling-guide.md](profiling-guide.md) | The measurement traps, and how to build a rig that resolves 0.4% |
+| [porting-checklist.md](porting-checklist.md) | A phased checklist from feasibility to confirmation |
+| [known-limitations.md](known-limitations.md) | Hard walls, and everything already tried that did not work |
+| [kernel-notes.md](kernel-notes.md) | Tunables, what to change, and what to leave alone |
+
+`device/pyra-hwreport.sh` collects the static hardware picture into one file.
+
+### Using these as context for an AI assistant
+
+`hardware-overview.md` plus `known-limitations.md` is the minimum useful pair —
+the first establishes the model, the second prevents re-deriving closed
+questions. Add `gpu-optimization.md` and `rendering-guidelines.md` for anything
+touching a renderer, and `profiling-guide.md` before anything is measured.
+
+The convention throughout is that every claim is marked **Measured**, **Spec**,
+or reasoning, and that corrections are kept visible rather than edited away. An
+assistant reading these should preserve that: do not promote an estimate to a
+fact, and do not delete a superseded number — mark it.
+
+---
+
+## 2. What the evidence actually says
+
+Three findings reshaped the model of this machine, and everything in the triage
+below follows from them.
+
+**Fragment shader instruction issue is what binds, not bandwidth and not the
+CPU.** Removing two `texture2D` instructions per texture unit saved 17.75% of
+frame time. Removing three quarters of the *texels* read — bilinear to nearest —
+saved 0.1%, statistically zero. The texture unit filters in fixed-function
+hardware; the shader instruction is what costs.
+
+**Two correct bandwidth arguments produced null results.** Discarding 140 MB/s
+of pointless depth writeback: −0.64%, not significant. A synthetic fill-rate
+test showing 15x headroom: read as a prediction, and wrong.
+
+**The thermostat is a first-class variable.** A 30% frame-rate swing between
+cold and equilibrium, with no code change. Any measurement not taken at
+equilibrium and interleaved is measuring it.
+
+---
+
+## 3. Triage — system level (this repository)
+
+Ranked by what to do next, not by size. Full evidence in `improvements.md`.
+
+### Do these
+
+| # | Item | Why | Cost |
+| --- | --- | --- | --- |
+| 1 | **Fix the modeset hang** | Not a performance item and it still comes first. A wedged display spins a core at 100% in a fanless case until reboot. Candidate fix written, cannot be confirmed until it next fails to happen | Unknown; waiting |
+| 2 | **Finish the AESS audio DSP path** | The largest confirmed non-game consumer on the machine. Audio costs 18.4% of all busy CPU during a game; removing it entirely was worth +4.1% mean frame rate and +11% on the tail. The DSP takes 44.1 and 48 kHz natively and the 4-channel remap goes away for free | In progress |
+| 3 | **Build `CONFIG_CPU_FREQ_GOV_SCHEDUTIL`** | One symbol. Attacks the 18% gap that `ondemand` tuning could not close, by the right mechanism — scheduler utilization rather than a sampled 20 ms window. The sweep to measure it already exists | One build, one evening |
+| 4 | **Build `CONFIG_TRANSPARENT_HUGEPAGE`** | One symbol, and the only item that attacks the *unattributed* cost — 2 MB of TLB reach against working sets far larger. Test with `always`, accept `madvise` will measure zero, and **judge on frame consistency, not a mean** | One build, one evening |
+
+### Worth a look, cheaply
+
+| Item | Why | Caveat |
+| --- | --- | --- |
+| **The 2-channel PulseAudio sink** | Everything downstream of conversion moves four channels to deliver two, and that pipeline is ~15% of a core. `CHANNELS: [1 5]` says the hardware allows two | Costs the speaker/headphone split. A product decision, not a performance one |
+| **`speex-fixed-1` instead of `trivial`** | `trivial` is the cheapest resampler and also the worst. Nobody chose this trade deliberately; it was inherited | Costs some of the 8-point conversion penalty back |
+| **The TWL6040 96000 Hz mode** | Two mixer writes, fully reversible. The machine is currently tuned for 44.1 kHz music and *against* 48 kHz games | Does not save CPU — 96000 is more output samples. It is a quality lever |
+| **XLibre, for the AIGLX fix only** | If it has fixed Xorg 21.1.16's AIGLX DRI2 NULL dereference, it retires fix 4 and gives the machine back desktop GLX — which unblocks Wine's 3D path | Check the diff. Do **not** port the server on spec. No performance value |
+| **`nodiscard` + weekly `fstrim`** | Inline discard on an SD card can stall writes | One `fio` run to find out |
+
+### Closed — do not re-derive
+
+| Item | Verdict |
+| --- | --- |
+| 3D on the SGX rather than software Mesa | Done and verified. `glxgears` ~870 fps, glmark2 246 |
+| Framebuffer copies / TILER rotation | Already in hardware. The 211 MB/s arithmetic describes a different machine |
+| Desktop compositing | Off. 3.5% of all busy CPU, one `gsettings` call |
+| Governor tuning | Done. `sampling_down_factor` 1→10 is the whole win, 23% of burst latency |
+| Thermal daemon and ladder | Fixed. Five faults in one function; 107 °C → 87 °C on two cores |
+| Memory clock | Already at the top CORE operating point |
+| EXA / pixman / 2D rebuilds | Fills and blits already accelerated. Ceiling for a driver rebuild is a *fraction* of 9.3% of busy CPU |
+| Blanket NEON archive rebuild | pixman, ffmpeg and PulseAudio already dispatch NEON at runtime |
+| C2 retention idle | Hangs the machine within 90 seconds. Two for two |
+| i2c interrupt floor | 2–3% of one core for a kernel patch, and one idle state means it blocks nothing |
+| Finer CPU frequency steps | 4% slower on the mean. Buys idle battery, not responsiveness |
+| M4 offload to deepen A15 sleep | Nothing to deepen; an executing M4 holds CORE on |
+| XLibre for performance | Same code, same architecture |
+| Stripping legacy X code | Dead code costs nothing at runtime |
+| Kernel security options for speed | Already a trimmed defconfig. Only Spectre v2 has a nameable mechanism, at 1–3% |
+| Writing an open SGX driver | Mesa starts at Rogue. Multi-year, and not a performance task |
+
+### Research, not a change
+
+**The GPU rail above NOM.** Worth roughly a quarter of the GPU's throughput and
+the highest-value unexplored item on the device. Also the one most likely to be
+impossible: no `devfreq` node, no GPU OPP table, voltage readback unavailable.
+**Raising a clock without confirming the matching voltage is how silicon gets
+damaged.** If the voltage side cannot be verified, the correct outcome is to
+close the item.
+
+---
+
+## 4. Triage — application level (Ship of Harkinian port)
+
+Against the nine-item catalogue in `~/git/Shipwright/docs/pyra/08-optimisation-opportunities.md`.
+
+### Two things that outrank the whole catalogue
+
+**The save-file corruption bug.** Report 7 §7.7 records spdlog's file sink
+failing 37 times in one run and its writes landing in a reused descriptor,
+producing a log line written *into* a save file. It reproduced in a solo run, so
+it is not a concurrency artefact. It is marked "not yet investigated".
+
+This is a data-loss bug in the thing the port exists to deliver. It outranks
+every item below, and it should be diagnosed before the port is used for real
+play — let alone before more frame time is chased.
+
+**Re-baseline on the report 9 harness.** Every absolute FPS figure in report 7
+predates both the audio DSP move and the 0.40% rig. The catalogue is currently
+being ranked against numbers that are known stale. One baseline run makes every
+subsequent judgement cheaper and is a few hours.
+
+### The catalogue
+
+| # | Item | Verdict | Reasoning |
+| --- | --- | --- | --- |
+| 2 | Kill dependent texture reads via `GL_CLAMP_TO_EDGE` | **Top candidate. Do this next** | Its premise — fragment fetch cost binds — was confirmed by the 17.75% filtering result, which §8.9 had nominated as the test that would kill it. Magnitude still unmeasured. Prototype crudely on one variant before the general case |
+| — | **Ship `TextureFilter=1` as a Pyra default** | **Take it. Largest single lever found** | 17.75% of frame time, `t = −154.8`, 56x the detection threshold. Ship as a device profile applied when the key is absent, not as a change to upstream's default. And say so in the menu |
+| 5 | Conditional `mod()` in 1-cycle variants | **Take it** | Small, but the rig now resolves 0.40% so a 1–2% gain is demonstrable rather than invisible. Nearly free |
+| 6 | `int` → `vec2` size uniforms | **Take it** | Same. The fragment ALU is float; an `int` converted per fragment is pure waste. No behaviour change |
+| 8 | Program binary cache | **Take it, for feel** | 317 variants game-wide — the whole set can be cached or pre-warmed. Removes first-encounter hitching. Does not move steady-state FPS, and a handheld is judged on hitching |
+| 9 | NEON the three scalar audio routines | **Take it, for thermals** | ~6% of a core on core 1, off the critical path. Will not move frame rate. Will lower the die temperature, and on a machine that walks 1.5 → 0.75 GHz under load that is sustained clock for the render thread. The ranking argument in §8.11 undersells this: it treats "does not move FPS" as the end of the question, and on a fanless part it is not |
+| 3 | Native texture formats instead of RGBA8888 | **Prototype one format, then decide** | Its case is footprint and bandwidth, and both bandwidth arguments tested here came back null. But neither test varied the working set, so the residency effect is genuinely unmeasured. Lossless and mechanical, which makes a single-format prototype cheap |
+| 1 | Filtering into the shader variant key | **Low priority, but still correct** | Confirmed small — it recovers only the flattening penalty on point-filtered tiles, which is mostly HUD. Worth doing as good practice and because it is upstreamable, not for the number |
+| 4 | `GL_EXT_discard_framebuffer` | **Closed. Done, no gain** | −0.64%, not significant, calls confirmed executing. Keep the code; it is correct and helps other TBDR parts |
+| 7 | VBO ring buffer with `glBufferSubData` | **Refuted — do not build this** | See below |
+
+### Item 7 is refuted by report 5
+
+Worth stating separately because it is the one place the two reports contradict
+each other and the index's "which numbers are still good" table does not catch
+it.
+
+Report 8 §8.6 proposes: *"A ring buffer with `glBufferSubData` into a
+pre-allocated VBO would avoid the per-draw reallocation."*
+
+Report 5 §5.3 already measured exactly that:
+
+| Strategy | µs/draw |
+| --- | --- |
+| `glBufferData` per draw — what the code does today | 68 |
+| single `glBufferData` per frame + offsets | 60 |
+| client-side vertex arrays | 58 |
+| **`glBufferSubData` into a ring buffer** | **221** |
+
+and concluded: *"The actionable finding is negative: do not 'optimise' this into
+`glBufferSubData` — it is ~4x worse on this driver."*
+
+Item 7 is listed as "unsized, needs a draw-call count". It does not need a
+draw-call count. It needs deleting, and the existing `glBufferData` orphaning
+needs a comment saying why it is there, so the next person does not reach for
+the same idea.
+
+(The one variant report 5 does *not* refute is a single `glBufferData` per frame
+with offsets, at 60 µs against 68 — but that is 12% of a path measured at ~14 µs
+of driver cost in a frame-bound workload, and it is inside the noise of what it
+would take to build. Not worth it either.)
+
+### Two more, not in the catalogue
+
+**Audit for mid-frame pipeline flushes.** The report found `GetPixelDepth`
+forcing a TBDR flush and then found it had no callers — which is the only reason
+it was not the most expensive thing in the frame. That audit should be a
+standing check, not a one-off: any `glReadPixels`, `glCopyTexImage2D`, or
+render-to-texture-then-render-to-it-again introduced later will not show up as a
+symbol, it will show up as the whole frame being slow.
+
+**Check whether the IMG compiler actually flattens branches.** Item 1's entire
+magnitude rests on an assumption nobody has tested. It is one A/B of a
+branch-free variant against a branching one, and it would firm up or retire the
+item for an afternoon's work.
+
+---
+
+## 5. The generic lessons
+
+These transfer to any target and are the most reusable part of the project.
+
+**Measure the workload, not a microbenchmark.** A synthetic fill test measured
+862 Mpix/s and sent a whole phase in the wrong direction. A synthetic number is
+an upper bound on a best case.
+
+**Design the pair of measurements, not the single one.** The filtering result is
+only interpretable because a second comparison — bilinear against nearest — was
+taken alongside it. Alone, the first supports the wrong model.
+
+**Report a detection threshold with every null result.** "No difference
+observed" is not a finding. "No effect, and the rig could have found one as
+small as 0.26%" is.
+
+**Validate the rig against itself before trusting it.** Same arm against same
+arm; true effect zero by construction. Anything it reports is its own noise.
+
+**Hold the workload constant.** If a faster arm travels further through the
+scene, the two arms are not measuring the same work, and no amount of repetition
+averages that away.
+
+**Counterbalance what you cannot eliminate.** Thermal drift could not be removed
+on this machine. ABBA pairing cancelled it.
+
+**Keep corrections visible.** Every report in both projects carries the places
+where it was wrong. That is what stopped a superseded number being acted on
+three separate times, and it is why the index in
+`~/git/Shipwright/docs/pyra/README.md` exists at all.
+
+**Check that the metric is the goal.** Frame rate was optimised for two reports
+while game speed silently ran 8% slow. The owner of the device found it by
+looking at the screen.
+
+**Look at the screen.** Two of the most valuable findings on this project — the
+slow motion, and the insulating adhesive on the heatsink — came from somebody
+looking rather than measuring.

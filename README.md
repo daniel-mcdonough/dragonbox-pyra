@@ -87,6 +87,17 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. Start here for anything sound-related. |
 | [docs/box86.md](docs/box86.md) | Running x86 Linux binaries, x86 Wine, and Windows games. |
 | [docs/improvements.md](docs/improvements.md) | Performance: what is already done, what is worth measuring next, what is not. |
+| [docs/optimization-playbook.md](docs/optimization-playbook.md) | **The hardware playbook: index, and a triage of every optimisation proposed on this hardware so far.** Start here for porting or optimising software. |
+| [docs/hardware-overview.md](docs/hardware-overview.md) | What this machine is, the numbers, and the seven ways it differs from anything modern. The model everything else assumes. |
+| [docs/cpu-optimization.md](docs/cpu-optimization.md) | Cortex-A15, NEON, the TLB, the governor, and why the CPU is usually not the problem. |
+| [docs/gpu-optimization.md](docs/gpu-optimization.md) | SGX544MP2: tile-based deferred rendering, the measured GLES2 limits, what costs and what is free. |
+| [docs/memory-optimization.md](docs/memory-optimization.md) | One memory pool shared by everything, the readback cliff, and why reducing traffic has not paid. |
+| [docs/rendering-guidelines.md](docs/rendering-guidelines.md) | The display pipeline, and how to adapt a desktop renderer to this part. |
+| [docs/compiler-flags.md](docs/compiler-flags.md) | What to build with, what Debian's baseline silently costs you, and what is not worth adding. |
+| [docs/profiling-guide.md](docs/profiling-guide.md) | The four traps that produce confident wrong numbers, and how to build a rig that resolves 0.4%. |
+| [docs/porting-checklist.md](docs/porting-checklist.md) | A phased checklist from "is this feasible" to "confirm it in real play". |
+| [docs/known-limitations.md](docs/known-limitations.md) | The hard walls, and everything already tried that did not work. |
+| [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
