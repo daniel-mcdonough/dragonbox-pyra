@@ -143,6 +143,26 @@ This is a data-loss bug in the thing the port exists to deliver. It outranks
 every item below, and it should be diagnosed before the port is used for real
 play — let alone before more frame time is chased.
 
+> **Acted on, 2026-09-22. Mechanism closed, cause still open.** Report 10 in the
+> Shipwright tree has it. The two symptoms have one mechanism and it reproduces
+> byte for byte: something closes spdlog's descriptor without telling spdlog,
+> `EBADF` while the number is unallocated, then the next `fopen` — the save — is
+> handed the same number because Linux allocates the lowest free one, and the
+> logger's next flush writes into it. `SaveManager` now reads back what it wrote
+> and renames only on a match, so a corrupt write costs one save rather than the
+> save; `SaveGlobal`, which had no temp file at all, gained one.
+>
+> **The close itself is still unattributed.** Nothing in either source tree calls
+> `close()` on Linux, so it is in SDL2, libzip, the audio stack or the PowerVR
+> blob. `Shipwright/scripts/pyra/fdguard.c` is an `LD_PRELOAD` that names the
+> caller with a backtrace and catches the descriptor being handed on; it is built
+> and verified against a reproduction, and needs one device run with a save in it.
+> Until that runs, every other descriptor in the process is still exposed — the
+> log is the noisiest victim, not the only possible one, and `Config::Save()` has
+> the same unchecked-write defect.
+>
+> This triage was right to put it above the catalogue.
+
 **Re-baseline on the report 9 harness.** Every absolute FPS figure in report 7
 predates both the audio DSP move and the 0.40% rig. The catalogue is currently
 being ranked against numbers that are known stale. One baseline run makes every
