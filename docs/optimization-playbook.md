@@ -10,6 +10,13 @@ Index and triage for the hardware knowledge base. Two things live here:
 
 Written on 2026-09-22 against the state of both projects on that date.
 
+> **Updated later the same day.** The Ship of Harkinian side moved while this was being
+> written. Three entries in §4 are now out of date and are marked in place rather than
+> rewritten: item 2 is **closed**, the `TextureFilter` default is **shipped** and its number
+> is larger than recorded here, and the rig now resolves 0.57% rather than 0.40%. The triage
+> also earned its keep immediately — reading the two projects against each other caught item
+> 7, a proposal to build something the project had already measured as harmful.
+
 ---
 
 ## 1. The documents
@@ -50,8 +57,10 @@ below follows from them.
 
 **Fragment shader instruction issue is what binds, not bandwidth and not the
 CPU.** Removing two `texture2D` instructions per texture unit saved 17.75% of
-frame time. Removing three quarters of the *texels* read — bilinear to nearest —
-saved 0.1%, statistically zero. The texture unit filters in fixed-function
+frame time — **re-measured at 19.88%** once the benchmark was pinned to a
+viewpoint somebody had actually chosen, rather than the one it had drifted to.
+Removing three quarters of the *texels* read — bilinear to nearest — saved
+0.1%, statistically zero. The texture unit filters in fixed-function
 hardware; the shader instruction is what costs.
 
 **Two correct bandwidth arguments produced null results.** Discarding 140 MB/s
@@ -139,20 +148,37 @@ predates both the audio DSP move and the 0.40% rig. The catalogue is currently
 being ranked against numbers that are known stale. One baseline run makes every
 subsequent judgement cheaper and is a few hours.
 
+> **Partly done, 2026-09-22, and the reason it mattered is worse than "stale
+> numbers".** The harness was not measuring the viewpoint its own documentation
+> described: the player-position override was applied on a single frame and
+> ordinary player update walked him off it over the remaining settle window, so
+> every run since the rig was built had measured wherever he drifted to. The pin
+> is now held every settle frame and verified after it, the fixture was placed by
+> hand rather than picked by entrance index, and re-measuring the one result that
+> existed moved it 17.75% → 19.88%. Ratios survived; the viewpoint they described
+> did not. Report 9 §9.9.
+>
+> The rig also now pins the CPU to 1.25 GHz for the duration of a run, which
+> improves its resolution from 1.02% to **0.57%** at the new fixture — validated
+> with a same-arm null A/B. That is a clock-step fix, not a thermal one: drift is
+> still present and is still what ABBA cancels. Report 9 §9.5.
+>
+> Still outstanding: the report 7 absolutes have not been re-taken.
+
 ### The catalogue
 
 | # | Item | Verdict | Reasoning |
 | --- | --- | --- | --- |
-| 2 | Kill dependent texture reads via `GL_CLAMP_TO_EDGE` | **Top candidate. Do this next** | Its premise — fragment fetch cost binds — was confirmed by the 17.75% filtering result, which §8.9 had nominated as the test that would kill it. Magnitude still unmeasured. Prototype crudely on one variant before the general case |
-| — | **Ship `TextureFilter=1` as a Pyra default** | **Take it. Largest single lever found** | 17.75% of frame time, `t = −154.8`, 56x the detection threshold. Ship as a device profile applied when the key is absent, not as a change to upstream's default. And say so in the menu |
-| 5 | Conditional `mod()` in 1-cycle variants | **Take it** | Small, but the rig now resolves 0.40% so a 1–2% gain is demonstrable rather than invisible. Nearly free |
+| 2 | Kill dependent texture reads via `GL_CLAMP_TO_EDGE` | ~~**Top candidate. Do this next**~~ → **Closed, 2026-09-22. Already implemented** | Prototyped, as this row asked. Instrumented at the fixture: of 480,000 tile setups, 268,500 (55.9%) already take `GL_CLAMP_TO_EDGE` and only 11,400 (2.4%) carry a fragment-side clamp. `interpreter.cpp` has made that choice since before the port. Forcing the remainder off measured −3.6%, but both surviving cases are inexpressible in GLES2 — `MIRROR\|CLAMP` has no sampler state, and a clamp rectangle narrower than the texture clamps where the edge is not — so the 3.6% is the price of correct N64 semantics, not headroom. Report 8 §8.15 |
+| — | **Ship `TextureFilter=1` as a Pyra default** | **Done, 2026-09-22.** Still the largest single lever found | Re-measured at the replacement fixture: **19.88%**, `t = −54.3` over five ABBA pairs, 27.10 → 33.85 FPS — three-point sits *below* the 30 FPS target and bilinear above it. Verified visually first: RMSE 1.5% against three-point and no difference at 3× zoom, with three-point-vs-nearest at 2.7% as the control proving the comparison could see a difference. Shipped in `Fast3dWindow.cpp` as the default when the key is absent. The "device profile, not upstream's default" caveat was overtaken by the fork going Pyra-only the same day. Report 8 §§8.13–8.14 |
+| 5 | Conditional `mod()` in 1-cycle variants | **Take it** | Small, but the rig now resolves 0.57% with the CPU pinned, so a 1–2% gain is demonstrable rather than invisible. Nearly free |
 | 6 | `int` → `vec2` size uniforms | **Take it** | Same. The fragment ALU is float; an `int` converted per fragment is pure waste. No behaviour change |
 | 8 | Program binary cache | **Take it, for feel** | 317 variants game-wide — the whole set can be cached or pre-warmed. Removes first-encounter hitching. Does not move steady-state FPS, and a handheld is judged on hitching |
 | 9 | NEON the three scalar audio routines | **Take it, for thermals** | ~6% of a core on core 1, off the critical path. Will not move frame rate. Will lower the die temperature, and on a machine that walks 1.5 → 0.75 GHz under load that is sustained clock for the render thread. The ranking argument in §8.11 undersells this: it treats "does not move FPS" as the end of the question, and on a fanless part it is not |
 | 3 | Native texture formats instead of RGBA8888 | **Prototype one format, then decide** | Its case is footprint and bandwidth, and both bandwidth arguments tested here came back null. But neither test varied the working set, so the residency effect is genuinely unmeasured. Lossless and mechanical, which makes a single-format prototype cheap |
 | 1 | Filtering into the shader variant key | **Low priority, but still correct** | Confirmed small — it recovers only the flattening penalty on point-filtered tiles, which is mostly HUD. Worth doing as good practice and because it is upstreamable, not for the number |
 | 4 | `GL_EXT_discard_framebuffer` | **Closed. Done, no gain** | −0.64%, not significant, calls confirmed executing. Keep the code; it is correct and helps other TBDR parts |
-| 7 | VBO ring buffer with `glBufferSubData` | **Refuted — do not build this** | See below |
+| 7 | VBO ring buffer with `glBufferSubData` | **Refuted — do not build this.** Acted on 2026-09-22 | See below. Report 8 §8.6 now carries the refutation, and `gfx_opengl.cpp` carries the comment report 5 asked for and never got |
 
 ### Item 7 is refuted by report 5
 
