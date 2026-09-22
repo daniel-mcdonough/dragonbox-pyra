@@ -176,7 +176,7 @@ subsequent judgement cheaper and is a few hours.
 | 8 | Program binary cache | **Take it, for feel** | 317 variants game-wide — the whole set can be cached or pre-warmed. Removes first-encounter hitching. Does not move steady-state FPS, and a handheld is judged on hitching |
 | 9 | NEON the three scalar audio routines | **Take it, for thermals** | ~6% of a core on core 1, off the critical path. Will not move frame rate. Will lower the die temperature, and on a machine that walks 1.5 → 0.75 GHz under load that is sustained clock for the render thread. The ranking argument in §8.11 undersells this: it treats "does not move FPS" as the end of the question, and on a fanless part it is not |
 | 3 | Native texture formats instead of RGBA8888 | **Prototype one format, then decide** | Its case is footprint and bandwidth, and both bandwidth arguments tested here came back null. But neither test varied the working set, so the residency effect is genuinely unmeasured. Lossless and mechanical, which makes a single-format prototype cheap |
-| 1 | Filtering into the shader variant key | **Low priority, but still correct** | Confirmed small — it recovers only the flattening penalty on point-filtered tiles, which is mostly HUD. Worth doing as good practice and because it is upstreamable, not for the number |
+| 1 | Filtering into the shader variant key | ~~**Low priority, but still correct**~~ → **Closed on this fork, 2026-09-22** | `o_three_point_filtering` is a compile-time substitution, not a uniform: with the `FILTER_LINEAR` default now shipped, the branch is absent from the generated shader entirely and `hookTexture2D` is a bare `texture2D`. The refactor's goal is already obtained. Remaining scope is users who re-enable three-point in the menu. Report 8 §8.16 |
 | 4 | `GL_EXT_discard_framebuffer` | **Closed. Done, no gain** | −0.64%, not significant, calls confirmed executing. Keep the code; it is correct and helps other TBDR parts |
 | 7 | VBO ring buffer with `glBufferSubData` | **Refuted — do not build this.** Acted on 2026-09-22 | See below. Report 8 §8.6 now carries the refutation, and `gfx_opengl.cpp` carries the comment report 5 asked for and never got |
 
@@ -220,10 +220,18 @@ standing check, not a one-off: any `glReadPixels`, `glCopyTexImage2D`, or
 render-to-texture-then-render-to-it-again introduced later will not show up as a
 symbol, it will show up as the whole frame being slow.
 
-**Check whether the IMG compiler actually flattens branches.** Item 1's entire
+~~**Check whether the IMG compiler actually flattens branches.** Item 1's entire
 magnitude rests on an assumption nobody has tested. It is one A/B of a
 branch-free variant against a branching one, and it would firm up or retire the
-item for an afternoon's work.
+item for an afternoon's work.~~
+
+> **Moot for item 1, 2026-09-22, and it did not take an afternoon.** On the
+> shipped default there is no branch to flatten — see item 1 above. On the
+> three-point path the existing filtering A/B cannot isolate flattening, because
+> both `filter3point` and the branch are present in one arm and absent in the
+> other; separating them needs a third arm that would only describe a
+> configuration this fork does not ship. The general rule — prefer variants over
+> uniform branches — still applies to items 5 and 6, which remain unmeasured.
 
 ---
 
