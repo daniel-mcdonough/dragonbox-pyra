@@ -224,10 +224,16 @@ These all look like faults and are not. Each has been chased at least once.
 * **`alsa-restore` logging `failed to import hw:N use case configuration -2`
   is harmless.** There is no UCM profile for this card; it falls back to
   `asound.state`, which is the intended path here.
-* **`alsa-state.service` is inactive on this image.** Nothing re-saves mixer
-  state at shutdown. That is why one bad `asound.state` survived every boot —
-  and equally why one good one sticks. If you `alsactl store` while the routes
-  are off, you have just recreated fix 9's bug.
+* **Mixer state is re-saved at every shutdown.** `alsa-state.service` is
+  inactive on this image, but `alsa-restore.service` has
+  `ExecStop=alsactl store`, so whatever the routes are when the machine goes
+  down is what the next boot restores. One session that leaves the AESS
+  routes off (`DL1 PDM Switch`, `DL1`/`DL2 Mixer Multimedia`, `Sidetone Mixer
+  Playback`) therefore breaks every boot after it: PulseAudio fails to open
+  `hw:L15,5`, falls back to `auto_null`, and the kernel logs `no backend DAIs
+  enabled for OMAP ABE Media LP`. This happened on 2026-09-21 and went
+  unnoticed for four boots. Fix: set the routes with `cset name=`, restart
+  PulseAudio, then `sudo alsactl store`.
 
 ## Open, and untested
 
