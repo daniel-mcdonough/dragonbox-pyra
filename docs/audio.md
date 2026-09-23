@@ -1,25 +1,130 @@
 # Audio on the Pyra: the chain, the limits, and how to diagnose silence
 
-Verified 2026-09-20 on the running unit, kernel `5.6.19-freq`, Debian 13
-(trixie). Sound works on this machine as of fixes 9 and 10.
+Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
+(trixie). The direct-link sections were verified 2026-09-20 on `5.6.19-freq`.
 
-This is the map. The repair instructions for the two faults that make the
-machine silent are fix 9 and fix 10 in `fixes.md`; the performance survey and
-its numbers are item 10 in `improvements.md`. This document is what you want
-open when someone says "there is no sound" and you do not yet know which of
-those you are looking at — or when you are about to write something that
-touches audio and need to know what the hardware will and will not do.
+This is the map. The repair instructions for the faults that make the machine
+silent are fix 9 and fix 10 in `fixes.md`; the performance survey and its
+numbers are item 10 in `improvements.md`; the history of the audio DSP work is
+`progress.md` sections 22 to 34 and `experiments/aess/`. This document is what
+you want open when someone says "there is no sound" and you do not yet know
+which of those you are looking at — or when you are about to write something
+that touches audio and need to know what the hardware will and will not do.
 
-## The chain, end to end
+## Two paths, chosen by the kernel
+
+There are two ways audio reaches the codec, and **which one you have depends on
+the kernel you booted**, not on anything in userspace:
+
+| kernel | path | PulseAudio script | healthy sinks |
+| --- | --- | --- | --- |
+| `5.6.19-m4` | audio DSP (AESS), `hw:L15,5` | `/etc/pulse/pyra-aess.pa` | `aess` |
+| `5.6.19-fix`, `-freq`, `-pyradef` | direct McPDM link, `hw:L15,0` | `/etc/pulse/pyra.pa` | `alsa_output.hw_CARD_L15_DEV_0`, `speakers`, `headphones` |
+
+Only `-m4` carries the AESS patches. Tell which one is running with:
+
+    grep -q 'MultiMedia1 LP' /proc/asound/pcm && echo AESS || echo direct
+
+**The PulseAudio script must match the kernel, and nothing makes it.**
+`/etc/pulse/daemon.conf.d/zz-pyra-aess.conf` selects the AESS script
+unconditionally. Boot a direct-link kernel with it installed and `hw:L15,5`
+does not exist; delete it and boot `-m4` and device 0 is a front end that does
+not serve audio. Either mismatch gives the same symptom — a single `auto_null`
+sink, the desktop's "dummy output" — and the journal line that tells them
+apart is under *Diagnosing silence* below. On the running unit the boot menu
+still offers all four kernels, so three of its entries are silent. This is the
+first thing to settle before handing the image to anyone else.
+
+## The AESS path
+
+    app -> PulseAudio -> aess sink -> MultiMedia1 LP -> DSP mixers -> McPDM -> TWL6040 -> amp
+                         48000 Hz     hw:L15,5         DL1 headset             routing
+                         S16_LE 2ch                    DL2 handsfree           enums
+
+The OMAP5's audio DSP takes what applications actually produce — 48000 Hz,
+`S16_LE`, stereo — and does the widening and the rate conversion to the codec's
+PDM link in hardware. That is the whole reason for it: the same 48 kHz file
+costs **1.1% of a core** in `aplay` against 14.4% on the direct link, and
+PulseAudio drops from 12% to 4% (`progress.md` §25, §26).
+
+**PulseAudio** is pointed at `pyra-aess.pa` by `zz-pyra-aess.conf`, which is
+read after the packaged `pyra.conf` so its assignments win; the packaged
+`pyra.pa` is left untouched and reverting is one file deletion. The repository
+copies are in `device/pulse/`. The script loads one bare `module-alsa-sink` on
+`hw:L15,5`, stereo, `tsched=0`, 4 x 2048-frame fragments.
+
+**48 kHz only, and 44.1 kHz is resampled in software.** The engine has one
+timebase; 44.1 kHz would need the event counter and McPDM retimed together and
+nothing in the driver does that, so a 44.1 kHz stream came out 8.84% fast. The
+kernel no longer advertises 44100 (`experiments/aess/0029`). The sink is pinned
+at 48000 and PulseAudio converts 44.1 kHz material with `speex-float-1` — not
+`trivial`, which aliases audibly. Before the resampler change a 44.1 kHz song
+into a 48 kHz sink measured 9% of a core; that has not been re-measured with
+`speex-float-1`. Most music is 44.1 kHz, so this is the case that matters.
+
+**Headphones versus speakers is a DSP mixer, not a channel map.** DL1 feeds the
+headset and DL2 the handsfree amplifier. There are no `speakers` / `headphones`
+sinks on this path and no ports to switch between; that would need a PulseAudio
+profile set mapping these mixers to ports, which does not exist yet.
+
+**The controls.** The DSP graph has two output paths, and the playback device
+opens only if **at least one of them is complete**:
+
+| path | switches, all `on` | feeds |
+| --- | --- | --- |
+| DL1 | `DL1 Mixer Multimedia`, `Sidetone Mixer Playback`, `DL1 PDM Switch` | headphones |
+| DL2 | `DL2 Mixer Multimedia` | speakers |
+
+The sidetone mixer is in the DL1 path whether or not sidetone is wanted: the
+graph runs `DL1 Mixer -> Sidetone Mixer -> DL1 PDM -> PDM_DL1`. So any one DL1
+switch off silences the headphones and nothing else, and DL2 off silences the
+speakers. Both paths broken and the device will not open: `dpcm_path_get()`
+finds no back end, the kernel logs `no backend DAIs enabled for OMAP ABE Media
+LP`, and PulseAudio falls back to `auto_null`. Each of those cases was tested
+on 2026-09-24 by switching it off and restarting PulseAudio. `progress.md` §25
+says all three DL1 switches are needed for the device to open; that was true
+only while DL2 was off.
+
+The gains in front of both paths:
+
+| control | value | note |
+| --- | --- | --- |
+| `DL1 Media Playback Volume`, `DL2 Media Playback Volume` | 120 | 0 is muted |
+| `DL1 Playback Volume`, `DL2 Playback Volume` | 120,120 | 0,0 is muted |
+ Set these with `amixer -c L15 cset name='...'`, **never `sset`**:
+`sset` takes the *simple* control name, with `Switch` and `Playback Volume`
+stripped, and silently does nothing when handed the full one.
+
+**Nothing but fix 9 keeps them on.** `pyra-audio-route.sh` installs a udev rule
+that runs `/usr/local/sbin/pyra-audio-route-apply` after `alsa-restore`, and
+since 2026-09-24 that helper sets the four switches whenever the card has them,
+and lifts the DSP gains only when it finds them at 0. Before that they lived
+only in `asound.state`, and one session that left them off broke every boot
+after it — see *Traps* below.
+
+**The codec is held open for five minutes after the last sound.**
+`module-suspend-on-idle timeout=300` in `pyra-aess.pa`, rather than the default
+five seconds, because the TWL6040 headset driver pops each time it powers up or
+down (`progress.md` §33). The pop is the codec, identical on both paths; not
+cycling it is the only cure found. The power cost of holding it open has not
+been measured.
+
+**The direct link is still on this kernel, as `hw:L15,9`, and plays 1.47x
+fast.** `legacy_link=1` keeps it as a reference for debugging (`progress.md`
+§34). Nothing should use it for real audio.
+
+## The direct McPDM path
+
+This is what the machine uses on the stock kernel and on `-fix` and `-freq`.
 
     app  ->  PulseAudio  ->  remap sink  ->  ALSA sink  ->  McPDM  ->  TWL6040  ->  amp
                              speakers/        4ch                      routing
                              headphones       88200 Hz                 enums
 
 **The codec is a TWL6040**, on i2c, reached over OMAP5's McPDM link. ALSA
-enumerates it as `Letux Cortex 15`, addressed by name as `hw:CARD=L15`. It is
-one PCM device carrying **four channels**, and the pairs are not
-interchangeable:
+enumerates it as `Letux Cortex 15`, addressed by name as `hw:CARD=L15`. On
+this path it is one PCM device carrying **four channels**, and the pairs are
+not interchangeable:
 
 | channels | codec path | output |
 | --- | --- | --- |
@@ -37,14 +142,7 @@ pair) as separate sinks. `speakers` is the default.
 That design decision is the root of several things that look like bugs and
 are not — see *Consequences of the 4-channel design* below.
 
-**`pyra_volumed`** (from `pyra-hacks`, enabled by default) reads the encoder
-wheel on `palmas-gpadc` and writes **`Handsfree Playback Volume` only**, via
-`snd_mixer_selem_set_playback_volume_all` on `hw:CARD=L15`. It sets a volume
-and never sets a route. The wheel therefore controls the **speakers and
-nothing else** — it does not reach the headphones, which have only
-PulseAudio's software volume and the `Headset Playback Volume` control.
-
-## What the hardware will not do
+### What the link will not do
 
 From `aplay -D hw:CARD=L15,DEV=0 --dump-hw-params /dev/zero`, with the device
 free (stop PulseAudio first or it will report the device busy):
@@ -54,11 +152,12 @@ free (stop PulseAudio first or it will report the device busy):
     CHANNELS: [1 5]
     RATE:     [88200 96000]
 
-Three constraints follow and none of them are configurable away:
+Three constraints follow and none of them are configurable away on this path.
+They are the reason the AESS path exists:
 
 * **There is no 44100 and no 48000.** The link is PDM, which is inherently a
   fixed high-rate interface. Every ordinary stream is resampled before it can
-  be played. This is the single largest cost in audio playback on this machine
+  be played. This is the single largest cost in audio playback on this path
   and it cannot be removed, only avoided per-app by an app that will render at
   the link rate.
 * **There is no `S16_LE`.** Everything is widened to 32 bits.
@@ -66,7 +165,7 @@ Three constraints follow and none of them are configurable away:
   Mode` select Low-Power (88200) or High-Performance (96000). This machine
   ships in Low-Power.
 
-## What playback costs
+### What playback costs on the direct link
 
 Full numbers, method and the negative results are in `improvements.md` item
 10. The short version, because it is the thing most often misread:
@@ -82,7 +181,7 @@ Full numbers, method and the negative results are in `improvements.md` item
 work is identical; `ondemand` reads a small steady load as idle and settles at
 625-750 MHz, so the percentage roughly doubles. Check
 `/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq` before believing any
-audio CPU figure.
+audio CPU figure. This holds on either path.
 
 **A real game, measured under load rather than at idle.** Ship of Harkinian
 asks for `s16le 2ch 32000Hz` and pulse resamples it `trivial` to 88200. With
@@ -91,7 +190,9 @@ the game running and the thermal profile holding the clock at 1.0 GHz,
 system-wide with `perf record -a`, the whole audio stack — `alsa-sink`,
 `pulseaudio` and `PulseMainloop` together — is **18.4% of all busy CPU**
 against the game's own 55.4%. Killing audio outright returns about 18 points
-to the game, which is the ceiling on anything audio-side.
+to the game, which is the ceiling on anything audio-side. This was measured
+before the AESS path existed; on `-m4` the same game's 32 kHz stream is
+resampled to 48 kHz by `speex-float-1` instead, and has not been re-measured.
 
 Two further things worth knowing before anyone optimises:
 
@@ -104,23 +205,36 @@ Two further things worth knowing before anyone optimises:
   Low-Power/88200 that makes 44.1 kHz music clean and 48 kHz game audio
   ragged. Nobody chose this trade deliberately; it was inherited.
 
+## The volume wheel, on both paths
+
+**`pyra_volumed`** (from `pyra-hacks`, enabled by default) reads the encoder
+wheel on `palmas-gpadc` and writes **`Handsfree Playback Volume` only**, via
+`snd_mixer_selem_set_playback_volume_all` on `hw:CARD=L15`. It sets a volume
+and never sets a route. The wheel therefore controls the **speakers and
+nothing else** — it does not reach the headphones, which have only
+PulseAudio's software volume and the `Headset Playback Volume` control. The
+TWL6040 controls are the same on both kernels, so this does not change on the
+AESS path.
+
 ## Diagnosing silence, in order
 
-Work down. Each step is cheap and rules out a whole class.
+Work down. Each step is cheap and rules out a whole class. First find out which
+path the kernel gives you (the `grep` under *Two paths*); the step that differs
+between them says so.
 
 **0. Is something holding the sinks suspended?**
 
     pactl list short sinks
 
-If all three read `SUSPENDED` while something is playing, nothing is broken
-downstream — the sinks have simply been left suspended. `pasuspender` does this
+If the sinks read `SUSPENDED` while something is playing, nothing is broken
+downstream — they have simply been left suspended. `pasuspender` does this
 deliberately for the life of its child and resumes on exit, so a `pasuspender`
 that was killed rather than allowed to exit leaves the machine silent
 indefinitely. Any stream started afterwards plays into a dead sink and is never
 heard. Resume with:
 
-    for s in alsa_output.hw_CARD_L15_DEV_0 speakers headphones; do
-      pactl suspend-sink "$s" 0
+    for s in aess alsa_output.hw_CARD_L15_DEV_0 speakers headphones; do
+      pactl suspend-sink "$s" 0 2>/dev/null
     done
 
 `SUSPENDED` with **nothing** playing is normal and expected — that is
@@ -130,17 +244,28 @@ heard. Resume with:
 
     pactl list short sinks
 
-Healthy is three entries — `alsa_output.hw_CARD_L15_DEV_0`, `speakers`,
-`headphones`. A single `auto_null` means PulseAudio failed to open the card
-and fell back to a dummy; the session is silent for its whole life because
-PulseAudio never retries. That is **fix 10** (the lightdm greeter took the
-card). Confirm in the journal:
+Healthy is `aess` on the AESS path, or `alsa_output.hw_CARD_L15_DEV_0`,
+`speakers` and `headphones` on the direct link. A single `auto_null` means
+PulseAudio failed to open the card and fell back to a dummy; the session is
+silent for its whole life because PulseAudio never retries. Find out why:
 
     journalctl --user -u pulseaudio.service -b | grep -i "module-alsa-sink"
+    sudo dmesg | grep -m1 'no backend DAIs'
 
-`systemctl --user restart pulseaudio.service` recovers the running session.
+* `hw:L15,5` failed **and** dmesg has `no backend DAIs enabled`: the AESS
+  routes are off. Step 2.
+* `hw:L15,5` failed and `/proc/asound/pcm` has no `MultiMedia1 LP`: the AESS
+  PulseAudio script on a direct-link kernel. See *Two paths*.
+* `hw:CARD=L15,DEV=0` failed on `-m4`: the packaged script on the AESS kernel.
+  Same section.
+* Device busy: **fix 10**, the lightdm greeter took the card.
 
-**2. Are the codec's output routes on?**
+`systemctl --user restart pulseaudio.service` recovers the running session once
+the cause is gone.
+
+**2. Are the routes on?**
+
+On either path, the codec's four output routes:
 
     for c in 'Handsfree Left Playback' 'Handsfree Right Playback' \
              'Headset Left Playback'   'Headset Right Playback'; do
@@ -148,19 +273,31 @@ card). Confirm in the journal:
     done
 
 `1` is on (`HF DAC` / `HS DAC`), `0` is `Off`. All zeros is **fix 9** — the
-shipped `asound.state` has every route off. `sudo /usr/local/sbin/pyra-audio-route-apply`
-sets them; if that file does not exist the fix is not installed.
+shipped `asound.state` has every route off.
+
+On the AESS path, also the DSP's:
+
+    for c in 'DL1 PDM Switch' 'Sidetone Mixer Playback' 'DL1 Mixer Multimedia' \
+             'DL2 Mixer Multimedia' 'DL1 Media Playback Volume' 'DL2 Media Playback Volume'; do
+      printf '%-26s ' "$c"; amixer -c L15 cget name="$c" | sed -n 's/^[[:space:]]*: values=//p'
+    done
+
+The tables under *The AESS path* say what each needs to be.
+`device/pyra-audio-route.sh --check` prints both sets, from a checkout. For either, `sudo /usr/local/sbin/pyra-audio-route-apply` sets
+them; if that file does not exist fix 9 is not installed. Then restart
+PulseAudio, because a sink that failed to load at login does not come back by
+itself.
 
 **3. Is the PCM actually moving?**
 
-    cat /proc/asound/L15/pcm0p/sub0/status
+    cat /proc/asound/L15/pcm5p/sub0/status     # AESS
+    cat /proc/asound/L15/pcm0p/sub0/status     # direct link
 
 `/proc/asound/L15` is a symlink to whichever `cardN` the codec landed on this
 boot, which is the reason to use it rather than a number. While something
 plays it should read `state: RUNNING` with a `hw_ptr` that advances between
-two reads. If it is RUNNING and you still hear
-nothing, the fault is at or below the codec — go back to step 2, then check
-volumes.
+two reads. If it is RUNNING and you still hear nothing, the fault is at or
+below the codec — go back to step 2, then check volumes.
 
 **4. Volumes, remembering who owns which.**
 
@@ -170,45 +307,65 @@ volumes.
 If the speakers are quiet, turn the **wheel** — writing that control by hand
 is pointless, `pyra_volumed` overwrites it on the next movement. If the
 headphones are quiet, that control and PulseAudio are the only two things in
-play.
+play. On the AESS path the DSP gains in the table above sit in front of both.
 
 **5. Only then, PulseAudio's own levels.**
 
     pactl list sinks | grep -E 'Name:|Mute:|Volume: front'
 
-## Consequences of the 4-channel design
+## Consequences of the PulseAudio design
 
 These all look like faults and are not. Each has been chased at least once.
 
-* **MATE's Sound Preferences "Hardware" tab is empty.** That tab lists
-  PulseAudio *cards*, and this machine has none — `pyra.pa` uses
-  `module-alsa-sink`, not `module-alsa-card`. The **Output** tab, which is the
-  one that does anything, correctly lists all three sinks.
+* **MATE's Sound Preferences "Hardware" tab is empty, on both paths.** That
+  tab lists PulseAudio *cards*, and this machine has none — both scripts use a
+  bare `module-alsa-sink`, not `module-alsa-card`. The **Output** tab, which is
+  the one that does anything, lists the sinks.
 * **`pactl list short cards` returns nothing.** Same cause.
 * **The sink reports `Flags: HARDWARE` but PulseAudio does software volume.**
-  Verified: moving the sink volume between 100% and 50% leaves both ALSA
-  volume elements untouched. Do not assume changing one changes the other.
+  Verified on the direct link: moving the sink volume between 100% and 50%
+  leaves both ALSA volume elements untouched. Do not assume changing one
+  changes the other.
 * **Going back to `module-udev-detect` would fix the Hardware tab and the fix
-  10 race at once, and is still wrong.** It cannot do the 4-channel open the
-  Speakers/Headphones split depends on. That trade has been considered and
-  rejected twice; see fixes 9 and 10.
+  10 race at once, and is still wrong for the direct link.** It cannot do the
+  4-channel open the Speakers/Headphones split depends on. That trade has been
+  considered and rejected twice; see fixes 9 and 10. On the AESS path that
+  argument no longer applies, but no profile set for the DSP exists yet.
 
 ## Traps that will cost you an afternoon
 
+* **Mixer state is re-saved at every shutdown.** `alsa-state.service` is
+  inactive on this image, but `alsa-restore.service` has
+  `ExecStop=alsactl store`, so whatever the routes are when the machine goes
+  down is what the next boot restores. One session that left the AESS routes
+  off broke every boot after it: PulseAudio failed to open `hw:L15,5`, fell
+  back to `auto_null`, and the kernel logged `no backend DAIs enabled for OMAP
+  ABE Media LP`. That happened on 2026-09-21 and went unnoticed for four boots.
+  Fix 9's helper now asserts those routes after `alsa-restore`, so a bad saved
+  state no longer survives a reboot — but it still survives until the reboot.
+  If you `alsactl store` while the routes are off, you save the bad state.
 * **A killed `pasuspender` leaves the whole machine silent.** It suspends every
   sink and resumes them from its exit path, so `timeout -s KILL ... pasuspender
   -- prog` — or anything else that SIGKILLs it — never resumes them. The failure
   is silent and survives until something calls `pactl suspend-sink ... 0`.
   Everything started in between plays into a dead sink, which makes it an easy
   way to invalidate a whole afternoon of A/B measurements without noticing.
-* **`SDL_AUDIODRIVER=alsa` does not reach the codec on this machine.** SDL
+* **A/B comparisons against `hw:L15,9` are against a link that plays 1.47x
+  fast.** Every comparison in `progress.md` §26 to §31 used it. See §34.
+* **`SDL_AUDIODRIVER=alsa` does not reach the codec on the direct link.** SDL
   reports initialising happily, and every playback PCM under `/proc/asound/`
   stays `closed` — SDL's default ALSA device resolves to nothing that drives
   the hardware here, and the 4-channel open the Speakers/Headphones split needs
-  is not something SDL will do. "Bypass PulseAudio per-app" is therefore not
-  available out of the box, and an app configured that way is silent, not fast.
-  Confirm with `for s in /proc/asound/card*/pcm*p/sub0/status; do head -1 $s; done`
+  is not something SDL will do. An app configured that way is silent, not fast.
+  **Not re-tested on the AESS path**, where `hw:L15,5` is plain stereo S16 and
+  might well work. Confirm with
+  `for s in /proc/asound/card*/pcm*p/sub0/status; do head -1 $s; done`
   before believing any measurement taken that way.
+* **`module-alsa-sink` "initialization failed" is not always its arguments.**
+  Twice during the AESS work it was something else: an earlier load already
+  holding the device, then nested quotes in `sink_properties` mangled by the ssh
+  command line. Test module arguments from a file and check what reached the
+  daemon before blaming a parameter.
 * **`hw_params` of an open stream is not the device's capability.** It reports
   the *negotiated* rate. Reading `rate: 88200` there and concluding the
   hardware does only 88200 is wrong — `--dump-hw-params` on the free device
@@ -223,47 +380,45 @@ These all look like faults and are not. Each has been chased at least once.
   not something clobbering your settings.
 * **`alsa-restore` logging `failed to import hw:N use case configuration -2`
   is harmless.** There is no UCM profile for this card; it falls back to
-  `asound.state`, which is the intended path here.
-* **Mixer state is re-saved at every shutdown.** `alsa-state.service` is
-  inactive on this image, but `alsa-restore.service` has
-  `ExecStop=alsactl store`, so whatever the routes are when the machine goes
-  down is what the next boot restores. One session that leaves the AESS
-  routes off (`DL1 PDM Switch`, `DL1`/`DL2 Mixer Multimedia`, `Sidetone Mixer
-  Playback`) therefore breaks every boot after it: PulseAudio fails to open
-  `hw:L15,5`, falls back to `auto_null`, and the kernel logs `no backend DAIs
-  enabled for OMAP ABE Media LP`. This happened on 2026-09-21 and went
-  unnoticed for four boots. `pyra-audio-route.sh` (fix 9) now asserts these
-  routes from its udev rule after `alsa-restore`, so a bad saved state no
-  longer survives a reboot. To recover a running session without rebooting:
-  `sudo /usr/local/sbin/pyra-audio-route-apply`, then restart PulseAudio.
+  `asound.state`, and fix 9's udev rule runs after it.
 
 ## Open, and untested
 
-* **The High-Performance PLL mode (96000).** Would make 48 kHz content an
-  exact 2:1 instead of ragged, which is a **quality** lever, not a CPU one —
-  96000 is more output samples than 88200, so it would cost slightly more, and
-  draw more power. Two mixer writes, fully reversible. Nobody has flipped it
-  and listened.
-* **`speex-fixed-1` instead of `trivial`.** Would sound considerably better
-  and cost back some of the ~8-point conversion penalty. Not measured.
-* **A 2-channel sink.** `CHANNELS: [1 5]` permits it and it would halve
-  everything downstream of conversion, at the cost of the headphone/speaker
-  split. A product decision, not a performance one.
+* **Selecting the PulseAudio script from the kernel.** See *Two paths*. A boot
+  step that checks for `MultiMedia1 LP` and picks the script would remove the
+  mismatch; nothing does it yet.
+* **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
+  figure predates it.
+* **Headphone/speaker switching on the AESS path.** Both DSP mixers are on, so
+  both outputs play. Jack-driven switching would mean a PulseAudio profile set
+  or a jack-event hook toggling `DL1`/`DL2 Mixer Multimedia`.
+* **The power cost of the five-minute idle timeout.** One word to revert.
+* **The High-Performance PLL mode (96000), direct link.** Would make 48 kHz
+  content an exact 2:1 instead of ragged, which is a **quality** lever, not a
+  CPU one — 96000 is more output samples than 88200, so it would cost slightly
+  more, and draw more power. Two mixer writes, fully reversible. Nobody has
+  flipped it and listened.
+* **`speex-fixed-1` instead of `trivial`, direct link.** Would sound
+  considerably better and cost back some of the ~8-point conversion penalty.
+  Not measured.
+* **A 2-channel sink, direct link.** `CHANNELS: [1 5]` permits it and it would
+  halve everything downstream of conversion, at the cost of the
+  headphone/speaker split. A product decision, not a performance one.
 * **What a given app actually asks for.** `pactl list sink-inputs` prints each
   live stream's sample spec. Partly answered: Ship of Harkinian asks for
-  `s16le 2ch 32000Hz`, a ragged 2.75625:1 against the link. Moving it to 44100
-  for an exact 2:1 was tried and **costs 23% more**, not less — see
+  `s16le 2ch 32000Hz`, a ragged 2.75625:1 against the direct link. Moving it
+  to 44100 for an exact 2:1 was tried and **costs 23% more**, not less — see
   `improvements.md` item 10. Matching the *ratio* is a quality lever only;
   only matching the *rate* (88200) reaches the cheap path, and for this title
-  that would mean synthesising 2.76x the samples in the game instead. Other
-  titles are still unprofiled.
+  that would mean synthesising 2.76x the samples in the game instead. On the
+  AESS path the cheap rate is 48000 instead. Other titles are still
+  unprofiled.
 
 ## Reference code and documents
 
-This page describes the **direct McPDM path**, which is what the machine uses
-on the stock kernel. The audio DSP (AESS) path is a separate piece of work and
-lives in `progress.md` sections 22 to 34; the links below are what that work
-drew on, in the order they turned out to be worth.
+The AESS path's history is in `progress.md` sections 22 to 34 and the patches
+and tools under `experiments/aess/`; the links below are what that work drew
+on, in the order they turned out to be worth.
 
 * **https://github.com/goldelico/omap-aess** — the one that matters. A
   complete kernel tree by the Letux maintainer with the AESS forward-ported to
