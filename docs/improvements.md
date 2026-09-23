@@ -769,8 +769,25 @@ Effort: a morning, given item 0. Risk: none.
     VDD_MM / VDD_CORE2   ...  NOM
       GPU                     425 MHz
 
-The graphics rail is at its nominal operating point. `dpll_core_m3x2_ck` reads
-425.472 MHz in the clock summary, matching. There is a higher operating point on
+The graphics rail is at its nominal operating point. ~~`dpll_core_m3x2_ck` reads
+425.472 MHz in the clock summary, matching.~~
+
+> **Corrected 2026-09-23.** `dpll_core_m3x2_ck` does not feed the GPU. The
+> device tree gives `gpu_core_gclk_mux` / `gpu_hyd_gclk_mux` (`CM_GPU_GPU_CLKCTRL`,
+> `cm_core` offset `0x1520`) exactly two parents, `dpll_core_h14x2_ck` and
+> `dpll_per_h14x2_ck`, and the kernel shows them on `dpll_core_h14x2_ck` — which
+> `clk_summary` reports as **33.77 MHz**, idle and under load alike. That figure
+> is not the real clock either: the same evening the `~/pyra-probe/fill` probe
+> measured **861.8 Mpix/s** at 1280x720 overdraw 8, identical to 2026-09-20's 862,
+> and 33.8 MHz would need 25 pixels per clock from a two-core SGX. At 425 MHz it is
+> 2.0 per clock, which is plausible. So: **the GPU is not throttled; the kernel's
+> clock tree does not describe what the DDK set, and neither `m3x2` nor
+> `clk_summary` measures the GPU clock.** Measured, not read from a register:
+> `devmem2` returns 0 for every CM register (strict `/dev/mem`), including
+> `CM_CLKMODE_DPLL_CORE`, which cannot be 0 on a running system. `omapconf` reads
+> through the same `/dev/mem` and warns "no matching rate" for MPU and CORE, so its
+> "GPU 425 MHz" is best treated as its OPP table's nominal value. The only
+> measurement of the GPU clock this project has is the fill rate. There is a higher operating point on
 this part, and the difference is worth roughly a quarter of the GPU's
 throughput — which would land directly on every glmark2 scene, every gl4es
 frame and every emulator.

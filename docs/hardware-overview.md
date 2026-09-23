@@ -35,7 +35,7 @@ The thermal envelope, not the clock ceiling, decides what the machine sustains.
 | L1 cache | 32 KB I + 32 KB D per core, 64-byte lines | Spec (A15 TRM) |
 | L2 cache | 2 MB, shared by both cores, on-die | Spec (OMAP5432) |
 | L2 TLB | 512 entries, unified — **2 MB of reach with 4 KB pages** | Spec (A15 TRM) |
-| GPU | PowerVR SGX544MP2, 2 cores, 425 MHz (NOM rail) | Measured |
+| GPU | PowerVR SGX544MP2, 2 cores, 425 MHz (NOM rail) | Tool-reported (`omapconf`); consistent with 862 Mpix/s measured fill. `clk_summary`'s 33.77 MHz for the GPU mux is wrong — see improvements.md §5 |
 | GPU API | OpenGL ES 2.0 only, GLSL ES 1.00. **No GLES 3 path exists** | Measured |
 | RAM | 4 GB, 2x EMIF, 531 MHz, **no swap configured** | Measured |
 | Memory peak, theoretical | ~8.5 GB/s (2 x 32-bit x ~1064 MT/s) | Reasoning |
