@@ -792,8 +792,17 @@ this part, and the difference is worth roughly a quarter of the GPU's
 throughput — which would land directly on every glmark2 scene, every gl4es
 frame and every emulator.
 
-This is the highest-value unexplored item in the document and also the one most
-likely to turn out to be impossible. Before getting attached to it, establish:
+**A quarter of GPU throughput is not a quarter of a frame.** It is a quarter of
+whatever share of the frame is actually GPU-side, which for a benchmark like
+glmark2 is nearly all of it and for a real application may not be. The Ship of
+Harkinian port is the worked example: 5.05 ms of its 31.8 ms frame is spent in
+the swap where the fragment pass lives, so a 25% GPU gain is bounded near **4% of
+the frame** there — behind changes that cost nothing and carry no physical risk.
+The ranking below is for the GPU-bound case; for any given workload, measure what
+share is GPU-side before spending this item's risk budget on it.
+
+This is the highest-value unexplored item in the document for a GPU-bound
+workload, and also the one most likely to turn out to be impossible. Before getting attached to it, establish:
 
 - Whether the device tree offers a higher GPU operating point at all. There is
   no `devfreq` node and no GPU OPP table visible under `/proc/device-tree`, so
@@ -812,7 +821,7 @@ anyway.
 Effort: unknown, potentially large. Risk: **high, and physical.** Treat as
 research, not as a change.
 
-### 6. Measure whether Present flips or copies
+### 6. Measure whether Present flips or copies, and whether clients pipeline
 
 The one part of the original framebuffer-copy thesis that is not already
 resolved. Rotation is in hardware; what remains unknown is whether a fullscreen
@@ -830,6 +839,20 @@ closed.
 
 Effort: a day, mostly in reading the DDX. Payoff: unknown until measured, which
 is precisely why it is worth an afternoon rather than a week.
+
+**There is now a workload where this shows up as frame time.** In the Ship of
+Harkinian port, ~5.0 ms of every frame is spent blocked in the swap, and
+extrapolating its pixel dependence leaves ~3.4 ms that does *not* scale with the
+number of pixels drawn — which is the shape of a copy, or of a client that cannot
+be flipped. Counting `DRM_IOCTL_MODE_PAGE_FLIP` against frames for that client
+answers this item and sizes it at the same time.
+
+A second question belongs with it, and no report on either side has asked it: is
+the client pipelined with the GPU at all? On a tile-based deferred renderer the
+CPU should be a frame ahead. If the swap blocks until the previous frame's tile
+pass retires, that 5 ms is serialised dead time rather than overlapped work, and
+the EGL buffer count decides which. It is cheap to establish and it would make a
+large number available without changing anything that is rendered.
 
 ### 7. Profile gl4es before rebuilding it
 

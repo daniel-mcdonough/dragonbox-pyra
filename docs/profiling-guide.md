@@ -141,12 +141,67 @@ and nothing else.
 - Scales with the number of objects, not their size
 - Check against the budget: ~14.2 µs per draw, ~2,300 draws per frame at 30 fps
 
+That budget is a **floor, not a forecast**. It was measured with a 1x1 scissor and
+16-triangle batches, so it is the driver's own per-call cost and nothing else. In
+Ship of Harkinian, non-swap frame time divided by draws is ~80 µs at two different
+fixtures (2026-09-24). Whatever the other ~66 µs is, it is not in that budget, and
+a plan that treats the synthetic figure as the real per-draw cost will conclude
+draw calls are free when they may not be.
+
 ### 2.3 Careful with the driver's share
 
 In the Ship of Harkinian profile the PowerVR driver and kernel accounted for
 8.5%. That is not 8.5% of work you can remove — a good part of it is the process
 blocking on the GPU, which is the *symptom* of being GPU-bound, not a cost to
 optimise.
+
+### 2.4 Computing or waiting? Measure it, do not infer it
+
+§2.2's signatures describe what each case *looks* like. There is a direct
+measurement, and it is cheaper than a profile.
+
+**Compare on-CPU time against wall time, per thread.**
+
+```sh
+perf stat --per-thread -p $(pgrep -f yourgame) -- sleep 30
+```
+
+Read `task-clock` for the thread that draws against the 30 s elapsed. Per thread
+matters: a render thread at 40% and an audio thread at 60% average to something
+that looks busy and is not. A program can also read its own with
+`clock_gettime(CLOCK_THREAD_CPUTIME_ID)` at two points and print it next to its
+frame timings, which costs nothing and makes every later run carry the
+diagnostic.
+
+| Reading | Meaning | Next step |
+| --- | --- | --- |
+| On-CPU ≈ elapsed, IPC ~1+ | Genuinely computing | `perf record`, §3.2 |
+| On-CPU ≈ elapsed, IPC ~0.2 | Stalled on memory, not on work | `perf stat -e cycles,instructions,cache-misses` |
+| On-CPU well below elapsed | **Blocked.** A sampling profile will not show this at all | below |
+
+**A sampling profiler cannot see waiting.** A sleeping thread takes no samples,
+so time spent blocked simply vanishes from `perf report` — and a driver that
+*spins* instead appears as work you cannot remove (§2.3). This is the trap
+behind reading an 8.5% driver share as an 8.5% opportunity.
+
+When the answer is "blocked", find the call site rather than the symptom:
+
+```sh
+perf list | grep sched:                        # confirm the tracepoints exist
+perf sched record -p $(pgrep -f yourgame) -- sleep 20 && perf sched timehist
+perf trace -e ioctl -p $(pgrep -f yourgame)    # or: strace -c -f -e trace=ioctl
+```
+
+Counting **ioctls per frame** is the bluntest useful version of this on a
+PowerVR stack: submission goes through `/dev/pvrsrvkm`, so ioctls per frame
+against draws per frame says directly whether the frame is shaped by draw calls.
+The same counting trick answers `improvements.md` §6 for Present, where the
+ioctl is `DRM_IOCTL_MODE_PAGE_FLIP`.
+
+Status: the on-CPU-versus-wall comparison and the ioctl count are **method, not
+yet results on this device** — written down 2026-09-24 because the Ship of
+Harkinian port has 65% of its frame unattributed and no way to tell which of
+these three rows it is in.
 
 ---
 
@@ -192,6 +247,10 @@ clock is moving.
 Check `perf list` before relying on any PMU event name. Whether this part
 exposes `dTLB-load-misses` and `iTLB-load-misses` is not established, and the
 ARMv7 event mapping is not the same on every implementation.
+
+**Off-CPU time** is not something `perf record` reports by default; see §2.4 for
+`perf sched` and for the on-CPU-versus-wall comparison that tells you whether you
+need it.
 
 **`ftrace`** is available for scheduler and interrupt-level questions.
 `/proc/interrupts` sampled twice a second is often enough and is much cheaper —
