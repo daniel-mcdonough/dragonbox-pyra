@@ -232,8 +232,10 @@ These all look like faults and are not. Each has been chased at least once.
   Playback`) therefore breaks every boot after it: PulseAudio fails to open
   `hw:L15,5`, falls back to `auto_null`, and the kernel logs `no backend DAIs
   enabled for OMAP ABE Media LP`. This happened on 2026-09-21 and went
-  unnoticed for four boots. Fix: set the routes with `cset name=`, restart
-  PulseAudio, then `sudo alsactl store`.
+  unnoticed for four boots. `pyra-audio-route.sh` (fix 9) now asserts these
+  routes from its udev rule after `alsa-restore`, so a bad saved state no
+  longer survives a reboot. To recover a running session without rebooting:
+  `sudo /usr/local/sbin/pyra-audio-route-apply`, then restart PulseAudio.
 
 ## Open, and untested
 

@@ -76,7 +76,7 @@ HS_FLOOR=13
 emit_helper() {
 	cat <<'EOF'
 #!/bin/sh
-# pyra-audio-route-apply — assert the TWL6040 output routing. Idempotent.
+# pyra-audio-route-apply — assert the TWL6040 and AESS output routing. Idempotent.
 #
 # Installed by pyra-audio-route.sh (fix 9). Runs from a udev rule on the
 # sound card, ordered after 90-alsa-restore so it has the last word over
@@ -99,6 +99,31 @@ do
 	$AMIXER -c "$CARD" -q cset name="${pair%%=*}" "${pair#*=}" 2>/dev/null
 done
 
+# The AESS graph, on kernels that have the audio DSP. These are not
+# preferences: with DL1 PDM or the sidetone mixer off, the playback front end
+# has no path to a back end, hw:L15,5 refuses to open, and PulseAudio falls
+# back to a dummy sink. alsa-restore saves them at every shutdown, so one
+# session that switched them off used to break every boot after it. The
+# direct-McPDM kernels have none of these controls; that is not an error.
+if [ -n "$(get 'DL1 PDM Switch')" ]; then
+	for pair in \
+		'DL1 Mixer Multimedia=on' \
+		'DL2 Mixer Multimedia=on' \
+		'Sidetone Mixer Playback=on' \
+		'DL1 PDM Switch=on'
+	do
+		$AMIXER -c "$CARD" -q cset name="${pair%%=*}" "${pair#*=}" 2>/dev/null ||
+			logger -t pyra-audio-route "could not set ${pair%%=*}"
+	done
+	# The DSP gains are 0 = muted. Lifted to unity only when found there.
+	for c in 'DL1 Media Playback Volume' 'DL2 Media Playback Volume'; do
+		[ "$(get "$c")" = 0 ] && $AMIXER -c "$CARD" -q cset name="$c" 120 2>/dev/null
+	done
+	for c in 'DL1 Playback Volume' 'DL2 Playback Volume'; do
+		[ "$(get "$c")" = '0,0' ] && $AMIXER -c "$CARD" -q cset name="$c" 120,120 2>/dev/null
+	done
+fi
+
 # The headphone volume, which has no daemon behind it, is only lifted when it
 # is found at the floor. A value the user chose is left alone.
 case "$(get 'Headset Playback Volume')" in
@@ -112,11 +137,12 @@ EOF
 
 emit_rule() {
 	cat <<'EOF'
-# fix 9 — assert the TWL6040 output routing once the card is up.
+# fix 9 — assert the TWL6040 and AESS output routing once the card is up.
 #
 # 95- so this runs after /lib/udev/rules.d/90-alsa-restore.rules, which
 # replays /var/lib/alsa/asound.state. The shipped state file has every output
-# route Off; this rule is what puts them back regardless of what is in it.
+# route Off, and alsa-restore re-saves whatever is live at every shutdown;
+# this rule is what puts them back regardless of what is in it.
 ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC*", ATTRS{id}=="L15", RUN+="/usr/local/sbin/pyra-audio-route-apply"
 EOF
 }
@@ -145,6 +171,15 @@ say_state() {
 		v=$(amixer -c "$CARD" cget name="$c" 2>/dev/null | sed -n 's/^[[:space:]]*: values=//p')
 		printf '  %-26s %s\n' "$c" "${v:-?}"
 	done
+	if amixer -c "$CARD" cget name='DL1 PDM Switch' >/dev/null 2>&1; then
+		echo "AESS:"
+		for c in 'DL1 PDM Switch' 'Sidetone Mixer Playback' \
+		         'DL1 Mixer Multimedia' 'DL2 Mixer Multimedia' \
+		         'DL1 Media Playback Volume' 'DL2 Media Playback Volume'; do
+			v=$(amixer -c "$CARD" cget name="$c" 2>/dev/null | sed -n 's/^[[:space:]]*: values=//p')
+			printf '  %-26s %s\n' "$c" "${v:-?}"
+		done
+	fi
 	echo "  (Handsfree Playback Volume is pyra_volumed's, from the wheel)"
 }
 
