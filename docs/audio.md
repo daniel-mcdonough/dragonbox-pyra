@@ -350,10 +350,11 @@ These all look like faults and are not. Each has been chased at least once.
   Fix 9's helper now asserts those routes after `alsa-restore`, so a bad saved
   state no longer survives a reboot — but it still survives until the reboot.
   If you `alsactl store` while the routes are off, you save the bad state.
-* **Crackle on music but clean test tones, on the AESS path, is `mmap=no`
-  missing** from the `aess` sink line in `pyra-aess.pa`. Check that before
-  anything else. Recording `aess.monitor` with mmap on crashes PulseAudio with
-  SIGBUS, for the same reason.
+* **Crackle on music but clean test tones, on the AESS path, means something
+  is writing the DSP's memory through a mapping.** The kernel stops that from
+  patch 0032 on, and `mmap=no` in `pyra-aess.pa` stops PulseAudio doing it on
+  a kernel without 0032. Check both before anything else. On such a kernel,
+  recording `aess.monitor` also crashes PulseAudio with SIGBUS.
 * **A killed `pasuspender` leaves the whole machine silent.** It suspends every
   sink and resumes them from its exit path, so `timeout -s KILL ... pasuspender
   -- prog` — or anything else that SIGKILLs it — never resumes them. The failure
@@ -367,11 +368,10 @@ These all look like faults and are not. Each has been chased at least once.
   stays `closed` — SDL's default ALSA device resolves to nothing that drives
   the hardware here, and the 4-channel open the Speakers/Headphones split needs
   is not something SDL will do. An app configured that way is silent, not fast.
-  On the AESS path, anything that opens `hw:L15,5` itself and writes through
-  the mmap -- alsa-lib's `plughw` rate converter, and possibly SDL's ALSA
-  driver -- loses its sub-word writes: `plughw:L15,5` with a 44.1 kHz file
-  plays silence. Go through PulseAudio until the driver stops offering the
-  mapping. Confirm with
+  On the AESS path the device offers read/write access only (patch 0032), so
+  anything opening `hw:L15,5` directly must write 48 kHz; `plughw:L15,5` with
+  a 44.1 kHz file fails to open. The `default` ALSA device is PulseAudio,
+  which resamples, and is what SDL's ALSA driver uses unless told otherwise. Confirm with
   `for s in /proc/asound/card*/pcm*p/sub0/status; do head -1 $s; done`
   before believing any measurement taken that way.
 * **`module-alsa-sink` "initialization failed" is not always its arguments.**

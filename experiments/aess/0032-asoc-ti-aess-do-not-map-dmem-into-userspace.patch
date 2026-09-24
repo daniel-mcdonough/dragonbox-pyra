@@ -1,0 +1,131 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: do not map DMEM into userspace
+
+The MM1 LP front end's buffer is the AESS's DMEM, and omap_aess_pcm_mmap()
+handed it to userspace as device memory. DMEM keeps only 32-bit stores.
+Written through the mapping and read back:
+
+    32-bit stores               0 of 6144 words wrong
+    16-bit stores            6144 of 6144
+    8-bit stores             6144 of 6144
+    memcpy, odd-sized chunks    4 of 6144
+
+So any writer that is not a whole-word memcpy loses samples, and the
+firmware plays what the previous lap of the ring left behind. PulseAudio's
+resampled path lost enough that 44.1 kHz music replayed audio 128, 256 and
+384 ms old -- one to three laps of a 6144-frame ring -- and crackled like
+a record. alsa-lib's rate plugin, which writes 16-bit samples, produced
+silence. Reading the mapping back (PulseAudio's sink monitor) took SIGBUS.
+PulseAudio's mmap=no worked around it for that one client only.
+
+Stop advertising SNDRV_PCM_INFO_MMAP and drop the mmap op, so ALSA offers
+read/write access only, and do the stores in a copy_user op with
+__iowrite32_copy() rather than trusting copy_from_user() to stay aligned.
+The op is shared by every front end on the component, and only MM1 LP has
+DMEM behind dma_area, so the others keep the plain copy.
+
+---
+diff -ru a/sound/soc/ti/aess/omap-aess-pcm.c b/sound/soc/ti/aess/omap-aess-pcm.c
+--- a/sound/soc/ti/aess/omap-aess-pcm.c	2026-09-24 11:50:00.410225824 -0400
++++ b/sound/soc/ti/aess/omap-aess-pcm.c	2026-09-24 11:50:00.411115326 -0400
+@@ -28,7 +28,8 @@
+  */
+ 
+ #include <linux/pm_runtime.h>
+-
++#include <linux/io.h>
++#include <linux/uaccess.h>
+ 
+ #include <sound/pcm.h>
+ #include <sound/pcm_params.h>
+@@ -64,10 +65,16 @@
+ /* Ping pong buffer DMEM offset - we should read this from future FWs */
+ #define OMAP_AESS_BANK_DMEM_PP_OFFSET	0x4000
+ 
++/*
++ * No SNDRV_PCM_INFO_MMAP. The buffer is the AESS's DMEM, and DMEM keeps only
++ * 32-bit stores: 16- and 8-bit writes are silently dropped. Mapped into a
++ * process, any writer that is not a whole-word memcpy -- PulseAudio's
++ * resampled path, alsa-lib's rate plugin -- loses samples and the firmware
++ * plays whatever the previous lap left there. Without the flag ALSA allows
++ * read/write access only, and omap_aess_pcm_copy_user() does the stores.
++ */
+ static const struct snd_pcm_hardware omap_aess_hardware = {
+-	.info			= SNDRV_PCM_INFO_MMAP |
+-				  SNDRV_PCM_INFO_MMAP_VALID |
+-				  SNDRV_PCM_INFO_INTERLEAVED |
++	.info			= SNDRV_PCM_INFO_INTERLEAVED |
+ 				  SNDRV_PCM_INFO_BLOCK_TRANSFER |
+ 				  SNDRV_PCM_INFO_PAUSE |
+ 				  SNDRV_PCM_INFO_RESUME,
+@@ -445,29 +452,42 @@
+ 	return 0;
+ }
+ 
+-static int omap_aess_pcm_mmap(struct snd_soc_component *comp,
+-			      struct snd_pcm_substream *substream,
+-			      struct vm_area_struct *vma)
++/*
++ * Write into DMEM with 32-bit stores only; see omap_aess_hardware. The
++ * default copy is copy_from_user() straight into dma_area, which is word
++ * stores only while both ends happen to stay aligned. Every frame here is 4
++ * or 8 bytes, so pos and bytes are always whole words.
++ *
++ * This op is installed on every front end that shares the component, and
++ * only MM1 LP has DMEM behind its dma_area, so the others keep the default.
++ */
++static int omap_aess_pcm_copy_user(struct snd_soc_component *comp,
++				   struct snd_pcm_substream *substream,
++				   int channel, unsigned long pos,
++				   void __user *buf, unsigned long bytes)
+ {
+-	struct snd_soc_pcm_runtime  *rtd = substream->private_data;
+-	struct snd_soc_dai *dai = rtd->cpu_dai;
+-	struct snd_soc_component *component = dai->component;
+-	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
+-	int offset, size, err;
++	struct snd_soc_pcm_runtime *rtd = substream->private_data;
++	void *area = substream->runtime->dma_area + pos;
++	void __iomem *dst = (void __force __iomem *)area;
++	u32 chunk[64];
++
++	if (rtd->cpu_dai->id != OMAP_AESS_DAI_MM1_LP ||
++	    substream->stream != SNDRV_PCM_STREAM_PLAYBACK)
++		return copy_from_user(area, buf, bytes) ? -EFAULT : 0;
+ 
+-	if (dai->id != OMAP_AESS_DAI_MM1_LP)
++	if ((pos | bytes) & 3)
+ 		return -EINVAL;
+ 
+-	vma->vm_flags |= VM_IO;
+-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+-	size = vma->vm_end - vma->vm_start;
+-	offset = vma->vm_pgoff << PAGE_SHIFT;
+-
+-	err = io_remap_pfn_range(vma, vma->vm_start, (aess->dmem_l4 +
+-			OMAP_AESS_BANK_DMEM_PP_OFFSET + offset) >> PAGE_SHIFT,
+-			size, vma->vm_page_prot);
+-	if (err)
+-		return -EAGAIN;
++	while (bytes) {
++		unsigned long n = min_t(unsigned long, bytes, sizeof(chunk));
++
++		if (copy_from_user(chunk, buf, n))
++			return -EFAULT;
++		__iowrite32_copy(dst, chunk, n / 4);
++		dst += n;
++		buf += n;
++		bytes -= n;
++	}
+ 
+ 	return 0;
+ }
+@@ -771,7 +791,7 @@
+ 	.hw_params	= omap_aess_pcm_hw_params,
+ 	.prepare	= omap_aess_pcm_prepare,
+ 	.pointer	= omap_aess_pcm_pointer,
+-	.mmap		= omap_aess_pcm_mmap,
++	.copy_user	= omap_aess_pcm_copy_user,
+ 	.probe		= omap_aess_pcm_probe,
+ 	.remove		= omap_aess_pcm_remove,
+ 	.read		= omap_aess_oppwidget_read,
