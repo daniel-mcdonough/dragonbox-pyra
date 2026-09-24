@@ -51,7 +51,13 @@ PulseAudio drops from 12% to 4% (`progress.md` §25, §26).
 read after the packaged `pyra.conf` so its assignments win; the packaged
 `pyra.pa` is left untouched and reverting is one file deletion. The repository
 copies are in `device/pulse/`. The script loads one bare `module-alsa-sink` on
-`hw:L15,5`, stereo, `tsched=0`, 4 x 2048-frame fragments.
+`hw:L15,5`, stereo, `tsched=0`, `mmap=no`, 4 x 2048-frame fragments.
+
+**`mmap=no` is not optional.** The ring buffer is the DSP's own memory, mapped
+into the process, and it keeps only 32-bit stores; 16- and 8-bit writes vanish.
+With mmap on, every stream PulseAudio resamples -- most music, and games at
+32 kHz -- plays stale ring contents 128 ms or more old and crackles like a
+record, while 48 kHz test tones sound perfect (`progress.md` section 35).
 
 **48 kHz only, and 44.1 kHz is resampled in software.** The engine has one
 timebase; 44.1 kHz would need the event counter and McPDM retimed together and
@@ -344,6 +350,10 @@ These all look like faults and are not. Each has been chased at least once.
   Fix 9's helper now asserts those routes after `alsa-restore`, so a bad saved
   state no longer survives a reboot — but it still survives until the reboot.
   If you `alsactl store` while the routes are off, you save the bad state.
+* **Crackle on music but clean test tones, on the AESS path, is `mmap=no`
+  missing** from the `aess` sink line in `pyra-aess.pa`. Check that before
+  anything else. Recording `aess.monitor` with mmap on crashes PulseAudio with
+  SIGBUS, for the same reason.
 * **A killed `pasuspender` leaves the whole machine silent.** It suspends every
   sink and resumes them from its exit path, so `timeout -s KILL ... pasuspender
   -- prog` — or anything else that SIGKILLs it — never resumes them. The failure
@@ -357,8 +367,11 @@ These all look like faults and are not. Each has been chased at least once.
   stays `closed` — SDL's default ALSA device resolves to nothing that drives
   the hardware here, and the 4-channel open the Speakers/Headphones split needs
   is not something SDL will do. An app configured that way is silent, not fast.
-  **Not re-tested on the AESS path**, where `hw:L15,5` is plain stereo S16 and
-  might well work. Confirm with
+  On the AESS path, anything that opens `hw:L15,5` itself and writes through
+  the mmap -- alsa-lib's `plughw` rate converter, and possibly SDL's ALSA
+  driver -- loses its sub-word writes: `plughw:L15,5` with a 44.1 kHz file
+  plays silence. Go through PulseAudio until the driver stops offering the
+  mapping. Confirm with
   `for s in /proc/asound/card*/pcm*p/sub0/status; do head -1 $s; done`
   before believing any measurement taken that way.
 * **`module-alsa-sink` "initialization failed" is not always its arguments.**
