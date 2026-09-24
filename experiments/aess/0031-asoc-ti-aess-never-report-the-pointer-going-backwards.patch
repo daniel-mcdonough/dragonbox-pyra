@@ -1,0 +1,103 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: never report the pointer going backwards
+
+omap_aess_pcm_pointer() reports the firmware's offset into the working
+ping-pong buffer plus pp->buf_id periods, and buf_id is advanced by the
+ping-pong IRQ. The firmware restarts the offset when it switches buffers,
+before that IRQ has been handled, so for one read the position is a whole
+period behind the last. Traced from /proc at 1 ms with 1536-frame periods:
+
+    hw_ptr mod 6144: ... 1404 1464 | 0 | 1596 1668 ...
+
+ALSA takes a backward step for a wrap and credits a full buffer to hw_ptr.
+That happened ten to eighteen times in seven seconds of playback, and the
+hw_ptr it produced advanced at 56186 frames/s against the real 48000.
+
+PulseAudio then sees the fill go negative, decides it underran, and
+recovers by rewriting the ring. For a 48 kHz stream the rewrite is
+bit-identical and nothing is heard. For a stream it resamples -- 44.1 kHz
+music, 32 kHz game audio -- it is not: recorded at the headphone jack and
+aligned against the source, one 10 ms window in five is audio from exactly
+128, 256 or 384 ms earlier, which is one, two or three laps of the
+6144-frame ring. It sounds like a scratched record.
+
+The DSP never plays backwards, so a step back of less than half the ring
+is this race and not a wrap. Report the last position instead until the
+IRQ catches up; the true position is at most a few ms ahead of it.
+
+---
+diff -ru a/sound/soc/ti/aess/aess_port.c b/sound/soc/ti/aess/aess_port.c
+--- a/sound/soc/ti/aess/aess_port.c	2026-09-24 11:32:12.472115461 -0400
++++ b/sound/soc/ti/aess/aess_port.c	2026-09-24 11:32:12.473865341 -0400
+@@ -1609,6 +1609,7 @@
+ 	aess->pingpong.buf_id = 0;
+ 	aess->pingpong.buf_id_next = 0;
+ 	aess->pingpong.first_irq = 1;
++	aess->pingpong.last_pos = 0;
+ 
+ 	/* global data */
+ 	aess->pingpong.size = size_bytes;
+diff -ru a/sound/soc/ti/aess/omap-aess-pcm.c b/sound/soc/ti/aess/omap-aess-pcm.c
+--- a/sound/soc/ti/aess/omap-aess-pcm.c	2026-09-24 11:32:12.472052637 -0400
++++ b/sound/soc/ti/aess/omap-aess-pcm.c	2026-09-24 11:32:12.473758440 -0400
+@@ -479,16 +479,47 @@
+ 	struct snd_soc_dai *dai = rtd->cpu_dai;
+ 	struct snd_soc_component *component = dai->component;
+ 	struct omap_aess *aess = snd_soc_component_get_drvdata(component);
++	struct omap_aess_pingppong *pp = &aess->pingpong;
++	snd_pcm_uframes_t n = substream->runtime->buffer_size;
+ 	snd_pcm_uframes_t offset = 0;
+ 	u32 pingpong;
+ 
+-	if (!aess->pingpong.first_irq) {
++	if (!pp->first_irq) {
+ 		omap_aess_read_offset_from_ping_buffer(aess,
+ 						       OMAP_AESS_PHY_PORT_MM_DL,
+ 						       &pingpong);
+ 		offset = (snd_pcm_uframes_t)pingpong;
++
++		/*
++		 * The position is the firmware's offset into the working
++		 * buffer plus pp->buf_id periods, and buf_id is advanced by
++		 * the ping-pong IRQ. Between the firmware switching buffers
++		 * and that IRQ being handled, the offset has already restarted
++		 * from zero while buf_id still names the old buffer, so one
++		 * read lands a whole period behind the last one: 1464, then
++		 * 0, then 1596 with 1536-frame periods. ALSA takes any
++		 * backward step for a wrap and credits a full extra buffer to
++		 * hw_ptr, several times a second.
++		 *
++		 * PulseAudio then sees an underrun that did not happen and
++		 * recovers. A 48 kHz stream comes out bit-identical and
++		 * nothing is heard; a resampled one does not, and the DSP
++		 * replays ring contents one, two or three laps old -- the
++		 * crackle on 44.1 kHz music.
++		 *
++		 * The DSP never plays backwards, so a step back of less than
++		 * half the ring is this race, not a wrap: report the last
++		 * position until the IRQ catches up.
++		 */
++		if (offset < n && pp->last_pos < n) {
++			snd_pcm_uframes_t back = (pp->last_pos + n - offset) % n;
++
++			if (back && back < n / 2)
++				offset = pp->last_pos;
++		}
+ 	}
+ 
++	pp->last_pos = offset;
+ 	return offset;
+ }
+ 
+diff -ru a/sound/soc/ti/aess/omap-aess-priv.h b/sound/soc/ti/aess/omap-aess-priv.h
+--- a/sound/soc/ti/aess/omap-aess-priv.h	2026-09-24 11:32:12.472095391 -0400
++++ b/sound/soc/ti/aess/omap-aess-priv.h	2026-09-24 11:32:12.473806866 -0400
+@@ -309,6 +309,8 @@
+ 	int buf_id_next;
+ 	int buf_addr[4];
+ 	int first_irq;
++	/* last position the pointer callback reported, in frames */
++	u32 last_pos;
+ 
+ 	/* size of each ping/pong buffers */
+ 	u32 size;
