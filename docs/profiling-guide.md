@@ -248,6 +248,20 @@ Check `perf list` before relying on any PMU event name. Whether this part
 exposes `dTLB-load-misses` and `iTLB-load-misses` is not established, and the
 ARMv7 event mapping is not the same on every implementation.
 
+**Inside one function, sample counts overstate slow instructions.** On the
+Cortex-A15, samples skid onto the instructions after a `VDIV.F32` (~14 cycles,
+not pipelined) or a `VMRS` flag transfer, and the sampled PCs can even land
+mid-instruction. In Shipwright report 8 §8.26 this attribution put ~0.9 ms per
+frame on divides that the interpreter repeats. Removing about 40,000 of them saved 0.19 ms:
+the core runs other work under a divide. Use in-function attribution to pick a
+candidate, and an A/B to size it. If the binary has no line tables, bin the
+`perf script -F ip` addresses (minus the mmap base) against `llvm-objdump
+--triple=thumbv7a-linux-gnueabihf`.
+
+The fix itself is still worth knowing: `x / 255.0f` compiles to a `VDIV`
+without `-ffast-math`, because 1/255 is inexact. A 256-entry table of
+`i / 255.0f` gives the bit-identical float.
+
 **Off-CPU time** is not something `perf record` reports by default; see §2.4 for
 `perf sched` and for the on-CPU-versus-wall comparison that tells you whether you
 need it.
