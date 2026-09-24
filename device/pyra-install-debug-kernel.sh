@@ -219,8 +219,11 @@ df -h /boot | tail -1
 
 [ "$fail" = 0 ] || die "one of the checks above did not pass"
 
-if [ "$now" = l0 ]; then
-        NEXT="The default is still l0, so rebooting now gets you the stock kernel.
+# Branch on l1, not on l0: the base is not always l0 any more, and treating
+# every other default as l1 told the user a base-kernel install would reboot
+# into the new one when it would not.
+if [ "$now" != l1 ]; then
+        NEXT="The default is still $now, so rebooting now gets you that kernel.
 Choose the new one with
 
     sudo pyra-boot-kernel.sh debug --once        # one boot, then back to stock
