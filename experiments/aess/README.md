@@ -7,6 +7,11 @@ applications actually produce — where the TWL6040 behind it accepts only
 widened in software at a cost of 15–18% of a core. The numbers are
 `docs/improvements.md` item 10.
 
+**Status, 2026-09-24: it plays, and it is the audio path of the `-m4`
+kernel.** 0013-0032 below are what it took; `docs/audio.md` is how it is used
+and diagnosed. The rest of this section is where the work started, on
+2026-09-20.
+
 **The hardware works. That was the open question and it is answered.** In
 order, each step verified on the running unit:
 
@@ -16,7 +21,7 @@ order, each step verified on the running unit:
 | Does the firmware load? | yes | `device/pyra-aess-run.py` |
 | Does the DSP execute? | yes, 3999 loops/s against a specified 4 kHz | `device/pyra-aess-run.py` |
 | Does the 44.1/48 kHz family switch work? | yes, ratio 0.9193 vs 0.9192 expected | `device/pyra-aess-run.py` |
-| Do samples flow? | **no** | `device/pyra-aess-dl-probe.py` |
+| Do samples flow? | **no** on 2026-09-20; yes from 0023, audible from 0025 | `device/pyra-aess-dl-probe.py` |
 
 Everything between here and working audio is software, and it is all present
 in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
@@ -24,16 +29,47 @@ in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
 
 ## The patches
 
-    0013-asoc-ti-omap-abe-twl6040-build-the-aess-dai-links.patch
-    0014-asoc-ti-aess-load-the-firmware-s-own-container-format.patch
-    0015-asoc-ti-aess-add-the-aess-mixer-controls.patch
-    0016-asoc-ti-omap-mcpdm-one-dai-per-path.patch
+Applied in name order by `pc/pyra-crossbuild.sh kernel-m4`, on top of
+`patches/` and the M4 series. "Entry" is the dated entry in
+`docs/progress.md`, "§" its numbered section.
+
+| patch | what it does | history |
+| --- | --- | --- |
+| 0013 | build the AESS DAI links (an empty stub before) | below |
+| 0014 | load the firmware's own container format | below |
+| 0015 | add the AESS mixer controls | below |
+| 0016 | McPDM: one DAI per path | below |
+| 0017 | run the AESS init sequence (an `#if 0` block) | 19th entry |
+| 0018 | the memory banks are 8 KiB, not 4 | 19th entry |
+| 0019 | add the DAPM graph | 20th entry |
+| 0020 | dts: restore the AESS audio routes the LC15 dtsi dropped | 20th entry |
+| 0021 | convert the PCM ops to 5.6 component callbacks | 21st entry |
+| 0022 | open the McPDM back-end ports | 21st entry, §22 |
+| 0023 | enable the McPDM back-end ports | §22, §23 |
+| 0024 | keep the direct McPDM link as `hw:L15,9`, a reference | §23, §24, §34 |
+| 0025 | start McPDM after the AESS port, not before -- **first sound** | §24, §25 |
+| 0026 | size the ping-pong buffer from the firmware | §27 |
+| 0027 | McPDM: stop the ABE back ends from the trigger | §27 |
+| 0028 | do not write uninitialised equaliser coefficients | §27, §29 |
+| 0029 | do not advertise 44.1 kHz; the engine has one timebase | §29 |
+| 0030 | McPDM: pop every downlink slot, plus the command word -- the tinny sound | §32 |
+| 0031 | never report the pointer going backwards (phantom buffer laps) | §35 |
+| 0032 | do not map DMEM into userspace; write it with 32-bit stores -- the crackle on music | §35 |
+
+Tools that ship beside them:
 
 `container-check.c` is the 0014 walker lifted out so it can be compiled and
 run against a real firmware file with no kernel involved:
 
     cc -O1 -Wall container-check.c -o container-check
     ./container-check /lib/firmware/omap_aess-adfw.bin
+
+`dmem-store-width.c` writes the MM1 LP ring through the PCM mmap with 32-, 16-
+and 8-bit stores and reads it back, which is how 0032's premise was measured.
+On a kernel with 0032 it fails at `mmap_begin`, which is the point.
+
+The sections below describe 0013-0016 as they were written, before anything
+had booted.
 
 ### 0013
 
@@ -139,7 +175,12 @@ This one is new code written against the register model and the slot layout,
 with no reference implementation and no way to observe a PDM link from a
 compiler.
 
-## What is still needed, in order
+## What was still needed on 2026-09-20
+
+All done; kept because it says why each later patch exists. Item 1 is 0021,
+item 3 is 0017, item 4 is 0016 with 0022 and 0023, and item 5 is 0020. What
+remained after them -- the start order, the slot mask, the pointer and the
+store width -- nobody predicted; that is 0025 onward.
 
 1. **The PCM ops conversion.** `omap_aess_platform` has `.ops =
    &omap_aess_pcm_ops` commented out, and it cannot simply be restored:
@@ -160,7 +201,10 @@ compiler.
 ## Hazards, if you go back to poking the hardware directly
 
 Both were caused here on 2026-09-20 and both are guarded in the device scripts.
-All ABE memory access must be **32-bit**; a byte-wise slice copy raises an
+All ABE memory access must be **32-bit**. The PCM driver itself broke this
+rule until 0032: it mapped the MM1 LP ring in DMEM into userspace, where 16-
+and 8-bit stores are dropped rather than faulting, and music crackled for it
+(§35). From userspace, a byte-wise slice copy raises an
 asynchronous external abort, and because the aborts are asynchronous they
 surface at whatever access happens next and blame innocent reads. And quiesce
 the engine before letting ti-sysc gate the module — `EVENT_GENERATOR_START=0`,
