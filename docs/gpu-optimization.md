@@ -381,6 +381,10 @@ attributes pointed at a CPU array that never moves) cut the frame **−13.4% at 
 −1.6 ms). Bridge ioctls per frame roughly halved. The microbenchmark's 68 → 58
 µs/draw understated it by several times. Client-side arrays are the upload
 strategy to use on this DDK; the ring-buffer warning stands.
+Real play confirmed it (§8.25): −13.6% of render-thread CPU over 25 paired blocks,
+t = −4.7, with no visible glitches. Guard the change with `#ifdef` for GLES2 if the
+renderer is shared: a desktop GL core profile rejects client arrays
+(`GL_INVALID_OPERATION`).
 
 This is worth a comment in any renderer targeting this device, because it is
 exactly the "optimisation" a competent graphics programmer will reach for.
