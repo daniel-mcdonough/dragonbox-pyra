@@ -231,6 +231,16 @@ with offsets, at 60 µs against 68 — but that is 12% of a path measured at ~14
 of driver cost in a frame-bound workload, and it is inside the noise of what it
 would take to build. Not worth it either.)
 
+> **Superseded 2026-09-24 (Shipwright report 8 §8.24) — Measured.** The ordering
+> above was right; the conclusion was not. In the game, client-side vertex arrays
+> in place of per-draw `glBufferData` cut the frame by **13.4% at the Market
+> (27.5 → 23.8 ms) and 7.3% at Hyrule Field**, identical picture, t = −51 and
+> −24. The driver goes to the kernel for fresh device memory every few uploads
+> (~28 → ~15 bridge ioctls per frame at Hyrule Field); the microbenchmark, with
+> nothing else in flight, did not show that. The same section measured
+> state-setting GL calls at ~0.1 µs each: removing 43% of all GL calls saved
+> 0.5%. **On this driver the cost is per draw and per upload, not per call.**
+
 ### Two more, not in the catalogue
 
 **Audit for mid-frame pipeline flushes.** The report found `GetPixelDepth`

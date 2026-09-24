@@ -371,7 +371,16 @@ meaningful.)
 The standard modern advice is a persistently-mapped ring buffer with
 `glBufferSubData`. On this driver that is **about four times worse** than naive
 per-draw orphaning. Buffer orphaning with `GL_STREAM_DRAW` is within noise of
-the best option and needs no change.
+the best option and needs no change. ~~needs no change~~ — **superseded, see
+below.**
+
+**Measured in a real renderer (Shipwright report 8 §8.24, 2026-09-24):** switching
+Fast3D from per-draw `glBufferData` to client-side arrays (no buffer bound,
+attributes pointed at a CPU array that never moves) cut the frame **−13.4% at a
+261-draw scene and −7.3% at a 167-draw one**, mostly render-thread CPU (−3.4 ms /
+−1.6 ms). Bridge ioctls per frame roughly halved. The microbenchmark's 68 → 58
+µs/draw understated it by several times. Client-side arrays are the upload
+strategy to use on this DDK; the ring-buffer warning stands.
 
 This is worth a comment in any renderer targeting this device, because it is
 exactly the "optimisation" a competent graphics programmer will reach for.

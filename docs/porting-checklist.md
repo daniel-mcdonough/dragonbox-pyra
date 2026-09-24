@@ -201,7 +201,10 @@ device supports.
 **Things to leave alone.**
 
 - [ ] Do **not** convert `glBufferData` orphaning into a `glBufferSubData` ring
-      buffer. Measured **4x worse** on this driver.
+      buffer. Measured **4x worse** on this driver. Client-side vertex arrays
+      are what beat it: −13% of a real frame (Shipwright report 8 §8.24).
+- [ ] Do **not** spend effort trimming redundant GL state calls for speed.
+      Removing 43% of a frame's calls saved 0.5%; draws and uploads are the cost.
 - [ ] Do **not** rebuild `pixman` or `ffmpeg` with NEON flags. They already
       dispatch NEON at runtime.
 - [ ] Do **not** expect memory traffic reduction to move frame rate. Two

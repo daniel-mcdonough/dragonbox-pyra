@@ -137,7 +137,7 @@ what it has to become.
 | Compute shaders | CPU with NEON, or cut | Do not exist |
 | Front-to-back opaque sorting | **Delete it** | TBDR resolves visibility before shading; the sort buys nothing |
 | Back-to-front transparent sorting | **Keep it, and minimise the layers** | Blended fragments cannot be hidden-surface-removed |
-| Ring-buffered `glBufferSubData` | **Plain `glBufferData` orphaning** | Measured 4x worse on this driver |
+| Ring-buffered `glBufferSubData` | ~~Plain `glBufferData` orphaning~~ **Client-side vertex arrays** | Ring buffer measured 4x worse; client arrays measured −13% of a real frame against orphaning (Shipwright §8.24) |
 | Uniform-branch "uber-shaders" | Shader variants + program binary cache | USSE flow control is weak; branches may flatten |
 | Shader-side filtering, clamping, coordinate maths | Sampler state, or vertex shader | Dependent reads stall the prefetcher; fragment instructions are the scarce resource |
 | Render at native | Render at 0.5x, upscale | +75% |
