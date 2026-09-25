@@ -1,0 +1,132 @@
+[2026-09-26 00:58:49.770] [info] [ArchiveManager.cpp:245] Reading archive: /home/pyra/soh-bench2/./soh.o2r
+[2026-09-26 00:58:49.777] [info] [ArchiveManager.cpp:277] Adding Archive /home/pyra/soh-bench2/./soh.o2r to Archive Manager
+./dri3_ws.c:843: WSEGL_SwapControlInterval: WSEGL_SwapControlInterval 1
+
+DRI3 1.0
+present 1.2
+DRM FD 10
+[2026-09-26 00:58:50.313] [info] [gfx_opengl.cpp:1810] GL_EXT_discard_framebuffer: in use
+[2026-09-26 00:58:51.158] [info] [ArchiveManager.cpp:245] Reading archive: ./oot.o2r
+[2026-09-26 00:58:51.395] [info] [ArchiveManager.cpp:277] Adding Archive ./oot.o2r to Archive Manager
+[00:58:51.636] [SDLAudioPlayer.cpp:46] [info] SDL Audio initialized: 2 channels, 32000 Hz
+[00:58:51.636] [OTRGlobals.cpp:869] [info] Starting Ship of Harkinian version Ackbar Delta (9.2.3) (Branch: feature/pyra-port | Commit: f0d0425)
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command set that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command get that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command help that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command clear that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command unbind that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command bind that already exists
+[00:58:51.695] [Console.cpp:66] [warning] Attempting to add command bind-toggle that already exists
+[00:58:55.068] [benchmark.cpp:1191] [info] Benchmark active: entrance=0x00B1 age=1 static=false settle=400 warmup=600 soak=0C frames=100000 reps=5 ab=(none) die=65.7C
+[00:58:55.506] [os.cpp:23] [error] Failed add SDL game controller mappings from "./gamecontrollerdb.txt" (Invalid RWops)
+[00:58:56.023] [z_demo.c:2214] [info] Cutscene_HandleConditionalTriggers - entranceIndex: 0xb1 cutsceneIndex: 0
+[00:58:56.026] [z_scene_otr.cpp:519] [info] Room Init - curRoom.num: 0x0
+[00:58:56.026] [z_play_otr.cpp:62] [info] Scene Init - sceneNum: 0x20, entranceIndex: 0xb1
+[00:58:56.038] [benchmark.cpp:1582] [info] Benchmark split: logging logic/render CPU every 100 ticks
+Success.
+
+Success.
+
+PVR:(Error): ComputeFrameBufferCompleteness: Switching psTex 0x35ae498 to XBGR [0, ]
+PVR:(Error): ComputeFrameBufferCompleteness: Switching psLevel 0x35ada98 to XBGR [0, ]
+[00:58:56.971] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:56.991] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:56.993] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:56.996] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:56.999] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.001] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.007] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.671] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.674] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.677] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.679] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.682] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.684] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.688] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.690] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.693] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.695] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.698] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.701] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.704] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.707] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.710] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.712] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.715] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.717] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.721] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.723] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.726] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.728] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.731] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.737] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.740] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.743] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.745] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.748] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+[00:58:57.751] [interpreter.cpp:1100] [error] RGBA Texture that isn't 16 or 32 bit. Size = 0
+./dri3_ws.c:843: WSEGL_SwapControlInterval: WSEGL_SwapControlInterval 0
+
+[00:58:59.497] [benchmark.cpp:1323] [info] Benchmark: player override applied at settle frame 30
+[*** LOG ERROR #0001 ***] [2026-09-26 00:58:59] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:03.552] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=10.39 fps=15.58 frames_per_tick=1.50 logic_cpu_ms med=4.50 mean=4.65 p95=5.37 logic_wall_ms med=5.68 render_cpu_ms med=26.71 mean=43.60 p95=31.10 per_frame=29.07 render_wall_ms med=57.87 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=6.51 tick_wall_ms mean=96.27 logic_share=9.6% pipeline_ceiling per_tick=1.11x aggregate=1.11x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0002 ***] [2026-09-26 00:59:03] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:08.557] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.98 fps=29.97 frames_per_tick=1.50 logic_cpu_ms med=3.90 mean=3.94 p95=4.22 logic_wall_ms med=4.37 render_cpu_ms med=27.34 mean=21.97 p95=29.45 per_frame=14.65 render_wall_ms med=59.25 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.37 tick_wall_ms mean=50.05 logic_share=15.2% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=65.7 scene=0x20
+[*** LOG ERROR #0003 ***] [2026-09-26 00:59:08] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:11.924] [benchmark.cpp:938] [info] Benchmark: player settled at y=0.0 (asked for 0.0)
+[*** LOG ERROR #0004 ***] [2026-09-26 00:59:11] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:11.925] [benchmark.cpp:1042] [info] Benchmark viewpoint: scene=32 pos=[-122.7,0.0,72.1] yaw=0xD5A6 eye=[0.0,64.0,0.0] at=[-134.5,64.0,79.0] fovy=60.0
+[00:59:13.559] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.99 frames_per_tick=1.50 logic_cpu_ms med=4.39 mean=4.39 p95=4.77 logic_wall_ms med=5.81 render_cpu_ms med=27.55 mean=21.74 p95=28.93 per_frame=14.49 render_wall_ms med=56.37 audio_wait_ms mean=0.008 other_threads_cpu_ms mean=4.45 tick_wall_ms mean=50.02 logic_share=16.8% pipeline_ceiling per_tick=1.20x aggregate=1.20x cpu_mhz=1000-1000 temp_c=67.0 scene=0x20
+[*** LOG ERROR #0006 ***] [2026-09-26 00:59:13] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:18.635] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.72 fps=29.58 frames_per_tick=1.50 logic_cpu_ms med=3.92 mean=4.02 p95=4.62 logic_wall_ms med=4.42 render_cpu_ms med=27.58 mean=22.16 p95=31.04 per_frame=14.77 render_wall_ms med=58.86 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.81 tick_wall_ms mean=50.72 logic_share=15.3% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=64.9 scene=0x20
+[*** LOG ERROR #0007 ***] [2026-09-26 00:59:18] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:23.693] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.76 fps=29.63 frames_per_tick=1.50 logic_cpu_ms med=4.19 mean=4.25 p95=4.61 logic_wall_ms med=4.82 render_cpu_ms med=28.68 mean=23.15 p95=30.86 per_frame=15.43 render_wall_ms med=59.62 audio_wait_ms mean=0.014 other_threads_cpu_ms mean=4.61 tick_wall_ms mean=50.62 logic_share=15.5% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0008 ***] [2026-09-26 00:59:23] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:28.720] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.89 fps=29.84 frames_per_tick=1.50 logic_cpu_ms med=4.29 mean=4.26 p95=4.68 logic_wall_ms med=5.00 render_cpu_ms med=27.69 mean=22.45 p95=31.05 per_frame=14.97 render_wall_ms med=59.77 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.40 tick_wall_ms mean=50.27 logic_share=16.0% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.0 scene=0x20
+[*** LOG ERROR #0009 ***] [2026-09-26 00:59:28] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:32.089] [benchmark.cpp:1074] [info] Benchmark measuring: 1 segments of 100000 frames, die 66.2 C
+[*** LOG ERROR #0010 ***] [2026-09-26 00:59:32] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:33.723] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.98 frames_per_tick=1.50 logic_cpu_ms med=4.35 mean=4.37 p95=4.74 logic_wall_ms med=5.40 render_cpu_ms med=27.54 mean=21.86 p95=29.24 per_frame=14.57 render_wall_ms med=58.80 audio_wait_ms mean=0.019 other_threads_cpu_ms mean=3.72 tick_wall_ms mean=50.03 logic_share=16.7% pipeline_ceiling per_tick=1.20x aggregate=1.20x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0011 ***] [2026-09-26 00:59:33] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:38.855] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.49 fps=29.23 frames_per_tick=1.50 logic_cpu_ms med=4.17 mean=4.22 p95=4.58 logic_wall_ms med=4.64 render_cpu_ms med=29.72 mean=25.01 p95=35.98 per_frame=16.67 render_wall_ms med=57.52 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=3.85 tick_wall_ms mean=51.32 logic_share=14.4% pipeline_ceiling per_tick=1.17x aggregate=1.17x cpu_mhz=1000-1000 temp_c=65.7 scene=0x20
+[*** LOG ERROR #0012 ***] [2026-09-26 00:59:38] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:43.874] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.92 fps=29.89 frames_per_tick=1.50 logic_cpu_ms med=4.21 mean=4.35 p95=4.83 logic_wall_ms med=4.73 render_cpu_ms med=30.49 mean=24.99 p95=33.95 per_frame=16.66 render_wall_ms med=59.16 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.13 tick_wall_ms mean=50.19 logic_share=14.8% pipeline_ceiling per_tick=1.17x aggregate=1.17x cpu_mhz=1000-1000 temp_c=66.6 scene=0x20
+[*** LOG ERROR #0013 ***] [2026-09-26 00:59:43] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:48.878] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.98 frames_per_tick=1.50 logic_cpu_ms med=4.13 mean=4.24 p95=4.85 logic_wall_ms med=4.83 render_cpu_ms med=27.71 mean=22.00 p95=30.13 per_frame=14.67 render_wall_ms med=60.14 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.36 tick_wall_ms mean=50.03 logic_share=16.2% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0014 ***] [2026-09-26 00:59:48] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:53.926] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.81 fps=29.71 frames_per_tick=1.50 logic_cpu_ms med=3.97 mean=4.05 p95=4.58 logic_wall_ms med=4.52 render_cpu_ms med=27.58 mean=22.19 p95=29.95 per_frame=14.79 render_wall_ms med=59.50 audio_wait_ms mean=0.005 other_threads_cpu_ms mean=4.50 tick_wall_ms mean=50.49 logic_share=15.4% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0015 ***] [2026-09-26 00:59:53] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[00:59:59.027] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.60 fps=29.40 frames_per_tick=1.50 logic_cpu_ms med=4.03 mean=4.17 p95=4.86 logic_wall_ms med=4.64 render_cpu_ms med=27.49 mean=22.00 p95=29.30 per_frame=14.67 render_wall_ms med=58.70 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.92 tick_wall_ms mean=51.01 logic_share=15.9% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0016 ***] [2026-09-26 00:59:59] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:04.036] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.97 fps=29.95 frames_per_tick=1.50 logic_cpu_ms med=4.16 mean=4.16 p95=4.69 logic_wall_ms med=4.75 render_cpu_ms med=27.67 mean=21.94 p95=29.33 per_frame=14.63 render_wall_ms med=58.23 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=4.64 tick_wall_ms mean=50.09 logic_share=15.9% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.0 scene=0x20
+[*** LOG ERROR #0017 ***] [2026-09-26 01:00:04] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:09.046] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.96 fps=29.94 frames_per_tick=1.50 logic_cpu_ms med=3.96 mean=4.04 p95=4.59 logic_wall_ms med=4.52 render_cpu_ms med=27.53 mean=22.00 p95=29.14 per_frame=14.67 render_wall_ms med=57.59 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.13 tick_wall_ms mean=50.10 logic_share=15.5% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.0 scene=0x20
+[*** LOG ERROR #0018 ***] [2026-09-26 01:00:09] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:14.048] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.99 frames_per_tick=1.50 logic_cpu_ms med=4.65 mean=4.62 p95=5.04 logic_wall_ms med=5.95 render_cpu_ms med=28.06 mean=22.78 p95=30.70 per_frame=15.19 render_wall_ms med=58.42 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=3.65 tick_wall_ms mean=50.02 logic_share=16.9% pipeline_ceiling per_tick=1.20x aggregate=1.20x cpu_mhz=1000-1000 temp_c=66.6 scene=0x20
+[*** LOG ERROR #0019 ***] [2026-09-26 01:00:14] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:19.107] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.77 fps=29.65 frames_per_tick=1.50 logic_cpu_ms med=4.29 mean=4.34 p95=4.78 logic_wall_ms med=5.28 render_cpu_ms med=27.77 mean=22.63 p95=30.76 per_frame=15.09 render_wall_ms med=59.56 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=3.75 tick_wall_ms mean=50.58 logic_share=16.1% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0020 ***] [2026-09-26 01:00:19] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:24.181] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.71 fps=29.57 frames_per_tick=1.50 logic_cpu_ms med=3.94 mean=4.15 p95=5.21 logic_wall_ms med=4.64 render_cpu_ms med=27.98 mean=22.40 p95=30.63 per_frame=14.93 render_wall_ms med=59.86 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.32 tick_wall_ms mean=50.73 logic_share=15.6% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0021 ***] [2026-09-26 01:00:24] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:29.236] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.78 fps=29.67 frames_per_tick=1.50 logic_cpu_ms med=4.05 mean=4.11 p95=4.55 logic_wall_ms med=4.66 render_cpu_ms med=27.78 mean=22.03 p95=29.21 per_frame=14.69 render_wall_ms med=60.46 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.42 tick_wall_ms mean=50.56 logic_share=15.7% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0022 ***] [2026-09-26 01:00:29] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:34.238] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.99 frames_per_tick=1.50 logic_cpu_ms med=4.19 mean=4.21 p95=4.49 logic_wall_ms med=4.67 render_cpu_ms med=28.17 mean=23.86 p95=32.99 per_frame=15.91 render_wall_ms med=60.66 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.56 tick_wall_ms mean=50.01 logic_share=15.0% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.9 scene=0x20
+[*** LOG ERROR #0023 ***] [2026-09-26 01:00:34] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:39.286] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.81 fps=29.71 frames_per_tick=1.50 logic_cpu_ms med=4.59 mean=4.61 p95=5.25 logic_wall_ms med=5.75 render_cpu_ms med=30.05 mean=24.98 p95=34.62 per_frame=16.65 render_wall_ms med=54.66 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=4.87 tick_wall_ms mean=50.49 logic_share=15.6% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0024 ***] [2026-09-26 01:00:39] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:44.289] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.98 frames_per_tick=1.50 logic_cpu_ms med=4.08 mean=4.17 p95=4.71 logic_wall_ms med=4.76 render_cpu_ms med=27.47 mean=21.87 p95=29.63 per_frame=14.58 render_wall_ms med=56.14 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=4.60 tick_wall_ms mean=50.03 logic_share=16.0% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0025 ***] [2026-09-26 01:00:44] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:49.291] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.99 frames_per_tick=1.50 logic_cpu_ms med=3.85 mean=3.91 p95=4.25 logic_wall_ms med=4.33 render_cpu_ms med=28.02 mean=21.87 p95=29.03 per_frame=14.58 render_wall_ms med=60.43 audio_wait_ms mean=0.004 other_threads_cpu_ms mean=3.44 tick_wall_ms mean=50.01 logic_share=15.2% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=69.6 scene=0x20
+[*** LOG ERROR #0026 ***] [2026-09-26 01:00:49] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Invalid argument
+[01:00:54.327] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.86 fps=29.78 frames_per_tick=1.50 logic_cpu_ms med=4.36 mean=4.37 p95=4.91 logic_wall_ms med=5.01 render_cpu_ms med=27.45 mean=22.10 p95=29.29 per_frame=14.73 render_wall_ms med=57.40 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=3.38 tick_wall_ms mean=50.36 logic_share=16.5% pipeline_ceiling per_tick=1.20x aggregate=1.20x cpu_mhz=1000-1000 temp_c=68.3 scene=0x20
+[*** LOG ERROR #0027 ***] [2026-09-26 01:00:54] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:00:59.440] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.56 fps=29.34 frames_per_tick=1.50 logic_cpu_ms med=3.95 mean=4.00 p95=4.33 logic_wall_ms med=4.49 render_cpu_ms med=27.54 mean=22.33 p95=30.59 per_frame=14.88 render_wall_ms med=60.30 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=3.55 tick_wall_ms mean=51.12 logic_share=15.2% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=66.6 scene=0x20
+[*** LOG ERROR #0028 ***] [2026-09-26 01:00:59] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:01:04.443] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.98 frames_per_tick=1.50 logic_cpu_ms med=3.90 mean=3.97 p95=4.38 logic_wall_ms med=4.39 render_cpu_ms med=28.15 mean=22.09 p95=29.46 per_frame=14.73 render_wall_ms med=58.36 audio_wait_ms mean=0.007 other_threads_cpu_ms mean=4.45 tick_wall_ms mean=50.03 logic_share=15.2% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.9 scene=0x20
+[*** LOG ERROR #0029 ***] [2026-09-26 01:01:04] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:01:09.446] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.99 fps=29.98 frames_per_tick=1.50 logic_cpu_ms med=4.18 mean=4.25 p95=4.68 logic_wall_ms med=4.66 render_cpu_ms med=27.55 mean=21.81 p95=29.23 per_frame=14.54 render_wall_ms med=56.55 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.25 tick_wall_ms mean=50.03 logic_share=16.3% pipeline_ceiling per_tick=1.19x aggregate=1.19x cpu_mhz=1000-1000 temp_c=66.2 scene=0x20
+[*** LOG ERROR #0030 ***] [2026-09-26 01:01:09] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:01:14.446] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=20.00 fps=30.00 frames_per_tick=1.50 logic_cpu_ms med=4.07 mean=4.08 p95=4.22 logic_wall_ms med=4.52 render_cpu_ms med=28.12 mean=23.01 p95=30.95 per_frame=15.34 render_wall_ms med=59.56 audio_wait_ms mean=0.005 other_threads_cpu_ms mean=4.47 tick_wall_ms mean=50.00 logic_share=15.0% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.4 scene=0x20
+[*** LOG ERROR #0031 ***] [2026-09-26 01:01:14] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor
+[01:01:19.505] [benchmark.cpp:1555] [info] Benchmark split ticks=100 tick_hz=19.77 fps=29.65 frames_per_tick=1.50 logic_cpu_ms med=3.94 mean=3.99 p95=4.76 logic_wall_ms med=4.33 render_cpu_ms med=27.78 mean=22.35 p95=30.61 per_frame=14.90 render_wall_ms med=60.08 audio_wait_ms mean=0.006 other_threads_cpu_ms mean=4.68 tick_wall_ms mean=50.58 logic_share=15.2% pipeline_ceiling per_tick=1.18x aggregate=1.18x cpu_mhz=1000-1000 temp_c=67.9 scene=0x20
+[*** LOG ERROR #0032 ***] [2026-09-26 01:01:19] [Ship of Harkinian] Failed flush to file ./logs/Ship of Harkinian.log: Bad file descriptor

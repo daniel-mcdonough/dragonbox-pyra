@@ -1,0 +1,14 @@
+modprobe: FATAL: Module pvrsrvkm_omap5_sgx544_116 is in use.
+rmmod: ERROR: Module pvrsrvkm_omap5_sgx544_116 is in use
+insmod: ERROR: could not insert module /home/pyra/gpu-power/pvrsrvkm-apm.ko: File exists
+/opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl: SrvInit failed (already initialized?) (err=PVRSRV_ERROR_SRV_CONNECT_FAILED)
+PVR:(Error): SrvInit: PVRSRVInitSrvConnect failed (129) [0, ]
+modprobe: FATAL: Module pvrsrvkm_omap5_sgx544_116 is in use.
+rmmod: ERROR: Module pvrsrvkm_omap5_sgx544_116 is in use
+insmod: ERROR: could not insert module /home/pyra/gpu-power/pvrsrvkm-apm.ko: File exists
+/opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl: SrvInit failed (already initialized?) (err=PVRSRV_ERROR_SRV_CONNECT_FAILED)
+PVR:(Error): SrvInit: PVRSRVInitSrvConnect failed (129) [0, ]
+modprobe: FATAL: Module pvrsrvkm_omap5_sgx544_116 is in use.
+rmmod: ERROR: Module pvrsrvkm_omap5_sgx544_116 is in use
+/opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl: SrvInit failed (already initialized?) (err=PVRSRV_ERROR_SRV_CONNECT_FAILED)
+PVR:(Error): SrvInit: PVRSRVInitSrvConnect failed (129) [0, ]

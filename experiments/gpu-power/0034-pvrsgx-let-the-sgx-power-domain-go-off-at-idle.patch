@@ -1,0 +1,92 @@
+From: Pyra developer <dev@localhost>
+Date: Sat, 26 Sep 2026 00:45:00 -0400
+Subject: [PATCH] pvrsgx: let the SGX power domain go off at idle
+
+pvr_probe takes a runtime-PM reference and only pvr_remove gives it back,
+so the SGX, its ti-sysc module and PD_GPU stay on for as long as the
+driver is bound. Active power management is compiled in and balances its
+own get/put, but it can only ever bring the count down to 1.
+
+Measured on a Pyra: runtime_usage 1 at desktop idle, runtime_suspended_time
+0 after hours, PD_GPU ON-ACTIVE. With the module unloaded PD_GPU reaches
+OFF and the battery draw falls by 0.22 W.
+
+Drop the probe reference once the driver is up. SysInitialise has already
+taken and released its own, and every later hardware access goes through
+EnableSGXClocks, which takes one.
+
+APM releases 2 ms after the SGX goes idle, so use autosuspend (100 ms,
+tunable through power/autosuspend_delay_ms) so that the domain is not
+power-cycled between frames.
+
+---
+diff --git a/drivers/gpu/drm/pvrsgx/1.14.3699939/eurasia_km/services4/system/omap/sysutils_linux.c b/drivers/gpu/drm/pvrsgx/1.14.3699939/eurasia_km/services4/system/omap/sysutils_linux.c
+--- a/drivers/gpu/drm/pvrsgx/1.14.3699939/eurasia_km/services4/system/omap/sysutils_linux.c
++++ b/drivers/gpu/drm/pvrsgx/1.14.3699939/eurasia_km/services4/system/omap/sysutils_linux.c
+@@ -261,10 +261,17 @@
+ 
+ #if defined(LDM_PLATFORM) && !defined(PVR_DRI_DRM_NOT_PCI)
+ 	{
+-		int res = pm_runtime_put_sync(&gpsPVRLDMDev->dev);
++		/*
++		 * Autosuspend, not put_sync: the domain goes off only once the
++		 * SGX has stayed idle for the delay set in pvr-drv.c.
++		 */
++		int res;
++
++		pm_runtime_mark_last_busy(&gpsPVRLDMDev->dev);
++		res = pm_runtime_put_autosuspend(&gpsPVRLDMDev->dev);
+ 		if (res < 0)
+ 		{
+-			PVR_DPF((PVR_DBG_ERROR, "DisableSGXClocks: pm_runtime_put_sync failed (%d)", -res));
++			PVR_DPF((PVR_DBG_ERROR, "DisableSGXClocks: pm_runtime_put_autosuspend failed (%d)", -res));
+ 		}
+ 	}
+ #if defined(SYS_OMAP_HAS_DVFS_FRAMEWORK)
+diff --git a/drivers/gpu/drm/pvrsgx/pvr-drv.c b/drivers/gpu/drm/pvrsgx/pvr-drv.c
+--- a/drivers/gpu/drm/pvrsgx/pvr-drv.c
++++ b/drivers/gpu/drm/pvrsgx/pvr-drv.c
+@@ -14,6 +14,9 @@
+ #include <linux/of_device.h>
+ #include <linux/pm_runtime.h>
+ 
++/* How long the SGX must stay idle before its power domain is allowed to go off. */
++#define PVR_AUTOSUSPEND_MS	100
++
+ #include <drm/drm.h>
+ #include <drm/drm_device.h>
+ #include <drm/drm_drv.h>
+@@ -292,6 +295,23 @@
+ 
+ 	gpsPVRLDMDev = pdev;
+ 
++	/*
++	 * Drop the reference taken above. SysInitialise has taken and released
++	 * its own by now ("SGX defaults to D3"), and every later hardware access
++	 * goes through EnableSGXClocks, which takes one. Holding this one kept the
++	 * SGX, its ti-sysc module and PD_GPU powered for as long as the driver was
++	 * bound, so active power management could never power anything down.
++	 *
++	 * APM releases its reference 2 ms after the SGX goes idle, which would
++	 * power-cycle the domain between frames. With autosuspend the domain only
++	 * goes off after PVR_AUTOSUSPEND_MS of quiet; power/autosuspend_delay_ms
++	 * tunes it at run time.
++	 */
++	pm_runtime_set_autosuspend_delay(ddata->dev, PVR_AUTOSUSPEND_MS);
++	pm_runtime_use_autosuspend(ddata->dev);
++	pm_runtime_mark_last_busy(ddata->dev);
++	pm_runtime_put_autosuspend(ddata->dev);
++
+ 	return 0;
+ 
+ out_err_unload:
+@@ -313,7 +333,8 @@
+ 	pvr_drm_unload(gpsPVRDRMDev);
+ 	gpsPVRDRMDev = NULL;
+ 
+-	pm_runtime_put_sync(&pdev->dev);
++	/* The probe reference was dropped at the end of probe. */
++	pm_runtime_dont_use_autosuspend(&pdev->dev);
+ 	pm_runtime_disable(&pdev->dev);
+ 
+ 	return 0;
