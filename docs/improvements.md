@@ -820,7 +820,19 @@ The graphics rail is at its nominal operating point. ~~`dpll_core_m3x2_ck` reads
 > **1031 mV at OPP_OD**. `smps45` at 1.030 V is the next 10 mV step above NOM,
 > as the TRM's procedure prescribes. MPU fuses are 1024 mV NOM and 1216 mV HIGH,
 > CORE 993 mV. The TRM does not give GPU frequency per OPP; that is in the Data
-> Manual. There is a higher operating point on
+> Manual.
+>
+> **Resolved the same day: the GPU runs at 425.47 MHz, and 63 is a special code.**
+> TRM Table 3-880: *"When a value of 63 is programmed in this register, HSdivider
+> will perform division by 2.5 that is divided by 2 at top level"*, which is ÷5.
+> 2127.36 / 5 = 425.47 MHz. The kernel's `ti,divider-clock` driver reads 63 as a
+> literal ÷63, and that is the whole of `clk_summary`'s 33.77 MHz. Confirmed by
+> experiment (`experiments/gpu-clock/`): switching both GPU clock selects to
+> `DPLL_PER` H14 (384 MHz) cut fill rate to **0.908×** at 1280×720 overdraw 8 and
+> 0.906× at 640×360, against 384/425.47 = 0.903. Switching back restored 860 →
+> 862 Mpix/s. So the register reads were right, the "reopened" reading above was
+> wrong in its decoding, and the earlier conclusion (425 MHz, `clk_summary`
+> wrong) stands. 384 MHz is simply the alternative source, not a forgotten GPU clock. There is a higher operating point on
 this part, and the difference is worth roughly a quarter of the GPU's
 throughput — which would land directly on every glmark2 scene, every gl4es
 frame and every emulator.

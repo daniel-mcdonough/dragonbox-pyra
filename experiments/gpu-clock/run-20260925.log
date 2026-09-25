@@ -1,0 +1,22 @@
+CLKCTRL=0x00060002 source=core idlest=2 -> 33.8 MHz
+== baseline
+temps cpu/gpu/core: 52098 54868 53800
+1280x720  overdraw=8    116.7 fps    860.2 Mpix/s
+ 640x360  overdraw=8    358.4 fps    660.7 Mpix/s
+1280x720  overdraw=2    291.7 fps    537.6 Mpix/s
+== switch to per
+set: CLKCTRL=0x03060002 source=per idlest=2 -> 384.0 MHz
+CLKCTRL=0x03060002 source=per idlest=2 -> 384.0 MHz
+temps cpu/gpu/core: 55932 58889 59000
+1280x720  overdraw=8    106.0 fps    781.3 Mpix/s
+ 640x360  overdraw=8    325.0 fps    599.0 Mpix/s
+1280x720  overdraw=2    277.2 fps    511.0 Mpix/s
+temps cpu/gpu/core: 61470 63357 61400
+== switch back to core
+set: CLKCTRL=0x00060002 source=core idlest=2 -> 33.8 MHz
+CLKCTRL=0x00060002 source=core idlest=2 -> 33.8 MHz
+1280x720  overdraw=8    116.8 fps    861.5 Mpix/s
+ 640x360  overdraw=8    356.5 fps    657.2 Mpix/s
+1280x720  overdraw=2    295.6 fps    544.8 Mpix/s
+temps cpu/gpu/core: 59766 63804 61400
+CLKCTRL=0x00060002 source=core idlest=2 -> 33.8 MHz
