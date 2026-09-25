@@ -72,3 +72,25 @@ same pinned idle cost 0.14 W more at 66 °C than at 58 °C. The ABBA arms bracke
 this, but the idle-versus-game rows are at different temperatures. The
 sampler itself forks about a dozen `cat`s a second, which is a small constant
 load on every arm.
+
+## The GPU never powers down (added the same day)
+
+Sampled at 200 Hz for 15 s at desktop idle, with no GL client running, using
+`experiments/gpu-clock/`'s register access (TRM addresses):
+
+| register | reads | meaning |
+| --- | --- | --- |
+| `PM_GPU_PWRSTCTRL` (0x4AE07500) | `0x00030000` | target power state **OFF** |
+| `PM_GPU_PWRSTST` (0x4AE07504) | POWERSTATEST 3, logic ON, 100% of samples | domain **ON-ACTIVE**, never left |
+| `CM_GPU_CLKSTCTRL` (0x4A009500) | `0x603` | clock domain HW_AUTO; `GPU_CORE_GCLK` and `GPU_HYD_GCLK` **running**, 100% of samples |
+| `CM_GPU_GPU_CLKCTRL` (0x4A009520) | IDLEST 2, STBYST 1 | module idle and in standby |
+| `CM_DIV_H14_DPLL_CORE` | 63 (÷5) throughout | 425.47 MHz; no frequency scaling |
+
+`/sys/bus/platform/devices/56000000.gpu/power`: `runtime_status active`,
+**`runtime_suspended_time 0`** after 8857 s of uptime. The SGX completes its
+idle handshake, but nothing on the kernel side ever releases it. The power
+domain is programmed to go OFF and stays ON with its functional clocks running.
+This is consistent with `gpu_thermal` being the hottest sensor in every phase,
+idle included. What it costs is **not measured**. Getting it back would need
+`pvrsrvkm`'s active power management to call `pm_runtime_put`; whether this DDK
+build has that support compiled in is the next thing to check.
