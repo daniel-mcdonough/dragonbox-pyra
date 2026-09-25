@@ -805,7 +805,22 @@ The graphics rail is at its nominal operating point. ~~`dpll_core_m3x2_ck` reads
 >
 > Voltage readback is also available after all. `omapconf` reads 0.000 V, but the
 > regulator framework reports the commanded voltages: `smps45` (VDD_MM) **1.030 V**,
-> `smps123` (MPU) 1.050 V, `smps8` 1.000 V. There is a higher operating point on
+> `smps123` (MPU) 1.050 V, `smps8` 1.000 V.
+>
+> **What the TRM (SWPU249AG) and the chip add, same day.** `CM_GPU_GPU_CLKCTRL`
+> bit 24 = 0 selects `DPLL_CORE` HSDIVIDER H14 for `GPU_CORE_GCLK` (bit 25, the
+> same for `GPU_HYD_GCLK`). The HSDIVIDER field is the divider itself: the ROM
+> defaults in Table 28-12 (H13 34.3 MHz = 2128/62) match what H13 reads. The ROM
+> sets `CORE_GPU_CLK` (H14) to 212.8 MHz and `PER_GPU_CLK` (`DPLL_PER` H14) to
+> 192 MHz. On this unit something after the ROM set core H14 to **63 (33.8 MHz)**
+> and PER H14 to **2 (384 MHz)**. So a 384 MHz GPU clock is programmed and never
+> selected: the booted device tree's GPU node carries no `assigned-clocks`, rate
+> or OPP table, so nothing moves the mux off its reset value. The AVS Class 0
+> eFuses (TRM Table 18-98) give this chip's VDD_MM as **1027 mV at OPP_NOM** and
+> **1031 mV at OPP_OD**. `smps45` at 1.030 V is the next 10 mV step above NOM,
+> as the TRM's procedure prescribes. MPU fuses are 1024 mV NOM and 1216 mV HIGH,
+> CORE 993 mV. The TRM does not give GPU frequency per OPP; that is in the Data
+> Manual. There is a higher operating point on
 this part, and the difference is worth roughly a quarter of the GPU's
 throughput — which would land directly on every glmark2 scene, every gl4es
 frame and every emulator.
