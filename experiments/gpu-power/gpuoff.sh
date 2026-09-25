@@ -13,6 +13,7 @@ CPU=/sys/devices/system/cpu
 PHASE=$DIR/gpuoff.phase
 LOG=$DIR/gpuoff.log
 GOV0=$(cat $CPU/cpu0/cpufreq/scaling_governor)
+SAMPLER= AWAKE=
 
 loaded()  { [ -d /sys/module/$MOD ]; }
 unload()  { loaded && modprobe -r $MOD; }
@@ -43,16 +44,30 @@ fi
 restore() {
   load
   for p in $CPU/cpu*/cpufreq; do [ -e $p/scaling_governor ] && echo $GOV0 > $p/scaling_governor; done
-  kill "$SAMPLER" 2>/dev/null
+  [ -n "$SAMPLER$AWAKE" ] && kill $SAMPLER $AWAKE 2>/dev/null
   echo "$(date +%s) done, module loaded=$(loaded && echo 1 || echo 0), gov=$GOV0" >> "$LOG"
 }
-trap restore EXIT INT TERM
+# A signal must end the run, not just restore and carry on without a sampler.
+trap restore EXIT
+trap 'exit 1' INT TERM HUP
 phase() { echo "$1" > "$PHASE"; echo "$(date +%s) $1" >> "$LOG"; }
 
 busy && { echo "the SGX is in use; close GL programs first"; exit 1; }
 : > "$LOG"; phase start
 python3 "$DIR/sample.py" "$DIR/gpuoff.csv" "$PHASE" &
 SAMPLER=$!
+# The first run lost its last block to MATE blanking the panel on battery after ten idle
+# minutes, a 0.45 W step on its own. Reset X's idle timer every 20 s so that cannot
+# happen, and log the monitor state so a run that still blanks says so.
+X="sudo -u pyra env DISPLAY=:0 xset"
+(
+  while :; do
+    $X s reset 2>/dev/null
+    $X q 2>/dev/null | grep -q "Monitor is Off" && echo "$(date +%s) MONITOR-OFF" >> "$LOG"
+    sleep 20
+  done
+) &
+AWAKE=$!
 
 phase wait-unplug
 while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done

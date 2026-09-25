@@ -1,0 +1,12 @@
+1790374446 start
+1790374446 wait-unplug
+1790374476 gpu-on
+1790374566 gpu-off
+1790374656 gpu-off
+1790374746 gpu-on
+1790374836 gpu-on
+1790374926 gpu-off
+1790375016 gpu-off
+1790375106 gpu-on
+1790375196 end
+1790375196 done, module loaded=1, gov=ondemand
