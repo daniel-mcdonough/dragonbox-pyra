@@ -156,15 +156,18 @@ Treat as research, not as a change.
 nubs plus keypad, fuel gauge and charger, and 265–511/s for the PMIC, codec and
 USB hub. That is 2–3% of one core, permanently, in hard IRQ time.
 
-The nubs are polled every 25 ms because **the device tree wires no interrupt to
-either chip**, so the driver falls back to a delayed work item. The driver has
+The nubs are polled every 25 ms because **their interrupt lines are unusable**:
+the device tree names gpio6_174/175, the driver ignores them, and on hardware
+both pins are held low even with the chip's INTn forced to Hi-Z, so fixing the
+driver would fire nothing (`improvements.md` item 11). The driver falls back to
+a delayed work item. The driver has
 no close callback, so the poll never stops — stopping the daemon that holds the
 input devices open changes the rate by 1%.
 
 **Do not bother.** There is one cpuidle state, so the wakeups are not blocking a
 deeper sleep, and the whole prize is 2–3% of one core for a kernel patch on an
-out-of-tree tree. The interesting version is "wire the interrupt", which is a
-much larger device tree question.
+out-of-tree tree. "Wire the interrupt" was checked on 2026-09-24 and is not
+available: the fault is on the board, not in the device tree.
 
 ### 2.7 x86 Direct3D under Wine
 

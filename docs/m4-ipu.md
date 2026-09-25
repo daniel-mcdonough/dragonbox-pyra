@@ -815,7 +815,8 @@ top of that. There is no trade here, only a second bill.
 **A third reason, smaller but real: there is nothing left worth moving.** The
 duties anyone would hand to a microcontroller already live in dedicated silicon
 with interrupt lines — `ti,tca8418` scans the key matrix in hardware,
-`ams,as5013` for the nubs, `ti,bq24297` for charging, `ti,bq27421` for the fuel
+`ams,as5013` for the nubs (whose interrupt is unusable on this board, so they
+are polled — but by the A15s at 2–3% of one core), `ti,bq24297` for charging, `ti,bq27421` for the fuel
 gauge, `ti,tca6424` for GPIO, all in `pyra-mainboard-common.dtsi`. They draw
 microamps and keep working with the OMAP powered down. An M4 in CORE cannot
 compete with a 400 µA I²C part.

@@ -314,7 +314,7 @@ re-derive.
 | Backlight: PWM on timer 9, 16 brightness levels, 8300 Hz on V5.x | `pyra-display.dtsi` |
 | Touchscreen: TSC2007 on i2c4, rotated to 1280x720 | `pyra-display.dtsi` |
 | AESS: `ti,aess`, `aess_fclk` at 196.608 MHz | live DT |
-| Nubs: AS5013 on i2c, **no interrupt wired**, 25 ms polled | `improvements.md` item 11 |
+| Nubs: AS5013 on i2c, **interrupt lines held low on the board**, 25 ms polled | `improvements.md` item 11 |
 
 Five steps below 1.5 GHz — 375, 625, 875, 1125 and 1400 MHz — exist in a
 third-party table and are carried by `pc/pyra-crossbuild.sh kernel-freq`. Every

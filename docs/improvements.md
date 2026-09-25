@@ -1359,13 +1359,35 @@ The nubs are polled by the kernel whether or not anything reads them. Stopping
 restarted. The `as5013` driver is built in, exposes no module parameters and no
 `poll_interval`, so changing this means a kernel patch.
 
-Why it polls at all is now known, and it is not a tuning choice. The device tree
-wires no interrupt to either chip, so probe falls back to a delayed work item and
-a `#define` of 25 ms. The poll never stops because the driver has no close
-callback, which is exactly what the measurement above shows and why stopping the
-daemon changes nothing. The interesting version of this item is therefore not
-"poll less often" but "wire the interrupt", which is a device tree question and a
-much larger one.
+Why it polls at all is now known, and it is not a tuning choice. Probe falls
+back to a delayed work item and a `#define` of 25 ms. The poll never stops
+because the driver has no close callback, which is exactly what the measurement
+above shows and why stopping the daemon changes nothing.
+
+**Wiring the interrupt is not possible on this board — checked on 2026-09-24.**
+The device tree does name one: `interrupts` on gpio6_175 (left) and gpio6_174
+(right), with the pads muxed as GPIO inputs with pull-ups, `0x11e`, the same as
+the keypad's working interrupt pad. The driver discards it — it looks for a
+Pandora-style `gpios` property with `of_get_gpio()`, finds none, and sets
+`client->irq = 0` over what the i2c core supplied — so nothing has ever used
+those lines, and a driver fix was the obvious next step. It would fire nothing:
+
+- **Both pins read low 100% of the time**, pull-up and all, and the GPIO edge
+  detector counted zero edges on either, idle or with a nub being moved.
+- **They should be pulsing.** Per the datasheet (rev 1.11), `0Fh` resets to
+  `F0h`: Idle mode, `INT_disable` = 0, `INT_function` = 0, which drives INTn
+  (open drain, active low) low 450 µs after each Y readout and releases it on
+  the ACK of the `11h` read. With the driver reading every 25 ms, that is a
+  release per read per chip.
+- **The chip is not what holds them low.** Writing `F8h` to `0Fh`
+  (`INT_disable`, INTn fixed to Hi-Z) on each chip in turn left its pin at 0
+  in 200 of 200 reads. With the chip's output floating and the pad pulled up,
+  something on the board is driving the line low.
+
+So the INTn net either does not reach the OMAP ball the device tree names, or
+something else sits on it. That is a schematic question, not a software one,
+and at 2–3% of a core and 25 ms of stick latency it is not worth chasing.
+Closed.
 
 The same reading is now the instrument for a correctness fault rather than a
 performance one: a rate of zero after a resume is the nub bug that
