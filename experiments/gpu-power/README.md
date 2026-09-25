@@ -101,5 +101,24 @@ recovery.
   add races the probe, and fails about half the time with the stock module as well.
   `apmcompare.sh` runs it again by hand when it has not reported.
 
-**Not yet tested:** system suspend and resume with the fixed module, and hours of
-ordinary use.
+## Suspend and resume with the fix *(measured, 2026-09-26)*
+
+`gpusleep.sh` runs `device/pyra-sleep-test.sh` (RTC wake, freeze then mem, 20 s each) three
+times, detached. The results and each sleep test's log are in `sleep/`.
+
+| case | before suspend | freeze | mem (`deep`) | GL after resume | 1 s later |
+| --- | --- | --- | --- | --- | --- |
+| stock module | active, usage 1, PD_GPU ON | ok | ok | 866 Mpix/s | active, ON |
+| fixed, GPU idle | suspended, usage 0, PD_GPU **OFF** | ok | ok | 856 Mpix/s | suspended, OFF |
+| fixed, GL rendering in a loop through both suspends | active, usage 1, ON | ok | ok | 853 Mpix/s | suspended, OFF |
+
+- In the third case the fill loop kept running across both suspends, and was
+  still active with usage 1 right after resume. The run that spanned them reports
+  13.9 fps only because its wall time includes about 40 s asleep. The next run gave 854 Mpix/s.
+- No new L3, external abort, PVR error, SGX recovery or lockup messages: the count
+  stayed at 6, all from before the test (the boot-time L3 warning and three
+  init-race messages).
+- This was the first suspend with the GPU driver exercised on this machine, the stock
+  module included. It works on this kernel.
+
+**Not yet tested:** hours of ordinary use.

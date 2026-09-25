@@ -1,0 +1,23 @@
+1790379340 start, errors so far=6
+1790379340 === stock
+1790379344 loaded stock: taint='' init=ok
+1790379347   before: rpm=active usage=1 pd_gpu=ON errors=6
+1790379390   sleep test rc=0: RESULT freeze: ok, slept and resumed with the session intact RESULT mem: ok, slept and resumed with the session intact 
+1790379398   GL after resume: 1280x720  overdraw=8    117.5 fps    866.1 Mpix/s
+1790379399   stock +1s: rpm=active usage=1 pd_gpu=ON errors=6
+1790379399 === fixed-idle
+1790379403 loaded fixed: taint='E' init=ok
+1790379406   before: rpm=suspended usage=0 pd_gpu=OFF errors=6
+1790379449   sleep test rc=0: RESULT freeze: ok, slept and resumed with the session intact RESULT mem: ok, slept and resumed with the session intact 
+1790379457   GL after resume: 1280x720  overdraw=8    116.1 fps    856.3 Mpix/s
+1790379458   fixed-idle +1s: rpm=suspended usage=0 pd_gpu=OFF errors=6
+1790379458 === fixed-gl
+1790379461   before: rpm=suspended usage=0 pd_gpu=OFF errors=6
+1790379464   rendering: rpm=active usage=1 pd_gpu=ON errors=6
+1790379507   sleep test rc=0: RESULT freeze: ok, slept and resumed with the session intact RESULT mem: ok, slept and resumed with the session intact 
+1790379510   rendering after resume: rpm=active usage=1 pd_gpu=ON errors=6
+1790379510   fill runs during the case: 1, last: 1280x720  overdraw=8     13.9 fps    102.2 Mpix/s
+1790379516   GL after resume: 1280x720  overdraw=8    115.7 fps    852.8 Mpix/s
+1790379517   fixed-gl +1s: rpm=suspended usage=0 pd_gpu=OFF errors=6
+1790379522 loaded stock: taint='' init=ok
+1790379522 done, errors=6

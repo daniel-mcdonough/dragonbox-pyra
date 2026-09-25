@@ -1,0 +1,14 @@
+=== freeze ===
+armed for 20s at Sat Sep 26 01:37:44 AM CEST 2026
+returned 0 after 21s of wall clock
+user.slice FreezerState: running
+the kernel took the 's2idle' path
+RESULT freeze: ok, slept and resumed with the session intact
+suspend-to-idle worked, trying suspend to RAM
+=== mem ===
+armed for 20s at Sat Sep 26 01:38:06 AM CEST 2026
+returned 0 after 20s of wall clock
+user.slice FreezerState: running
+the kernel took the 'deep' path
+RESULT mem: ok, slept and resumed with the session intact
+DONE

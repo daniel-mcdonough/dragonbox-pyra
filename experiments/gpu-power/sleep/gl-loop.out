@@ -1,0 +1,12 @@
+./dri3_ws.c:843: WSEGL_SwapControlInterval: WSEGL_SwapControlInterval 0
+
+DRI3 1.0
+present 1.2
+DRM FD 8
+1280x720  overdraw=8     13.9 fps    102.2 Mpix/s
+./dri3_ws.c:843: WSEGL_SwapControlInterval: WSEGL_SwapControlInterval 0
+
+DRI3 1.0
+present 1.2
+DRM FD 8
+1280x720  overdraw=8    115.9 fps    854.4 Mpix/s
