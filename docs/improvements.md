@@ -787,7 +787,25 @@ The graphics rail is at its nominal operating point. ~~`dpll_core_m3x2_ck` reads
 > `CM_CLKMODE_DPLL_CORE`, which cannot be 0 on a running system. `omapconf` reads
 > through the same `/dev/mem` and warns "no matching rate" for MPU and CORE, so its
 > "GPU 425 MHz" is best treated as its OPP table's nominal value. The only
-> measurement of the GPU clock this project has is the fill rate. There is a higher operating point on
+> measurement of the GPU clock this project has is the fill rate.
+>
+> **Reopened 2026-09-25: the registers read, and they agree with `clk_summary`.**
+> On `5.6.19-m4`, `/dev/mem` through Python's `mmap` returns live CM registers
+> where `devmem2` returned zeros. The values check out against known clocks:
+> `CM_CLKSEL_DPLL_CORE` = `0x00011504` (M 277, N 4: 2127.36 MHz ×2, as the kernel
+> says), H11 divider 8 (265.9 MHz, the L3), H12 divider 4 (531.8 MHz, the EMIF). And
+> `CM_DIV_H14_DPLL_CORE` = `0x0000023f`: **divider 63, clock active, 33.8 MHz**.
+> `CM_GPU_GPU_CLKCTRL` = `0x00060002` / `0x00000002` (both clock selects 0, meaning
+> `dpll_core_h14x2`). Sampled at 100 Hz through a 53 fps SoH run: the module was
+> functional in 64% of samples and idle in 36%, and H14 never changed. That
+> contradicts the fill probe, which draws *blended* textured quads the ISP cannot
+> reject, so 862 Mpix/s cannot come from a 33.8 MHz two-core SGX. **One of the two
+> measurements is wrong, and it is not yet known which.** Divider 63 on H13 and H14
+> is also what a bootloader leaves on outputs it does not use.
+>
+> Voltage readback is also available after all. `omapconf` reads 0.000 V, but the
+> regulator framework reports the commanded voltages: `smps45` (VDD_MM) **1.030 V**,
+> `smps123` (MPU) 1.050 V, `smps8` 1.000 V. There is a higher operating point on
 this part, and the difference is worth roughly a quarter of the GPU's
 throughput — which would land directly on every glmark2 scene, every gl4es
 frame and every emulator.
