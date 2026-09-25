@@ -395,7 +395,8 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ## The patch set, and the kernel that carries it
 
-Six changes live in `patches/` as ordinary unified diffs. They are applied
+Six changes live in `patches/` as ordinary unified diffs, plus a seventh,
+`0033`, added 2026-09-25 and not yet in any built kernel (see 7 below). They are applied
 in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
@@ -582,6 +583,34 @@ the old startup path never cleared it.
 
 A count frozen while you type is the fault. `device/pyra-keypad-rescue` clears
 it on a machine not yet running this kernel.
+
+### 7. Kprobes that do not panic the kernel
+
+`0033-arm-kprobes-avoid-fortify-panic-when-copying-optprobe-template.patch`,
+a clean backport of upstream `9fa2e7af3d53a` (ARM: 9019/1, v5.10), taken from
+letux-kernel unmodified. It is numbered 0033 only because 0007–0032 are taken
+by the experiment directories, which are gathered into the same flat directory
+at build time. It touches nothing they touch, so the order does not matter.
+
+Without it, the first kprobe the kernel optimises hits `fortify_panic`:
+`detected buffer overflow in memcpy`, then `kernel BUG at lib/string.c:1129`.
+The optprobe template's start label is declared as one 4-byte opcode, and
+`FORTIFY_SOURCE` believes the declaration. The copy is really about 100 bytes
+and entirely legal. Any 32-bit ARM kernel with both `OPTPROBES` and
+`FORTIFY_SOURCE` has it; the OMAP5 has nothing to do with it. Every kernel
+here has both options. Hit on `5.6.19-m4` on 2026-09-25, from `kprobe_events` on
+pvrsrvkm functions. The dying task held the kprobe mutex, so every later kprobe
+access hung until a reboot.
+
+**On a kernel without it**, run this before placing any kprobe. Probes then
+run unoptimised (a breakpoint trap instead of a branch), which is slower but
+safe:
+
+    echo 0 | sudo tee /proc/sys/debug/kprobes-optimization
+
+**How to know it worked.** On the patched kernel, leave that sysctl at 1, place a
+probe, and read `/sys/kernel/debug/kprobes/list`: the entry is tagged
+`[OPTIMIZED]` and nothing appears in `dmesg`.
 
 ## The experiment kernel, and why it is not in the patch set
 
