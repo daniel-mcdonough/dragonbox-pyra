@@ -1,4 +1,4 @@
-# The ten fixes, and what they actually do
+# The eleven fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -750,5 +750,88 @@ drop-in was then checked from the desktop session, where it reports
 back with all three sinks and `speakers` as the default. A boot that would
 otherwise have lost the race has **not** been observed since the fix — that
 needs repeated reboots to catch a 1-in-3 event.
+
+---
+
+## Fix 11 — GL cannot reach the GPU on about half the boots
+
+Found on 2026-09-26 while reloading the GPU driver for the idle-power work
+(`experiments/gpu-power/`). After a lost race every GL program fails at once:
+
+    PVR:(Error): Couldn't connect to services [0, ]
+
+and the kernel logs, for each attempt,
+
+    PVR_K:(Error): BridgedDispatchKM: Driver initialisation not completed yet.
+
+It stays that way until someone runs `sudo /opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl
+--start --no-module`. On a boot that means no hardware GL for the whole session:
+programs that set `SDL_VIDEO_GL_DRIVER` to the DDK fail, and anything that
+falls back renders on llvmpipe without saying so.
+
+### Why it races
+
+The SGX driver comes in two halves. The kernel module registers the GPU, and
+`pvrsrvctl --start` then loads the microkernel and initialises the services from
+user space. The DDK starts the second half from a udev rule,
+`/lib/udev/rules.d/omap5-sgx-ddk-um-linux.rules`, on the **module** add event:
+
+    SUBSYSTEM=="module", ACTION=="add", DEVPATH=="/module/pvrsrvkm_omap5_sgx544_116",
+        RUN+="/opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl --start --no-module"
+
+The kernel sends that event while it is setting up the module's sysfs entry,
+before the module's init function has run, so before the driver has probed.
+`pvrsrvctl` finds the GPU by scanning `/dev/dri`, and `card2` does not exist
+until the probe registers it. The journal shows the order when the race is lost:
+
+    (udev-worker): pvrsrvkm_omap5_sgx544_116: Process '.../pvrsrvctl --start --no-module' failed with exit code 1.
+    [drm] Initialized pvr 1.14.3699939 20110701 for 56000000.gpu on minor 2
+
+The race was lost with the stock module and with the patched one alike, so it
+predates that work. **Measured: 4 of 10 loads came up initialised.**
+
+### The fix
+
+`device/pyra-sgx-init.sh` installs one file, which has the DDK's file name and
+so shadows it:
+
+    /etc/udev/rules.d/omap5-sgx-ddk-um-linux.rules
+
+The start moves to the add event of the pvr **DRM card**:
+
+    ACTION=="add", SUBSYSTEM=="drm", KERNEL=="card[0-9]*", DRIVERS=="pvrsrvkm",
+        RUN+="/opt/omap5-sgx-ddk-um-linux/bin/pvrsrvctl --start --no-module"
+
+That event is sent from `drm_dev_register`, which `pvr_probe` calls only after the
+services core has initialised, and udev creates `/dev/dri/cardN` before it runs a
+rule's `RUN`. `pvr_probe` still has two things to do after registering: set the DRM
+device's `dev_private`, which nothing on the OMAP path reads, and, with the
+idle-power patch, drop its runtime-PM reference, which is harmless if an ioctl
+arrives first. So nothing is left to race. The stop rule stays on the module
+remove event, as the DDK had it.
+
+`--check` says which rule is in force and whether the services have reported
+since the driver last registered (the kernel log needs root); `--undo` removes
+the file; `--emit-into ROOT` writes it to a mounted rootfs offline, and
+`pyra-trixie-prep.sh` uses that.
+
+**Like fixes 8 to 10, it does not edit a packaged file.** Strictly, the DDK's
+rule is not dpkg-owned either (it came with the hand-installed DDK in `/opt`),
+but shadowing it from `/etc` leaves it intact for `--undo` all the same.
+
+**Verified** with `experiments/gpu-power/initrace.sh`, which reloads the driver and
+counts the loads where the services come up with nothing run by hand. It checks for
+the kernel's `UM DDK ... match [ OK ]` line within 5 s:
+
+| rule | loads | came up |
+| --- | --- | --- |
+| DDK's (module add) | 10, stock module | **4** |
+| fix 11 (DRM card add) | 20, stock and patched module alternating | **20** |
+
+After a full reboot on `5.6.19-m4`, the coldplug path, udev started the services
+2.4 s after the driver registered, and GL ran at 868 Mpix/s.
+
+A manual `udevadm trigger --action=add` on the card would run `pvrsrvctl --start` a
+second time. That fails with "already initialized" and changes nothing.
 
 ---

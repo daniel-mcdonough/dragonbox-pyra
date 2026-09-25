@@ -79,7 +79,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
 | [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
-| [docs/fixes.md](docs/fixes.md) | The ten fixes, what each one is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The eleven fixes, what each one is for, and the diagnosis behind it. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | The image is 6 GiB. Filling the rest of the card, which must be done on a PC. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL after fix 4, on the hardware rather than in software. |

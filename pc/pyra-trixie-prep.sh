@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the ten known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the eleven known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -70,6 +70,9 @@ AUDIO_FIX=$PAYLOADS/pyra-audio-route.sh
 
 GREETER_FIX=$PAYLOADS/pyra-greeter-audio.sh
 [[ -x $GREETER_FIX ]] || die "fix10: pyra-greeter-audio.sh not found or not executable (looked in $PAYLOADS)"
+
+SGX_FIX=$PAYLOADS/pyra-sgx-init.sh
+[[ -x $SGX_FIX ]] || die "fix11: pyra-sgx-init.sh not found or not executable (looked in $PAYLOADS)"
 
 
 echo
@@ -652,6 +655,46 @@ rm -rf "$GREETER_STAGE"
 
 if [[ $GREETER_CHANGED -eq 1 ]]; then
     ok "fix10: the greeter will not take the sound card from the session"
+fi
+
+# ---------------------------------------------------------------------- fix 11
+#
+# The DDK's udev rule runs `pvrsrvctl --start` on the pvrsrvkm *module* add
+# event, which the kernel sends before the driver probes, so it races the
+# creation of /dev/dri/card2. Measured: 4 of 10 loads came up with the SGX
+# services initialised; the rest left every GL program failing with "Couldn't
+# connect to services" until pvrsrvctl was run by hand. The fix starts them on
+# the add event of the pvr DRM card instead, which comes after the services
+# core is up, with the node already created. 20 of 20 loads, and the boot path,
+# came up initialised. It shadows the DDK's rule by name from /etc/udev/rules.d
+# rather than editing it.
+
+SGX_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix11.XXXXXX")
+if ! SGX_FILES=$("$SGX_FIX" --emit-into "$SGX_STAGE" 2>&1); then
+    rm -rf "$SGX_STAGE"
+    die "fix11: could not generate the SGX init rule:
+       $SGX_FILES"
+fi
+
+SGX_CHANGED=0
+while read -r staged; do
+    [[ -n $staged ]] || continue
+    rel=${staged#$SGX_STAGE}
+    dst=$ROOT$rel
+    if [[ -e $dst ]] && cmp -s "$staged" "$dst"; then
+        ok "fix11: ${rel} already in place"
+        continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cat "$staged" > "$dst"
+    chmod --reference="$staged" "$dst"
+    ok "fix11: wrote ${rel}"
+    SGX_CHANGED=1
+done <<<"$SGX_FILES"
+rm -rf "$SGX_STAGE"
+
+if [[ $SGX_CHANGED -eq 1 ]]; then
+    ok "fix11: GL will find the SGX services up on every boot, not about half of them"
 fi
 
 echo
