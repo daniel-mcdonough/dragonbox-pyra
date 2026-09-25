@@ -11,6 +11,8 @@
 #   ./pyra-crossbuild.sh kernel-freq         the fix kernel plus finer cpu steps
 #   ./pyra-crossbuild.sh kernel-oc           the same, overclocked to 2 GHz
 #   ./pyra-crossbuild.sh kernel-m4           the fix kernel plus the M4 stack
+#   ./pyra-crossbuild.sh kernel-m4-uprobe    the same, plus user-space probes
+#   ./pyra-crossbuild.sh kernel-m4-uprobe-kprobe  the same, first with 0033, plus PM debug
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -368,6 +370,16 @@ build_kernel_m4()    { build_kernel_variant m4 "$M4_PATCHES" src-m4 \
 # unwinding does not work on this stack. Nothing else differs from kernel-m4.
 build_kernel_m4_uprobe() { build_kernel_variant m4-uprobe \
 	"$M4_PATCHES" src-m4-uprobe "$M4_CONFIG UPROBE_EVENTS UPROBES"; }
+# kernel-m4-uprobe, first built after patches/0033 existed, so kprobes cannot
+# BUG() in the optprobe code (docs/building.md, patch 7). PM_ADVANCED_DEBUG
+# (which needs PM_DEBUG; on this board that only turns enable_off_mode from a
+# gta04 check into a variable, both 0, and adds pm-debug.c)
+# adds power/runtime_usage to sysfs, the runtime-PM reference count, which is
+# what the GPU idle-power work needs to read (docs/handoff/gpu-power-*.md).
+# Its own name and tree so the m4-uprobe build stays what it was.
+build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
+	"$M4_PATCHES" src-m4-uprobe-kprobe \
+	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
@@ -379,5 +391,6 @@ case "${1:-}" in
 	kernel-oc)    shift; build_kernel_oc ;;
 	kernel-m4)    shift; build_kernel_m4 ;;
 	kernel-m4-uprobe) shift; build_kernel_m4_uprobe ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe" ;;
+	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe" ;;
 esac
