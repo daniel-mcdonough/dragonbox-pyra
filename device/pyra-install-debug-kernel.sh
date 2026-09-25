@@ -246,9 +246,11 @@ Once it is up, confirm with:
     cat /proc/sys/kernel/softlockup_panic        # expect 0
     cat /proc/sys/kernel/hung_task_timeout_secs  # expect 30
 
-To undo it entirely:
+To undo it entirely: boot away from l1, drop only the l1 entry (the other
+labels in $CFG, the default among them, stay), then remove the files:
 
+    sudo pyra-boot-kernel.sh stock
+    sudo sed -i '/^label l1\$/,/^label /{/^label l1\$/d;/^label /!d}' $CFG
     sudo rm -rf /boot/{vmlinuz,initrd.img,System.map,config}-$REL \\
                 /boot/dtb/linux-image-$REL /usr/lib/modules/$REL
-    sudo truncate -s 0 $CFG
 EOF

@@ -396,7 +396,7 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 ## The patch set, and the kernel that carries it
 
 Six changes live in `patches/` as ordinary unified diffs, plus a seventh,
-`0033`, added 2026-09-25 and not yet in any built kernel (see 7 below). They are applied
+`0033`, added 2026-09-25. So far only `5.6.19-m4-uprobe-kprobe` carries it (see 7 below). They are applied
 in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
@@ -611,6 +611,11 @@ safe:
 **How to know it worked.** On the patched kernel, leave that sysctl at 1, place a
 probe, and read `/sys/kernel/debug/kprobes/list`: the entry is tagged
 `[OPTIMIZED]` and nothing appears in `dmesg`.
+
+**Confirmed 2026-09-25** on `5.6.19-m4-uprobe-kprobe`, the first kernel built with
+it. The four pvrsrvkm kprobes that had BUG()ed `5.6.19-m4` were all listed
+`[OPTIMIZED]`, with optimisation left on, fired under tracing, were removed cleanly,
+and left nothing in `dmesg`.
 
 ## The experiment kernel, and why it is not in the patch set
 
