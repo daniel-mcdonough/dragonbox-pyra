@@ -655,6 +655,112 @@ video decode use case; take option 1 if the goal is running your own code.
 Either way the toolchain is the same, and `ti-ducati-fw` is the easier way to
 obtain it.
 
+#### What video decode would actually take (surveyed 2026-09-24)
+
+These repositories are cloned: fifteen MobiAqua repositories plus `yocto` in
+`~/git/dragonbox-pyra-m4-work/mobiaqua/`, alongside the TI clones. Nothing
+below has been run. It comes from reading the source, and from `readelf` and
+`strings` on the firmware binary.
+
+**The firmware exists prebuilt.** MobiAqua's yocto tree carries
+`meta-ti/recipes-bsp/libdce/libdce-firmware/omap5-ipu-fw.xem4` (3.7 MB,
+committed 2024-05-31). Its version block reads `IPUMM commit 3783a4c version
+MMIP 3_00_15_00 IPC 3_50_01_00`. It links these codecs:
+
+| decode | encode |
+| --- | --- |
+| H.264 `02.00.22.01`, MPEG-4 `01.00.17.01`, MPEG-2 `01.00.18.01`, VC-1 `01.00.02.08`, MJPEG `01.00.16.01` | H.264 `02.00.09.01`, MPEG-4 `01.00.02.01`, MJPEG `01.00.17.01` |
+
+There is no HEVC, VP8, VP9 or AV1. The IVA-HD predates them all. Its ceiling
+is 1080p30 H.264.
+
+**The catch: MobiAqua ships none of this on OMAP5.** Their machines are
+`panda` (OMAP4), `beagle` (AM57xx), `beagle64` and `igep0030`. The recipe's
+`do_install` exists only for `panda` and `beagle`. The OMAP5 image gets built
+because `ti-ducati-fw` loops over three targets, and there is no evidence
+anyone has ever booted it. Treat it as untested. If it needs rebuilding, the
+toolchain URLs checked above still work.
+
+**What the firmware demands of the kernel**, from
+`ti-ipumm/platform/ti/dce/baseimage/custom_rsc_table_omap5_ipu.h`:
+
+- **Carveouts:** 6 MB text, 43 MB data and 1 MB IPC data, 50 MB in all. That
+  fits `0011`'s 56 MB region.
+- **`IPU_MEM_IOBUFS`:** a `TYPE_DEVMEM` covering **90 MB at fixed PA
+  `0xBA300000`**. On a 4 GB Pyra that is ordinary RAM, so it **must** get a
+  `no-map` `reserved-memory` node. Otherwise the IPU writes over live kernel
+  pages. This is the single most important thing to get right.
+- **`IPU_MEM_IPC_VRING`:** a `TYPE_DEVMEM` covering 1 MB at `0x95800000`. That
+  is the start of `0011`'s CMA pool, so it would alias memory the pool hands
+  out. The vrings themselves are `FW_RSC_ADDR_ANY` since MobiAqua's
+  "dynamic vring" commit, so this mapping may be dead weight. Check it before
+  trusting it.
+- **Peripheral windows:** direct mappings of L4CFG (which includes the PRCM),
+  L4PER, L4EMU, the IVA-HD config and SL2, the DMM, and the three TILER
+  apertures.
+- **IVA-HD power:** the firmware brings up the IVA-HD itself. `ivahd.c` writes
+  `RM_IVAHD_RSTCTRL`, `CM_IVAHD_CLKSTCTRL` and `CM_IVAHD_CLKCTRL` directly, so
+  no kernel IVA driver is needed. The risk is that the kernel's own PM code
+  powers the IVA domain back down under it. On OMAP4, MobiAqua needed
+  `0011-iva-timer3-always-on.patch` for something in this area.
+
+**Kernel patches to carry onto 5.6.19-m4.** They come from
+`yocto/meta-ti/recipes-kernel/linux/linux-ti_5.10/`, the oldest and closest
+set:
+
+| patches | purpose | size |
+| --- | --- | --- |
+| `rpmsg-rpc/0050`–`0060` | the `rpmsg_rpc` driver: `/dev/rpmsg-dce`, the `RPPC_IOC_*` ioctls, dma-buf fd to IPU address translation including TILER stride | `0052` alone is 3 016 lines |
+| `remoteproc/0001`, `0002` | `rproc_get_id()`, `rproc_pa_to_da()`, which `rpmsg_rpc` calls | small |
+| `ti/0017` | restores the `OMAP_BO_MEM_*` flags in `omap_gem.c` | medium |
+| `0020-restore-dmabuf-map` | puts back `dma_buf_kmap` | small |
+| `ti/0014` | omap-iommu hwmod transitions | small |
+
+That set also carries `ti/0015-iommu-omap-convert-spinlocks-to-mutexes` on 6.x,
+which is independently the same fix as our `0012`. That is good confirmation
+of `0012`, and it means one conflict to resolve by keeping ours. Going from
+5.10 back to 5.6 is a short distance for rpmsg and remoteproc.
+
+**Userspace is the smallest part:**
+
+- `ti-libmmrpc` is 3 commits, and `ti-libdce` is autotools. Both build against
+  the kernel's `uapi/linux/rpmsg_rpc.h`. `libdce` allocates its buffers as
+  omapdrm dumb buffers and exports them as dma-buf.
+- **The player is the real limit.** In `mpv-mini`, `vd_omap_dce.c` decodes
+  (1 169 lines) and `vo_drm_omap.c` displays (665 lines). The output is
+  **KMS-only**: atomic commits and `drmModeSetPlane` onto an overlay plane. It
+  needs DRM master, so **it cannot run under X**. On the Pyra that means a VT
+  switch away from X, the way the game-mode launcher would start it.
+  `mplayer-mini`'s `vo_omap_drm_egl` goes through GBM, which is also KMS-only.
+- **Rotation is unsolved.** The panel is portrait and X gets landscape through
+  TILER rotation. `vo_drm_omap` does not set a rotation on its video plane, and
+  a rotated NV12 plane needs TILER-backed buffers, not the dumb buffers
+  `libdce` allocates. Expect real work here.
+- Playback inside an X window, through Xv on `armsoc` or an NV12 EGLImage on
+  SGX DDK 1.14, is a separate open-ended project. Nothing here provides it.
+
+**Estimate:**
+
+| milestone | effort | main risks |
+| --- | --- | --- |
+| firmware boots, `/dev/rpmsg-dce` appears | 3–6 evenings | the patch backport; reserved memory; a first-ever boot of this firmware image |
+| a decoded frame lands in memory (`libdce` test) | 2–5 evenings more | IVA-HD power fighting the kernel PM; TILER address translation |
+| full-screen playback with `mpv-mini` from a VT, correctly rotated | 1–2 weeks more | rotation; plane format support on DISPC |
+| playback inside X | open-ended | Xv or EGL import against a closed DDK |
+
+**Realistically that is 3–5 weeks of evenings to watch a correctly rotated
+H.264 file from a console.**
+
+**Weigh it against software decode.** Two A15s at 1.5 GHz decode 720p H.264,
+the panel's native resolution, in software with FFmpeg's NEON paths. That is
+unmeasured on this unit but well inside what the core does elsewhere, and it
+works under X today. Hardware decode would buy battery life and 1080p
+headroom, but only for H.264, MPEG-2/4 and VC-1 content, and only outside X.
+Most web video is now VP9 or AV1, which the IVA-HD cannot touch. **Measure
+software decode first** with `mpv --hwdec=no` on a 720p H.264 file, reading
+CPU load and `bq27421` current. Only if that disappoints is this project
+worth starting.
+
 ### Option 2: bare metal — done, and it works
 
 remoteproc will run a bare-metal ELF; all it requires is a `.resource_table`
