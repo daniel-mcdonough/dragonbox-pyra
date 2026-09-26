@@ -10,7 +10,11 @@
 # Copy the repository onto the device and run this from inside its `device`
 # directory. Everything it touches lives under /usr/local, /etc/sysctl.d or
 # the calling user's own systemd directory, so nothing here fights a Debian
-# package or survives a reinstall of one.
+# package or survives a reinstall of one. The exception is the brightness
+# applet's two registration files, which go under /usr/share because that is
+# the only place mate-panel looks for applets. Their names are ours, so no
+# package owns or overwrites them. It also installs one Debian package the
+# applet needs, gir1.2-matepanelapplet-4.0, if it is missing.
 #
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does not apply the six card fixes
@@ -58,6 +62,9 @@ pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-idle-dim                       /usr/local/bin                     0755
 pyra-gles                           /usr/local/bin                     0755
+pyra-brightness-applet              /usr/local/libexec                 0755
+org.pyra.BrightnessApplet.mate-panel-applet  /usr/share/mate-panel/applets  0644
+org.mate.panel.applet.PyraBrightnessAppletFactory.service  /usr/share/dbus-1/services  0644
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
@@ -124,6 +131,18 @@ while read -r src dst mode; do
 	fi
 	changed=1
 done <<<"$MAP"
+
+# ------------------------------------------------------------ applet package
+say "the brightness applet's bindings"
+PKG=gir1.2-matepanelapplet-4.0
+if dpkg -s "$PKG" >/dev/null 2>&1; then
+	note "$PKG already installed"
+elif [ "$DRYRUN" = 1 ]; then
+	note "would run: apt-get install $PKG"
+else
+	apt-get install -y -q "$PKG" >/dev/null || die "could not install $PKG"
+	note "installed $PKG"
+fi
 
 # --------------------------------------------------------------------- sysctl
 say "applying the capture settings"
@@ -221,6 +240,9 @@ Done. What is now on the path:
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload
     pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
+
+The screen and keyboard brightness applet is installed but not on the panel.
+Right-click the panel, "Add to Panel...", and pick "Pyra Brightness".
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

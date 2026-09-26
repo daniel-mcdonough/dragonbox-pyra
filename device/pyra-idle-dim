@@ -35,6 +35,9 @@ SYS = "/sys/class/backlight/" + DEVICE
 STATUS_IDLE = 3
 
 saved = None
+# What we dimmed to, so that waking can tell whether anyone changed the
+# brightness in the meantime, from the panel applet or anywhere else.
+dimmed_to = None
 
 
 def log(msg):
@@ -60,7 +63,7 @@ def set_brightness(system_bus, value):
 
 
 def on_status(bus, sender, path, iface, signal, params, system_bus):
-    global saved
+    global saved, dimmed_to
     status = params[0]
     if status == STATUS_IDLE:
         if saved is not None:
@@ -73,12 +76,20 @@ def on_status(bus, sender, path, iface, signal, params, system_bus):
             return
         log(f"idle: {saved} -> {target}")
         set_brightness(system_bus, target)
+        dimmed_to = target
     else:
         if saved is None:
             return
-        log(f"awake: restoring {saved}")
-        set_brightness(system_bus, saved)
+        now = read("brightness")
+        if now != dimmed_to:
+            # Someone set the brightness while we had it dimmed. Theirs is
+            # the newer choice, so putting ours back would undo it.
+            log(f"awake: brightness is {now}, not {dimmed_to}; leaving it")
+        else:
+            log(f"awake: restoring {saved}")
+            set_brightness(system_bus, saved)
         saved = None
+        dimmed_to = None
 
 
 def main():
