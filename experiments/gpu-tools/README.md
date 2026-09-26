@@ -66,10 +66,13 @@ harness change is needed:
 cd ~/git/Shipwright
 PYRA_DIR=/home/pyra/soh-bench2 ./scripts/pyra/bench.sh run $MARKET \
     LD_PRELOAD=/home/pyra/apitrace/lib/apitrace/wrappers/egltrace.so \
-    TRACE_FILE=/home/pyra/soh-market.trace SOH_BENCH_FRAMES=30
-# on the device: keep only the last few frames
-~/apitrace/bin/apitrace trim --frames=400-410 -o market-10f.trace soh-market.trace
+    TRACE_FILE=/home/pyra/gpu-tools/soh-market.trace SOH_BENCH_UNCAP=0 SOH_BENCH_WARMUP=30 SOH_BENCH_FRAMES=30
+scp pyra@<host>:gpu-tools/soh-market.trace ~/.cache/pyra-traces/
+qapitrace ~/.cache/pyra-traces/soh-market.trace
 ```
+
+Open the whole trace. `apitrace trim --frames=...` output does not replay (it drops the EGL
+context and every texture loaded earlier), and `gltrim` keeps 630k of the calls.
 
 Why the preload should catch everything:
 
@@ -102,7 +105,7 @@ patching the source:
 mkdir -p ~/ddk-shim
 ln -sf /opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1 ~/ddk-shim/libGLESv2.so.2
 ln -sf /opt/omap5-sgx-ddk-um-linux/lib/libEGL.so.1    ~/ddk-shim/libEGL.so.1
-DISPLAY=:0 LD_LIBRARY_PATH=~/ddk-shim ~/apitrace/bin/eglretrace --benchmark --loop=100 market-10f.trace
+DISPLAY=:0 LD_LIBRARY_PATH=~/ddk-shim ~/apitrace/bin/eglretrace --benchmark ~/gpu-tools/soh-market.trace
 ```
 
 **Status:** a full replay on the device works (461 frames, the DDK loaded, two harmless
@@ -112,7 +115,9 @@ the EGL context and the textures, so its output replays nothing (`no current con
 `gltrim` keeps 630k of the calls and saves nothing. Next: cut the trace at the last
 `eglSwapBuffers` and loop that, or record a shorter run (a lower `SOH_BENCH_SETTLE`).
 
-Check with `LD_DEBUG=libs` that `libpvrDRI3WSEGL.so` and the DDK's `libGLESv2` load. A looped replay of trimmed frames is
+Check with `LD_DEBUG=libs` that `libpvrDRI3WSEGL.so` and the DDK's `libGLESv2` load.
+
+Why a looped replay is worth getting working: a looped frame is
 the game's GL stream with none of the game's own CPU work: the interpreter, logic and
 interpolation are gone, and only the driver's CPU side and the GPU remain. If the replay runs
 far faster than 30 fps, the GL side has headroom at the cap. This is not a GPU timing, because
