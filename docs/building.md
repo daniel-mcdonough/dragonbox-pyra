@@ -796,8 +796,18 @@ device trees in the same build are unchanged. The node it replaces lives in
 node of the same name with a different period and different pins. The first
 build of this patch copied the wrong one, and dtc caught it.
 
-Installed in `l1` and booted twice on 2026-09-26; `l4` (`m4`) stays the
-default. What to expect on it:
+Installed in `l1` and booted twice on 2026-09-26. **Since then it is the
+default**: it has its own entry, `l5` (a copy of the `l1` entry, the same way
+`m4` got `l4`), and `l5` is the base kernel that `pyra-boot-kernel.sh stock`
+and the one-shot revert return to. `l4` (`m4`) is still there as the
+fallback: `sudo pyra-boot-kernel.sh base l4 && sudo pyra-boot-kernel.sh stock`.
+
+`l1` and `l5` boot the same files. The next test kernel installed into `l1`
+repoints `l1` and leaves `l5` alone. But the removal commands the installer
+prints for `l1` would delete `l5`'s kernel while it is still `5.6.19-m4-kbdled`,
+so don't run them for that release.
+
+What to expect on it:
 
 - The Fn keyboard-brightness keys do nothing. `pyra-brightkey.sh`
   hard-codes `/sys/class/backlight/keyboard-backlight`, which is gone.
