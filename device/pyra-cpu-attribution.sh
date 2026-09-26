@@ -95,7 +95,11 @@ BUSY=$(( B1 - B0 ))
 TOTAL=$(( T1 - T0 ))
 [ "$BUSY" -gt 0 ] || { echo "machine was idle throughout"; exit 0; }
 
-sort -k1,1n "$RAW" | awk '
+# $RAW is appended in time order, so the first and last line per pid are the ends of the
+# window. Do not sort it: sort is not stable, ties on the pid fall back to comparing the
+# whole line as text, and a process whose tick count crosses a digit (9999 -> 10000)
+# gets its ends swapped and drops out as idle. That hid soh.elf itself on 2026-09-26.
+awk '
 {
 	pid = $1; t = $2; comm = $3
 	for (i = 4; i <= NF; i++) comm = comm " " $i
@@ -103,7 +107,7 @@ sort -k1,1n "$RAW" | awk '
 	last[pid] = t
 }
 END { for (p in last) if (last[p] - first[p] > 0) print last[p] - first[p], p, name[p] }
-' | sort -rn > "$RAW.agg"
+' "$RAW" | sort -rn > "$RAW.agg"
 
 ACCOUNTED=$(awk '{s+=$1} END{print s+0}' "$RAW.agg")
 
