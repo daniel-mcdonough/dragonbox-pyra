@@ -15,6 +15,10 @@ IMAGE=soh-pyra-cross
 [[ -d "$SRC/.git" ]] || git clone --branch "$APITRACE_TAG" --depth 1 --recurse-submodules \
     --shallow-submodules https://github.com/apitrace/apitrace.git "$SRC"
 
+# The DDK's DRI3 WSEGL aborts in eglWaitNative, which eglretrace's X11 code calls.
+git -C "$SRC" apply --check "$HERE/apitrace-pyra-waitnative.patch" 2>/dev/null &&
+    git -C "$SRC" apply "$HERE/apitrace-pyra-waitnative.patch"
+
 run() {
   docker run --rm -i --user "$(id -u):$(id -g)" -e HOME=/tmp \
     -v "$SRC:/apitrace" -v "$HERE:/tools" -w /apitrace "$IMAGE" "$@"

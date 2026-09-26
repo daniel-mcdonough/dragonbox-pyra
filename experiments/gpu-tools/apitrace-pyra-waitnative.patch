@@ -1,0 +1,40 @@
+diff --git a/retrace/glws_egl_xlib.cpp b/retrace/glws_egl_xlib.cpp
+index 65b500a..f8e7417 100644
+--- a/retrace/glws_egl_xlib.cpp
++++ b/retrace/glws_egl_xlib.cpp
+@@ -116,7 +116,7 @@ public:
+         const char *name = "eglretrace";
+         window = createWindow(visinfo, name, width, height);
+ 
+-        eglWaitNative(EGL_CORE_NATIVE_ENGINE);
++        XSync(display, False); // pyra: the DDK's DRI3 WSEGL aborts in eglWaitNative
+ 
+         EGLConfig config = static_cast<const EglVisual *>(visual)->config;
+         surface = eglCreateWindowSurface(eglDisplay, config, (EGLNativeWindowType)window, NULL);
+@@ -126,7 +126,7 @@ public:
+         eglDestroySurface(eglDisplay, surface);
+         eglWaitClient();
+         XDestroyWindow(display, window);
+-        eglWaitNative(EGL_CORE_NATIVE_ENGINE);
++        XSync(display, False); // pyra: the DDK's DRI3 WSEGL aborts in eglWaitNative
+     }
+ 
+     void
+@@ -185,7 +185,7 @@ public:
+ 
+         resizeWindow(window, w, h);
+ 
+-        eglWaitNative(EGL_CORE_NATIVE_ENGINE);
++        XSync(display, False); // pyra: the DDK's DRI3 WSEGL aborts in eglWaitNative
+ 
+         /*
+          * Some implementations won't update the backbuffer unless we recreate
+@@ -218,7 +218,7 @@ public:
+ 
+         showWindow(window);
+ 
+-        eglWaitNative(EGL_CORE_NATIVE_ENGINE);
++        XSync(display, False); // pyra: the DDK's DRI3 WSEGL aborts in eglWaitNative
+ 
+         Drawable::show();
+     }

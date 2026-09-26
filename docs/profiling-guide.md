@@ -277,10 +277,14 @@ tools rather than as performance instruments.
 **`gprof`** requires instrumentation and distorts small functions. `perf` is
 better in every case here.
 
-**GPU profiling: there is none.** No PVRTune, no frame debugger, no
-`GL_KHR_debug` output of use beyond error reporting. `GL_EXT_occlusion_query_boolean`
-and timer-free A/B are what you have. This is a real limitation and it is why
-`gpu-optimization.md` leans on A/B experiments rather than on traces.
+**GPU profiling: PVRTune works.** This section used to say there was none. Nobody had tried it.
+Imagination's legacy "PVRTune for SGX" (SDK 17.1) server runs on the stock `5.6.19-m4` kernel
+and DDK and streams HWPerf data: TA and 3D start/end per kick, tiler and renderer utilisation,
+vertex and pixel load, HSR efficiency, memory traffic. apitrace (EGL/GLES2) records a game's
+call stream on the device and replays it on the desktop as a frame debugger. Both are set up
+in `experiments/gpu-tools/`, with the first measurement: Ship of Harkinian's GPU is ~20% busy
+at its 30 fps cap. There are still no GL timer queries, and no in-process GPU timings beyond
+`GL_EXT_occlusion_query_boolean`.
 
 ---
 
