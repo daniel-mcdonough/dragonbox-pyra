@@ -13,6 +13,7 @@
 #   ./pyra-crossbuild.sh kernel-m4           the fix kernel plus the M4 stack
 #   ./pyra-crossbuild.sh kernel-m4-uprobe    the same, plus user-space probes
 #   ./pyra-crossbuild.sh kernel-m4-uprobe-kprobe  the same, first with 0033, plus PM debug
+#   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -381,6 +382,16 @@ build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 	"$M4_PATCHES" src-m4-uprobe-kprobe \
 	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"; }
 
+# kernel-m4-uprobe-kprobe with the keyboard light declared as an LED
+# (pyra::kbd_backlight) instead of a second backlight, so that desktop
+# software finds only the panel in /sys/class/backlight
+# (experiments/kbd-led, reports/pyra-kernel-kbd-backlight.md). It moves the
+# keyboard light's sysfs path, so userspace that hard-codes
+# /sys/class/backlight/keyboard-backlight stops reaching it on this kernel.
+build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
+	"$M4_PATCHES $SELF_DIR/../experiments/kbd-led" src-m4-kbdled \
+	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"; }
+
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
 	kernel)       shift; build_kernel "$@" ;;
@@ -392,5 +403,6 @@ case "${1:-}" in
 	kernel-m4)    shift; build_kernel_m4 ;;
 	kernel-m4-uprobe) shift; build_kernel_m4_uprobe ;;
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe" ;;
+	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled" ;;
 esac

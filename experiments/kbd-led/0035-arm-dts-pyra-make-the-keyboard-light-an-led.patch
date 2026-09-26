@@ -1,0 +1,53 @@
+From: pyra-backlight <pyra-backlight@example.invalid>
+Subject: [PATCH] ARM: dts: pyra v5.3: make the keyboard light an LED
+
+The keyboard light is a pwm-backlight, so /sys/class/backlight holds both
+the panel and the keyboard, and desktop software that picks "the"
+backlight by taking the first entry drives the keyboard. Declare it as a
+pwm-leds LED named pyra::kbd_backlight instead, the convention UPower and
+systemd-backlight look for. Same PWM, period and pins.
+
+Only the Pyra V5.3 board file changes; pyra-mainboard-common.dtsi keeps
+the backlight node for the other board revisions.
+
+---
+--- a/arch/arm/boot/dts/omap5-letux-cortex15-v5.3+pyra-v5.3.dts
++++ b/arch/arm/boot/dts/omap5-letux-cortex15-v5.3+pyra-v5.3.dts
+@@ -68,3 +68,37 @@
+ 	status = "okay";
+ 	memory-region = <&dsp_memory_region>;
+ };
++
++/*
++ * The keyboard light as an LED rather than a second backlight.
++ *
++ * pyra-mainboard-common.dtsi declares it as a pwm-backlight, which puts
++ * keyboard-backlight next to the panel in /sys/class/backlight. Desktop
++ * software treats that class as "the screen" and takes the first entry
++ * when it cannot tell which is which; MATE takes the keyboard. The
++ * convention for keyboard lights is an LED named *::kbd_backlight, which
++ * UPower and systemd-backlight both look for by that name.
++ *
++ * Same PWM, period (8.3 kHz) and pins as the backlight node. max-brightness
++ * is 100 so that brightness is the duty cycle in percent, the scale of the
++ * old brightness-levels table (0 1 2 5 10 20 40 60 100); pwm-leds is
++ * linear, so userspace that wants those nine steps steps through them
++ * itself. pwm-leds in 5.6 has no default brightness, so the light starts
++ * off rather than at the old 5% until systemd-backlight restores the saved
++ * level.
++ */
++/ {
++	/delete-node/ keyboard-backlight;
++
++	keyboard-leds {
++		compatible = "pwm-leds";
++		pinctrl-names = "default";
++		pinctrl-0 = <&pyra_keyboard_backlight_pins>;
++
++		keyboard {
++			label = "pyra::kbd_backlight";
++			pwms = <&pwm8 0 120000 0>;
++			max-brightness = <100>;
++		};
++	};
++};

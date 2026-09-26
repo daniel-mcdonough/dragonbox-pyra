@@ -775,6 +775,48 @@ kernel that is 17 MB of 54, the other 36 being modules bound for the root
 filesystem. It now measures each half against the filesystem it actually lands
 on, and checks the root one too, which nothing did before.
 
+## The keyboard-LED kernel
+
+`5.6.19-m4-kbdled` is `5.6.19-m4-uprobe-kprobe` (same patches, same config,
+checked by diff) plus one device-tree change,
+`experiments/kbd-led/0035-arm-dts-pyra-make-the-keyboard-light-an-led.patch`.
+The change declares the keyboard light as a `pwm-leds` LED,
+`/sys/class/leds/pyra::kbd_backlight`, instead of a second `pwm-backlight`.
+With that, `/sys/class/backlight` holds only the panel, and desktop software
+stops finding the keyboard when it looks for the screen. The why, the
+measurements and what it breaks are in `reports/pyra-kernel-kbd-backlight.md`.
+
+    ./pc/pyra-crossbuild.sh kernel-m4-kbdled
+    ./pc/pyra-push-kernel.sh --install --tarball ~/git/dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz
+
+It changes only the V5.3 board file,
+`omap5-letux-cortex15-v5.3+pyra-v5.3.dts`, so the other board revisions'
+device trees in the same build are unchanged. The node it replaces lives in
+`pyra-mainboard-common.dtsi`, not in `letux-lc15-evm-v1.0.dtsi`, which has a
+node of the same name with a different period and different pins. The first
+build of this patch copied the wrong one, and dtc caught it.
+
+Installed in `l1` and booted twice on 2026-09-26; `l4` (`m4`) stays the
+default. What to expect on it:
+
+- The Fn keyboard-brightness keys do nothing. `pyra-brightkey.sh`
+  hard-codes `/sys/class/backlight/keyboard-backlight`, which is gone.
+  The `pyra-backlight` 0.2 applet drives the LED, in the same nine steps as
+  before.
+- MATE's power manager now reaches the keyboard light through UPower and
+  applies its stock keyboard settings: it dims the light on battery and on
+  idle.
+- The light starts off on the first boot, and after that systemd restores
+  the saved level.
+- `palmas-gpadc` logs one failed conversion about 26 s into every boot of
+  this kernel, and did not on the five boots before it. Not traced; the ADC
+  reads normally afterwards.
+
+To make room for it in `/boot`, the files of `5.6.19-m4-uprobe` were removed
+there. No boot entry used them any more, and
+`~/git/dragonbox-pyra-build/kernel/m4-uprobe-kernel.tar.gz` reinstalls them.
+Its modules are still in `/usr/lib/modules`.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card
