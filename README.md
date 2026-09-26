@@ -81,6 +81,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Buy a card, write the image, apply the fixes offline, boot, verify. Start here. |
 | [docs/reproduce.md](docs/reproduce.md) | Get from a blank card to the exact state described here, including the patched kernel. |
+| [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card on the X220 in ten minutes, and restore it (tested). |
 | [docs/fixes.md](docs/fixes.md) | The eleven fixes, what each one is for, and the diagnosis behind it. |
 | [docs/power-testing.md](docs/power-testing.md) | How to measure power on the battery gauge, what has been measured, the pitfalls, and the runs still to do. |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |

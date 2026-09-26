@@ -94,8 +94,8 @@ Everything on the target card is destroyed.
    - writes the first 1 MiB and confirms the partition table matches `.sfdisk`;
    - writes the boot partition;
    - runs `mkfs.f2fs -l rootfs -O encrypt -U 93b4acaf-…` on p2;
-   - untars the root with numeric owners, xattrs and ACLs (file capabilities, e.g.
-     on `ping`, live in xattrs);
+   - untars the root with numeric owners, xattrs and ACLs (file capabilities, such as
+     `gst-ptp-helper`'s, live in xattrs);
    - runs `fsck.f2fs`.
 
    It stops at the first failure.
