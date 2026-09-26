@@ -1,11 +1,11 @@
 #!/bin/sh
 # Build pvrsrvkm with 0034 for a kernel variant (default 5.6.19-m4-uprobe-kprobe; set
-# PYRA_KERNEL_SUFFIX=m4 for the default boot kernel), without touching that
+# PYRA_KERNEL_SUFFIX=m4-kbdled for the default boot kernel), without touching that
 # kernel's source for good: the patch goes on, the module builds, the patch comes off.
 # The result is loaded by hand (insmod from a path) and is never installed, so a reboot or
 # `modprobe -r` + `modprobe` puts the stock module back.
 #   ./build-module.sh            -> pvrsrvkm-apm.ko next to this script
-#   PYRA_KERNEL_SUFFIX=m4 ./build-module.sh   the same, for 5.6.19-m4
+#   PYRA_KERNEL_SUFFIX=m4-kbdled ./build-module.sh   the same, for 5.6.19-m4-kbdled
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
