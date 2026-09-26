@@ -1,13 +1,15 @@
 #!/bin/sh
-# Build pvrsrvkm with 0034 for the 5.6.19-m4-uprobe-kprobe kernel, without touching that
+# Build pvrsrvkm with 0034 for a kernel variant (default 5.6.19-m4-uprobe-kprobe; set
+# PYRA_KERNEL_SUFFIX=m4 for the default boot kernel), without touching that
 # kernel's source for good: the patch goes on, the module builds, the patch comes off.
 # The result is loaded by hand (insmod from a path) and is never installed, so a reboot or
 # `modprobe -r` + `modprobe` puts the stock module back.
 #   ./build-module.sh            -> pvrsrvkm-apm.ko next to this script
+#   PYRA_KERNEL_SUFFIX=m4 ./build-module.sh   the same, for 5.6.19-m4
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
-SUFFIX=m4-uprobe-kprobe
+SUFFIX=${PYRA_KERNEL_SUFFIX:-m4-uprobe-kprobe}
 SRC=src-$SUFFIX
 PATCH=0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch
 KO=drivers/gpu/drm/pvrsgx/1.14.3699939/eurasia_km/pvrsrvkm_omap5_sgx544_116.ko
