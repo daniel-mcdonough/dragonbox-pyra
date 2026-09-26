@@ -1,5 +1,60 @@
 # Where the power goes while a game runs
 
+## 2026-09-26: the lowest clock that holds the game
+
+`./thermcost.sh clock` on `5.6.19-m4-kbdled` #10 (keyboard backlight in
+`/sys/class/leds/pyra::kbd_backlight`, GPU runtime suspend working: suspended
+71% of uptime at the desktop), on battery, screen backlight 5, keyboard
+backlight 12/100, wifi on. The load is SoH's Market fixture with game logic
+running (`SOH_BENCH_STATIC=0`, fixed camera) at the game's frame cap. Watts are
+from ABBA 60 s blocks inside one game process (first 15 s dropped, n = 4 blocks
+per arm); die temperatures from 10-minute holds (last 3 minutes; the slope over
+the last 5 is ≤0.2 °C/min in every hold). fps is the game's own count per ~5 s
+window (`thermcost-clock-split.log`). `python3 thermclock.py .` reproduces every
+number below from the files here (`thermcost-clock-summary.txt`).
+
+| arm | ABBA watts | Δ W (t) | hold watts | cpu / gpu / core °C | frames lost at the Market |
+| --- | --- | --- | --- | --- | --- |
+| desktop idle, ondemand | | | 2.62 | 47 / 50 / 49 | |
+| 30 fps, 1000 MHz | 4.352 | reference | 4.43 (4.39 at the end) | 67.7 / 69.9 / 67.5 (67.8 at the end) | 1.0% |
+| 30 fps, 875 MHz | 4.179 | −0.173 (−51) | not held | | 1.4% |
+| 30 fps, 750 MHz | 4.016 | −0.336 (−73) | 4.03 | 65.0 / 67.7 / 65.1 | **3.9%** (28.8 fps) |
+| 20 fps, 750 MHz | 3.712 | reference | 3.73 | 62.1 / 64.9 / 62.8 | 0.6% |
+| 20 fps, 625 MHz | 3.597 | −0.115 (−10.5) | not held | | 0.8% |
+| 20 fps, 500 MHz | 3.504 | −0.208 (−35) | 3.51 | 59.5 / 62.7 / 60.6 | **2.4%** (19.5 fps) |
+
+The 30 and 20 fps runs are separate game processes, so the step between them
+is from the holds only: at 750 MHz, 20 fps is −0.30 W and −2.9 °C against 30.
+The last hold repeated the first (30 fps, 1000 MHz) after 70 minutes and read
+−0.04 W and +0.1 °C, so the holds are comparable.
+
+**What it says**
+
+- **The game costs 1.8 W above the desktop at 30 fps and 1000 MHz.** The
+  cheapest arm that holds 20 fps, 750 MHz, cuts that to 1.1 W, and 500 MHz
+  halves it (0.9 W). Die temperature follows at 7-9 °C per watt: 67.7 °C at
+  30/1000, 65.0 at 30/750, 62.1 at 20/750, 59.5 at 20/500.
+- **At 30 fps the clock is worth 0.17 W per 125 MHz step (≈ 1.2 °C).**
+  875 MHz holds the Market (1.4% lost against 1.0% at 1000); 750 does not
+  (3.9%, every window under 29.5 fps), even though the render thread averages
+  only 19.2 ms per frame there: the tick runs logic, then 1.5 frames, then
+  waits on the swap, and the busy windows (p95 40 ms per 50 ms tick) miss vsync.
+- **Dropping to 20 fps is worth more than any clock step at 30**: −0.30 W at
+  the same clock, and it lets the clock go to 625-750 MHz with fewer frames lost
+  than 30 fps at 1000. 500 MHz at 20 fps loses 2.4%.
+- **Render CPU scales slightly less than the clock** (×1.28 from 1000 to 750
+  MHz, ×1.46 from 750 to 500), as it should with memory stalls.
+- **The idle floor has dropped**: 2.62 W and 47-50 °C at the desktop, against
+  3.75 W and 56-60 °C on 2026-09-25. Two things changed: the GPU now runtime-
+  suspends (it never did before, section below), and both backlights are lower.
+  This run did not separate the two.
+- The fixture is the Market with a fixed camera. Whether 875 MHz holds 30 fps in
+  real play is still to be checked in the heavy scenes (Shipwright report 08
+  §8.43: the Market, Kokiri Forest, Hyrule Field).
+
+## 2026-09-25: the first run
+
+
 Measured on 2026-09-25 on `5.6.19-m4`, on battery, with Ship of Harkinian's
 Market fixture as the load: game logic running, 30 fps cap, 640×360. The only
 instrument this machine has is the battery gauge
@@ -20,6 +75,9 @@ starting. `thermcost.csv` holds one row per second.
 | SoH, 1250 MHz (warm-up, then the 1.5 GHz blocks after the daemon capped them) | 5.58–5.82 W | 69–74 / 71–76 / 69–73 |
 | SoH, 1000 MHz | 5.37–5.45 W | 70–73 / 72–74 / 70–72 |
 | idle again after the game, pinned 1250 MHz | 4.23 W | 66 / 69 / 67 |
+
+(The keyboard backlight values below are the old 0-8 scale of
+`/sys/class/backlight/keyboard-backlight`; the kbdled kernels use `leds`, 0-100.)
 
 Screen backlight 7/15 and keyboard backlight 8/8 throughout, except in the
 two backlight arms:
@@ -73,7 +131,7 @@ this, but the idle-versus-game rows are at different temperatures. The
 sampler itself forks about a dozen `cat`s a second, which is a small constant
 load on every arm.
 
-## The GPU never powers down (added the same day)
+## The GPU never powers down (added the same day; fixed by 2026-09-26 in m4-kbdled #10, where it runtime-suspends)
 
 Sampled at 200 Hz for 15 s at desktop idle, with no GL client running, using
 `experiments/gpu-clock/`'s register access (TRM addresses):

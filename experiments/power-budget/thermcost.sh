@@ -1,27 +1,45 @@
 #!/bin/sh
 # Where does the power go while SoH runs? Runs entirely on the device so that dropping USB
 # networking (to get the gauge off USB power) does not stop it. Needs the machine on battery.
-# Output: thermcost.csv (one row a second) and thermcost.log (phase changes).
+#
+#   ./thermcost.sh [cost]   2026-09-25: idle floor, CPU clock 1000/1500, both backlights (README)
+#   ./thermcost.sh clock    2026-09-26: the lowest clock that holds the game (Shipwright NEXT.md 0T):
+#                           ABBA watts at 30 fps (1000/875/750) and 20 fps (750/625/500), then
+#                           10-minute holds for die temperature
+#
+# SOH_DIR: the SoH install to run (default: this script's directory). Output lands next to the
+# script: thermcost[-MODE].csv (one row a second), .log (phase changes), -run*.log (the game's log,
+# with a BENCH split line every 100 ticks: fps, render CPU, clock).
 set -u
+MODE=${1:-cost}
 DIR=$(cd "$(dirname "$0")" && pwd)
+SOH_DIR=${SOH_DIR:-$DIR}
 PS=/sys/class/power_supply/bq27421-0
 CPU=/sys/devices/system/cpu/cpu0/cpufreq
 BL=/sys/class/backlight/backlight/brightness
+# The keyboard backlight moved from the backlight class to leds in the kbdled kernels.
 KBL=/sys/class/backlight/keyboard-backlight/brightness
-CSV=$DIR/thermcost.csv
-LOG=$DIR/thermcost.log
+[ -e "$KBL" ] || KBL=/sys/class/leds/pyra::kbd_backlight/brightness
+SUF=; [ "$MODE" = cost ] || SUF=-$MODE
+CSV=$DIR/thermcost$SUF.csv
+LOG=$DIR/thermcost$SUF.log
+CFG=$SOH_DIR/shipofharkinian.json
 PHASE=start
 
 BL0=$(cat $BL); KBL0=$(cat $KBL); GOV0=$(cat $CPU/scaling_governor)
+# A killed run can leave the A/B CVar saved in the game's config: keep a copy to put back.
+cp "$CFG" "$DIR/thermcost-cfg.json" 2>/dev/null
+stop_soh() { pkill -x soh.elf 2>/dev/null; sleep 3; pkill -9 -x soh.elf 2>/dev/null; sleep 1; }
 restore() {
-  pkill -x soh.elf 2>/dev/null; sleep 3; pkill -9 -x soh.elf 2>/dev/null
+  stop_soh
   for p in /sys/devices/system/cpu/cpu*/cpufreq; do
     [ -e "$p/scaling_governor" ] || continue
     sudo sh -c "echo $GOV0 > $p/scaling_governor"
   done
-  sudo sh -c "echo $BL0 > $BL"; sudo sh -c "echo $KBL0 > $KBL"
+  sudo sh -c "echo $BL0 > $BL"; sudo sh -c "echo $KBL0 > '$KBL'"
+  [ -e "$DIR/thermcost-cfg.json" ] && cp "$DIR/thermcost-cfg.json" "$CFG"
   kill "$SAMPLER" 2>/dev/null
-  echo "$(date +%s) done, restored gov=$GOV0 bl=$BL0 kbl=$KBL0" >> "$LOG"
+  echo "$(date +%s) done, restored gov=$GOV0 bl=$BL0 kbl=$KBL0 cfg" >> "$LOG"
 }
 trap restore EXIT INT TERM
 
@@ -38,6 +56,24 @@ ondemand() {
     sudo sh -c "echo ondemand > $p/scaling_governor"
   done
 }
+# The Market fixture, logic running, the game's frame cap. $1: a name for the run's files;
+# $2 (optional): InterpolationFPS, applied through the harness's A/B CVar with one value.
+start_soh() {
+  fps_env=
+  [ -n "${2:-}" ] && fps_env="SOH_BENCH_AB_CVAR=gSettings.InterpolationFPS SOH_BENCH_AB_VALUES=$2,$2 SOH_BENCH_REPS=1"
+  (cd "$SOH_DIR" && env SDL_VIDEO_X11_FORCE_EGL=1 \
+    SDL_VIDEO_GL_DRIVER=/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1 DISPLAY=:0 \
+    SOH_BENCH=1 SOH_BENCH_OUT="$DIR/thermcost-bench-$1.txt" SOH_BENCH_ENTRANCE=0x00B1 \
+    SOH_BENCH_POS=-122.7,0.0,72.1 SOH_BENCH_YAW=0xD5A6 SOH_BENCH_EYE=0.0,64.0,0.0 \
+    SOH_BENCH_AT=-134.5,64.0,79.0 SOH_BENCH_SETTLE=400 SOH_BENCH_STATIC=0 SOH_BENCH_UNCAP=0 \
+    SOH_BENCH_FRAMES=200000 SOH_BENCH_SPLIT=100 SOH_BENCH_EXIT=0 $fps_env \
+    nohup ./soh.elf > "$DIR/thermcost-run-$1.log" 2>&1 < /dev/null &)
+}
+# ABBA blocks of 60 s over a list of clocks in kHz: "a b c" runs a b c c b a.
+abba() {
+  rev=; for f in "$@"; do rev="$f $rev"; done
+  for f in "$@" $rev; do setspeed "$f"; phase "$PREFIX-$((f/1000))"; sleep 60; done
+}
 
 : > "$LOG"
 echo "t,phase,current_ua,voltage_uv,cpu_mc,gpu_mc,core_mc,batt_dc,cur_khz,bl,kbl,online" > "$CSV"
@@ -48,7 +84,7 @@ phase start
       "$(cat $PS/current_now)" "$(cat $PS/voltage_now)" \
       "$(cat /sys/class/thermal/thermal_zone0/temp)" "$(cat /sys/class/thermal/thermal_zone1/temp)" \
       "$(cat /sys/class/thermal/thermal_zone2/temp)" "$(cat $PS/temp)" "$(cat $CPU/scaling_cur_freq)" \
-      "$(cat $BL)" "$(cat $KBL)" "$(cat /sys/class/power_supply/bq24297/online)" >> "$CSV"
+      "$(cat $BL)" "$(cat "$KBL")" "$(cat /sys/class/power_supply/bq24297/online)" >> "$CSV"
     sleep 1
   done
 ) &
@@ -59,6 +95,34 @@ phase wait-unplug
 while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done
 sleep 20
 
+if [ "$MODE" = clock ]; then
+  # 1. Idle floor at the two ends of the range the game will use.
+  ondemand;        phase idle-ondemand; sleep 120
+  setspeed 1000000; phase idle-1000;    sleep 90
+  setspeed 500000;  phase idle-500;     sleep 90
+
+  # 2. 30 fps: warm at 1000, watts by clock (ABBA twice), then holds for temperature.
+  setspeed 1000000; start_soh fps30; phase soh30-warm; sleep 240
+  PREFIX=soh30; abba 1000000 875000 750000; abba 1000000 875000 750000
+  setspeed 1000000; phase hold30-1000; sleep 600
+  setspeed 750000;  phase hold30-750;  sleep 600
+
+  # 3. 20 fps: the same process can't switch, so restart with InterpolationFPS=20.
+  stop_soh
+  setspeed 750000; start_soh fps20 20; phase soh20-warm; sleep 60
+  phase hold20-750; sleep 600
+  setspeed 500000; phase hold20-500; sleep 600
+  PREFIX=soh20; abba 750000 625000 500000; abba 750000 625000 500000
+
+  # 4. Back to 30 fps at 1000: how far the die drifted over the run for the same load.
+  stop_soh
+  setspeed 1000000; start_soh fps30b; phase hold30-1000b; sleep 600
+  stop_soh
+  phase idle-hot-1000; sleep 120
+  phase end
+  exit 0
+fi
+
 # 1. Idle floor: desktop, screen as the user has it, governor as shipped.
 ondemand
 phase idle-ondemand;  sleep 150
@@ -67,13 +131,7 @@ phase idle-1250;      sleep 90
 
 # 2. The game: Market fixture, logic running, 30 fps cap, 1250 MHz.
 setspeed 1250000
-cd "$DIR"
-SDL_VIDEO_X11_FORCE_EGL=1 SDL_VIDEO_GL_DRIVER=/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1 DISPLAY=:0 \
-  SOH_BENCH=1 SOH_BENCH_OUT="$DIR/thermcost-bench.txt" SOH_BENCH_ENTRANCE=0x00B1 \
-  SOH_BENCH_POS=-122.7,0.0,72.1 SOH_BENCH_YAW=0xD5A6 SOH_BENCH_EYE=0.0,64.0,0.0 \
-  SOH_BENCH_AT=-134.5,64.0,79.0 SOH_BENCH_SETTLE=400 SOH_BENCH_STATIC=0 SOH_BENCH_UNCAP=0 \
-  SOH_BENCH_FRAMES=100000 SOH_BENCH_SPLIT=100 SOH_BENCH_EXIT=0 \
-  nohup ./soh.elf > "$DIR/thermcost-run.log" 2>&1 < /dev/null &
+start_soh cost
 phase soh-warm;       sleep 240
 
 # 3. CPU clock, ABBA in 60 s blocks. Both arms hold 30 fps in this fixture.
@@ -90,11 +148,11 @@ sudo sh -c "echo $BL0 > $BL"
 
 # 5. Keyboard backlight: off against full, ABBA.
 for k in 0 8 8 0; do
-  sudo sh -c "echo $k > $KBL"; phase "soh-kbl-$k"; sleep 60
+  sudo sh -c "echo $k > '$KBL'"; phase "soh-kbl-$k"; sleep 60
 done
-sudo sh -c "echo $KBL0 > $KBL"
+sudo sh -c "echo $KBL0 > '$KBL'"
 
 # 6. Game gone, machine hot: the idle floor again, to see what temperature alone costs.
-pkill -x soh.elf; sleep 3; pkill -9 -x soh.elf
+stop_soh
 phase idle-hot-1250;  sleep 120
 phase end
