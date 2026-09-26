@@ -1,6 +1,18 @@
 # Undervolting the CPU operating points
 
-**Status 2026-09-26: module built, not yet loaded on the device.**
+**Status 2026-09-26: the mechanism works on the device (5.6.19-m4-kbdled). No
+stability stepping yet; nothing is left loaded.**
+
+Checked on the device:
+- `smps123` follows the table exactly at 250/500/625/750/875/1000/1250 MHz (pinned,
+  read back from the regulator). The voltage really does scale with the clock.
+- `set 625000 890000`: the rail reads 890000 uV at 625 MHz. After `restore`, 625 MHz
+  reads 900000 uV again, the module is unloaded and the governor is back on ondemand.
+- Each refusal fired with its own message: the running point, 945 mV (off the grid),
+  960 mV at 750 (above the device tree), 840 mV at 750 (more than 100 mV below it),
+  and 1250 MHz (above the limit).
+- 890 mV at 625 MHz ran for about a second at the desktop: that says nothing about
+  stability.
 
 ## Why
 
