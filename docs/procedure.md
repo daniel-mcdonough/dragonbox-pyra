@@ -334,15 +334,13 @@ and tells you whether the session really came back.
 
 **Make the screen actually dim.** MATE's own dimming adjusts the keyboard light
 rather than the panel, which is why the image ships with it disabled. The
-replacement is installed along with everything else by
-`device/pyra-install-helpers.sh`, which is the easier route. By hand, as the
-desktop user:
+replacement is `pyra-idle-dim`, in the `pyra-backlight` package, which lives in
+its own repository and also carries a panel applet for the screen and keyboard
+backlights. Build and install it:
 
-    sudo install -m 0755 device/pyra-idle-dim /usr/local/bin/
-    mkdir -p ~/.config/systemd/user
-    install -m 0644 device/pyra-idle-dim.service ~/.config/systemd/user/
-    systemctl --user daemon-reload
-    systemctl --user enable --now pyra-idle-dim.service
+    ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
+    sudo apt install ./pyra-backlight_0.1_all.deb    # on the Pyra
+    systemctl --user start pyra-idle-dim.service     # or log out and in
 
     gsettings set org.mate.session idle-delay 5      # minutes before it dims
 

@@ -899,13 +899,13 @@ root through logind:
         org.freedesktop.login1.Session SetBrightness ssu backlight backlight 6
 
 **The fix is `pyra-idle-dim`**, which names the device instead of guessing and
-goes through logind, so it needs no privileges. Install it as a user service:
+goes through logind, so it needs no privileges. It ships in the
+`pyra-backlight` package, in its own repository, which enables it as a user
+service for everyone:
 
-    sudo install -m 0755 device/pyra-idle-dim /usr/local/bin/
-    mkdir -p ~/.config/systemd/user
-    install -m 0644 device/pyra-idle-dim.service ~/.config/systemd/user/
-    systemctl --user daemon-reload
-    systemctl --user enable --now pyra-idle-dim.service
+    ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
+    sudo apt install ./pyra-backlight_0.1_all.deb    # on the Pyra
+    systemctl --user start pyra-idle-dim.service     # or log out and in
 
 It listens for the session manager's idle signal, so **the delay is whatever
 `org.mate.session idle-delay` says** and nothing in the service duplicates that

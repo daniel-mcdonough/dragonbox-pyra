@@ -42,7 +42,9 @@ fourth patch below.
 **The screen never dims.** MATE's backlight helper recognises four device
 names, none of which exist here, and falls back to the first entry it finds,
 which is the keyboard light. Every dim request has been adjusting the keyboard.
-**Fixed by `pyra-idle-dim`, which names the device instead of guessing.**
+**Fixed by `pyra-idle-dim`, which names the device instead of guessing.** It
+now ships in the `pyra-backlight` package, in its own repository, along with a
+panel applet for the screen and keyboard backlights.
 
 **Both mouse nubs died on the first suspend and stayed dead.** The device tree
 wires no interrupt to the joystick chips, so the driver polls them every 25 ms,
@@ -156,13 +158,11 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings and the idle dimmer's user service. |
+| `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings. Also removes the idle dimmer copies that earlier versions installed, which now come from the `pyra-backlight` package. |
 | `device/pyra-install-debug-kernel.sh` | Installs a built kernel beside the stock one and gives it a boot entry, without making it the default. |
 | `device/pyra-boot-kernel.sh` | Chooses which kernel boots next, since U-Boot's menu only exists on the serial console. `debug --once` gives a test kernel exactly one boot. `base <label>` sets which kernel the machine returns to, which is no longer always the distro one — its thermal behaviour stops the battery charging. |
 | `device/pyra-sleep-test.sh` | Suspends the machine with the clock armed to wake it, says whether it really came back, and names which sleep state the kernel used. |
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
-| `device/pyra-idle-dim` | Dims the screen when the session goes idle, which MATE's own version cannot do here. If the brightness is changed while the screen is dimmed, it keeps the new value on wake instead of restoring the old one. |
-| `device/pyra-brightness-applet` | A MATE panel applet with screen and keyboard backlight sliders, since MATE's own brightness applet drives the keyboard light. Click it to open the sliders: Left/Right adjust, Up/Down switch sliders, Escape closes. Scroll on the icon for the screen, Shift+scroll for the keyboard. |
 | `device/pyra-gles` | Runs a GLES2 program against the SGX driver instead of glvnd, which is otherwise what it gets and why it draws nothing. Needs no root and installs nothing. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |

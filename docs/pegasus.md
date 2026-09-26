@@ -90,9 +90,9 @@ Three rules that matter more than the feature list:
    running in the same engine as the API object. Whatever `PyraDevice` exposes,
    every theme the user ever installs can call. Enumerated actions, clamped
    ranges, no path parameter.
-2. **Backlight goes through logind, not root.** `device/pyra-idle-dim` already
-   proves the session owner can call `org.freedesktop.login1`'s `SetBrightness`
-   for its own seat, which is why it needs no privilege and no setuid helper —
+2. **Backlight goes through logind, not root.** `pyra-idle-dim`, now in the
+   `pyra-backlight` package, already proves the session owner can call
+   `org.freedesktop.login1`'s `SetBrightness` for its own seat, which is why it needs no privilege and no setuid helper —
    it even takes the device name as a parameter, so the keyboard light is the
    same call. Reuse it, with `QT += dbus`. The one condition is that the caller
    has to be in the active graphical session, which a launcher is and an ssh

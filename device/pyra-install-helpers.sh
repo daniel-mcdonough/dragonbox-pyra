@@ -10,11 +10,11 @@
 # Copy the repository onto the device and run this from inside its `device`
 # directory. Everything it touches lives under /usr/local, /etc/sysctl.d or
 # the calling user's own systemd directory, so nothing here fights a Debian
-# package or survives a reinstall of one. The exception is the brightness
-# applet's two registration files, which go under /usr/share because that is
-# the only place mate-panel looks for applets. Their names are ours, so no
-# package owns or overwrites them. It also installs one Debian package the
-# applet needs, gir1.2-matepanelapplet-4.0, if it is missing.
+# package or survives a reinstall of one.
+#
+# The idle dimmer and the brightness applet are no longer here. They are the
+# pyra-backlight package, in its own repository. This removes any copies an
+# earlier run of it left behind, since those would shadow the package's.
 #
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does not apply the six card fixes
@@ -60,11 +60,7 @@ pyra-m4-check.sh                    /usr/local/sbin                    0755
 pyra-m4-run.sh                      /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
-pyra-idle-dim                       /usr/local/bin                     0755
 pyra-gles                           /usr/local/bin                     0755
-pyra-brightness-applet              /usr/local/libexec                 0755
-org.pyra.BrightnessApplet.mate-panel-applet  /usr/share/mate-panel/applets  0644
-org.mate.panel.applet.PyraBrightnessAppletFactory.service  /usr/share/dbus-1/services  0644
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
@@ -76,8 +72,6 @@ if [ "$DRYRUN" = 2 ]; then
 		[ -n "$src" ] || continue
 		printf '%-42s %s\n' "$src" "$dst/$(basename "$src")"
 	done <<<"$MAP"
-	echo
-	echo "pyra-idle-dim.service                      ~/.config/systemd/user/ (per user)"
 	echo
 	echo "The two .c files are sources and are installed as sources. Each one"
 	echo "carries its own compile line in its header comment; both need"
@@ -99,17 +93,11 @@ while read -r src dst mode; do
 	[ -r "$HERE/$src" ] || missing="$missing $src"
 done <<<"$MAP"
 [ -z "$missing" ] || die "not run from a complete checkout; missing:$missing"
-[ -r "$HERE/pyra-idle-dim.service" ] || die "pyra-idle-dim.service is missing"
 note "all payloads present in $HERE"
 
-# The user whose desktop session gets the dimmer. Under sudo this is the
-# person who typed the command, not root.
+# The user whose old per-user idle dimmer unit gets cleaned up. Under sudo
+# this is the person who typed the command, not root.
 TARGET_USER=${SUDO_USER:-}
-if [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = root ]; then
-	note "no non-root invoking user, so the idle dimmer will not be enabled"
-else
-	note "desktop helper will be enabled for: $TARGET_USER"
-fi
 
 # ------------------------------------------------------------------- install
 say "installing"
@@ -131,18 +119,6 @@ while read -r src dst mode; do
 	fi
 	changed=1
 done <<<"$MAP"
-
-# ------------------------------------------------------------ applet package
-say "the brightness applet's bindings"
-PKG=gir1.2-matepanelapplet-4.0
-if dpkg -s "$PKG" >/dev/null 2>&1; then
-	note "$PKG already installed"
-elif [ "$DRYRUN" = 1 ]; then
-	note "would run: apt-get install $PKG"
-else
-	apt-get install -y -q "$PKG" >/dev/null || die "could not install $PKG"
-	note "installed $PKG"
-fi
 
 # --------------------------------------------------------------------- sysctl
 say "applying the capture settings"
@@ -171,37 +147,52 @@ else
 	fi
 fi
 
-# ------------------------------------------------------------- desktop helper
-say "the idle dimmer"
-if [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = root ]; then
-	note "skipped, see above"
-else
+# -------------------------------------------------- moved to pyra-backlight
+# Earlier versions of this script installed the idle dimmer and the
+# brightness applet by hand. Left in place, /usr/local/bin/pyra-idle-dim
+# comes first on the PATH and the per-user unit overrides the package's, so
+# the package would never run. The two /usr/share files carry the same names
+# as the package's, so they are only removed while no package owns them.
+say "copies now provided by the pyra-backlight package"
+gone() {
+	if [ "$DRYRUN" = 1 ]; then note "would remove $1"; else rm -f -- "$1"; note "removed $1"; fi
+}
+for f in /usr/local/bin/pyra-idle-dim /usr/local/libexec/pyra-brightness-applet; do
+	[ -e "$f" ] && gone "$f"
+done
+for f in /usr/share/mate-panel/applets/org.pyra.BrightnessApplet.mate-panel-applet \
+	/usr/share/dbus-1/services/org.mate.panel.applet.PyraBrightnessAppletFactory.service; do
+	[ -e "$f" ] && ! dpkg -S "$f" >/dev/null 2>&1 && gone "$f"
+done
+if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != root ]; then
 	home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 	uid=$(id -u "$TARGET_USER")
-	unitdir=$home/.config/systemd/user
-	if [ "$DRYRUN" = 1 ]; then
-		note "would install pyra-idle-dim.service into $unitdir and enable it"
-	else
-		install -d -m 0755 -o "$TARGET_USER" -g "$TARGET_USER" "$unitdir"
-		install -m 0644 -o "$TARGET_USER" -g "$TARGET_USER" \
-			"$HERE/pyra-idle-dim.service" "$unitdir/pyra-idle-dim.service"
-		note "installed $unitdir/pyra-idle-dim.service"
-		# A user unit is enabled by that user's own systemd, not root's.
-		# Without a live session there is nothing to talk to, which is
-		# normal over SSH before anyone has logged in at the screen.
-		if sudo -u "$TARGET_USER" \
-			XDG_RUNTIME_DIR=/run/user/$uid \
-			systemctl --user daemon-reload 2>/dev/null; then
-			sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$uid \
-				systemctl --user enable --now pyra-idle-dim.service 2>/dev/null \
-				&& note "enabled and started for $TARGET_USER" \
-				|| note "installed but could not be started; log in at the screen and run:
-     systemctl --user enable --now pyra-idle-dim.service"
+	unit=$home/.config/systemd/user/pyra-idle-dim.service
+	if [ -e "$unit" ]; then
+		if [ "$DRYRUN" = 1 ]; then
+			note "would disable and remove $unit"
 		else
-			note "installed; $TARGET_USER has no running session yet. After logging in:
-     systemctl --user enable --now pyra-idle-dim.service"
+			sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$uid \
+				systemctl --user disable --now pyra-idle-dim.service >/dev/null 2>&1 || true
+			rm -f "$home/.config/systemd/user/default.target.wants/pyra-idle-dim.service" "$unit"
+			note "disabled and removed $unit"
+			# Disabling it stopped the running dimmer. Start the
+			# package's in its place rather than wait for a login.
+			if sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$uid \
+				systemctl --user daemon-reload 2>/dev/null &&
+			   dpkg -s pyra-backlight >/dev/null 2>&1 &&
+			   sudo -u "$TARGET_USER" XDG_RUNTIME_DIR=/run/user/$uid \
+				systemctl --user start pyra-idle-dim.service 2>/dev/null; then
+				note "started the packaged pyra-idle-dim for $TARGET_USER"
+			fi
 		fi
 	fi
+fi
+if dpkg -s pyra-backlight >/dev/null 2>&1; then
+	note "pyra-backlight $(dpkg-query -W -f='${Version}' pyra-backlight) is installed"
+else
+	note "pyra-backlight is not installed; the screen will not dim on idle"
+	note "until it is. Build it from its own repository with build-deb.sh."
 fi
 
 # --------------------------------------------------------------------- verify
@@ -240,9 +231,6 @@ Done. What is now on the path:
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload
     pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
-
-The screen and keyboard brightness applet is installed but not on the panel.
-Right-click the panel, "Add to Panel...", and pick "Pyra Brightness".
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

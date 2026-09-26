@@ -1,3 +1,0 @@
-[D-BUS Service]
-Name=org.mate.panel.applet.PyraBrightnessAppletFactory
-Exec=/usr/local/libexec/pyra-brightness-applet

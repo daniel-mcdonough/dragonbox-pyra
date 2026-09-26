@@ -17,7 +17,7 @@ spine, and it points at the other documents rather than repeating them.
 | Seven fixes | Xorg, first-run wizard, nubs, GLX, USB hub, the thermal daemon's broken cap, and its ladder | `pc/pyra-trixie-prep.sh`, applied offline |
 | Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the six patches | `pc/pyra-crossbuild.sh kernel-fix` |
 | X display driver | **Stock**, unmodified, from the Pyra repository | nothing to build |
-| Helpers | Boot selector, kernel installer, suspend test, hang trap, idle dimmer, profilers, governor sweep, thermal probe and ladder fix | `pc/pyra-push-helpers.sh`, or `device/pyra-install-helpers.sh` on the device |
+| Helpers | Boot selector, kernel installer, suspend test, hang trap, profilers, governor sweep, thermal probe and ladder fix | `pc/pyra-push-helpers.sh`, or `device/pyra-install-helpers.sh` on the device |
 | Capture settings | `kernel.sysrq = 446` and all-CPU backtraces | installed with the helpers |
 
 **The display driver is not rebuilt and does not need to be.** This is worth
@@ -108,8 +108,8 @@ install map lives in `pyra-install-helpers.sh` next to the files it installs,
 and nothing else has an opinion about where they go.
 
 It puts the scripts on `$PATH`, installs the sysrq settings, installs the two
-benchmark sources under `/usr/local/src/pyra`, and enables the idle dimmer for
-the user who invoked it. `--dry-run` says what it would change and `--list`
+benchmark sources under `/usr/local/src/pyra`, and removes the idle dimmer copies
+earlier versions installed, which now come from the `pyra-backlight` package. `--dry-run` says what it would change and `--list`
 says where each file goes; both work through the pusher too. Run it again
 after a `git pull` — every step is idempotent, and a second run reports
 `same` for everything.
