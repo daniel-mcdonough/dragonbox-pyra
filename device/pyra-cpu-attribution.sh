@@ -6,6 +6,7 @@
 #   ./pyra-cpu-attribution.sh              # 60 s
 #   ./pyra-cpu-attribution.sh -d 120       # 2 minutes
 #   ./pyra-cpu-attribution.sh -d 90 -n 25  # and show the top 25
+#   ./pyra-cpu-attribution.sh -t soh.elf   # and that process's threads, by name
 #
 # Read-only. Samples /proc every second so that processes which start and exit
 # inside the window are still counted, and reports what fraction of the busy
@@ -21,13 +22,15 @@ set -u
 DURATION=60
 TOP=20
 INTERVAL=1
+THREADS=
 
 usage() { sed -n '2,/^$/s/^# \?//p' "$0"; exit "${1:-0}"; }
 
-while getopts "d:n:h" o; do
+while getopts "d:n:t:h" o; do
 	case "$o" in
 	d) DURATION=$OPTARG ;;
 	n) TOP=$OPTARG ;;
+	t) THREADS=$OPTARG ;;
 	h) usage 0 ;;
 	*) usage 1 ;;
 	esac
@@ -43,6 +46,17 @@ sys_busy() { awk '/^cpu /{t=0; for (i=2;i<=NF;i++) t+=$i; print t-$5-$6}' /proc/
 sys_total() { awk '/^cpu /{t=0; for (i=2;i<=NF;i++) t+=$i; print t}' /proc/stat; }
 # user nice system idle iowait irq softirq steal
 sys_fields() { awk '/^cpu /{print $2, $3, $4, $5, $6, $7, $8}' /proc/stat; }
+# busy and total ticks per core, "cpu0 busy total cpu1 busy total ..."
+core_fields() { awk '/^cpu[0-9]/{t=0; for (i=2;i<=NF;i++) t+=$i; printf "%s %d %d ", $1, t-$5-$6, t}' /proc/stat; }
+# utime+stime and name of every thread of process $1: "tid ticks name"
+thread_sample() {
+	awk '{
+		i = index($0, "("); j = 0
+		for (k = length($0); k > 0; k--) if (substr($0, k, 1) == ")") { j = k; break }
+		split(substr($0, j+2), f, " ")
+		print $1, f[12] + f[13], substr($0, i+1, j-i-1)
+	}' /proc/"$1"/task/[0-9]*/stat 2>/dev/null
+}
 
 # One awk per sample, not one per process: on a two-core handheld the sampler
 # must not become the workload.
@@ -62,14 +76,20 @@ sample() {
 echo "sampling $DURATION s at ${INTERVAL}s, $NCPU cores, $HZ ticks/s"
 echo
 
-B0=$(sys_busy); T0=$(sys_total); F0=$(sys_fields)
+TPID=
+if [ -n "$THREADS" ]; then
+	TPID=$(pgrep -xo "$THREADS") || { echo "no process named $THREADS"; exit 1; }
+	thread_sample "$TPID" > "$RAW.t0"
+fi
+B0=$(sys_busy); T0=$(sys_total); F0=$(sys_fields); C0=$(core_fields)
 END=$(( $(date +%s) + DURATION ))
 while [ "$(date +%s)" -lt "$END" ]; do
 	sample
 	sleep "$INTERVAL"
 done
 sample
-B1=$(sys_busy); T1=$(sys_total); F1=$(sys_fields)
+B1=$(sys_busy); T1=$(sys_total); F1=$(sys_fields); C1=$(core_fields)
+[ -n "$TPID" ] && thread_sample "$TPID" > "$RAW.t1"
 
 BUSY=$(( B1 - B0 ))
 TOTAL=$(( T1 - T0 ))
@@ -127,4 +147,29 @@ BEGIN {
 	}
 }
 '
-rm -f "$RAW.agg"
+echo
+awk -v c0="$C0" -v c1="$C1" '
+BEGIN {
+	n = split(c0, a, " "); split(c1, b, " ")
+	printf "%-40s %10s\n", "busy by core", "% busy"
+	for (i = 1; i <= n; i += 3)
+		printf "%-40s %9.1f%%\n", a[i], 100*(b[i+1]-a[i+1])/(b[i+2]-a[i+2])
+}
+'
+if [ -n "$TPID" ]; then
+	echo
+	# Threads alive at both ends; one that started or ended inside the window is left out, and
+	# counted as such.
+	awk -v hz="$HZ" -v dur="$DURATION" -v busy="$BUSY" -v name="$THREADS" -v pid="$TPID" '
+	FNR == NR { t0[$1] = $2; next }
+	{ n = $3; for (i = 4; i <= NF; i++) n = n " " $i
+	  if ($1 in t0) { d = $2 - t0[$1]; if (d > 0) printf "%d %s %s\n", d, $1, n } else gone++ }
+	END { if (gone) printf "0 - (%d threads not alive at both ends)\n", gone }
+	' "$RAW.t0" "$RAW.t1" | sort -rn | awk -v hz="$HZ" -v dur="$DURATION" -v busy="$BUSY" -v name="$THREADS" -v pid="$TPID" '
+	BEGIN { printf "%-24s %8s %10s %10s %10s\n", name " " pid ": thread", "tid", "CPU s", "% of a core", "% of busy" }
+	$2 == "-" { print; next }
+	{ n = $3; for (i = 4; i <= NF; i++) n = n " " $i
+	  printf "%-24s %8s %10.2f %9.1f%% %9.1f%%\n", n, $2, $1/hz, 100*$1/hz/dur, 100*$1/busy }
+	'
+fi
+rm -f "$RAW.agg" "$RAW.t0" "$RAW.t1"

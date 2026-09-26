@@ -227,6 +227,12 @@ turned out to change the ranking more than any single-subsystem measurement —
 it is how PulseAudio was found to cost more than the compositor and nearly as
 much as the X server, on a project that had never looked at audio.
 
+Since 2026-09-26 it also prints busy time **per core**, and `-t <process name>`
+lists that process's threads by name with their CPU over the window (as a share
+of one core and of all busy time): `-d 120 -t soh.elf` splits a game's main
+thread from its audio and driver threads. A thread that starts or exits inside
+the window is left out and counted as such.
+
 ### 3.2 Standard tools
 
 **`perf`** works. Use it.
