@@ -3,8 +3,9 @@
 ## 2026-09-26: the lowest clock that holds the game
 
 `./thermcost.sh clock` on `5.6.19-m4-kbdled` #10 (keyboard backlight in
-`/sys/class/leds/pyra::kbd_backlight`, GPU runtime suspend working: suspended
-71% of uptime at the desktop), on battery, screen backlight 5, keyboard
+`/sys/class/leds/pyra::kbd_backlight`) with the GPU idle-power module
+(`experiments/gpu-power/0034`) loaded by hand for its soak since 16:19, so the
+GPU runtime-suspends (71% of uptime at the desktop), on battery, screen backlight 5, keyboard
 backlight 12/100, wifi on. The load is SoH's Market fixture with game logic
 running (`SOH_BENCH_STATIC=0`, fixed camera) at the game's frame cap. Watts are
 from ABBA 60 s blocks inside one game process (first 15 s dropped, n = 4 blocks
@@ -46,7 +47,7 @@ The last hold repeated the first (30 fps, 1000 MHz) after 70 minutes and read
   MHz, ×1.46 from 750 to 500), as it should with memory stalls.
 - **The idle floor has dropped**: 2.62 W and 47-50 °C at the desktop, against
   3.75 W and 56-60 °C on 2026-09-25. Two things changed: the GPU now runtime-
-  suspends (it never did before, section below), and both backlights are lower.
+  suspends (the 0034 module on its soak; section below), and both backlights are lower.
   This run did not separate the two.
 - The fixture is the Market with a fixed camera. Whether 875 MHz holds 30 fps in
   real play is still to be checked in the heavy scenes (Shipwright report 08
@@ -131,7 +132,7 @@ this, but the idle-versus-game rows are at different temperatures. The
 sampler itself forks about a dozen `cat`s a second, which is a small constant
 load on every arm.
 
-## The GPU never powers down (added the same day; fixed by 2026-09-26 in m4-kbdled #10, where it runtime-suspends)
+## The GPU never powers down (added the same day; fixed by `experiments/gpu-power/0034`, on soak since 2026-09-26, not yet the default)
 
 Sampled at 200 Hz for 15 s at desktop idle, with no GL client running, using
 `experiments/gpu-clock/`'s register access (TRM addresses):
