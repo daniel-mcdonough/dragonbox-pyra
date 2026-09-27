@@ -101,6 +101,10 @@ Everything on the target card is destroyed.
    It stops at the first failure.
 5. `sync`, remove the card, and boot the Pyra. The boot menu is the one from backup
    time: l5 default, l4 fallback.
+6. Log in at the desktop as pyra and reapply the desktop settings set after the
+   backup (the power manager's popups, which knock the game out of fullscreen):
+
+       ./pyra-desktop-settings.sh          # from device/ in this repo, as pyra, not root
 
 ### By hand, if the script is not at hand
 
