@@ -28,6 +28,17 @@ default that the Pyra's 5.6 kernel cannot mount, so the restore passes
 (`/etc/fstab` says `ext4` for `/boot`, which is really ext2. That was already the
 case and is harmless: the ext4 driver mounts ext2.)
 
+## The backup of 2026-09-28 (current)
+
+On the X220, in `~/pyra-backup/`, as `pyra-card-2026-09-28-twocore.*` (same file set as below;
+root tar 2.11 GB, boot image 142 MB). Taken with `~/pyra-backup/take-2026-09-28.sh`, the
+steps under "Taking a new backup". The card's state: the 09-26 state plus SoH's two-core
+build in `~/soh-pyra`, `pyra-soh` and `pyra-cpu-pin` in `/usr/local`, and the
+`/etc/sudoers.d/pyra-cpu-pin` rule (all installed 09-28 18:14). Disk id, UUIDs and f2fs
+features (`encrypt` only) are unchanged, so the restore below works as written with
+`pyra-card-2026-09-28-twocore` as the prefix. Checked: both archives pass `zstd -t`, and the
+root tar lists the files above. Not test-restored (the 09-26 test covers the method).
+
 ## The backup of 2026-09-26
 
 On the X220, in `~/pyra-backup/`, about 2.2 GB:
