@@ -251,6 +251,11 @@ Stated so they are not mistaken for settled.
   The cause is probably that SGX buffers cannot be TILER-backed for the rotated
   plane, but that is not proven. The copy's cost is not measured either.
   `improvements.md` §6.
+- **The WiFi driver can loop in a hardware restart** and flood the kernel log with mac80211 warnings
+  (~17 stack traces a second), starving userspace until a reboot. Seen once, 2026-09-28, while idle;
+  trigger unknown, because the image's 50 MB journal cap let the storm erase it. Mitigations, none
+  applied: a larger journal, WiFi off during long sessions, power save off. `troubleshooting.md`,
+  "The WiFi driver can flood the kernel log".
 - **Whether the GPU rail can go above NOM** — see §2.5.
 - **Transparent huge pages.** One config symbol, plausible mechanism against the
   TLB, entirely unmeasured. `kernel-notes.md` §4.

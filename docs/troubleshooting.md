@@ -356,6 +356,84 @@ make `x11perf` safe to run.
 
 ---
 
+## The WiFi driver can flood the kernel log and starve the machine
+
+Seen once, on the night of 2026-09-27/28, kernel `5.6.19-m4-kbdled`, WiFi firmware Rev 8.9.0.0.83
+(PHY Rev 8.2.0.0.243), associated to the home access point with power save **on**. The machine was idle:
+the game had exited and the only traffic, ssh, went over USB ethernet. **Not reproduced**; the trigger is
+unknown.
+
+The symptoms, in the order they were noticed:
+
+- ssh on both interfaces (USB ethernet and WiFi) times out **during the banner exchange**, yet both
+  addresses answer ping in under 2 ms. The kernel is alive; userspace is not being scheduled.
+- The desktop is mostly unresponsive: the mouse does nothing. The power button still brings up MATE's
+  shutdown dialog, and the keyboard backlight still reacts to keys (the idle-dim service is alive).
+
+What the journal showed afterwards (`sudo journalctl -b -1`; the journal is readable only with sudo):
+`mac80211` in a hardware-restart loop. `ieee80211_restart_work` → `ieee80211_reconfig` →
+`cfg80211_shutdown_all_interfaces` → the station teardown on disassociation, and every step failing
+mac80211's own check:
+
+    WARNING: CPU: 1 PID: 4122 at net/mac80211/driver-ops.h:17 drv_sta_state+0x290/0x62c
+    wlan0:  Failed check-sdata-in-driver check, flags: 0x4
+    Workqueue: events_freezable ieee80211_restart_work
+
+**2,048 full stack traces in the last two minutes of the boot**, ~17 a second. That load is the likely
+reason userspace starved; not proven.
+
+**Why it happened is not known.** A hardware restart is what `wlcore` asks mac80211 for after a firmware
+failure. The first error (the firmware fault or watchdog that started it) is not in the journal, because
+the storm wrote over it (next paragraph). What is known of this chip in general, and *not* evidenced here:
+`wl18xx` firmware faults are usually a firmware watchdog, an SDIO bus error, or a power-save transition,
+and the restart path on 5.x kernels mishandles an interface that is still associated, which is this
+warning. Also noted, relevance unknown: every boot logs `Direct firmware load for
+ti-connectivity/wl18xx-conf.bin failed with error -2`, so the driver runs on its built-in default
+configuration.
+
+**The storm erased the evidence, and every earlier boot with it.** The Pyra image ships
+`/usr/lib/systemd/journald.conf.d/Pyra-maxuse.conf` with `SystemMaxUse=50M`. At ~17 traces a second
+journald rotated a fresh 6.5 MB file every ~10 s and vacuumed the oldest to stay under 50 MB, so the
+journal kept only the storm's last two minutes and `--list-boots` lost all history. There is no text
+log to fall back on either: the image forwards to syslog (`syslog.conf`, `ForwardToSyslog=yes`) but no
+syslog daemon is installed.
+
+### Recovery
+
+- **The power button's shutdown dialog works.** Its countdown ends in a normal, clean shutdown, even
+  though the dialog cannot be clicked (the mouse is dead) and could not be brought into focus from the
+  Pyra's keyboard. Let it run out. This is how the machine was recovered; it booted normally afterwards (the card was not fsck'd).
+- If ssh answers (it did not here), take the radio down, which ends the restart loop:
+  `sudo nmcli radio wifi off`, or `sudo modprobe -r wl18xx wlcore_sdio wlcore`.
+- Do not hold the power button while the card might be writing (the journal was writing 6.5 MB files
+  every ~10 s). The tested card backup is the fallback (`card-backup-restore.md`).
+
+### Mitigation (not yet applied)
+
+None of these is installed. Each changes the system image, so each is the owner's call.
+
+1. **Keep the evidence: give the journal room.** A drop-in that sorts after the image's:
+
+       # /etc/systemd/journald.conf.d/90-pyra-keep.conf
+       [Journal]
+       SystemMaxUse=1G
+       SystemMaxFileSize=64M
+
+   The root filesystem has ~109 GB free. With 1 GB the same storm would have left ~2 hours of it and the
+   boots before it, not 2 minutes. Journald does not rate-limit kernel messages (its `RateLimit*`
+   settings apply per service), so size is the lever.
+2. **Take WiFi out of long sessions.** When USB ethernet is connected, `sudo nmcli radio wifi off` for the
+   session and `on` afterwards. It removes the driver from the picture entirely. It also removes the
+   second way in that the start of this document recommends for remote reboots, so turn it back on before
+   rebooting remotely.
+3. **Turn WiFi power save off** (hypothesis: power-save transitions are one of this chip's known firmware
+   fault triggers; nothing here shows it was the trigger). Per connection:
+   `sudo nmcli connection modify <name> 802-11-wireless.powersave 2`, then reconnect. Costs some idle
+   power, not measured.
+4. **If it recurs with the journal kept:** the first `wlcore` error before the first `cut here` is the
+   trigger. Look for `wlcore: ERROR`, `firmware watchdog`, `Hardware recovery in progress`, or SDIO
+   (`mmc`) errors.
+
 ## Fixed: the machine would not sleep, and trying froze the desktop
 
 **Fixed by `patches/0003` and confirmed on hardware on 2026-09-11.** Everything
