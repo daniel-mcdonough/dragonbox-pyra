@@ -6,6 +6,8 @@
 #   ./thermcost.sh clock    2026-09-26: the lowest clock that holds the game (Shipwright NEXT.md 0T):
 #                           ABBA watts at 30 fps (1000/875/750) and 20 fps (750/625/500), then
 #                           10-minute holds for die temperature
+#   ./thermcost.sh twocore  2026-09-28: Shipwright report 11's GL thread (RenderThread 2) at 30/750
+#                           and 30/625 against mode 0 at 30/750, 30/1000 and 20/625
 #
 # SOH_DIR: the SoH install to run (default: this script's directory). Output lands next to the
 # script: thermcost[-MODE].csv (one row a second), .log (phase changes), -run*.log (the game's log,
@@ -58,9 +60,13 @@ ondemand() {
 }
 # The Market fixture, logic running, the game's frame cap. $1: a name for the run's files;
 # $2 (optional): InterpolationFPS, applied through the harness's A/B CVar with one value.
+# $3 (optional): another CVar for that one-valued A/B instead, as NAME=VALUE (only one at a time).
+# The harness applies it after the settle, in a running game: that is how gSettings.RenderThread 2
+# must be turned on (Shipwright report 11: launching with it in the config races the ImGui atlas).
 start_soh() {
   fps_env=
   [ -n "${2:-}" ] && fps_env="SOH_BENCH_AB_CVAR=gSettings.InterpolationFPS SOH_BENCH_AB_VALUES=$2,$2 SOH_BENCH_REPS=1"
+  [ -n "${3:-}" ] && fps_env="SOH_BENCH_AB_CVAR=${3%%=*} SOH_BENCH_AB_VALUES=${3#*=},${3#*=} SOH_BENCH_REPS=1"
   (cd "$SOH_DIR" && env SDL_VIDEO_X11_FORCE_EGL=1 \
     SDL_VIDEO_GL_DRIVER=/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1 DISPLAY=:0 \
     SOH_BENCH=1 SOH_BENCH_OUT="$DIR/thermcost-bench-$1.txt" SOH_BENCH_ENTRANCE=0x00B1 \
@@ -94,6 +100,44 @@ SAMPLER=$!
 phase wait-unplug
 while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done
 sleep 20
+
+if [ "$MODE" = twocore ]; then
+  # 2026-09-28, Shipwright report 11 task 2: does the GL thread (gSettings.RenderThread 2, ~+2 ms of
+  # machine CPU a frame) save watts through a lower clock? All 30 fps except the 20/625 reference.
+  RT=gSettings.RenderThread=2
+  ondemand;        phase idle-ondemand; sleep 120
+
+  # 1. Warm at 30/1000 in mode 0, then the mode itself at 750, ABBA by process (a restart per arm;
+  #    the first 60 s of each is its own phase, for the load and the settle).
+  setspeed 1000000; start_soh m0warm; phase soh30-warm; sleep 240
+  stop_soh
+  setspeed 750000
+  n=0
+  for m in 0 2 2 0; do
+    n=$((n+1))
+    if [ $m = 2 ]; then start_soh "ab$n-m2" "" "$RT"; else start_soh "ab$n-m0"; fi
+    phase "start30-750-m$m"; sleep 60
+    phase "soh30-750-m$m";   sleep 180
+    stop_soh
+  done
+
+  # 2. Mode 2 by clock, 750 against 625, ABBA twice in one process.
+  start_soh m2clk "" "$RT"; phase start30-m2; sleep 60
+  PREFIX=soh30m2; abba 750000 625000; abba 750000 625000
+  # 3. Holds for die temperature, and misses over 10 minutes (the BENCH split lines).
+  setspeed 625000; phase hold30-625-m2; sleep 600
+  setspeed 750000; phase hold30-750-m2; sleep 600
+  stop_soh
+  setspeed 1000000; start_soh m0hold; phase start30-1000-m0; sleep 30
+  phase hold30-1000-m0; sleep 600
+  stop_soh
+  setspeed 625000; start_soh fps20 20; phase start20-625-m0; sleep 30
+  phase hold20-625-m0; sleep 600
+  stop_soh
+  phase idle-hot-625; sleep 120
+  phase end
+  exit 0
+fi
 
 if [ "$MODE" = clock ]; then
   # 1. Idle floor at the two ends of the range the game will use.

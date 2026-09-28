@@ -1,5 +1,46 @@
 # Where the power goes while a game runs
 
+## 2026-09-28: the GL thread (Shipwright report 11) through a lower clock
+
+`./thermcost.sh twocore`, the same kernel, module, fixture and method as 09-26 below, but screen
+backlight 9 (the desktop idle reads 2.73 W, against 2.62 at 5). Shipwright branch
+`feature/pyra-two-core` at 30f9261 (libultraship 1b0ccaa8). `gSettings.RenderThread` 2 is set through
+the harness's one-valued A/B CVar, so it is applied after the settle in a running game (launching
+with it in the config is not safe yet, report 11). Mode 0 against mode 2 at 750 MHz is ABBA by
+process (one game per 180 s block, the first 60 s after each launch a separate phase and the next
+30 s dropped); 750 against 625 in mode 2 is ABBA in one process as on 09-26. frames lost are counted
+from the BENCH split windows after the arm is applied. `python3 thermclock.py . twocore` gives
+`thermcost-twocore-summary.txt`; the frames-lost column below drops two more windows (the arm's
+first ~10 s), which the summary's raw column does not.
+
+| arm | ABBA watts | Δ W | hold watts | cpu / gpu / core °C (hold) | frames lost at the Market |
+| --- | --- | --- | --- | --- | --- |
+| desktop idle, ondemand | | | 2.73 | 44 / 46 / 46 | |
+| 30 fps, 1000 MHz, mode 0 | | | 4.51 | 67.6 / 69.9 / 67.7 | 0.8% |
+| 30 fps, 750 MHz, mode 0 | 4.071, 4.101 | reference | not held | 58.0, 61.2 (blocks) | **4.3%, 3.2%** |
+| 30 fps, 750 MHz, mode 2 | 4.177, 4.177 | +0.091 (+0.106, +0.076) | 4.21 | 64.3 / 66.7 / 64.2 | 0.8% |
+| 30 fps, 625 MHz, mode 2 | 4.067 | −0.137 against mode 2 at 750 (t −38.6) | 4.07 | 62.3 / 64.9 / 62.7 | 1.5% (27.8 fps worst window) |
+| 20 fps, 625 MHz, mode 0 | | | 3.71 | 60.5 / 63.4 / 61.3 | 0.9% |
+
+**What it says**
+
+- **The GL thread costs 0.09 W at the same clock** (two ABBA pairs, +0.106 and +0.076 W; ~+1 °C),
+  its ~2 ms of extra machine CPU per frame. It pays only through the clock, and it does: at
+  30/750 it holds the fixture as well as mode 0 at 1000 MHz (0.8% lost against 4.3/3.2% in mode 0
+  at 750, the 09-26 run's 3.9%).
+- **Against 30 fps at 1000 MHz: 30/750 in mode 2 is −0.30 W and −3.3 °C, 30/625 in mode 2 is
+  −0.44 W and −5.3 °C** (holds; 1.5% of frames lost at 625). Mode 2 at 625 draws what mode 0 at 750
+  drew (4.07 against 4.07-4.10 W) and holds 30 fps where mode 0 at 750 did not.
+- **20 fps at 625 MHz is still 0.36 W and ~1.8 °C below the best 30 fps arm.** The design makes
+  30 fps affordable; it does not make it as cheap as 20.
+- The holds ran once each, in the order 625-m2, 750-m2, 1000-m0, 20/625, so their temperatures carry
+  the run's drift (≤0.12 °C/min over the last 5 minutes of each). 30/1000 read 4.51 W against 4.43 on
+  09-26: the brighter screen accounts for most of it (idle +0.11 W).
+- **The keyboard backlight pulses while the game runs**, 50/100 for ~9 s then 12 for ~19 s, in every
+  game phase and not at the desktop. The 09-26 run shows the same (1,480 of its samples at 50), so
+  its "keyboard backlight 12/100" is only the desktop's. It is ~0.09 W while up (~0.03 W averaged),
+  the same in every arm. What drives it is not yet known.
+
 ## 2026-09-26: the lowest clock that holds the game
 
 `./thermcost.sh clock` on `5.6.19-m4-kbdled` #10 (keyboard backlight in

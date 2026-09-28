@@ -2,12 +2,14 @@
 # Reads a `thermcost.sh clock` run: battery watts per ABBA arm (first 15 s of each 60 s block dropped),
 # die temperature and its slope per 10-minute hold, and the game's fps per clock from the BENCH split
 # lines (one per 100 ticks, ~5 s).
-# usage: thermclock.py DIR   (DIR holds thermcost-clock.csv, and thermcost-run-*.log or thermcost-clock-split.log)
+# usage: thermclock.py DIR [MODE]   (DIR holds thermcost-MODE.csv, and thermcost-run-*.log or thermcost-MODE-split.log;
+#        MODE clock by default, or twocore)
 import csv, glob, math, os, re, sys
 from collections import defaultdict
 
 D = sys.argv[1] if len(sys.argv) > 1 else '.'
-rows = list(csv.DictReader(open(os.path.join(D, 'thermcost-clock.csv'))))
+MODE = sys.argv[2] if len(sys.argv) > 2 else 'clock'
+rows = list(csv.DictReader(open(os.path.join(D, f'thermcost-{MODE}.csv'))))
 phases = []                                     # [name, [rows]] in order, one entry per block
 for r in rows:
     if r['online'] != '0': continue             # on the charger: not a battery reading
@@ -19,7 +21,7 @@ for r in rows:
              core=int(r['core_mc']) / 1000, batt=int(r['batt_dc']) / 10, khz=int(r['cur_khz']), ph=r['phase'])
     # A new block when the phase changes, or every 60 s inside an ABBA phase: the order puts the
     # middle arm's two blocks back to back under the same name.
-    abba = re.fullmatch(r'soh\d\d-\d+', r['ph'])
+    abba = re.fullmatch(r'soh\d\d(m\d)?-\d+', r['ph'])
     if (not phases or phases[-1][0] != r['ph'] or
             (abba and r['t'] - phases[-1][1][0]['t'] >= 60)):
         phases.append([r['ph'], []])
@@ -39,7 +41,7 @@ for name, rs in phases:
           f' {",".join(map(str, mhz)):>9s}')
 
 print('\n== ABBA watts (60 s blocks, first 15 s dropped) ==')
-for prefix in ('soh30', 'soh20'):
+for prefix in ('soh30', 'soh20', 'soh30m2'):
     arms = defaultdict(list)
     for name, rs in phases:
         m = re.fullmatch(prefix + r'-(\d+)', name)
@@ -55,6 +57,19 @@ for prefix in ('soh30', 'soh20'):
         t = mean(d) / (sd(d) / math.sqrt(len(d))) if len(d) > 1 and sd(d) > 0 else float('nan')
         print(f'  {f:5d} MHz  n={len(ws)}  {mean(ws):.3f} W (sd {sd(ws):.3f})  Δ {mean(d):+.3f} W  t {t:6.1f}'
               f'  cpu {mean([c for _, c in arms[f]]):.1f} °C')
+
+# twocore: the mode itself at 750 MHz, one process per 180 s block in the order m0 m2 m2 m0.
+modes = [(int(m.group(1)), rs) for name, rs in phases
+         for m in [re.fullmatch(r'soh30-750-m(\d)', name)] if m and len(rs) > 60]
+if modes:
+    print('\n== RenderThread by process at 30/750 (180 s blocks, first 30 s dropped) ==')
+    for m, rs in modes:
+        k = rs[30:]
+        print(f'  mode {m}  {mean([r["w"] for r in k]):.3f} W  cpu {mean([r["cpu"] for r in k]):.1f} °C')
+    w = defaultdict(list)
+    for m, rs in modes: w[m].append(mean([r['w'] for r in rs[30:]]))
+    if w[0] and w[2]:
+        print(f'  mode 2 - mode 0: {mean(w[2]) - mean(w[0]):+.3f} W (ABBA, one pair of pairs: no t)')
 
 print('\n== holds (10 min): last 3 min, and the slope over the last 5 ==')
 for name, rs in phases:
@@ -73,8 +88,8 @@ print('\n== the game: BENCH split windows by clock ==')
 runs = defaultdict(list)
 for f in sorted(glob.glob(os.path.join(D, 'thermcost-run-*.log'))):
     runs[os.path.basename(f)[len('thermcost-run-'):-4]] = list(open(f, errors='replace'))
-if not runs and os.path.exists(os.path.join(D, 'thermcost-clock-split.log')):
-    for line in open(os.path.join(D, 'thermcost-clock-split.log'), errors='replace'):
+if not runs and os.path.exists(os.path.join(D, f'thermcost-{MODE}-split.log')):
+    for line in open(os.path.join(D, f'thermcost-{MODE}-split.log'), errors='replace'):
         name, _, rest = line.partition(' ')
         runs[name].append(rest)
 for f, lines in runs.items():
