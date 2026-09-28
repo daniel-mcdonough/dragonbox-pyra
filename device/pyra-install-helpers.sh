@@ -61,6 +61,9 @@ pyra-m4-run.sh                      /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-gles                           /usr/local/bin                     0755
+pyra-soh                            /usr/local/bin                     0755
+pyra-cpu-pin                        /usr/local/sbin                    0755
+etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
@@ -94,6 +97,13 @@ while read -r src dst mode; do
 done <<<"$MAP"
 [ -z "$missing" ] || die "not run from a complete checkout; missing:$missing"
 note "all payloads present in $HERE"
+
+# A sudoers file that does not parse can take sudo away altogether, so it is
+# checked before anything is copied.
+for f in "$HERE"/etc/sudoers.d/*; do
+	visudo -cqf "$f" || die "$f does not parse as sudoers; nothing installed"
+done
+note "sudoers rules parse"
 
 # The user whose old per-user idle dimmer unit gets cleaned up. Under sudo
 # this is the person who typed the command, not root.
@@ -136,11 +146,15 @@ fi
 # because the map can copy a file but cannot tell systemd about it.
 say "the governor setting"
 if [ "$DRYRUN" = 1 ]; then
-	note "would enable and start pyra-governor-tune.service"
+	note "would enable and restart pyra-governor-tune.service"
 else
 	systemctl daemon-reload
-	if systemctl enable --now pyra-governor-tune.service >/dev/null 2>&1; then
-		note "enabled and started"
+	# restart, not start: the unit is a oneshot that stays active, so start
+	# is a no-op on a machine where a governor switch has since reset the
+	# tunable (a benchmark pin does that).
+	if systemctl enable pyra-governor-tune.service >/dev/null 2>&1 &&
+	   systemctl restart pyra-governor-tune.service >/dev/null 2>&1; then
+		note "enabled and applied"
 		note "$(/usr/local/sbin/pyra-governor-tune.sh --check | head -1)"
 	else
 		note "could not enable it; check: systemctl status pyra-governor-tune.service"
@@ -231,6 +245,8 @@ Done. What is now on the path:
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload
     pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
+    pyra-soh [--check]                Ship of Harkinian, pinned at 750 MHz while it runs
+    pyra-cpu-pin status               is a game holding the CPU clock (sudo)
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

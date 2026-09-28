@@ -1,0 +1,146 @@
+#!/bin/sh
+#
+# pyra-cpu-pin — hold the CPU at one clock while a game runs, and put the
+# governor back afterwards. Runs as root, through sudo, with the rule in
+# etc/sudoers.d/pyra-cpu-pin; pyra-soh is its caller.
+#
+#   pyra-cpu-pin KHZ OWNER    pin every cpu to KHZ; OWNER is the caller's pid
+#   pyra-cpu-pin restore [OWNER]
+#                             undo the pin (only OWNER's, when OWNER is given)
+#   pyra-cpu-pin status       say what is pinned, change nothing
+#
+# HOW IT PINS
+#
+# The `userspace` governor plus `scaling_setspeed`, not min == max:
+# pyra-thermal rewrites scaling_min/max_freq as it steps its caps, so a
+# min == max pin does not stay put. Its caps still apply over setspeed, so a
+# hot machine is still protected while pinned.
+#
+# WHAT IT PUTS BACK
+#
+# The governor that was in use, and the ondemand governor's tunables.
+# Leaving ondemand discards them: the kernel rebuilds that directory with
+# stock values when the governor comes back, which silently undid
+# pyra-governor-tune's sampling_down_factor=10 on 2026-09-28. So they are
+# saved before the first pin and written back after the governor.
+#
+# The saved state is /run/pyra-cpu-pin.state, root's own file, gone at
+# reboot along with the pin itself. A second pin while one is held keeps the
+# original saved state and takes over the ownership, so the governor that
+# comes back is always the one from before the first pin.
+#
+# WHAT IT ACCEPTS
+#
+# A clock this kernel lists in scaling_available_frequencies, exactly, and a
+# pid. Nothing else: no paths, no governor names from the caller, no
+# configuration. The governor it restores is checked against the kernel's
+# list and the tunables are restored by name only into the ondemand
+# directory.
+
+set -eu
+
+CPUS=/sys/devices/system/cpu
+OD=$CPUS/cpufreq/ondemand
+STATE=/run/pyra-cpu-pin.state
+
+die() { printf 'pyra-cpu-pin: %s\n' "$*" >&2; exit 1; }
+
+is_uint() { case $1 in ''|*[!0-9]*) return 1 ;; esac; }
+
+policies() {
+	for p in $CPUS/cpu[0-9]*/cpufreq; do
+		[ -f "$p/scaling_governor" ] && echo "$p"
+	done
+}
+
+state_get() { sed -n "s/^$1=//p" "$STATE" 2>/dev/null | head -n 1; }
+
+save_state() {
+	gov=$(cat $CPUS/cpu0/cpufreq/scaling_governor)
+	tmp=$STATE.new
+	{
+		echo "governor=$gov"
+		echo "owner=$1"
+		if [ "$gov" = ondemand ] && [ -d "$OD" ]; then
+			for f in "$OD"/*; do
+				[ -f "$f" ] && [ -w "$f" ] || continue
+				v=$(cat "$f" 2>/dev/null) || continue
+				is_uint "$v" && echo "od_$(basename "$f")=$v"
+			done
+		fi
+	} > "$tmp"
+	mv "$tmp" "$STATE"
+}
+
+pin() {
+	khz=$1 owner=$2
+	is_uint "$khz" || die "not a frequency: $khz"
+	is_uint "$owner" || die "not a pid: $owner"
+	case " $(cat $CPUS/cpu0/cpufreq/scaling_available_frequencies) " in
+	*" $khz "*) ;;
+	*) die "$khz kHz is not one of this kernel's frequencies" ;;
+	esac
+
+	if [ -f "$STATE" ]; then
+		sed -i "s/^owner=.*/owner=$owner/" "$STATE"
+	else
+		save_state "$owner"
+	fi
+	for p in $(policies); do
+		echo userspace > "$p/scaling_governor"
+		echo "$khz" > "$p/scaling_setspeed"
+	done
+	echo "pyra-cpu-pin: pinned at $khz kHz (was $(state_get governor))"
+}
+
+restore() {
+	[ -f "$STATE" ] || { echo "pyra-cpu-pin: not pinned"; return 0; }
+	if [ -n "${1:-}" ]; then
+		is_uint "$1" || die "not a pid: $1"
+		[ "$(state_get owner)" = "$1" ] || {
+			echo "pyra-cpu-pin: pinned by $(state_get owner), not $1; left alone"
+			return 0
+		}
+	fi
+
+	gov=$(state_get governor)
+	case " $(cat $CPUS/cpu0/cpufreq/scaling_available_governors) " in
+	*" $gov "*) ;;
+	*) gov=ondemand ;;
+	esac
+	# A pin taken over userspace has nothing to go back to but a pin.
+	[ "$gov" = userspace ] && gov=ondemand
+	for p in $(policies); do
+		echo "$gov" > "$p/scaling_governor"
+	done
+
+	if [ "$gov" = ondemand ] && [ -d "$OD" ]; then
+		sed -n 's/^od_\([a-z_]*\)=\([0-9]*\)$/\1 \2/p' "$STATE" |
+		while read -r name value; do
+			[ -f "$OD/$name" ] && echo "$value" > "$OD/$name" 2>/dev/null || true
+		done
+	fi
+	rm -f "$STATE"
+	echo "pyra-cpu-pin: restored $gov"
+}
+
+status() {
+	echo "governor: $(cat $CPUS/cpu0/cpufreq/scaling_governor), $(cat $CPUS/cpu0/cpufreq/scaling_cur_freq) kHz now"
+	if [ -f "$STATE" ]; then
+		echo "pinned by pid $(state_get owner); will restore $(state_get governor)"
+	else
+		echo "not pinned"
+	fi
+	[ -d "$OD" ] && echo "ondemand sampling_down_factor: $(cat $OD/sampling_down_factor)"
+	return 0
+}
+
+[ "$(id -u)" = 0 ] || die "run through sudo"
+
+case "${1:-}" in
+restore) restore "${2:-}" ;;
+status)  status ;;
+''|-h|--help) sed -n '3,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+*)       [ $# -eq 2 ] || die "usage: pyra-cpu-pin KHZ OWNER-PID"
+         pin "$1" "$2" ;;
+esac

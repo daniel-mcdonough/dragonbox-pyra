@@ -1,0 +1,288 @@
+#!/bin/sh
+#
+# pyra-soh — launch Ship of Harkinian on the Pyra with the settings that were
+# measured to work, instead of the ones it picks for itself.
+#
+#   pyra-soh                 launch the game
+#   pyra-soh --check         say whether it would run, change nothing
+#   pyra-soh --alsa          bypass PulseAudio for this run
+#   pyra-soh --cpu KHZ       hold the CPU at KHZ for this run (0: don't pin)
+#   pyra-soh --stop          stop a running instance
+#   pyra-soh -- ARGS...      pass ARGS through to the binary
+#
+# WHY A WRAPPER IS NEEDED AT ALL
+#
+# Three things have to be true before this title draws a frame here, and none
+# of them is true by default.
+#
+# **SDL has to be pointed at the blob's GLES2 by hand.** Ship of Harkinian asks
+# SDL for an OpenGL context, and on this machine desktop GL is gl4es sitting on
+# the SGX DDK. Left alone, SDL opens the GLX path, gets glvnd, and gets a
+# context whose every entry point is a stub — the failure described at length
+# in `pyra-gles` and `docs/qt-gles.md`, which reports empty GL_VENDOR and
+# compiles no shader. `SDL_VIDEO_X11_FORCE_EGL` moves SDL onto EGL, which the
+# blob does own, and `SDL_VIDEO_GL_DRIVER` names the blob's `libGLESv2.so.1`
+# so that SDL loads it directly rather than resolving a SONAME that only glvnd
+# answers to. This is why the game does not go through `pyra-gles`: that shim
+# exists for programs that link `libGLESv2.so.2` and need the name bridged,
+# whereas SDL will dlopen whatever path it is handed.
+#
+# **The game finds its assets through the working directory.** The archives,
+# the save directory, the config and the mods directory are all resolved
+# relative to the process's cwd, so a launcher that does not cd into the game
+# directory first starts a fresh install in whatever directory it was called
+# from — new config, no saves, no ROM assets.
+#
+# **It ignores SIGTERM.** A plain `kill`, and therefore an ordinary `timeout`,
+# leaves it running; every benchmark in `soh-bench` had to use `-s KILL`. That
+# is why `--stop` exists and why it does not pretend to be polite about it.
+#
+# WHAT IS DELIBERATELY NOT SET HERE
+#
+# The internal resolution lives in `shipofharkinian.json`, not in this script,
+# because it is a gameplay setting the in-game menu also writes. It is
+# currently 240 vertical pixels at 4:3 — N64 native, upscaled to the panel.
+# That single setting is the difference between about 17 fps and about 30: see
+# the `b-res*` and `c-*` logs in `soh-bench`. Raising it is the first thing to
+# undo if the machine feels slow.
+#
+# The audio rate is likewise left alone. This title asks for 32000 Hz, which
+# resamples badly to the codec's 88200 and costs about 18% of the machine —
+# documented in `docs/improvements.md`. Rebuilding it to ask for 44100 has been
+# tried and measured, and it is *worse*, not better (`ac-master.log`: 26.8 fps
+# against 27.2, and a third more CPU in PulseAudio). Do not "fix" it here.
+#
+# THE CPU CLOCK
+#
+# The game runs with the CPU pinned at 750 MHz (`--cpu`, or PYRA_SOH_CPU_KHZ;
+# 0 leaves the governor alone). That is the owner's choice of 2026-09-28: 30
+# fps with the GL thread (`gSettings.RenderThread` 2, the GLES2 default) misses
+# frames at 750 about as often as at 1000 MHz, for -0.30 W and -3.3 C
+# (Shipwright docs/pyra/11-two-core-render.md, 11.12 and 11.14). ondemand does
+# not find this on its own: it follows load, not the lowest clock that holds
+# the frame rate. The clock is right only for 30 fps (`InterpolationFPS`)
+# with the GL thread; `--check` says what the config has.
+#
+# The pin goes through pyra-cpu-pin, the one privileged step, allowed without
+# a password by its sudoers rule. It is undone when the game exits, however
+# it exits; if this script is itself killed with -9, a detached watcher
+# undoes it when this script's pid is gone. pyra-thermal's caps still apply
+# over the pin.
+#
+# See `docs/improvements.md` for the measurements behind all of the above.
+
+set -eu
+
+GAME_DIR=${PYRA_SOH_DIR:-$HOME/soh-pyra}
+GAME_BIN=${PYRA_SOH_BIN:-soh.elf}
+DDK_GLES=${PYRA_SOH_DDK:-/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1}
+
+CPU_KHZ=${PYRA_SOH_CPU_KHZ:-750000}
+PIN=/usr/local/sbin/pyra-cpu-pin
+
+USE_ALSA=0
+FPS_LOG=${LUS_FPS_LOG:-}
+
+die()  { printf 'pyra-soh: %s\n' "$*" >&2; exit 1; }
+note() { printf 'pyra-soh: %s\n' "$*"; }
+
+usage() { sed -n '3,9p' "$0" | sed 's/^# \{0,1\}//'; }
+
+# --------------------------------------------------------------------------
+# arguments
+# --------------------------------------------------------------------------
+
+ACTION=run
+while [ $# -gt 0 ]; do
+	case $1 in
+	--check)   ACTION=check ;;
+	--stop)    ACTION=stop ;;
+	--alsa)    USE_ALSA=1 ;;
+	--cpu)     [ $# -ge 2 ] || die "--cpu needs a frequency in kHz, or 0"
+	           CPU_KHZ=$2; shift ;;
+	--fps-log) [ $# -ge 2 ] || die "--fps-log needs a number of seconds"
+	           FPS_LOG=$2; shift ;;
+	--dir)     [ $# -ge 2 ] || die "--dir needs a path"
+	           GAME_DIR=$2; shift ;;
+	--bin)     [ $# -ge 2 ] || die "--bin needs a path"
+	           GAME_BIN=$2; shift ;;
+	-h|--help) usage; exit 0 ;;
+	--)        shift; break ;;
+	-*)        die "unknown option: $1 (try --help)" ;;
+	*)         die "unexpected argument: $1 (pass game arguments after --)" ;;
+	esac
+	shift
+done
+
+# --------------------------------------------------------------------------
+# stopping
+# --------------------------------------------------------------------------
+
+# Matched on the basename so that a run started from soh-bench under another
+# name is still found, and -x so that this script does not match itself.
+if [ "$ACTION" = stop ]; then
+	pids=$(pgrep -f '[s]oh.*\.elf' || true)
+	[ -n "$pids" ] || { note "not running"; exit 0; }
+	# SIGTERM is ignored by this process, so there is no point sending it
+	# first and waiting: that only delays the stop by the grace period.
+	kill -KILL $pids 2>/dev/null || true
+	note "stopped: $(echo "$pids" | tr '\n' ' ')"
+	exit 0
+fi
+
+# --------------------------------------------------------------------------
+# environment
+# --------------------------------------------------------------------------
+
+# Over SSH there is no DISPLAY, and the session on the panel is the only place
+# the game can usefully appear. Borrow the running session's authority file
+# rather than requiring the caller to export two variables by hand.
+[ -n "${DISPLAY:-}" ] || DISPLAY=:0
+export DISPLAY
+if [ -z "${XAUTHORITY:-}" ] && [ -r "$HOME/.Xauthority" ]; then
+	XAUTHORITY=$HOME/.Xauthority
+	export XAUTHORITY
+fi
+
+export SDL_VIDEO_X11_FORCE_EGL=1
+export SDL_VIDEO_GL_DRIVER=$DDK_GLES
+[ -n "$FPS_LOG" ] && export LUS_FPS_LOG="$FPS_LOG"
+
+# --------------------------------------------------------------------------
+# checks
+# --------------------------------------------------------------------------
+
+# Each of these has its own message because each has a different fix, and the
+# archive one is the only failure a user is likely to hit twice.
+check() {
+	ok=0
+
+	if [ -d "$GAME_DIR" ]; then
+		printf 'dir:     %s\n' "$GAME_DIR"
+	else
+		printf 'dir:     %s — MISSING\n' "$GAME_DIR"; ok=1
+	fi
+
+	if [ -x "$GAME_DIR/$GAME_BIN" ]; then
+		printf 'binary:  %s\n' "$GAME_BIN"
+	else
+		printf 'binary:  %s — MISSING or not executable\n' "$GAME_BIN"; ok=1
+	fi
+
+	# oot.o2r is generated from the user's own retail ROM and is the one file
+	# that cannot be rebuilt from this repository or redownloaded.
+	if [ -r "$GAME_DIR/oot.o2r" ]; then
+		printf 'assets:  oot.o2r %s\n' "$(du -h "$GAME_DIR/oot.o2r" | cut -f1)"
+	else
+		printf 'assets:  oot.o2r — MISSING (generate it from your own ROM)\n'; ok=1
+	fi
+
+	if [ -r "$GAME_DIR/soh.o2r" ]; then
+		printf '         soh.o2r present\n'
+	else
+		printf '         soh.o2r — MISSING (ships with the build)\n'; ok=1
+	fi
+
+	if [ -e "$DDK_GLES" ]; then
+		printf 'gl:      %s\n' "$DDK_GLES"
+	else
+		printf 'gl:      %s — MISSING, is the DDK installed?\n' "$DDK_GLES"; ok=1
+	fi
+
+	printf 'display: %s' "$DISPLAY"
+	if command -v xdpyinfo >/dev/null 2>&1 && xdpyinfo >/dev/null 2>&1; then
+		printf ' (reachable)\n'
+	else
+		printf ' (NOT reachable — is the desktop session up?)\n'; ok=1
+	fi
+
+	# Sustained frame rate here is governed by the clock the thermal daemon
+	# leaves in place, so a run on an unpatched machine is not comparable.
+	if [ -r /sys/class/thermal/thermal_zone0/temp ]; then
+		printf 'thermal: %s C now' \
+			"$(( $(cat /sys/class/thermal/thermal_zone0/temp) / 1000 ))"
+		# It installs into /usr/local/sbin, which is not on an ordinary
+		# user's PATH, so look for it where it actually lands.
+		if [ -x /usr/local/sbin/pyra-thermal-fix.sh ] ||
+		   command -v pyra-thermal-fix.sh >/dev/null 2>&1; then
+			printf ', pyra-thermal-fix.sh present\n'
+		else
+			printf ', pyra-thermal-fix.sh NOT installed — expect throttling\n'
+		fi
+	fi
+
+	if [ "$USE_ALSA" = 1 ]; then
+		if command -v pasuspender >/dev/null 2>&1; then
+			printf 'audio:   alsa, PulseAudio suspended for the run\n'
+		else
+			printf 'audio:   --alsa asked for but pasuspender is missing\n'; ok=1
+		fi
+	else
+		printf 'audio:   sdl via PulseAudio (32 kHz — see the header)\n'
+	fi
+
+	if [ "$CPU_KHZ" = 0 ]; then
+		printf 'cpu:     not pinned (--cpu 0)\n'
+	elif [ -x "$PIN" ] && sudo -n -l "$PIN" >/dev/null 2>&1; then
+		printf 'cpu:     pinned at %s kHz while it runs\n' "$CPU_KHZ"
+	else
+		printf 'cpu:     %s or its sudoers rule is missing; runs unpinned\n' "$PIN"
+	fi
+	if [ -r "$GAME_DIR/shipofharkinian.json" ]; then
+		fps=$(sed -n 's/.*"InterpolationFPS": *\([0-9]*\).*/\1/p' "$GAME_DIR/shipofharkinian.json" | head -n 1)
+		rt=$(sed -n 's/.*"RenderThread": *\([0-9]*\).*/\1/p' "$GAME_DIR/shipofharkinian.json" | head -n 1)
+		printf 'config:  %s fps, RenderThread %s\n' "${fps:-20 (default)}" "${rt:-2 (default)}"
+	fi
+
+	return $ok
+}
+
+if [ "$ACTION" = check ]; then
+	check || exit 1
+	exit 0
+fi
+
+# The same checks gate a real run, so that a missing archive is one clear line
+# rather than a crash inside the asset loader.
+check >/dev/null 2>&1 || { check; exit 1; }
+
+# --------------------------------------------------------------------------
+# run
+# --------------------------------------------------------------------------
+
+cd "$GAME_DIR" || die "cannot enter $GAME_DIR"
+
+if [ "$USE_ALSA" = 1 ]; then
+	SDL_AUDIODRIVER=alsa
+	export SDL_AUDIODRIVER
+	set -- pasuspender -- "./$GAME_BIN" "$@"
+else
+	set -- "./$GAME_BIN" "$@"
+fi
+
+# Unpinned: nothing to undo, so the game replaces this script as before.
+if [ "$CPU_KHZ" = 0 ] || ! sudo -n "$PIN" "$CPU_KHZ" $$; then
+	[ "$CPU_KHZ" = 0 ] || note "could not pin the CPU; running unpinned"
+	exec "$@"
+fi
+
+unpin() { sudo -n "$PIN" restore $$ >/dev/null 2>&1 || true; }
+trap unpin EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+
+# The watcher: if this script dies without running its trap (kill -9), the
+# pin is undone within ten seconds of that. The pid check in the helper keeps
+# a stale watcher from undoing a later run's pin.
+setsid sh -c 'while kill -0 "$1" 2>/dev/null; do sleep 10; done
+	sudo -n "$2" restore "$1" >/dev/null 2>&1' watcher $$ "$PIN" \
+	</dev/null >/dev/null 2>&1 &
+
+# In the foreground, not backgrounded: a background job of a script starts
+# with SIGINT ignored, and SDL then keeps it ignored, so Ctrl-C would stop
+# reaching the game.
+set +e
+"$@"
+rc=$?
+exit $rc

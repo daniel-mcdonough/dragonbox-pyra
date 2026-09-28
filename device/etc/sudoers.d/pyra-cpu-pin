@@ -1,0 +1,5 @@
+# pyra-cpu-pin: let members of the sudo group pin the CPU clock for a game
+# without a password. The helper takes only a clock this kernel lists and a
+# pid, and restores the governor it found (device/pyra-cpu-pin's header).
+# Installed 0440 by pyra-install-helpers.sh, which checks it with visudo.
+%sudo ALL=(root) NOPASSWD: /usr/local/sbin/pyra-cpu-pin
