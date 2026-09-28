@@ -103,16 +103,23 @@ It is off on this image. Worth knowing because it is the largest confirmed win
 in the whole project that costs nothing, and because a launcher or kiosk shell
 built for this device should never enable compositing.
 
-### 1.5 One thing that is still unmeasured
+### 1.5 Fullscreen frames are copied, not flipped
 
-Whether a fullscreen client's buffers reach the scanout by **page flip** or by
-**blit** is not known. `Buffer Flipping is Enabled` says the driver is willing;
-it does not say any particular client's pixmaps are scanout-capable, and a
-client whose buffer cannot be flipped falls back to a copy silently.
+Measured 2026-09-27: a fullscreen client's frames reach the scanout by **copy**.
+Ship of Harkinian (vsynced, 30 fps) and `glmark2-es2 --fullscreen` both run
+with zero `DRM_IOCTL_MODE_PAGE_FLIP`. Instead, Xorg submits GC320 (etnaviv) work
+every frame to copy the back buffer into the TILER front buffer: 3.7 MB each
+way per frame at 1280x720.
 
-If you are chasing the last few percent of a fullscreen path, count
-`DRM_IOCTL_MODE_PAGE_FLIP` against frames presented. If the flip count tracks
-the frame count, this is closed.
+For a game, that means:
+
+- **Do not add a second full-screen pass of your own** on top of it. Every
+  fullscreen frame already pays one copy after the swap.
+- **Rendering smaller does not shrink the copy.** It is the window's size. A
+  fullscreen window at 1280x720 is copied at 1280x720 whatever the internal
+  resolution.
+- The cause and the options for removing it (a DDX flip, KMS-direct games,
+  prerotation and where it would cost) are in `improvements.md` §6.
 
 ---
 

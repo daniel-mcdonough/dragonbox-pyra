@@ -246,8 +246,11 @@ Stated so they are not mistaken for settled.
   reboot. Not reproducible on demand — roughly 2,100 deliberate modesets have
   not triggered it. A candidate fix exists and cannot be confirmed until it next
   fails to happen. This outranks every performance item in the project.
-- **Whether Present flips or blits** for a fullscreen client. `Buffer Flipping
-  is Enabled` says the driver is willing, not that any client's buffers qualify.
+- **Why fullscreen games are copied, not flipped.** Measured 2026-09-27: no
+  `PAGE_FLIP`. Xorg has the GC320 copy every frame into the TILER front buffer.
+  The cause is probably that SGX buffers cannot be TILER-backed for the rotated
+  plane, but that is not proven. The copy's cost is not measured either.
+  `improvements.md` §6.
 - **Whether the GPU rail can go above NOM** — see §2.5.
 - **Transparent huge pages.** One config symbol, plausible mechanism against the
   TLB, entirely unmeasured. `kernel-notes.md` §4.

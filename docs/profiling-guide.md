@@ -195,8 +195,16 @@ perf trace -e ioctl -p $(pgrep -f yourgame)    # or: strace -c -f -e trace=ioctl
 Counting **ioctls per frame** is the bluntest useful version of this on a
 PowerVR stack: submission goes through `/dev/pvrsrvkm`, so ioctls per frame
 against draws per frame says directly whether the frame is shaped by draw calls.
-The same counting trick answers `improvements.md` §6 for Present, where the
-ioctl is `DRM_IOCTL_MODE_PAGE_FLIP`.
+The same counting trick answered `improvements.md` §6. Record every process's
+ioctls and tally the request codes:
+
+    sudo perf record -a -e raw_syscalls:sys_enter --filter "id == 54" -- sleep 10
+    sudo perf script | sed -n 's/^ *\([^ ]*\) .*NR 54 ([^,]*, \([0-9a-f]*\),.*/\1 \2/p' | sort | uniq -c | sort -rn
+
+(`54` is `ioctl` on ARM EABI.) `c01864b0` is `DRM_IOCTL_MODE_PAGE_FLIP` and
+`c0486446` is etnaviv `GEM_SUBMIT`. Two things did not work: `-p <pid>` with
+uprobe events (perf refuses it per-thread; use `-a`), and uprobes on Thumb code
+at all, which covers Xorg's exported functions (EINVAL from `perf_event_open`).
 
 Status: the on-CPU-versus-wall comparison and the ioctl count are **method, not
 yet results on this device** — written down 2026-09-24 because the Ship of

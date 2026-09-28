@@ -17,7 +17,7 @@ what the device actually says.
 | Proposal | Claimed | Actual state |
 | --- | --- | --- |
 | Make 3D use the SGX, not software Mesa | Enormous | **Already done and verified.** No work left |
-| Eliminate framebuffer copies, fix TILER | Potentially enormous | **Rotation is already in hardware.** A smaller Present question remains |
+| Eliminate framebuffer copies, fix TILER | Potentially enormous | **Rotation is already in hardware.** But fullscreen games are *copied* to the scanout by the GC320, not flipped (item 6) |
 | Optimise gl4es / native GLES paths | Large | Real but unquantified. Measure before building |
 | Sustained CPU clocks and thermals | Large | **Real, and measured 2026-09-13.** The governor was misconfigured, but not in any of the three ways named below — the one setting that pays is not on that list. Applied, and the thermal side became fixes 6 and 7 |
 | Optimise 2D X rendering, EXA, pixman | Medium–large | **Fills and blits are already accelerated.** The gap is image readback |
@@ -866,38 +866,101 @@ anyway.
 Effort: unknown, potentially large. Risk: **high, and physical.** Treat as
 research, not as a change.
 
-### 6. Measure whether Present flips or copies, and whether clients pipeline
+### 6. Fullscreen games are copied, not flipped — and what to do about it
 
-The one part of the original framebuffer-copy thesis that is not already
-resolved. Rotation is in hardware; what remains unknown is whether a fullscreen
-client's buffers reach the scanout by flip or by blit.
+**Measured 2026-09-27: a fullscreen client's frames reach the scanout by copy.
+No page flip happens.** Method: `perf record -a -e raw_syscalls:sys_enter
+--filter "id == 54"` (ioctl on ARM EABI) while the client runs, then tally the
+request codes per process.
 
-`Buffer Flipping is Enabled` in the log says the driver is willing. It does not
-say that any particular client's pixmaps are scanout-capable, and a client whose
-buffer cannot be flipped falls back to a copy silently. The composited desktop
-guarantees a copy anyway, which is another reason to do item 3 first.
+| Client | Frames in window | `PAGE_FLIP` (`c01864b0`) | etnaviv `GEM_SUBMIT` (`c0486446`), from Xorg |
+| --- | --- | --- | --- |
+| `glmark2-es2 --fullscreen`, build, 1280x720, unsynced ~255 fps | ~2 560 | 0 | 2 484, one per frame |
+| Ship of Harkinian, fullscreen 1280x720, capped 30 fps, 10 s | ~300 | 0 | 893, about three per frame |
 
-Measure rather than reason about it: instrument the `armsoc` DRI3 and Present
-paths, or count `DRM_IOCTL_MODE_PAGE_FLIP` against frames presented for a
-fullscreen gl4es client. If the flip count tracks the frame count, this item is
-closed.
+`/dev/dri/card2` is **etnaviv**, the GC320 (card0 omapdrm, card1 pvrsrvkm).
+The submits come from the `Xorg` process, not the game. The game's own ioctls go
+to the PVR bridge. So each frame is drawn by the SGX into the client's back
+buffer, and then Xorg's EXA (`viv2d`) has the **GC320 copy it into the
+TILER-backed front buffer**. That is 3.7 MB read and 3.7 MB written per frame,
+about 220 MB/s at 30 fps. It costs little CPU, but it takes memory bandwidth and
+it sits inside the swap.
 
-Effort: a day, mostly in reading the DDX. Payoff: unknown until measured, which
-is precisely why it is worth an afternoon rather than a week.
+glmark2 alone would not have settled it: an unsynced client is always copied, and
+the DDK ignores `--swap-mode fifo` (still ~255 fps). SoH is vsynced and is copied
+anyway.
 
-**There is now a workload where this shows up as frame time.** In the Ship of
-Harkinian port, ~5.0 ms of every frame is spent blocked in the swap, and
-extrapolating its pixel dependence leaves ~3.4 ms that does *not* scale with the
-number of pixels drawn — which is the shape of a copy, or of a client that cannot
-be flipped. Counting `DRM_IOCTL_MODE_PAGE_FLIP` against frames for that client
-answers this item and sizes it at the same time.
+**Why no flip: not proven.** The likely reason is rotation. A plane rotated by
+the TILER can only scan out a TILER buffer, and buffers the SGX driver
+allocates are not TILER-backed. The DDX's own flip conditions could not be
+observed: `omap5_drv.so` is stripped, and the Xorg entry points
+(`DRI2SwapComplete`, `DRI2CanFlip`) are Thumb code, which ARM uprobes cannot
+probe (`perf_event_open` returns EINVAL). Two things read from the DDX source
+(`dragonbox-pyra-build/ddx/build/src`):
 
-A second question belongs with it, and no report on either side has asked it: is
-the client pipelined with the GPU at all? On a tile-based deferred renderer the
-CPU should be a frame ahead. If the swap blocks until the previous frame's tile
-pass retires, that 5 ms is serialised dead time rather than overlapped work, and
-the EGL buffer count decides which. It is cheap to establish and it would make a
-large number available without changing anything that is rendered.
+- DRI2 flips only if the back buffer was created as a scanout pixmap with an
+  fb attached (`armsoc_dri2.c`, `canflip` and `ScheduleSwap`). Otherwise it
+  copies silently. A failed `armsoc_bo_add_fb` would log "Falling back to
+  blitting a flippable window". That line does not appear in the log.
+- **The Present flip path is broken.** `armsoc_present_flip` passes
+  `drmmode->fb_id`, the screen's own framebuffer, to `drmmode_page_flip`, not
+  the client pixmap's (`armsoc_present.c:649`). It also treats a zero return as
+  failure. Even if Present chose to flip, it would show the wrong buffer.
+
+**The ~3.4 ms of SoH's swap that does not scale with pixels** is the right size
+for this copy. That is inference. It has not been measured.
+
+#### What could be done, cheapest first
+
+0. **Size the prize first.** Confirm the copy is the ~3.4 ms: time the swap
+   against the GC320 fence waits (`40186444`, etnaviv `WAIT_FENCE`, from Xorg),
+   or compare a fullscreen window with a small one. If the copy is not most of
+   it, stop here. Also find out whether the DDK's X11 path is DRI2 or DRI3.
+   That choice decides between options 2 and 3.
+1. **Hide the copy rather than remove it.** If the swap blocks until the copy
+   retires, a third buffer, or a looser swap throttle, lets the SGX start the
+   next frame while the GC320 copies. This is the pipelining question below.
+   It is config, not code. Watch input latency at 30 fps on a 60 Hz panel.
+2. **Make X flip (only if the DDK uses DRI2).** Under DRI2 the DDX allocates
+   the back buffers. It could allocate them the way it allocates the screen
+   buffer (TILER-backed, rotated, scanout; `armsoc_driver.c:1101`), and flips
+   would follow. This is a contained DDX change. Risk: page flips go through
+   the same vblank wait that has wedged the display (`troubleshooting.md`).
+   Under DRI3 the client allocates, and the SGX cannot allocate TILER buffers.
+   Fixing that is a dead end in a closed driver, on top of the broken
+   Present flip.
+3. **Skip X for games, keeping hardware rotation.** A game driving KMS
+   directly from the game-mode VT (SDL `kmsdrm`, GBM) has no X copy, and no
+   Xorg or marco time either. Real play measured about 1.5 ms and 0.9 ms of CPU
+   per frame for those two. **Test this first:** can the DDK render into a
+   dma-buf allocated by omapdrm as a TILER buffer? If it can, rotation stays
+   free and no game changes: zero copy, nothing rewritten. GBM exists for
+   OMAP (`mplayer-mini` uses it), but SDL on it is untested.
+4. **Skip X and pre-rotate, if option 3's buffer sharing fails.** On an
+   unrotated plane, omapdrm can scan out an ordinary buffer, so a game that
+   renders portrait flips with no copy. On the GPU this is nearly free: the
+   same pixel and tile count on the SGX. **But only if the rotation goes into
+   the game's own final pass.** SoH composites its frame from an offscreen
+   buffer, so rotating that last quad is small and contained. A *generic*
+   version (gl4es or SDL renders landscape, then draws it rotated at swap time)
+   adds a full-screen read and write. That is the same copy moved from the
+   GC320 to the SGX, and it gains nothing. Rewriting every game's coordinates
+   instead (projection, viewport, scissor, `gl_FragCoord`, `glReadPixels`,
+   input) is per-game work and fragile.
+5. **Make the copy itself cheaper.** Three GC320 submits per frame where one
+   copy should do is worth a look. It is a small win. 16-bit colour would
+   halve the traffic, but it changes the whole desktop and costs quality. No.
+
+**Size of the win.** Removing the copy and X is worth up to ~3.4 ms of swap
+plus ~2.4 ms of CPU per frame. SoH runs capped at 20 fps / 625 MHz by choice, so
+this arrives as headroom (a lower clock, less heat, or 30 fps where it now needs
+more clock), not as frame rate. Moderate, not transformative.
+
+**The pipelining question still stands.** Is the client a frame ahead of the
+GPU at all? On a tile-based deferred renderer the CPU should be. If the swap
+blocks until the previous frame's tile pass retires, SoH's ~5.0 ms swap is
+serialised dead time rather than overlapped work. The EGL buffer count decides
+which. Option 1 above is the same question from the copy's side.
 
 ### 7. Profile gl4es before rebuilding it
 

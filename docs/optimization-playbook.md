@@ -101,7 +101,7 @@ Ranked by what to do next, not by size. Full evidence in `improvements.md`.
 | Item | Verdict |
 | --- | --- |
 | 3D on the SGX rather than software Mesa | Done and verified. `glxgears` ~870 fps, glmark2 246 |
-| Framebuffer copies / TILER rotation | Already in hardware. The 211 MB/s arithmetic describes a different machine |
+| Framebuffer copies / TILER rotation | Rotation is already in hardware; the 211 MB/s CPU-copy arithmetic describes a different machine. **One copy does exist:** Xorg has the GC320 copy each fullscreen game frame to the scanout, with no flip. Open, `improvements.md` §6 |
 | Desktop compositing | Off. 3.5% of all busy CPU, one `gsettings` call |
 | Governor tuning | Done. `sampling_down_factor` 1→10 is the whole win, 23% of burst latency |
 | Thermal daemon and ladder | Fixed. Five faults in one function; 107 °C → 87 °C on two cores |
