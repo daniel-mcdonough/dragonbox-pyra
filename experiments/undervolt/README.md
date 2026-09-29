@@ -55,7 +55,12 @@ game's total and ~11% of what it costs above the desktop (1.4 W). Against the ow
 09-28 (4.51 W, 67.6 °C, a separate run) 30/750 with the GL thread and 870 mV reads −0.49 W and −5.7 °C
 (hold against hold; different runs, so ± the run-to-run drift).
 
-**Not done:** a long soak at 870 mV (30-60 min of stress-ng, then real play). It is shipped without it.
+**Soak, 2026-09-29 (device clock), as shipped** (the boot service's 870 mV, pinned at 750 MHz through
+`pyra-cpu-pin`, on the charger): `stress-ng --cpu 2 --cpu-method all --vm 1 --vm-bytes 256M --vm-method all
+--verify -t 60m`: **passed, 0 failures** (cpu 747,585 bogo ops, vm 18.8 M); the rail read 870000 µV at every
+30 s sample, die 47-62 °C. The kernel log had four `DSI error: VC(n) busy` lines at 05:01, a known display
+message (`docs/troubleshooting.md`) seen 20 times in the previous boot, before the unit existed. Still to do:
+real play at 870 mV (the owner playing).
 
 
 Checked on the device:
