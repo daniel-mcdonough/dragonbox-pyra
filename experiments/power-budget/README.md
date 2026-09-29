@@ -1,5 +1,21 @@
 # Where the power goes while a game runs
 
+## 2026-09-28, later: the 750 MHz point undervolted
+
+`./thermcost.sh undervolt`: 30/750 in `RenderThread` 2 (the build's default since report 11 §11.15),
+one game process, the 750 MHz operating point at its table 950 mV against 870 mV, switched live with
+`../undervolt/undervolt.sh set`. Screen backlight 9, as the run above. `python3 thermclock.py . undervolt`
+gives `thermcost-undervolt-summary.txt` (its ABBA table labels the arms "MHz"; they are mV).
+
+| arm | ABBA watts | Δ W (t) | hold watts | cpu / gpu / core °C (hold) | frames lost |
+| --- | --- | --- | --- | --- | --- |
+| desktop idle, ondemand | | | 2.76 | 46 / 49 / 48 | |
+| 30/750 mode 2, 950 mV | 4.174 | reference | 4.212, then 4.144 | 63.0 / 65.4 / 63.1, then 63.8 / 66.3 / 64.1 | 0.71%, 0.57% |
+| 30/750 mode 2, 870 mV | 4.015 | **−0.159 (−18.7)** | 4.024 | 61.9 / 64.7 / 62.5 | 0.68% |
+
+**870 mV is −0.16 W and −1.5 °C** (the CPU die against the mean of the two stock holds, which
+bracket it), frames unchanged. The stepping that chose 870 is in `../undervolt/README.md`.
+
 ## 2026-09-28: the GL thread (Shipwright report 11) through a lower clock
 
 `./thermcost.sh twocore`, the same kernel, module, fixture and method as 09-26 below, but screen

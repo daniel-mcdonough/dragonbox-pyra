@@ -1,7 +1,54 @@
 # Undervolting the CPU operating points
 
-**Status 2026-09-26: the mechanism works on the device (5.6.19-m4-kbdled). No
-stability stepping yet; nothing is left loaded.**
+**Status 2026-09-28: 750 MHz steps clean down to 850 mV, the module's floor (−100 mV); 870 mV
+saves 0.16 W at 30/750 with no change in frames. Not applied at boot or by pyra-soh; nothing is
+left loaded.** The 2026-09-26 mechanism check is below the results.
+
+## 2026-09-28: the 750 MHz point (SoH's shipped clock, Shipwright report 11 §11.14)
+
+**Stepping** (`stepping/`, logs in `stepping/results-2026-09-28/`), 5.6.19-m4-kbdled, on the charger,
+from the table's 950 mV in 10 mV steps. Each step: `stress-ng --cpu 2 --cpu-method all --verify` for
+180 s (die ~62-70 °C), then SoH's frozen Market fixture pinned at 750 MHz in `RenderThread` 2, with
+`SOH_BENCH_DUMP`.
+
+| mV | stress-ng | Market frames |
+| --- | --- | --- |
+| 950 (3 runs) | pass | reference |
+| 940, 930 | pass | pass (masked, across processes; see below) |
+| 920 … 850 | pass | pass: 6 segments in one process, 12 frames, 0 pixels apart |
+
+- **Nothing failed down to 850 mV, where the module stops** (it refuses more than 100 mV below the
+  device tree). The chip's edge is somewhere below that and unknown.
+- **The frame check has to be in-process.** Two stock runs differ in ~6,000 pixels, all in the
+  dancing NPCs: the fixture freezes after a settle counted in rendered frames, so the dance phase
+  depends on the frame rate. The first check (mask the pixels where the two stock runs differ)
+  stopped 920 mV on 7 pixels of a fern uncovered by a new pose. Each step from 920 on instead runs
+  six segments of one process (`bench.sh ab` of a no-op CVar against itself) and requires every
+  segment to draw the same frozen frame: a stock control passed, 0 pixels.
+- stress-ng from Debian links EGL and dies on the DDK's `libEGL` (`undefined symbol:
+  eglCreatePlatformWindowSurface`); `LD_PRELOAD=/usr/lib/arm-linux-gnueabihf/libEGL.so.1` fixes it.
+- The per-step screen is ~5 minutes: enough to find a hard edge, not a stability proof. 870 mV is
+  30 mV above the last step tested and so at least 30 mV above any failure.
+
+**Watts** (`../power-budget/thermcost.sh undervolt`, on battery, one game process at 30/750 in mode
+2, the voltage switched live): 950 against 870 mV.
+
+| | 950 mV | 870 mV | Δ |
+| --- | --- | --- | --- |
+| ABBA, 4 blocks each | 4.174 W | 4.015 W | **−0.159 W (t −18.7)** |
+| 10-min holds (950, 870, 950 again) | 4.212, 4.144 W | 4.024 W | −0.154 W against their mean |
+| CPU die, holds | 63.0, 63.8 °C | 61.9 °C | **−1.5 °C** (gpu −1.2, core −1.1) |
+| frames lost, holds | 0.71%, 0.57% | 0.68% | none |
+
+The stock holds drifted +0.8 °C over the run, so the temperature is ±0.4 °C. 0.16 W is ~3.8% of the
+game's total and ~11% of what it costs above the desktop (1.4 W). Against the owner's 30/1000 of
+09-28 (4.51 W, 67.6 °C, a separate run) 30/750 with the GL thread and 870 mV reads −0.49 W and −5.7 °C
+(hold against hold; different runs, so ± the run-to-run drift).
+
+**Not done:** a long soak at 870 mV (30-60 min of stress-ng, then real play) before shipping it,
+and the shipping itself (the module loaded and the point set at boot, or by `pyra-cpu-pin` while the
+game runs).
+
 
 Checked on the device:
 - `smps123` follows the table exactly at 250/500/625/750/875/1000/1250 MHz (pinned,

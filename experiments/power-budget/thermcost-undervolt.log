@@ -1,0 +1,59 @@
+1790643179 start
+1790643179 wait-unplug
+  250000  750000  750000
+  375000  800000  800000
+  500000  850000  850000
+  625000  900000  900000
+  750000  950000  950000
+  875000 1000000 1000000
+ 1000000 1050000 1050000
+ 1125000 1080000 1080000
+ 1250000 1100000 1100000
+ 1400000 1200000 1200000
+ 1500000 1250000 1250000 running
+smps123 (cpu rail) set to 1200000 uV; cpu at 1400000 kHz
+1790643199 idle-ondemand
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790643320 start30-750
+1790643380 soh30-warm
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790643561 soh30uv-950
+  750000  950000  870000 changed running
+smps123 (cpu rail) set to 870000 uV; cpu at 750000 kHz
+1790643623 soh30uv-870
+  750000  950000  870000 changed running
+smps123 (cpu rail) set to 870000 uV; cpu at 750000 kHz
+1790643684 soh30uv-870
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790643745 soh30uv-950
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790643807 soh30uv-950
+  750000  950000  870000 changed running
+smps123 (cpu rail) set to 870000 uV; cpu at 750000 kHz
+1790643868 soh30uv-870
+  750000  950000  870000 changed running
+smps123 (cpu rail) set to 870000 uV; cpu at 750000 kHz
+1790643929 soh30uv-870
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790643991 soh30uv-950
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790644052 hold30-750-950
+  750000  950000  870000 changed running
+smps123 (cpu rail) set to 870000 uV; cpu at 750000 kHz
+1790644653 hold30-750-870
+  750000  950000  950000 running
+smps123 (cpu rail) set to 950000 uV; cpu at 750000 kHz
+1790645255 hold30-750-950b
+governor ondemand
+smps123 (cpu rail) set to 1200000 uV; cpu at 1400000 kHz
+1790645859 idle-hot
+1790645979 end
+governor ondemand
+smps123 (cpu rail) set to 1200000 uV; cpu at 1400000 kHz
+1790645984 done, restored gov=ondemand bl=9 kbl=12 cfg

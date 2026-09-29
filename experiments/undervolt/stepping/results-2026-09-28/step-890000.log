@@ -1,0 +1,21 @@
+== step 890000 19:47:20
+  750000  950000  890000 changed running
+smps123 (cpu rail) set to 890000 uV; cpu at 750000 kHz
+die 68286
+stress-ng: info:  [13819] passed: 2: cpu (2)
+stress-ng: info:  [13819] failed: 0
+stress-ng: info:  [13819] metrics untrustworthy: 0
+die 64452 cur 750000
+  750000  950000  890000 changed running
+bench rc=0
+BENCH segment 0 arm=0 frames=600 mean_us=17202.9 median_us=16049.0 p95_us=22469.0 mean_fps=58.130 temp_c=66.2->66.2 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=5669.2 finish_us=0.0 period_us=21591.6 period_fps=46.31
+BENCH segment 1 arm=0 frames=600 mean_us=16394.6 median_us=15957.0 p95_us=18774.0 mean_fps=60.996 temp_c=66.2->67.0 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=5058.3 finish_us=0.0 period_us=20639.3 period_fps=48.45
+BENCH segment 2 arm=0 frames=600 mean_us=16510.3 median_us=15812.0 p95_us=19293.0 mean_fps=60.568 temp_c=66.2->66.2 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=5467.7 finish_us=0.0 period_us=20956.9 period_fps=47.72
+BENCH segment 3 arm=0 frames=600 mean_us=17096.3 median_us=16454.0 p95_us=20601.0 mean_fps=58.492 temp_c=66.6->67.9 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=4030.7 finish_us=0.0 period_us=22333.4 period_fps=44.78
+BENCH segment 4 arm=0 frames=600 mean_us=16772.6 median_us=16057.0 p95_us=19934.0 mean_fps=59.621 temp_c=67.9->67.9 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=5349.2 finish_us=0.0 period_us=21017.1 period_fps=47.58
+BENCH segment 5 arm=0 frames=600 mean_us=17082.0 median_us=16197.0 p95_us=20575.0 mean_fps=58.541 temp_c=67.4->67.4 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=4981.6 finish_us=0.0 period_us=21852.2 period_fps=45.76
+42
+12
+die 67008 gov ondemand cur 1000000
+rail 1200000
+== end 890000 19:52:40

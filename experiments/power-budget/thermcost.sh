@@ -8,6 +8,9 @@
 #                           10-minute holds for die temperature
 #   ./thermcost.sh twocore  2026-09-28: Shipwright report 11's GL thread (RenderThread 2) at 30/750
 #                           and 30/625 against mode 0 at 30/750, 30/1000 and 20/625
+#   ./thermcost.sh undervolt 2026-09-28: 30/750 in mode 2 (the build's default), the 750 MHz point at
+#                           its table 950 mV against UV_MV (default 870), one process; needs
+#                           experiments/undervolt's module and undervolt.sh in UV_DIR (~/undervolt)
 #
 # SOH_DIR: the SoH install to run (default: this script's directory). Output lands next to the
 # script: thermcost[-MODE].csv (one row a second), .log (phase changes), -run*.log (the game's log,
@@ -100,6 +103,30 @@ SAMPLER=$!
 phase wait-unplug
 while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done
 sleep 20
+
+if [ "$MODE" = undervolt ]; then
+  # 2026-09-28, Shipwright NEXT.md 0T (6): the shipped 30/750 in mode 2 with the 750 MHz point
+  # undervolted. The voltage changes live (undervolt.sh set steps the CPU to 875 and back, <1 s),
+  # so both arms run in one game process: ABBA twice in 60 s blocks, then 10-minute holds
+  # stock, undervolted, stock (the second stock hold measures the run's drift).
+  UV_DIR=${UV_DIR:-$HOME/undervolt}; UV=${UV_MV:-870}
+  uvset() { (cd "$UV_DIR" && ./undervolt.sh set 750000 $(($1 * 1000)) >> "$LOG" 2>&1); }
+  uvrestore() { (cd "$UV_DIR" && ./undervolt.sh restore >> "$LOG" 2>&1); }
+  trap 'uvrestore; restore' EXIT INT TERM
+  (cd "$UV_DIR" && ./undervolt.sh load >> "$LOG" 2>&1)
+  ondemand;        phase idle-ondemand; sleep 120
+  setspeed 750000; uvset 950; start_soh uv; phase start30-750; sleep 60
+  phase soh30-warm; sleep 180
+  for v in 950 $UV $UV 950 950 $UV $UV 950; do uvset $v; phase "soh30uv-$v"; sleep 60; done
+  uvset 950; phase hold30-750-950;    sleep 600
+  uvset $UV; phase hold30-750-$UV;    sleep 600
+  uvset 950; phase hold30-750-950b;   sleep 600
+  stop_soh
+  uvrestore
+  phase idle-hot; sleep 120
+  phase end
+  exit 0
+fi
 
 if [ "$MODE" = twocore ]; then
   # 2026-09-28, Shipwright report 11 task 2: does the GL thread (gSettings.RenderThread 2, ~+2 ms of

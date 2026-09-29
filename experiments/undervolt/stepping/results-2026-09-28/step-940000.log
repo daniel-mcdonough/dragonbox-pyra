@@ -1,0 +1,16 @@
+== step 940000 19:14:33
+  750000  950000  940000 changed running
+smps123 (cpu rail) set to 940000 uV; cpu at 750000 kHz
+die 53802
+stress-ng: info:  [6871] passed: 2: cpu (2)
+stress-ng: info:  [6871] failed: 0
+stress-ng: info:  [6871] metrics untrustworthy: 0
+die 62322 cur 750000
+  750000  950000  940000 changed running
+bench rc=0
+BENCH segment 0 arm=single frames=600 mean_us=17040.0 median_us=16197.0 p95_us=20696.0 mean_fps=58.685 temp_c=64.0->65.3 cpu_mhz=750->750 cpu_min_mhz=750 cpu_max_mhz=750 fb=640x360->640x360 swap_us=5021.2 finish_us=0.0 period_us=21654.4 period_fps=46.18
+42
+2
+die 63600 gov ondemand cur 1500000
+rail 1250000
+== end 940000 19:18:27
