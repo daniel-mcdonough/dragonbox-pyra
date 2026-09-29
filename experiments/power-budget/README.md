@@ -1,5 +1,29 @@
 # Where the power goes while a game runs
 
+## 2026-09-29: the present quad (Shipwright NEXT.md item F's prize)
+
+`./thermcost.sh present` on a benchmark build: 30/750 in `RenderThread` 2 at 870 mV (the shipped state), the
+Market fixture, the game's own harness flipping `gSettings.ProbeSkipFlat` between 0 (the shipped picture) and 1024
+(the game's 1280×720 quad left out of the present pass, a black window) in 60 s segments, 8 ABBA pairs in one
+process. The harness writes each segment's arm into `thermcost.phase` through `SOH_BENCH_ARM_FILE`, so every row
+of `thermcost-present.csv` is labelled. `./thermcost.sh panel` is its control, with no game: `xwud` showing a
+Market frame or the black screen in one window, 750 MHz. Screen backlight 6. `python3 thermclock.py . present`
+and `. panel` give the summaries.
+
+| arm | ABBA watts | Δ W (t, MDE) |
+| --- | --- | --- |
+| 30/750 mode 2, quad drawn | 4.045 | reference |
+| 30/750 mode 2, quad skipped | 3.886 | **−0.158 (−21.7, 0.017)** |
+| no game: a Market frame on screen | (floor moved, see below) | reference |
+| no game: black on screen | | −0.009 (−0.9, ~0.024) |
+
+**The quad is 0.13-0.16 W**, as much as the undervolt; the panel drawing black is worth at most ~0.03 W, and the
+keyboard backlight's pulse ~0.007 W of imbalance between the arms. Frames unchanged (period +7 µs, t 0.4). Shipwright
+report 08 §8.52 has the rest, including why no plane is reachable under X.
+
+The panel run's floor fell 0.77 W halfway (2.69 → 1.92 W, every arm alike): the desktop's idle timeout took the
+keyboard backlight from 12 to 0 (the `kbl` column). Pairs survive it; absolutes across the step do not.
+
 ## 2026-09-28, later: the 750 MHz point undervolted
 
 `./thermcost.sh undervolt`: 30/750 in `RenderThread` 2 (the build's default since report 11 §11.15),

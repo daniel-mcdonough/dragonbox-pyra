@@ -3,8 +3,8 @@
 # die temperature and its slope per 10-minute hold, and the game's fps per clock from the BENCH split
 # lines (one per 100 ticks, ~5 s).
 # usage: thermclock.py DIR [MODE]   (DIR holds thermcost-MODE.csv, and thermcost-run-*.log or thermcost-MODE-split.log;
-#        MODE clock by default, twocore or undervolt; for undervolt the arm in the ABBA
-#        table is the 750 MHz point's millivolts, not a clock)
+#        MODE clock by default, twocore, undervolt, present or panel; for undervolt the arm in the ABBA
+#        table is the 750 MHz point's millivolts, not a clock, and for present gSettings.ProbeSkipFlat)
 import csv, glob, math, os, re, sys
 from collections import defaultdict
 
@@ -22,7 +22,7 @@ for r in rows:
              core=int(r['core_mc']) / 1000, batt=int(r['batt_dc']) / 10, khz=int(r['cur_khz']), ph=r['phase'])
     # A new block when the phase changes, or every 60 s inside an ABBA phase: the order puts the
     # middle arm's two blocks back to back under the same name.
-    abba = re.fullmatch(r'soh\d\d(m\d|uv)?-\d+', r['ph'])
+    abba = re.fullmatch(r'soh\d\d(m\d|uv)?-\d+', r['ph'])  # (present's soh30pq-<arm>-<n> names are unique)
     if (not phases or phases[-1][0] != r['ph'] or
             (abba and r['t'] - phases[-1][1][0]['t'] >= 60)):
         phases.append([r['ph'], []])
@@ -42,14 +42,14 @@ for name, rs in phases:
           f' {",".join(map(str, mhz)):>9s}')
 
 print('\n== ABBA watts (60 s blocks, first 15 s dropped) ==')
-for prefix in ('soh30', 'soh20', 'soh30m2', 'soh30uv'):
+for prefix in ('soh30', 'soh20', 'soh30m2', 'soh30uv', 'soh30pq', 'panel'):
     arms = defaultdict(list)
     for name, rs in phases:
-        m = re.fullmatch(prefix + r'-(\d+)', name)
+        m = re.fullmatch(prefix + r'-(\d+)(-\d+)?', name)
         if m and len(rs) > 40:
             arms[int(m.group(1))].append((mean([r['w'] for r in rs[15:]]), mean([r['cpu'] for r in rs[15:]])))
     if not arms: continue
-    ref = max(arms)
+    ref = 0 if prefix in ('soh30pq', 'panel') else max(arms)   # present/panel: 1024 is the black screen, 0 the picture
     print(f'{prefix}: reference {ref} MHz')
     for f in sorted(arms, reverse=True):
         ws = [a for a, _ in arms[f]]

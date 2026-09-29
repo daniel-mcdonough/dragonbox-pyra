@@ -11,6 +11,13 @@
 #   ./thermcost.sh undervolt 2026-09-28: 30/750 in mode 2 (the build's default), the 750 MHz point at
 #                           its table 950 mV against UV_MV (default 870), one process; needs
 #                           experiments/undervolt's module and undervolt.sh in UV_DIR (~/undervolt)
+#   ./thermcost.sh present  2026-09-29: Shipwright NEXT.md item F's prize, 30/750 in mode 2: the game's
+#                           quad in the present pass drawn or skipped (gSettings.ProbeSkipFlat 1024,
+#                           benchmark builds), ABBA in 60 s segments run by the game's own harness in one
+#                           process; the harness labels each second's row through SOH_BENCH_ARM_FILE
+#   ./thermcost.sh panel    2026-09-29: present's control: does the panel draw less for black? No game;
+#                           xwud shows panel-game.xwd (a Market frame) or panel-black.xwd in the same
+#                           window, ABBA in 60 s blocks at 750 MHz (panel-0-n the frame, panel-1024-n black)
 #
 # SOH_DIR: the SoH install to run (default: this script's directory). Output lands next to the
 # script: thermcost[-MODE].csv (one row a second), .log (phase changes), -run*.log (the game's log,
@@ -64,6 +71,7 @@ ondemand() {
 # The Market fixture, logic running, the game's frame cap. $1: a name for the run's files;
 # $2 (optional): InterpolationFPS, applied through the harness's A/B CVar with one value.
 # $3 (optional): another CVar for that one-valued A/B instead, as NAME=VALUE (only one at a time).
+# SOH_EXTRA (optional): more harness variables, last, so they win over the ones above.
 # The harness applies it after the settle, in a running game: that is how gSettings.RenderThread 2
 # must be turned on (Shipwright report 11: launching with it in the config races the ImGui atlas).
 start_soh() {
@@ -75,7 +83,7 @@ start_soh() {
     SOH_BENCH=1 SOH_BENCH_OUT="$DIR/thermcost-bench-$1.txt" SOH_BENCH_ENTRANCE=0x00B1 \
     SOH_BENCH_POS=-122.7,0.0,72.1 SOH_BENCH_YAW=0xD5A6 SOH_BENCH_EYE=0.0,64.0,0.0 \
     SOH_BENCH_AT=-134.5,64.0,79.0 SOH_BENCH_SETTLE=400 SOH_BENCH_STATIC=0 SOH_BENCH_UNCAP=0 \
-    SOH_BENCH_FRAMES=200000 SOH_BENCH_SPLIT=100 SOH_BENCH_EXIT=0 $fps_env \
+    SOH_BENCH_FRAMES=200000 SOH_BENCH_SPLIT=100 SOH_BENCH_EXIT=0 $fps_env ${SOH_EXTRA:-} \
     nohup ./soh.elf > "$DIR/thermcost-run-$1.log" 2>&1 < /dev/null &)
 }
 # ABBA blocks of 60 s over a list of clocks in kHz: "a b c" runs a b c c b a.
@@ -124,6 +132,39 @@ if [ "$MODE" = undervolt ]; then
   stop_soh
   uvrestore
   phase idle-hot; sleep 120
+  phase end
+  exit 0
+fi
+
+if [ "$MODE" = panel ]; then
+  setspeed 750000; phase idle-750; sleep 60
+  n=0
+  for i in 1 2 3 4; do
+    for a in 0 1024 1024 0; do
+      f=$DIR/panel-game.xwd; [ $a = 1024 ] && f=$DIR/panel-black.xwd
+      DISPLAY=:0 xwud -in "$f" -geometry +0+0 -noclick & XP=$!
+      phase "panel-$a-$n"; n=$((n+1)); sleep 60
+      kill $XP; wait $XP 2>/dev/null
+    done
+  done
+  phase idle-750b; sleep 30
+  phase end
+  exit 0
+fi
+
+if [ "$MODE" = present ]; then
+  # The harness runs the A/B: 8 pairs of 1800-frame segments (60 s at the cap, plus its 180-frame
+  # segment warm-up), after a 240 s soak at 30/750, and writes each segment's arm into the phase file
+  # as soh30pq-<ProbeSkipFlat>-<n>. RenderThread is the build's default (2 on GLES2).
+  ondemand;        phase idle-ondemand; sleep 60
+  setspeed 750000; phase soh30-warm
+  SOH_EXTRA="SOH_BENCH_AB_CVAR=gSettings.ProbeSkipFlat SOH_BENCH_AB_VALUES=0,1024 SOH_BENCH_REPS=8 \
+    SOH_BENCH_FRAMES=1800 SOH_BENCH_WARMUP=7200 SOH_BENCH_EXIT=1 \
+    SOH_BENCH_ARM_FILE=$DIR/thermcost.phase SOH_BENCH_ARM_PREFIX=soh30pq-" start_soh present
+  n=0
+  while pgrep -x soh.elf > /dev/null && [ $n -lt 2400 ]; do sleep 2; n=$((n+2)); done
+  stop_soh
+  phase idle-hot-750; sleep 60
   phase end
   exit 0
 fi

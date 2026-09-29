@@ -1,0 +1,7 @@
+1790722110 start
+1790722110 wait-unplug
+1790722164 idle-ondemand
+1790722224 soh30-warm
+1790723564 idle-hot-750
+1790723624 end
+1790723629 done, restored gov=ondemand bl=6 kbl=25 cfg

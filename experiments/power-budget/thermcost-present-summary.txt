@@ -1,0 +1,35 @@
+== every phase ==
+phase               s      W  cpu°C  gpu°C core°C batt°C       MHz
+wait-unplug        20  2.674   53.5   56.3   55.6   38.5 875,1125,1250,1400
+idle-ondemand      58  2.663   53.1   55.7   54.9   38.4 875,1000,1125,1250,1400,1500
+soh30-warm        241  3.981   61.9   64.5   62.5   39.0       750
+soh30pq-0-0        60  4.004   64.0   66.6   64.4   39.3       750
+soh30pq-1024-1     60  3.865   63.9   66.7   64.3   39.3       750
+soh30pq-1024-2     60  3.884   64.1   66.6   64.3   39.4       750
+soh30pq-0-3        60  4.042   64.5   67.3   65.0   39.5       750
+soh30pq-0-4        60  4.042   65.1   67.8   65.4   39.6       750
+soh30pq-1024-5     59  3.876   64.6   67.7   65.1   39.7       750
+soh30pq-1024-6     61  3.877   64.5   67.4   64.8   39.7       750
+soh30pq-0-7        59  4.048   65.1   68.1   65.7   39.9       750
+soh30pq-0-8        60  4.057   65.5   68.4   65.9   40.0       750
+soh30pq-1024-9     60  3.891   65.2   67.9   65.5   40.1       750
+soh30pq-1024-10    60  3.876   65.4   67.9   65.6   40.1       750
+soh30pq-0-11       60  4.067   65.7   68.6   66.2   40.3       750
+soh30pq-0-12       60  4.057   66.1   69.0   66.3   40.4       750
+soh30pq-1024-13    60  3.902   65.8   68.4   66.0   40.3       750
+soh30pq-1024-14    60  3.917   65.9   68.4   66.1   40.4       750
+soh30pq-0-15       60  4.040   66.2   69.0   66.6   40.5       750
+soh30pq-0-16        5  3.148   66.2   68.6   66.7   40.5       750
+idle-hot-750       57  2.713   59.8   63.1   61.1   39.8       750
+end                 4  2.779   59.3   61.1   60.2   39.7       750
+
+== ABBA watts (60 s blocks, first 15 s dropped) ==
+soh30pq: reference 0 MHz
+   1024 MHz  n=8  3.886 W (sd 0.017)  Δ -0.158 W  t  -21.7  cpu 64.9 °C
+      0 MHz  n=8  4.045 W (sd 0.019)  Δ +0.000 W  t    nan  cpu 65.3 °C
+
+== holds (10 min): last 3 min, and the slope over the last 5 ==
+
+== the game: BENCH split windows by clock ==
+present (target 30 fps; the first window of a run is the load)
+     750-750  windows  261  fps mean 29.63 min 13.31  frames lost  1.2%  windows under 29.5:  75  render CPU/frame  14.6 ms  p95 render/tick  31.5 ms
