@@ -280,6 +280,7 @@ Done. What is now on the path:
     pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
     pyra-soh [--check]                Ship of Harkinian, pinned at 750 MHz while it runs
     pyra-cpu-pin status               is a game holding the CPU clock (sudo)
+    pyra-undervolt status             the CPU's voltages, and the 750 MHz undervolt (sudo)
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

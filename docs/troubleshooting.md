@@ -47,6 +47,24 @@ That is the working debug loop for this image.
 
 ---
 
+## Crashes, freezes or wrong results since 2026-09-29: suspect the undervolt first
+
+The CPU's 750 MHz point runs at 870 mV, not 950, from every boot on 5.6.19-m4-kbdled
+(`device/pyra-undervolt.service`, `experiments/undervolt/README.md`). It passed every 10 mV step to
+850 mV and a 60-minute `stress-ng --verify` soak, but too little voltage fails as silent wrong results
+first and a crash later, and a crash mid-write can damage the card. So before anything else:
+
+    sudo pyra-undervolt status              # 750000 950000 870000 changed = active
+    sudo pyra-undervolt set 750000 900000   # more margin, on the fly
+    sudo pyra-undervolt off                 # stock until the next boot
+    sudo systemctl disable pyra-undervolt   # stock from now on
+
+The l4 boot entry never loads the module, so it is stock too. If the fault goes away at stock voltage,
+raise `POINTS` in `/etc/default/pyra-undervolt` (the default is `750000:870000`) and note it in the
+experiment's README.
+
+---
+
 ## Solved: the load average that sat at ~2
 
 On the stock kernel two kworkers on the `events_freezable` workqueue sit

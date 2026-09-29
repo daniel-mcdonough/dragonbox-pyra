@@ -107,7 +107,11 @@ Both end in the same place, because the first is a caller of the second: the
 install map lives in `pyra-install-helpers.sh` next to the files it installs,
 and nothing else has an opinion about where they go.
 
-It puts the scripts on `$PATH`, installs the sysrq settings, installs the two
+The undervolt (`device/pyra-undervolt`, 750 MHz at 870 mV from boot) needs its module
+built first, on the workstation: `experiments/undervolt/build-module.sh` leaves it in
+`device/lib/`. Without it the installer says so and installs the unit inert.
+
+It puts the scripts on `$PATH`, installs the sysrq settings, applies the undervolt, installs the two
 benchmark sources under `/usr/local/src/pyra`, and removes the idle dimmer copies
 earlier versions installed, which now come from the `pyra-backlight` package. `--dry-run` says what it would change and `--list`
 says where each file goes; both work through the pusher too. Run it again
