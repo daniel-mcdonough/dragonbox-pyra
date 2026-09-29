@@ -64,8 +64,13 @@ message (`docs/troubleshooting.md`) seen 20 times in the previous boot, before t
 **Real play, 2026-09-29, as shipped** (Shipwright report 08 §8.50): the owner playing SoH at 30/750 with the GL
 thread, ~20 min over 8 scenes, die 48-65 °C. No crash, hang or kernel fault; the rail read 870 mV at every
 10 s sample; the owner saw nothing wrong. 870 mV stays. Frames over 40 ms ran higher than the 950 mV sessions
-of 09-28 (the Market 2.55% against 0.84-0.99%), which one session cannot pin on the voltage; an in-process
-870/950 flip during play is Shipwright's next task.
+of 09-28 (the Market 2.55% against 0.84-0.99%), which one session cannot pin on the voltage.
+
+**870 against 950 mV in one game process, in play** (Shipwright report 08 §8.51, `docs/pyra/tools/voltflip.sh`):
+the point flipped every 30 s for ~24 min, the owner playing without knowing which was on. No difference: frames
+over 40 ms −0.13 points (t −0.64, MDE 0.41, 42 block pairs), main-thread CPU t 0.69. The earlier session's high
+Market was the play. Note: a live `pyra-undervolt set` stalls a running game for about a second (governor change,
+~0.2 s at the next clock up); the boot service sets the point once, so shipped play never sees it.
 
 
 Checked on the device:
