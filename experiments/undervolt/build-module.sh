@@ -1,8 +1,9 @@
 #!/bin/sh
 # Build pyra_undervolt.ko against a kernel variant's built tree (default
 # 5.6.19-m4-kbdled, the Pyra's default boot kernel), out of tree: nothing in the
-# kernel source changes.  The module is loaded by hand (insmod from a path) and is
-# never installed.
+# kernel source changes.  undervolt.sh loads it from this directory for experiments;
+# a build for the default kernel is also copied to device/lib/, which
+# pyra-install-helpers.sh installs for pyra-undervolt.service.
 #   ./build-module.sh                                -> pyra_undervolt.ko next to this script
 #   PYRA_KERNEL_SUFFIX=m4 ./build-module.sh           the same, for 5.6.19-m4
 set -eu
@@ -24,3 +25,4 @@ docker run --rm -v "$BUILD_DIR/kernel/$SRC":/src:ro -v "$HERE":/mod -w /mod debi
 	modinfo pyra_undervolt.ko | grep -E '^(name|vermagic|sig_key|parm)'
 "
 ls -l "$HERE/pyra_undervolt.ko"
+[ "$SUFFIX" = m4-kbdled ] && cp "$HERE/pyra_undervolt.ko" "$HERE/../../device/lib/" && echo "copied to device/lib/"

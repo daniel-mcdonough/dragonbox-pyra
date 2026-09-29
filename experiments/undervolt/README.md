@@ -1,8 +1,18 @@
 # Undervolting the CPU operating points
 
 **Status 2026-09-28: 750 MHz steps clean down to 850 mV, the module's floor (−100 mV); 870 mV
-saves 0.16 W at 30/750 with no change in frames. Not applied at boot or by pyra-soh; nothing is
-left loaded.** The 2026-09-26 mechanism check is below the results.
+saves 0.16 W at 30/750 with no change in frames. Applied from boot since 2026-09-29 (device clock)
+by `device/pyra-undervolt.service`, at the owner's request, before the long soak.**
+
+**How it is applied.** `device/pyra-undervolt` (in `/usr/local/sbin`) loads the module from
+`/usr/local/lib/pyra-undervolt/` and sets `POINTS` (default `750000:870000`; override in
+`/etc/default/pyra-undervolt`); the unit runs it at boot, before `pyra-governor-tune`. It does nothing on
+any kernel but 5.6.19-m4-kbdled, so the l4 boot entry is the way back from an unstable setting. Changes on
+the fly: `sudo pyra-undervolt set 750000 880000` (checked at 750 MHz under `pyra-cpu-pin`'s pin: the rail
+followed, the pin held); `sudo pyra-undervolt off` puts every point back until the next boot;
+`sudo systemctl disable pyra-undervolt` for good. `build-module.sh` copies a new build to `device/lib/`,
+and `pyra-install-helpers.sh` installs it. **If the Pyra crashes or computes wrong from here on, suspect
+this first.** The 2026-09-26 mechanism check is below the results.
 
 ## 2026-09-28: the 750 MHz point (SoH's shipped clock, Shipwright report 11 §11.14)
 
@@ -45,9 +55,7 @@ game's total and ~11% of what it costs above the desktop (1.4 W). Against the ow
 09-28 (4.51 W, 67.6 °C, a separate run) 30/750 with the GL thread and 870 mV reads −0.49 W and −5.7 °C
 (hold against hold; different runs, so ± the run-to-run drift).
 
-**Not done:** a long soak at 870 mV (30-60 min of stress-ng, then real play) before shipping it,
-and the shipping itself (the module loaded and the point set at boot, or by `pyra-cpu-pin` while the
-game runs).
+**Not done:** a long soak at 870 mV (30-60 min of stress-ng, then real play). It is shipped without it.
 
 
 Checked on the device:

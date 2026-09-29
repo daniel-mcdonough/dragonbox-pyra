@@ -1,0 +1,17 @@
+[Unit]
+Description=Run CPU operating points below their device-tree voltage (pyra-undervolt)
+Documentation=file:///usr/local/sbin/pyra-undervolt
+After=sysinit.target
+# pyra-undervolt may step the CPU off ondemand for a moment, which resets
+# ondemand's tunables; pyra-governor-tune sets them, so it runs after this.
+Before=pyra-governor-tune.service
+ConditionPathExists=/usr/local/lib/pyra-undervolt/pyra_undervolt.ko
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pyra-undervolt apply
+ExecStop=/usr/local/sbin/pyra-undervolt off
+
+[Install]
+WantedBy=multi-user.target

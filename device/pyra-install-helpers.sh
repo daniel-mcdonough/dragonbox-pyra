@@ -48,6 +48,8 @@ pyra-freq-profile.sh                /usr/local/sbin                    0755
 pyra-governor-sweep.sh              /usr/local/sbin                    0755
 pyra-governor-tune.sh               /usr/local/sbin                    0755
 pyra-governor-tune.service          /etc/systemd/system                0644
+pyra-undervolt                      /usr/local/sbin                    0755
+pyra-undervolt.service              /etc/systemd/system                0644
 pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-thermal-ladder.sh              /usr/local/sbin                    0755
 pyra-thermal-probe.sh               /usr/local/sbin                    0755
@@ -158,6 +160,37 @@ else
 		note "$(/usr/local/sbin/pyra-governor-tune.sh --check | head -1)"
 	else
 		note "could not enable it; check: systemctl status pyra-governor-tune.service"
+	fi
+fi
+
+# ---------------------------------------------------------------- undervolt
+# The CPU's 750 MHz point at 870 mV instead of 950 (experiments/undervolt).
+# Like the governor setting it is a runtime change, so the unit is what makes
+# it persistent; it is applied now as well. restart, not start, for the same
+# reason as above, and so that a changed POINTS takes effect.
+say "the undervolt"
+# The module is a build product (gitignored): experiments/undervolt/build-module.sh
+# leaves it in device/lib/. Without it the unit is installed but stays inert.
+KO=$HERE/lib/pyra_undervolt.ko
+if [ ! -r "$KO" ]; then
+	note "no lib/pyra_undervolt.ko; build it with experiments/undervolt/build-module.sh"
+elif [ "$DRYRUN" = 1 ]; then
+	cmp -s "$KO" /usr/local/lib/pyra-undervolt/pyra_undervolt.ko || note "would install /usr/local/lib/pyra-undervolt/pyra_undervolt.ko"
+else
+	install -d -m 0755 /usr/local/lib/pyra-undervolt
+	install -m 0644 -o 0 -g 0 "$KO" /usr/local/lib/pyra-undervolt/pyra_undervolt.ko
+	note "module in /usr/local/lib/pyra-undervolt"
+fi
+if [ "$DRYRUN" = 1 ]; then
+	note "would enable and restart pyra-undervolt.service"
+else
+	systemctl daemon-reload
+	if systemctl enable pyra-undervolt.service >/dev/null 2>&1 &&
+	   systemctl restart pyra-undervolt.service >/dev/null 2>&1; then
+		note "enabled and applied"
+		/usr/local/sbin/pyra-undervolt status | grep -E 'running|smps123' | sed 's/^/  /'
+	else
+		note "could not enable it; check: systemctl status pyra-undervolt.service"
 	fi
 fi
 

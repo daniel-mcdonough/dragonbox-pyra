@@ -1,0 +1,129 @@
+#!/bin/sh
+#
+# pyra-undervolt — run CPU operating points below their device-tree voltage,
+# from boot. pyra-undervolt.service calls `apply`; everything is undone by
+# `off` or a reboot with the unit disabled.
+#
+#   pyra-undervolt apply     load the module and set every point in POINTS
+#   pyra-undervolt set KHZ UV   change one point now, while anything runs (UV 0: the table's)
+#   pyra-undervolt off       unload the module: every point back to the table
+#   pyra-undervolt status    the table (kHz, device-tree uV, live uV) and the rail
+#
+# WHAT IS SET
+#
+# POINTS, pairs of "kHz:uV". The default is the one point measured
+# (experiments/undervolt/README.md, 2026-09-28): 750 MHz, SoH's clock, at
+# 870 mV against the table's 950. Every 10 mV step down to 850 passed
+# stress-ng --verify and SoH's frame check; 870 keeps 30 mV over the last
+# step tested. /etc/default/pyra-undervolt may set POINTS to something else;
+# the module itself refuses anything above the device tree, more than 100 mV
+# below it, off the PMIC's 10 mV grid, or above 1000 MHz.
+#
+# THE MODULE
+#
+# pyra_undervolt.ko is built for one kernel (5.6.19-m4-kbdled). On any other
+# kernel `apply` says so and does nothing, which leaves the l4 fallback entry
+# at stock voltage: booting it is also the way back if a setting is unstable.
+#
+# MOVING OFF THE POINT
+#
+# The module will not change the point the CPU is running on, and the OPP core
+# applies a voltage only on a transition to it. So when the CPU sits on a
+# point, it is pinned to the next clock up (userspace governor), the point is
+# set, and the governor goes back. Leaving ondemand resets its tunables, so
+# pyra-governor-tune is re-run after, when it has already run; at boot the
+# unit orders itself before it. A pin held by pyra-cpu-pin is left as found.
+
+set -eu
+
+MOD=/usr/local/lib/pyra-undervolt/pyra_undervolt.ko
+PARAM=/sys/module/pyra_undervolt/parameters
+CPU=/sys/devices/system/cpu/cpu0/cpufreq
+POINTS="750000:870000"
+[ -r /etc/default/pyra-undervolt ] && . /etc/default/pyra-undervolt
+
+say() { printf 'pyra-undervolt: %s\n' "$*"; }
+die() { say "$*" >&2; exit 1; }
+
+policies() {
+	for p in /sys/devices/system/cpu/cpu[0-9]*/cpufreq; do
+		[ -f "$p/scaling_governor" ] && echo "$p"
+	done
+}
+
+rail() {
+	for r in /sys/class/regulator/regulator.*; do
+		[ "$(cat "$r/name" 2>/dev/null)" = smps123 ] || continue
+		echo "smps123 (cpu rail) $(cat "$r/microvolts") uV at $(cat $CPU/scaling_cur_freq) kHz"
+		return 0
+	done
+}
+
+# the next clock above $1, or the one below if $1 is the top
+neighbour() {
+	up=; down=
+	for f in $(tr ' ' '\n' < $CPU/scaling_available_frequencies | grep . | sort -n); do
+		[ "$f" -lt "$1" ] && down=$f
+		[ "$f" -gt "$1" ] && [ -z "$up" ] && up=$f
+	done
+	echo "${up:-$down}"
+}
+
+set_point() {
+	khz=$1 uv=$2
+	if [ "$(cat $CPU/scaling_cur_freq)" != "$khz" ]; then
+		echo "$khz $uv" > $PARAM/set
+		return
+	fi
+	gov=$(cat $CPU/scaling_governor)
+	old=$(cat $CPU/scaling_setspeed 2>/dev/null || true)
+	away=$(neighbour "$khz")
+	for p in $(policies); do
+		echo userspace > "$p/scaling_governor"
+		echo "$away" > "$p/scaling_setspeed"
+	done
+	sleep 0.2
+	echo "$khz $uv" > $PARAM/set
+	for p in $(policies); do
+		if [ "$gov" = userspace ]; then
+			echo "$old" > "$p/scaling_setspeed"
+		else
+			echo "$gov" > "$p/scaling_governor"
+		fi
+	done
+	if [ "$gov" = ondemand ] && systemctl -q is-active pyra-governor-tune.service 2>/dev/null; then
+		systemctl --no-block restart pyra-governor-tune.service
+	fi
+}
+
+load() {
+	if [ ! -d $PARAM ]; then
+		[ -r $MOD ] || die "no $MOD"
+		want=$(modinfo -F vermagic $MOD | cut -d' ' -f1)
+		if [ "$want" != "$(uname -r)" ]; then
+			say "the module is for $want, this is $(uname -r): nothing changed"
+			exit 0
+		fi
+		insmod $MOD
+	fi
+}
+
+apply() {
+	load
+	for pt in $POINTS; do
+		set_point "${pt%%:*}" "${pt#*:}"
+		say "$(grep -E "^ *${pt%%:*} " $PARAM/table)"
+	done
+	rail
+}
+
+[ "$(id -u)" = 0 ] || die "run as root"
+case "${1:-}" in
+apply)  apply ;;
+set)    [ $# -eq 3 ] || die "usage: pyra-undervolt set KHZ UV"
+        case $2$3 in *[!0-9]*) die "KHZ and UV are numbers" ;; esac
+        load; set_point "$2" "$3"; say "$(grep -E "^ *$2 " $PARAM/table)"; rail ;;
+off)    if [ -d $PARAM ]; then rmmod pyra_undervolt; say "unloaded; every point is back to the table"; else say "not loaded"; fi ;;
+status) if [ -d $PARAM ]; then cat $PARAM/table; else say "not loaded (stock voltages)"; fi; rail ;;
+*)      sed -n '7,10p' "$0" | sed 's/^# \?//'; exit 2 ;;
+esac
