@@ -59,8 +59,13 @@ game's total and ~11% of what it costs above the desktop (1.4 W). Against the ow
 `pyra-cpu-pin`, on the charger): `stress-ng --cpu 2 --cpu-method all --vm 1 --vm-bytes 256M --vm-method all
 --verify -t 60m`: **passed, 0 failures** (cpu 747,585 bogo ops, vm 18.8 M); the rail read 870000 µV at every
 30 s sample, die 47-62 °C. The kernel log had four `DSI error: VC(n) busy` lines at 05:01, a known display
-message (`docs/troubleshooting.md`) seen 20 times in the previous boot, before the unit existed. Still to do:
-real play at 870 mV (the owner playing).
+message (`docs/troubleshooting.md`) seen 20 times in the previous boot, before the unit existed.
+
+**Real play, 2026-09-29, as shipped** (Shipwright report 08 §8.50): the owner playing SoH at 30/750 with the GL
+thread, ~20 min over 8 scenes, die 48-65 °C. No crash, hang or kernel fault; the rail read 870 mV at every
+10 s sample; the owner saw nothing wrong. 870 mV stays. Frames over 40 ms ran higher than the 950 mV sessions
+of 09-28 (the Market 2.55% against 0.84-0.99%), which one session cannot pin on the voltage; an in-process
+870/950 flip during play is Shipwright's next task.
 
 
 Checked on the device:
