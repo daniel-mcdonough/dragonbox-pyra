@@ -1,0 +1,32 @@
+Description: really drop DRM master on LeaveVT
+ The master count held ScreenInit's reference, so LeaveVT never called drmDropMaster and X kept
+ master on another VT. Always drmSetMaster on (re)entry; drmDropMaster on LeaveVT.
+
+--- a/src/armsoc_driver.c	2026-09-29 23:44:49.194349975 -0400
++++ b/src/armsoc_driver.c	2026-09-29 23:44:49.246005033 -0400
+@@ -149,8 +149,9 @@
+ 
+ 	assert(connection.fd >= 0);
+ 
+-	if (!connection.master_count)
+-		ret = drmSetMaster(connection.fd);
++	/* Always (re)take master: LeaveVT really drops it (below), and drmSetMaster is a
++	 * no-op for the current master. */
++	ret = drmSetMaster(connection.fd);
+ 
+ 	if (!ret)
+ 		connection.master_count++;
+@@ -1496,6 +1497,13 @@
+ 	if (ret)
+ 		WARNING_MSG("drmDropMaster failed: %s", strerror(errno));
+ 
++	/* The count still holds ScreenInit's reference here, so the drop above never
++	 * reached the kernel and X kept DRM master on another VT: nothing else could
++	 * drive the display. Give it up for real while the VT is away; EnterVT takes
++	 * it back through ARMSOCSetDRMMaster. */
++	if (!ret && connection.master_count > 0 && drmDropMaster(connection.fd))
++		WARNING_MSG("drmDropMaster on LeaveVT failed: %s", strerror(errno));
++
+ 	TRACE_EXIT();
+ }
+ 
