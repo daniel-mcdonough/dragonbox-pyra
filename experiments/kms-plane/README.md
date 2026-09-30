@@ -60,4 +60,4 @@ exact 90° clockwise one (0 mismatches of 230,400 each; `DE_ROT_ANGLE`'s mode fi
 the rotation-config bits do it). ~1.2 ms a blit including submit and wait. X never writes the rotation registers,
 so every stream resets them at its end and is reserved as one submit; X's desktop drew normally afterwards.
 A GC320-rotated frame is linear, so the plane shows it unrotated, scaled 2×: no TILER buffer needed.
-Watts: power-budget README, 2026-09-30 (+0.043 W against the skipped quad, vs +0.158 W for today's quad).
+Watts: power-budget README, 2026-09-30 (+0.043 W against the skipped quad, vs +0.075 W for the SGX rotate-copy and +0.158 W for today's quad).
