@@ -50,3 +50,14 @@ cannot draw straight into a TILER buffer. A rotated scanout needs the rotation e
 into a portrait 360x640 surface (a quarter of today's 1280x720 pass), the scene rendered rotated in the first
 place (clip-space rotation in the interpreter, viewports/scissors/framebuffer reads transposed), or the GC320
 2D core (etnaviv) blitting into TILER.
+
+## The GC320 rotates exactly (2026-09-30)
+
+`gc320rot.c` (register headers vendored in `viv2d/` from the armsoc driver, MIT) drives the GC320's 2D pipe through
+libdrm_etnaviv's render node, alongside X. `gc320rot check` blits a coordinate-coded 640×360 source into 360×640
+and classifies the result: source rotation gives an exact 90° counter-clockwise turn, destination rotation an
+exact 90° clockwise one (0 mismatches of 230,400 each; `DE_ROT_ANGLE`'s mode field changes nothing on this core,
+the rotation-config bits do it). ~1.2 ms a blit including submit and wait. X never writes the rotation registers,
+so every stream resets them at its end and is reserved as one submit; X's desktop drew normally afterwards.
+A GC320-rotated frame is linear, so the plane shows it unrotated, scaled 2×: no TILER buffer needed.
+Watts: power-budget README, 2026-09-30 (+0.043 W against the skipped quad, vs +0.158 W for today's quad).

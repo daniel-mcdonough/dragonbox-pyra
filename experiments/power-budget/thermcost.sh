@@ -15,6 +15,11 @@
 #                           quad in the present pass drawn or skipped (gSettings.ProbeSkipFlat 1024,
 #                           benchmark builds), ABBA in 60 s segments run by the game's own harness in one
 #                           process; the harness labels each second's row through SOH_BENCH_ARM_FILE
+#   ./thermcost.sh rotate   2026-09-30: item F's two rotations priced against the skipped quad (1024), 30/750
+#                           mode 2, one game process each: the SGX drawing the frame into a 360x640 portrait
+#                           quad (ProbeSkipFlat 2048), then the GC320 rotating a 640x360 buffer 30 times a
+#                           second (1024|4096: the game skips the quad, ../kms-plane/gc320rot blits in that arm;
+#                           GC_BIN, default ~/kmsprobe/gc320rot, run with sudo)
 #   ./thermcost.sh panel    2026-09-29: present's control: does the panel draw less for black? No game;
 #                           xwud shows panel-game.xwd (a Market frame) or panel-black.xwd in the same
 #                           window, ABBA in 60 s blocks at 750 MHz (panel-0-n the frame, panel-1024-n black)
@@ -132,6 +137,33 @@ if [ "$MODE" = undervolt ]; then
   stop_soh
   uvrestore
   phase idle-hot; sleep 120
+  phase end
+  exit 0
+fi
+
+if [ "$MODE" = rotate ]; then
+  GC_BIN=${GC_BIN:-$HOME/kmsprobe/gc320rot}
+  ondemand;        phase idle-ondemand; sleep 60
+  setspeed 750000
+  # $1: the arm prefix, $2: the probe arm against 1024
+  ab_run() {
+    phase "$1warm"
+    SOH_EXTRA="SOH_BENCH_AB_CVAR=gSettings.ProbeSkipFlat SOH_BENCH_AB_VALUES=1024,$2 SOH_BENCH_REPS=8 \
+      SOH_BENCH_FRAMES=1800 SOH_BENCH_WARMUP=7200 SOH_BENCH_EXIT=1 \
+      SOH_BENCH_ARM_FILE=$DIR/thermcost.phase SOH_BENCH_ARM_PREFIX=$1-" start_soh "$1"
+    n=0
+    while ! pgrep -x soh.elf > /dev/null && [ $n -lt 30 ]; do sleep 1; n=$((n+1)); done
+    n=0
+    while pgrep -x soh.elf > /dev/null && [ $n -lt 2400 ]; do sleep 2; n=$((n+2)); done
+    stop_soh
+  }
+  ab_run soh30sgx 2048
+  phase idle-between; sleep 60
+  # dst-rot90 (variant 3): exact, clockwise (kms-plane README). It idles outside its arm.
+  sudo "$GC_BIN" run 3 "$DIR/thermcost.phase" soh30gc- 4096 30 > "$DIR/thermcost-gc320rot.log" 2>&1 &
+  ab_run soh30gc 5120
+  sudo pkill -x gc320rot
+  phase idle-hot-750; sleep 60
   phase end
   exit 0
 fi

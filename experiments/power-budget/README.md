@@ -1,5 +1,23 @@
 # Where the power goes while a game runs
 
+## 2026-09-30: item F's two rotations
+
+`./thermcost.sh rotate` on a benchmark build, 30/750 mode 2 at 870 mV, one game process per option, 8 in-process
+ABBA pairs each against the skipped quad (`ProbeSkipFlat` 1024, §8.52's lower arm). The SGX option draws the frame
+into a 360×640 portrait quad with rotated texture coordinates (2048). The GC320 option keeps the quad skipped and
+runs `../kms-plane/gc320rot run 3` (a destination-rotated bitblt, 640×360 → 360×640, exact) 30 times a second in
+its arm (1024|4096 = 5120). `python3 thermclock.py . rotate`.
+
+| arm, against the skipped quad | Δ W (t, MDE) | the same session's skip arm |
+| --- | --- | --- |
+| today's 1280×720 quad (§8.52, another session) | +0.158 (21.7, 0.017) | 3.886 W |
+| **SGX portrait rotate-copy** | **+0.087 (14.8, 0.014)** | 3.827 W |
+| **GC320 rotate-blit, 30/s** | **+0.043 (14.2, 0.007)** | 3.954 W |
+
+The SGX's quarter-size pass keeps 55% of the full quad's cost (the per-pass cost and the transposed reads, not the
+pixel count, dominate); the GC320 keeps 27%. Keyboard backlight balanced between arms. Frames: the SGX arm period
+−16 µs (t −0.6, MDE 64); the GC320 arm +69 µs (t 3.0, MDE 55), negligible at the cap.
+
 ## 2026-09-29: the present quad (Shipwright NEXT.md item F's prize)
 
 `./thermcost.sh present` on a benchmark build: 30/750 in `RenderThread` 2 at 870 mV (the shipped state), the

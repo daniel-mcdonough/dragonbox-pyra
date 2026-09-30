@@ -1,0 +1,9 @@
+1790741208 start
+1790741208 wait-unplug
+1790741228 idle-ondemand
+1790741289 soh30sgxwarm
+1790742627 idle-between
+1790742687 soh30gcwarm
+1790744023 idle-hot-750
+1790744083 end
+1790744087 done, restored gov=ondemand bl=6 kbl=12 cfg

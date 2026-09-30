@@ -3,7 +3,7 @@
 # die temperature and its slope per 10-minute hold, and the game's fps per clock from the BENCH split
 # lines (one per 100 ticks, ~5 s).
 # usage: thermclock.py DIR [MODE]   (DIR holds thermcost-MODE.csv, and thermcost-run-*.log or thermcost-MODE-split.log;
-#        MODE clock by default, twocore, undervolt, present or panel; for undervolt the arm in the ABBA
+#        MODE clock by default, twocore, undervolt, present, panel or rotate; for undervolt the arm in the ABBA
 #        table is the 750 MHz point's millivolts, not a clock, and for present gSettings.ProbeSkipFlat)
 import csv, glob, math, os, re, sys
 from collections import defaultdict
@@ -42,14 +42,14 @@ for name, rs in phases:
           f' {",".join(map(str, mhz)):>9s}')
 
 print('\n== ABBA watts (60 s blocks, first 15 s dropped) ==')
-for prefix in ('soh30', 'soh20', 'soh30m2', 'soh30uv', 'soh30pq', 'panel'):
+for prefix in ('soh30', 'soh20', 'soh30m2', 'soh30uv', 'soh30pq', 'panel', 'soh30sgx', 'soh30gc'):
     arms = defaultdict(list)
     for name, rs in phases:
         m = re.fullmatch(prefix + r'-(\d+)(-\d+)?', name)
         if m and len(rs) > 40:
             arms[int(m.group(1))].append((mean([r['w'] for r in rs[15:]]), mean([r['cpu'] for r in rs[15:]])))
     if not arms: continue
-    ref = 0 if prefix in ('soh30pq', 'panel') else max(arms)   # present/panel: 1024 is the black screen, 0 the picture
+    ref = 1024 if prefix in ('soh30sgx', 'soh30gc') else 0 if prefix in ('soh30pq', 'panel') else max(arms)  # rotate: 1024 is the skipped quad   # present/panel: 1024 is the black screen, 0 the picture
     print(f'{prefix}: reference {ref} MHz')
     for f in sorted(arms, reverse=True):
         ws = [a for a, _ in arms[f]]
