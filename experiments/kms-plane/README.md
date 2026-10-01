@@ -61,3 +61,23 @@ the rotation-config bits do it). ~1.2 ms a blit including submit and wait. X nev
 so every stream resets them at its end and is reserved as one submit; X's desktop drew normally afterwards.
 A GC320-rotated frame is linear, so the plane shows it unrotated, scaled 2×: no TILER buffer needed.
 Watts: power-budget README, 2026-09-30 (+0.043 W against the skipped quad, vs +0.075 W for the SGX rotate-copy and +0.158 W for today's quad).
+
+## The whole chain: SGX → dma-buf → GC320 rotate → scaled plane, 60 fps (2026-10-02)
+
+`kmsprobe chain check N none|fence|finish` (alongside X, no master) and `chain plane SECS SYNC` (via
+`chaintest.sh [SECS] [LOAD] [SYNC]`, which does the VT switch). The GC320 stream lives in `gc320.h`, shared with
+`gc320rot`. `KMSPROBE_LOAD=N` draws N blended (ONE, ZERO) full-frame quads per frame: opaque ones cost nothing,
+because the SGX's hidden-surface removal drops all but the last.
+
+- The SGX's GBM bo exports from omapdrm (`drmPrimeHandleToFD` on card0) and imports into etnaviv
+  (`etna_bo_from_dmabuf`); so do two `omap_bo_new(SCANOUT | WC)` 360×640 destination bos, which AddFB2 takes at
+  pitch 1440. Imported once per GBM bo (kept as the bo's user data).
+- `gbm_surface_lock_front_buffer` blocks until the SGX has finished the frame: at load 0/200/600 the lock is
+  0.75/4.77/12.53 ms while issuing is 0.02/0.53/2.01 and the swap ~0.1. With no wait at all, 0 of ~1,400 frames
+  were stale; an EGL fence after the lock waits a flat ~0.3 ms. Exception, not reproduced: the very first frame
+  after boot read with its top rows still black.
+- On the panel: 60.1 fps, 0 failures, blit 1.27 ms wall; the owner saw it the right way up (green top-left,
+  landscape) with smooth colour and no tearing. plane-0 (X's 1280×720 fb) kept scanning out underneath: a game
+  build should disable it while it runs.
+
+Report: Shipwright report 08 §8.55.
