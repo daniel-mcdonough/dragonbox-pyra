@@ -381,6 +381,16 @@ Seen once, on the night of 2026-09-27/28, kernel `5.6.19-m4-kbdled`, WiFi firmwa
 the game had exited and the only traffic, ssh, went over USB ethernet. **Not reproduced**; the trigger is
 unknown.
 
+**Seen again on 2026-10-01/02**, same kernel and firmware, same shape: idle on the desktop from ~21:40
+(idle-dim's last entries are 21:40 dim and 23:55 wake), ssh timing out in the banner exchange on both
+interfaces while USB ethernet answered ping in 0.7 ms, the desktop dead. The power button's shutdown stopped
+on a black console with a cursor, and the machine was held off. The journal again kept only the storm (2,318
+traces from 00:18 to 00:20, the last three boots in `--list-boots`), plus one thing the first time did not
+show: `watchdog: BUG: soft lockup - CPU#1 stuck for 22s! [kworker/1:1]` and an RCU self-detected stall, with
+CPU 0 in `console_unlock`, i.e. printing the traces. The trigger is lost again; mitigation 1 below is what
+would have kept it. The hard power-off cost nothing: F2FS replayed one journal file's fsync data (`err = 0`)
+and the root fsck passed.
+
 The symptoms, in the order they were noticed:
 
 - ssh on both interfaces (USB ethernet and WiFi) times out **during the banner exchange**, yet both
@@ -423,20 +433,19 @@ syslog daemon is installed.
   Pyra's keyboard. Let it run out. This is how the machine was recovered; it booted normally afterwards (the card was not fsck'd).
 - If ssh answers (it did not here), take the radio down, which ends the restart loop:
   `sudo nmcli radio wifi off`, or `sudo modprobe -r wl18xx wlcore_sdio wlcore`.
+- If the dialog's shutdown stalls on a black console (2026-10-02), holding the power button is what is left.
 - Do not hold the power button while the card might be writing (the journal was writing 6.5 MB files
   every ~10 s). The tested card backup is the fallback (`card-backup-restore.md`).
 
-### Mitigation (not yet applied)
+### Mitigation
 
-None of these is installed. Each changes the system image, so each is the owner's call.
+Each changes the system image, so each is the owner's call. Only 1 is applied (2026-10-02).
 
-1. **Keep the evidence: give the journal room.** A drop-in that sorts after the image's:
-
-       # /etc/systemd/journald.conf.d/90-pyra-keep.conf
-       [Journal]
-       SystemMaxUse=1G
-       SystemMaxFileSize=64M
-
+1. **Keep the evidence: give the journal room. Installed 2026-10-02** as
+   `device/etc/systemd/journald.conf.d/Pyra-maxuse.conf` (`SystemMaxUse=1G`, `SystemMaxFileSize=64M`);
+   journald reports `max 1G`. It must have **the image's file name**: a file in `/etc` replaces the one of
+   the same name in `/usr/lib`, while drop-ins of different names apply in name order across both
+   directories, so a `90-...conf` sorts before `Pyra-maxuse.conf` (`9` < `P`) and loses to its 50M (tried).
    The root filesystem has ~109 GB free. With 1 GB the same storm would have left ~2 hours of it and the
    boots before it, not 2 minutes. Journald does not rate-limit kernel messages (its `RateLimit*`
    settings apply per service), so size is the lever.
