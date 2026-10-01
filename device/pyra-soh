@@ -33,9 +33,12 @@
 # directory first starts a fresh install in whatever directory it was called
 # from — new config, no saves, no ROM assets.
 #
-# **It ignores SIGTERM.** A plain `kill`, and therefore an ordinary `timeout`,
-# leaves it running; every benchmark in `soh-bench` had to use `-s KILL`. That
-# is why `--stop` exists and why it does not pretend to be polite about it.
+# **It quits on SIGTERM only since 2026-10-01.** Builds before Shipwright
+# ae7b882 hung on SIGTERM or SIGINT (the signal handler called exit(), which
+# deadlocked tearing down the audio thread), so it looked as if the game ignored
+# them and everything used `-s KILL`. A fixed build quits the normal way in a
+# second or two and writes its saves. `--stop` sends SIGTERM, waits, and kills
+# only what is still running after that, so an old build still stops.
 #
 # WHAT IS DELIBERATELY NOT SET HERE
 #
@@ -123,10 +126,24 @@ done
 if [ "$ACTION" = stop ]; then
 	pids=$(pgrep -f '[s]oh.*\.elf' || true)
 	[ -n "$pids" ] || { note "not running"; exit 0; }
-	# SIGTERM is ignored by this process, so there is no point sending it
-	# first and waiting: that only delays the stop by the grace period.
-	kill -KILL $pids 2>/dev/null || true
-	note "stopped: $(echo "$pids" | tr '\n' ' ')"
+	# SIGTERM first: a fixed build quits normally and saves in a second or
+	# two. Whatever is left after the grace period (an old build hangs on it)
+	# is killed.
+	kill -TERM $pids 2>/dev/null || true
+	i=0
+	while [ $i -lt 10 ]; do
+		left=""
+		for p in $pids; do kill -0 "$p" 2>/dev/null && left="$left $p"; done
+		[ -n "$left" ] || break
+		sleep 1
+		i=$((i + 1))
+	done
+	if [ -n "$left" ]; then
+		kill -KILL $left 2>/dev/null || true
+		note "killed after ${i}s, SIGTERM did not stop it:$left"
+	else
+		note "stopped: $(echo "$pids" | tr '\n' ' ')"
+	fi
 	exit 0
 fi
 
