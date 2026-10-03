@@ -303,8 +303,7 @@ is a symlink to `usr/lib`, and GNU tar extracting an archive that contains a
 `./lib/` directory entry deletes that symlink and puts a real directory there.
 Every binary then loses its interpreter and nothing on the system can start,
 including the shell needed to repair it. An earlier version of the tarball had
-exactly that layout and did exactly that to the card on 2026-09-10; see
-`progress.md`. The build now stages under `usr/lib` and refuses to produce a
+exactly that layout and did exactly that to the card on 2026-09-10. The build now stages under `usr/lib` and refuses to produce a
 tarball containing a `./lib/` entry, so the flag is belt as well as braces.
 
 Then add this to `/boot/extlinux/user.cfg`, which exists and is empty. The

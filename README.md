@@ -101,19 +101,16 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/profiling-guide.md](docs/profiling-guide.md) | The four traps that produce confident wrong numbers, and how to build a rig that resolves 0.4%. |
 | [docs/porting-checklist.md](docs/porting-checklist.md) | A phased checklist from "is this feasible" to "confirm it in real play". |
 | [docs/known-limitations.md](docs/known-limitations.md) | The hard walls, and everything already tried that did not work. |
-| [docs/release-readiness.md](docs/release-readiness.md) | What stands between the current state and a community release, per component. |
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
-| [docs/progress.md](docs/progress.md) | The running history: what was done when, and why. Newest last. |
-| [TODO.md](TODO.md) | The short list of things that need a person: your hands on the device, your account, or your decision. |
 | [reports/](reports/) | Findings written up for submission upstream, one file each. Drafts, not sent. |
 
-Where the reference documents and the history disagree, the reference is right
-about *how* and the history is right about *when* and *why*.
+Some documents cite "the development log §N". That is the dated working log kept
+with the private development notes; it is not published.
 
 ---
 

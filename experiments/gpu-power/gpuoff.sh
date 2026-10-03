@@ -1,7 +1,7 @@
 #!/bin/sh
 # What does the stuck-on GPU cost at desktop idle? Upper bound, no build: with no GL
 # client, unloading pvrsrvkm drops the probe-time runtime-PM reference that APM never can
-# (docs/handoff/gpu-power-PROGRESS.md section 6), so PD_GPU is free to go OFF.
+# (see experiments/gpu-power/README.md), so PD_GPU is free to go OFF.
 # Runs entirely on the device, run with sudo. It waits for the USB cable to come out,
 # because the gauge only measures load on battery.
 #   sudo ./gpuoff.sh            the ABBA measurement, about 14 min

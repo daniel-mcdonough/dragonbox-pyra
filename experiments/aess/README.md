@@ -30,8 +30,8 @@ in the tree — 9210 lines under `sound/soc/ti/aess/` plus 1683 in
 ## The patches
 
 Applied in name order by `pc/pyra-crossbuild.sh kernel-m4`, on top of
-`patches/` and the M4 series. "Entry" is the dated entry in
-`docs/progress.md`, "§" its numbered section.
+`patches/` and the M4 series. "Entry" is the dated entry in the development log
+(private notes, not published), "§" its numbered section.
 
 | patch | what it does | history |
 | --- | --- | --- |

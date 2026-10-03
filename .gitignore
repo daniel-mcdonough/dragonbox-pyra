@@ -30,3 +30,9 @@ pyra-local.conf
 # TI manuals (TRM, EVM reference guide). Copyrighted and export-controlled;
 # kept locally for reference, never committed.
 docs/*.pdf
+
+# Private development notes live in a separate private repository. Keep stray copies out.
+/TODO.md
+/docs/progress.md
+/docs/release-readiness.md
+/docs/handoff/

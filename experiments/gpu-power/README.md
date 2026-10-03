@@ -1,7 +1,7 @@
 # What the stuck-on GPU costs at idle
 
 The SGX544 never powers down, because `pvr_probe` holds a runtime-PM reference until the
-module is removed (`docs/handoff/gpu-power-PROGRESS.md` §6). This measures the most that
+module is removed (found while tracing the GPU power domain). This measures the most that
 fixing it can save at desktop idle, without building anything. With no GL client,
 unloading `pvrsrvkm_omap5_sgx544_116` drops that reference, and PD_GPU is then free to go OFF.
 

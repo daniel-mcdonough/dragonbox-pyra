@@ -185,7 +185,7 @@ The GDI renderer sidesteps GL completely, which for a 2D game is no loss at all.
 **This would be retired by the same upstream fix as fix 4.** If xorg-server's
 AIGLX probe ever fails gracefully instead of segfaulting, fix 4 goes away, GLX
 comes back, Wine gets a visual it can match, and the 3D path becomes worth
-retesting. See the open items in `progress.md`.
+retesting. See the open items in `known-limitations.md`.
 
 Untested, and the obvious next thing to try if someone wants 3D: pointing Wine
 at gl4es hard enough that it never asks the X server for a visual at all, the
@@ -267,4 +267,3 @@ the armhf 64-bit `time_t` transition did not bite this particular stack.
 - box86: https://github.com/ptitSeb/box86
 - Wine builds: https://github.com/Kron4ek/Wine-Builds
 - The machine this runs on: `procedure.md`
-- What was done when, and why: `progress.md`

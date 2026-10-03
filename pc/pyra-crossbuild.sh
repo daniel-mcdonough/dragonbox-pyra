@@ -376,7 +376,7 @@ build_kernel_m4_uprobe() { build_kernel_variant m4-uprobe \
 # (which needs PM_DEBUG; on this board that only turns enable_off_mode from a
 # gta04 check into a variable, both 0, and adds pm-debug.c)
 # adds power/runtime_usage to sysfs, the runtime-PM reference count, which is
-# what the GPU idle-power work needs to read (docs/handoff/gpu-power-*.md).
+# what the GPU idle-power work (experiments/gpu-power/) needs to read.
 # Its own name and tree so the m4-uprobe build stays what it was.
 build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 	"$M4_PATCHES" src-m4-uprobe-kprobe \

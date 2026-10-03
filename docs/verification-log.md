@@ -1,7 +1,6 @@
 # Verification log
 
-What was checked, when, and what it established. The procedure is `procedure.md`;
-the running history of the project is `progress.md`.
+What was checked, when, and what it established. The procedure is `procedure.md`.
 
 ## Pre-flight results — pyra-trixie-t1.img, checked 2026-09-08
 

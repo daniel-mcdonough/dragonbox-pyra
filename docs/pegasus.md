@@ -326,8 +326,7 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
       of silent, total failure the other eight fixes cover. Promoting it means
       `pc/pyra-trixie-prep.sh`, the prep selftest, `procedure.md` and the "six
       faults" framing in the README all change. Leaving it as a helper means
-      anyone hitting the bug has to find this document first. — *your call,
-      recorded in `TODO.md`*
+      anyone hitting the bug has to find this document first. — *an open decision.*
 - [ ] **Add a `pegasus` target to `pc/pyra-crossbuild.sh`.** The build itself
       is proven (above), so this is packaging it the way the other targets are
       packaged: same container pattern as `ddx`, a pinned commit, the toolchain

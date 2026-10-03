@@ -5,8 +5,8 @@ Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
 
 This is the map. The repair instructions for the faults that make the machine
 silent are fix 9 and fix 10 in `fixes.md`; the performance survey and its
-numbers are item 10 in `improvements.md`; the history of the audio DSP work is
-`progress.md` sections 22 to 34 and `experiments/aess/`. This document is what
+numbers are item 10 in `improvements.md`; the history of the audio DSP work is in
+the development log (sections 22 to 34) and `experiments/aess/`. This document is what
 you want open when someone says "there is no sound" and you do not yet know
 which of those you are looking at — or when you are about to write something
 that touches audio and need to know what the hardware will and will not do.
@@ -45,7 +45,7 @@ The OMAP5's audio DSP takes what applications actually produce — 48000 Hz,
 `S16_LE`, stereo — and does the widening and the rate conversion to the codec's
 PDM link in hardware. That is the whole reason for it: the same 48 kHz file
 costs **1.1% of a core** in `aplay` against 14.4% on the direct link, and
-PulseAudio drops from 12% to 4% (`progress.md` §25, §26).
+PulseAudio drops from 12% to 4% (development log §25, §26).
 
 **PulseAudio** is pointed at `pyra-aess.pa` by `zz-pyra-aess.conf`, which is
 read after the packaged `pyra.conf` so its assignments win; the packaged
@@ -57,7 +57,7 @@ copies are in `device/pulse/`. The script loads one bare `module-alsa-sink` on
 into the process, and it keeps only 32-bit stores; 16- and 8-bit writes vanish.
 With mmap on, every stream PulseAudio resamples -- most music, and games at
 32 kHz -- plays stale ring contents 128 ms or more old and crackles like a
-record, while 48 kHz test tones sound perfect (`progress.md` section 35).
+record, while 48 kHz test tones sound perfect (development log section 35).
 
 **48 kHz only, and 44.1 kHz is resampled in software.** The engine has one
 timebase; 44.1 kHz would need the event counter and McPDM retimed together and
@@ -87,7 +87,7 @@ switch off silences the headphones and nothing else, and DL2 off silences the
 speakers. Both paths broken and the device will not open: `dpcm_path_get()`
 finds no back end, the kernel logs `no backend DAIs enabled for OMAP ABE Media
 LP`, and PulseAudio falls back to `auto_null`. Each of those cases was tested
-on 2026-09-24 by switching it off and restarting PulseAudio. `progress.md` §25
+on 2026-09-24 by switching it off and restarting PulseAudio. Development log §25
 says all three DL1 switches are needed for the device to open; that was true
 only while DL2 was off.
 
@@ -111,12 +111,12 @@ after it — see *Traps* below.
 **The codec is held open for five minutes after the last sound.**
 `module-suspend-on-idle timeout=300` in `pyra-aess.pa`, rather than the default
 five seconds, because the TWL6040 headset driver pops each time it powers up or
-down (`progress.md` §33). The pop is the codec, identical on both paths; not
+down (development log §33). The pop is the codec, identical on both paths; not
 cycling it is the only cure found. The power cost of holding it open has not
 been measured.
 
 **The direct link is still on this kernel, as `hw:L15,9`, and plays 1.47x
-fast.** `legacy_link=1` keeps it as a reference for debugging (`progress.md`
+fast.** `legacy_link=1` keeps it as a reference for debugging (development log
 §34). Nothing should use it for real audio.
 
 ## The direct McPDM path
@@ -362,7 +362,7 @@ These all look like faults and are not. Each has been chased at least once.
   Everything started in between plays into a dead sink, which makes it an easy
   way to invalidate a whole afternoon of A/B measurements without noticing.
 * **A/B comparisons against `hw:L15,9` are against a link that plays 1.47x
-  fast.** Every comparison in `progress.md` §26 to §31 used it. See §34.
+  fast.** Every comparison in development log §26 to §31 used it. See §34.
 * **`SDL_AUDIODRIVER=alsa` does not reach the codec on the direct link.** SDL
   reports initialising happily, and every playback PCM under `/proc/asound/`
   stays `closed` — SDL's default ALSA device resolves to nothing that drives
@@ -429,7 +429,7 @@ These all look like faults and are not. Each has been chased at least once.
 
 ## Reference code and documents
 
-The AESS path's history is in `progress.md` sections 22 to 34 and the patches
+The AESS path's history is in the development log (sections 22 to 34) and the patches
 and tools under `experiments/aess/`; the links below are what that work drew
 on, in the order they turned out to be worth.
 
@@ -444,7 +444,7 @@ on, in the order they turned out to be worth.
   after two days of measurement had not: the ABE back ends must set the McPDM
   downlink mask to `MCPDM_PDM_DN_MASK | MCPDM_CMD_INT`, all five downlink
   channels plus the command word, not the slot pair each back end owns. See
-  `experiments/aess/0030` and `progress.md` section 32. **Check anything
+  `experiments/aess/0030` and development log section 32. **Check anything
   AESS-shaped against this tree before investigating it from scratch.**
 
 * **https://github.com/goldelico/letux-rootfs** — the matching Letux

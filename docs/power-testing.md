@@ -2,8 +2,8 @@
 
 How to measure what something costs in watts on this machine, what has been
 measured, what went wrong along the way, and the runs still to do. Written
-2026-09-26 for a later session to pick up and act on. The GPU work that
-produced most of it is in `docs/handoff/gpu-power-PROGRESS.md`.
+2026-09-26 for a later session to pick up and act on. Most of it came out of
+the GPU idle-power work in `experiments/gpu-power/`.
 
 Tags as elsewhere: **measured** on the device, **spec** from the TRM,
 **reasoned** from those.
@@ -155,7 +155,7 @@ governors) is worth building. Ship of Harkinian, the Market fixture from
 `set core` (only at module idle; the script waits for it). ABBA×2, 150 s blocks.
 Record the fps and render wall time as well as the power, because 384 MHz costs
 9.2% of fill rate *(measured)*. Decision rule: under about 0.05 W, record it and
-stop; 0.2 W or more, the governor port is worth it (`docs/handoff/gpu-power-PROGRESS.md`).
+stop; 0.2 W or more, the governor port is worth it.
 Voltage stays at VDD_MM nominal either way. Do not touch the voltage.
 
 ### 3. Suspend-to-RAM draw
@@ -170,5 +170,5 @@ at idle. The counter's resolution is coarse, which is why the span is long.
 ### 4. The GPU fix's wake cost
 
 The cost of waking the GPU from OFF (resume latency, and the power spike) is not
-measured. It is task 2 in `docs/handoff/gpu-power-PROMPT.md`. Listed here because
+measured. It is the next task in the GPU idle-power work. Listed here because
 the method is this document's.
