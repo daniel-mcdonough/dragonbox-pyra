@@ -34,7 +34,7 @@
 # from — new config, no saves, no ROM assets.
 #
 # **It quits on SIGTERM only since 2026-10-01.** Builds before Shipwright
-# ae7b882 hung on SIGTERM or SIGINT (the signal handler called exit(), which
+# f6d5dba hung on SIGTERM or SIGINT (the signal handler called exit(), which
 # deadlocked tearing down the audio thread), so it looked as if the game ignored
 # them and everything used `-s KILL`. A fixed build quits the normal way in a
 # second or two and writes its saves. `--stop` sends SIGTERM, waits, and kills

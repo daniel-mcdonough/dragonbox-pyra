@@ -63,7 +63,7 @@ bracket it), frames unchanged. The stepping that chose 870 is in `../undervolt/R
 
 `./thermcost.sh twocore`, the same kernel, module, fixture and method as 09-26 below, but screen
 backlight 9 (the desktop idle reads 2.73 W, against 2.62 at 5). Shipwright branch
-`feature/pyra-two-core` at 30f9261 (libultraship 1b0ccaa8). `gSettings.RenderThread` 2 is set through
+`feature/pyra-two-core` at 235fb2c (libultraship bf9c4386). `gSettings.RenderThread` 2 is set through
 the harness's one-valued A/B CVar, so it is applied after the settle in a running game (launching
 with it in the config is not safe yet, report 11). Mode 0 against mode 2 at 750 MHz is ABBA by
 process (one game per 180 s block, the first 60 s after each launch a separate phase and the next
