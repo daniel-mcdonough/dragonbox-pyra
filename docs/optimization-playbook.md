@@ -5,7 +5,7 @@ Index and triage for the hardware knowledge base. Two things live here:
 1. **What the ten documents are**, and which to read for what.
 2. **A triage of every optimisation proposed on this hardware so far** — across
    the system work in this repository and the Ship of Harkinian port in
-   `~/git/Shipwright/docs/pyra/` — saying which are worth pursuing, which are
+   `~/git/dragonbox-pyra-repos/Shipwright-pyra/docs/pyra/` — saying which are worth pursuing, which are
    closed, and which are refuted by evidence that already exists.
 
 Written on 2026-09-22 against the state of both projects on that date.
@@ -130,7 +130,7 @@ close the item.
 
 ## 4. Triage — application level (Ship of Harkinian port)
 
-Against the nine-item catalogue in `~/git/Shipwright/docs/pyra/08-optimisation-opportunities.md`.
+Against the nine-item catalogue in `~/git/dragonbox-pyra-repos/Shipwright-pyra/docs/pyra/08-optimisation-opportunities.md`.
 
 ### Two things that outrank the whole catalogue
 
@@ -294,7 +294,7 @@ on this machine. ABBA pairing cancelled it.
 **Keep corrections visible.** Every report in both projects carries the places
 where it was wrong. That is what stopped a superseded number being acted on
 three separate times, and it is why the index in
-`~/git/Shipwright/docs/pyra/README.md` exists at all.
+`~/git/dragonbox-pyra-repos/Shipwright-pyra/docs/pyra/README.md` exists at all.
 
 **Check that the metric is the goal.** Frame rate was optimised for two reports
 while game speed silently ran 8% slow. The owner of the device found it by

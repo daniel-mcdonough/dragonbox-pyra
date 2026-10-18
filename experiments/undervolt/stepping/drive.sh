@@ -1,7 +1,7 @@
 #!/bin/bash
 # Undervolt stepping at 750 MHz (2026-09-28). drive.sh runs step.sh per voltage (set, stress-ng --verify,
 # the Market fixture in mode 2 as six segments of one process with SOH_BENCH_DUMP), then fetch.sh +
-# cmp2.py (every segment must draw the same frozen frame). Needs pyra-local.conf, ~/git/Shipwright,
+# cmp2.py (every segment must draw the same frozen frame). Needs pyra-local.conf, ~/git/dragonbox-pyra-repos/Shipwright-pyra,
 # and on the device ~/undervolt (this directory's parent) and stress-ng (run with LD_PRELOAD of glvnd's
 # libEGL: the DDK's lacks eglCreatePlatformWindowSurface). Output in ./out.
 S=$(cd "$(dirname "$0")" && pwd)

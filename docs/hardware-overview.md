@@ -5,7 +5,7 @@ documents in the set; each of them assumes the model of the machine built here.
 
 Everything marked **Measured** came off this unit and has a dated entry in
 `improvements.md`, `verification-log.md`, or in the Ship of Harkinian port
-reports under `~/git/Shipwright/docs/pyra/`. Everything marked **Spec** comes
+reports under `~/git/dragonbox-pyra-repos/Shipwright-pyra/docs/pyra/`. Everything marked **Spec** comes
 from a datasheet, a technical reference manual or the kernel source and has not
 been confirmed here. Everything else is reasoning and is labelled as such.
 

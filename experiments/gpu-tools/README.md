@@ -63,7 +63,7 @@ Shipwright's `bench.sh run` passes any `VAR=VAL` through to the game's environme
 harness change is needed:
 
 ```sh
-cd ~/git/Shipwright
+cd ~/git/dragonbox-pyra-repos/Shipwright-pyra
 PYRA_DIR=/home/pyra/soh-bench2 ./scripts/pyra/bench.sh run $MARKET \
     LD_PRELOAD=/home/pyra/apitrace/lib/apitrace/wrappers/egltrace.so \
     TRACE_FILE=/home/pyra/gpu-tools/soh-market.trace SOH_BENCH_UNCAP=0 SOH_BENCH_WARMUP=30 SOH_BENCH_FRAMES=30
