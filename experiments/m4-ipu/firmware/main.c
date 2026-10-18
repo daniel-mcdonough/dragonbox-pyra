@@ -60,6 +60,83 @@ static const char banner[] =
 	"pyra-m4-hello: running on the OMAP5432 IPU (2 x Cortex-M4)\n"
 	"text carveout da=0x00000000 len=0x00100000\n";
 
+#ifdef PYRA_M4_DEMO
+/*
+ * The demo build adds one line per core:
+ *
+ *   core0 cpu-cycles=0123456789
+ *
+ * the core's own DWT cycle counter, rewritten on every beat. Linux samples
+ * it against its own clock and the difference is the M4's actual clock rate
+ * -- which docs/m4-ipu.md could only bound from above (425 MHz is the gate
+ * clock; TI's figure is about half that). The heartbeat build leaves this
+ * out entirely, so the firmware that was verified on hardware is unchanged.
+ *
+ * The space after coreN, not a colon, keeps find_line() and the
+ * "^coreN: state=" patterns in pyra-m4-run.sh from ever matching this line.
+ */
+#define CYC_TEXT	"coreN cpu-cycles=0000000000\n"
+#define CYC_OFF		(sizeof("coreN cpu-cycles=") - 1)
+
+/* All in the Private Peripheral Bus, which is inside the core: these never
+ * go through the AMMU or the IOMMU, so they are as safe to touch as the
+ * carveout is. */
+#define SCB_CCR		(*(volatile uint32_t *)0xe000ed14u)
+#define SCB_CFSR	(*(volatile uint32_t *)0xe000ed28u)
+#define DEMCR		(*(volatile uint32_t *)0xe000edfcu)
+#define DWT_CTRL	(*(volatile uint32_t *)0xe0001000u)
+#define DWT_CYCCNT	(*(volatile uint32_t *)0xe0001004u)
+#define DWT_LAR		(*(volatile uint32_t *)0xe0001fb0u)
+
+#define CCR_BFHFNMIGN	(1u << 8)
+#define CFSR_BFSR	(0xffu << 8)
+#define DEMCR_TRCENA	(1u << 24)
+#define DWT_NOCYCCNT	(1u << 25)
+#define DWT_CYCCNTENA	(1u << 0)
+
+/*
+ * DWT is optional in ARMv7-M, and nothing documents whether TI fitted one
+ * to the IPU. So probe for it the architected way rather than by reading it
+ * and hoping: with FAULTMASK set (priority -1) and CCR.BFHFNMIGN set, a
+ * data bus fault on a load is ignored instead of taken, and recorded in
+ * BFSR. A missing DWT therefore reports "no-dwt" instead of sending the
+ * core to m4_fault() and taking the heartbeat down with it.
+ *
+ * Nothing is written into the DWT until the read has come back clean.
+ */
+static int dwt_start(void)
+{
+	uint32_t ctrl, a, b;
+	int faulted;
+
+	SCB_CFSR = CFSR_BFSR;		/* write-one-to-clear */
+	SCB_CCR |= CCR_BFHFNMIGN;
+	__asm__ volatile ("dsb\n\tisb\n\tcpsid f" ::: "memory");
+
+	DEMCR |= DEMCR_TRCENA;		/* SCS: always present */
+	__asm__ volatile ("dsb" ::: "memory");
+	ctrl = DWT_CTRL;
+	__asm__ volatile ("dsb" ::: "memory");
+
+	__asm__ volatile ("cpsie f\n\tisb" ::: "memory");
+	SCB_CCR &= ~CCR_BFHFNMIGN;
+	faulted = (SCB_CFSR & CFSR_BFSR) != 0;
+	SCB_CFSR = CFSR_BFSR;
+
+	if (faulted || (ctrl & DWT_NOCYCCNT))
+		return 0;
+
+	DWT_LAR = 0xc5acce55u;		/* RAZ/WI on an M4 without the lock */
+	DWT_CYCCNT = 0;
+	DWT_CTRL = ctrl | DWT_CYCCNTENA;
+
+	/* Present but stuck at zero is "absent" too. */
+	a = DWT_CYCCNT;
+	b = DWT_CYCCNT;
+	return a != b;
+}
+#endif
+
 static void put(volatile char **d, const char *s)
 {
 	while (*s)
@@ -119,6 +196,27 @@ static volatile char *find_line(unsigned id)
 	return 0;
 }
 
+#ifdef PYRA_M4_DEMO
+/* As find_line(), for "coreN cpu-cycles=". */
+static volatile char *find_cyc_line(unsigned id)
+{
+	static const char pat[] = "coreN cpu-cycles=";
+	unsigned i, j;
+
+	for (i = 0; i + sizeof(pat) < TRACE_LEN; i++) {
+		for (j = 0; j < sizeof(pat) - 1; j++) {
+			char want = (j == 4) ? (char)('0' + id) : pat[j];
+
+			if (m4_trace[i + j] != want)
+				break;
+		}
+		if (j == sizeof(pat) - 1)
+			return &m4_trace[i];
+	}
+	return 0;
+}
+#endif
+
 static void write_template(void)
 {
 	volatile char *d = m4_trace;
@@ -136,6 +234,15 @@ static void write_template(void)
 		put(&d, s);
 		line[4] = (char)('0' + id);	/* the N in coreN */
 	}
+#ifdef PYRA_M4_DEMO
+	put(&d, "mode: demo, DWT cycle counter per core\n");
+	for (id = 0; id < 2; id++) {
+		volatile char *line = d;
+
+		put(&d, CYC_TEXT);
+		line[4] = (char)('0' + id);
+	}
+#endif
 	*d = '\0';	/* trace0 is read with strnlen(); keep it a string */
 }
 
@@ -170,10 +277,29 @@ void m4_main(unsigned id)
 
 	put_state(line, "alive");
 
+#ifdef PYRA_M4_DEMO
+	{
+		volatile char *cyc = find_cyc_line(id);
+		int have_dwt = dwt_start();
+		unsigned i;
+
+		if (cyc && !have_dwt)
+			for (i = 0; i < BEATS_LEN; i++)
+				cyc[CYC_OFF + i] = "no-dwt    "[i];
+
+		for (;;) {
+			put_dec10(line + BEATS_OFF, ++beats);
+			if (cyc && have_dwt)
+				put_dec10(cyc + CYC_OFF, DWT_CYCCNT);
+			spin();
+		}
+	}
+#else
 	for (;;) {
 		put_dec10(line + BEATS_OFF, ++beats);
 		spin();
 	}
+#endif
 }
 
 /*

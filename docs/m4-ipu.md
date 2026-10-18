@@ -1126,6 +1126,7 @@ Hardware:
 
 ## See also
 
+- `docs/m4-demo.md` — the demo kit, for running this on somebody else's Pyra
 - `experiments/m4-ipu/` — the four patches, each with its reasoning in the
   header, and `firmware/`, the test program that runs on both cores
 - `docs/building.md` — how `pyra-crossbuild.sh` works and why the kernel builds

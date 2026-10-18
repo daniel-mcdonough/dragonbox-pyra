@@ -104,6 +104,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
+| [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, what it changes, how to undo it, and what the output proves. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
@@ -147,6 +148,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
 | `pc/pyra-push-helpers.sh` | Copies the device scripts to the Pyra and installs them there, in one command from the workstation. The same thing `pyra-push-kernel.sh` does on its way past, without needing a built kernel to do it. |
 | `pc/pyra-m4-verify.sh` | Asserts the M4 patch set and the test firmware still say what `docs/m4-ipu.md` claims they say. Needs no Pyra; `--patches` needs no build either. |
+| `pc/pyra-m4-demo-kit.sh` | Packages the M4 demo kit: the `5.6.19-m4demo` kernel, both firmwares, the device scripts, and the patches and `.config` the kernel was built from. Refuses to finish if anything in it names the person who built it. |
 | `experiments/pegasus-idle/` | What a QML launcher costs this machine at rest, and how much of that is recoverable: a deliberately inert theme, the measurement scripts, and the controls that rule out Qt and the driver. |
 | `experiments/c2-idle/` | One kernel patch, tried and rejected: restoring the processor's retention idle state, which this kernel tree removes, hangs the machine within two minutes. Kept with its result so nobody repeats it. |
 | `experiments/m4-ipu/` | The OMAP5's two Cortex-M4s and its DSP, made visible to Linux and then made to run code: four kernel patches, a bare-metal test firmware that runs on both cores, and the unfixed upstream `omap-iommu` bug that starting the IPU turned up. |
@@ -190,6 +192,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-anno1602-test.sh` | Runs a 1999 Windows game under box86 and Wine as a bounded, repeatable load, with a thermal guard. |
 | `device/pyra-m4-check.sh` | Reports the state of the two Cortex-M4s and the DSP. Read-only, and safe on the stock kernel, so the before and after of installing `5.6.19-m4` can be compared. |
 | `device/pyra-m4-run.sh` | Loads the test firmware onto the IPU and proves both M4s are executing it, then removes the firmware again — `auto_boot` means a file left in `/lib/firmware` starts the cores at every boot. Needs `5.6.19-m4`. |
+| `device/pyra-m4-demo.sh` | The M4 demo for an audience: both cores' heartbeats live, their clock measured from each core's own cycle counter, a stop and restart that shows the count begin again from zero, and the firmware removed on exit. Needs `5.6.19-m4demo` or `5.6.19-m4`. |
 | `device/pyra-gles2-smoke.c` | Minimal X11, EGL and GLES2 client, to prove the SGX path works. |
 | `device/pyra-exa-fallback-bench.c` | Isolates the cost of the driver's software fallbacks against its hardware paths. |
 

@@ -4,6 +4,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 #
 #   make                 build it
+#   make demo            build pyra-m4-demo.xem4: the same heartbeat, plus
+#                        each core's DWT cycle counter so Linux can measure
+#                        the M4 clock (device/pyra-m4-demo.sh)
 #   make info            show what was built
 #   make clean
 #
@@ -30,14 +33,20 @@ SIZE    = $(CROSS)size
 TARGET  = omap5-ipu-fw.xem4
 OBJS    = start.o main.o resource_table.o
 
+# Separate objects, so the two builds can never be linked into each other.
+DEMO    = pyra-m4-demo.xem4
+DEMO_OBJS = start.o main-demo.o resource_table.o
+
 # -fno-pie: the loader wants ET_EXEC with fixed addresses, and a PIE would
 #   also pull in relocation machinery nothing here would run.
 # -fno-builtin: no libc, so gcc must not turn a loop into a memset() call.
 # -fno-common: two cores sharing tentative definitions is not worth finding
 #   out about the hard way.
+# -ffile-prefix-map: the debug info would otherwise record the absolute
+#   path of whoever built it, and the demo kit ships these binaries.
 CFLAGS  = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
 	  -ffreestanding -fno-builtin -fno-pie -fno-common \
-	  -Os -g -std=gnu99 \
+	  -Os -g -std=gnu99 -ffile-prefix-map=$(CURDIR)=. \
 	  -Wall -Wextra -Werror
 
 LDFLAGS = -mcpu=cortex-m4 -mthumb -mfloat-abi=soft \
@@ -50,6 +59,15 @@ all: $(TARGET)
 $(TARGET): $(OBJS) m4.ld
 	$(CC) $(LDFLAGS) -o $@ $(OBJS)
 	@$(SIZE) $@
+
+demo: $(DEMO)
+
+$(DEMO): $(DEMO_OBJS) m4.ld
+	$(CC) $(LDFLAGS:$(TARGET).map=$(DEMO).map) -o $@ $(DEMO_OBJS)
+	@$(SIZE) $@
+
+main-demo.o: main.c
+	$(CC) $(CFLAGS) -DPYRA_M4_DEMO -c -o $@ $<
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -70,6 +88,6 @@ info: $(TARGET)
 	@$(OBJCOPY) -O binary --only-section=.resource_table $(TARGET) /dev/stdout | od -An -tx4
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(TARGET).map
+	rm -f $(OBJS) $(TARGET) $(TARGET).map main-demo.o $(DEMO) $(DEMO).map
 
-.PHONY: all info clean
+.PHONY: all demo info clean

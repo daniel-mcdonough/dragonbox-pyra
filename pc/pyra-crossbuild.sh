@@ -14,6 +14,7 @@
 #   ./pyra-crossbuild.sh kernel-m4-uprobe    the same, plus user-space probes
 #   ./pyra-crossbuild.sh kernel-m4-uprobe-kprobe  the same, first with 0033, plus PM debug
 #   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED
+#   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -137,6 +138,9 @@ build_kernel() {
 #   kernel-oc      5.6.19-oc           kernel-freq plus the overclock OPPs
 #   kernel-m4      5.6.19-m4           the fix set plus remoteproc for the M4s,
 #                                      the AESS series and the intermediate OPPs
+#   kernel-m4demo  5.6.19-m4demo       the fix set plus remoteproc for the M4s,
+#                                      and nothing else: the kernel the M4 demo
+#                                      kit ships (docs/m4-demo.md)
 #   kernel-m4-uprobe  5.6.19-m4-uprobe     kernel-m4 plus UPROBE_EVENTS, so that
 #                                      `perf probe -x <lib> <fn>` can count calls
 #                                      into user-space code. The m4 config has
@@ -366,6 +370,14 @@ M4_PATCHES="$SELF_DIR/../patches $OPP_DIR/0007-arm-dts-omap5-add-the-intermediat
 M4_CONFIG="REMOTEPROC OMAP_REMOTEPROC=m OMAP2PLUS_MBOX RPMSG RPMSG_VIRTIO RPMSG_CHAR=m VIRTIO"
 build_kernel_m4()    { build_kernel_variant m4 "$M4_PATCHES" src-m4 \
 	"$M4_CONFIG"; }
+# The M4 stack alone, for other people's Pyras. kernel-m4 is this machine's
+# everyday kernel and carries the AESS audio path and the intermediate OPPs
+# because l1 is the only test slot; handing that to someone who only wants to
+# see the M4s run would change their audio and their frequency table too, and
+# any trouble with either would be reported as trouble with the M4s.
+build_kernel_m4demo() { build_kernel_variant m4demo \
+	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu" src-m4demo \
+	"$M4_CONFIG"; }
 # The m4 kernel with user-space probes, for profiling a game: glibc malloc and
 # similar hot library calls cannot be counted without them, and user-space
 # unwinding does not work on this stack. Nothing else differs from kernel-m4.
@@ -404,5 +416,6 @@ case "${1:-}" in
 	kernel-m4-uprobe) shift; build_kernel_m4_uprobe ;;
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
 	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled" ;;
+	kernel-m4demo) shift; build_kernel_m4demo ;;
+	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo" ;;
 esac

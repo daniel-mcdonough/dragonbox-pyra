@@ -156,6 +156,16 @@ status() {
 
 case "$ACTION" in
 debug)
+        # The revert unit runs $SELF, and is conditional on it existing. Run
+        # from anywhere else -- an unpacked kit, a checkout -- and the unit
+        # would arm, report itself enabled, and then silently skip at boot,
+        # leaving the test kernel as the default with nobody told. Refuse
+        # before anything is changed.
+        if [ "$ONCE" = 1 ] && [ ! -x "$SELF" ]; then
+                die "--once needs this script installed where the revert service runs it:
+    sudo install -m 0755 '$0' $SELF
+and then: sudo $SELF debug --once"
+        fi
         set_default "$DEBUG_LABEL"
         if [ "$ONCE" = 1 ]; then
                 write_unit
