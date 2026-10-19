@@ -224,22 +224,25 @@ new_ladder() {
 	#
 	# Sized from the machine rather than from the ladder. This core moves up
 	# to 6 C between five-second samples under one core of load and 10 C
-	# under two, so across one 20-second poll of this daemon it can travel
-	# further than any small band. A 2 C band was tried first and is below
-	# this controller's noise floor: it released correctly and still crossed
-	# the same rung six times in four minutes. A full rung means a release
-	# has to undo a whole step's worth of heating, which is the only
-	# debounce that means anything at a 20-second poll.
+	# under two. A 2 C band was tried first, at the vendor's 20-second poll,
+	# and is below this controller's noise floor: it released correctly and
+	# still crossed the same rung six times in four minutes. A full rung means
+	# a release has to undo a whole step's worth of heating. The poll is now
+	# 2 seconds (see the interval note at the top of the file), which moves
+	# less per sample. The 2 C against 5 C comparison was made at 20 s and
+	# has not been repeated at 2 s; 5 C at 2 s is what produced the 87 C
+	# two-core result, so it is the tested value, not a derived one.
 	#
 	# The fine regulation is not this daemon's job in any case. The kernel's
 	# step_wise governor polls the same zone every 250 ms; this one is the
-	# slow backstop, and it should act like one.
+	# slower backstop, and it should act like one.
 	pyraHyst=PYRA_HYST
 
 	# Two ladders, not one, and the split is the point. Frequency is
 	# debounced; charging is not touched by the debounce at all. Evaluating
 	# one combined ladder twice would mean a release pass deciding the
-	# charge current from a temperature 2 C higher than the real one, which
+	# charge current from a temperature one hysteresis band (5 C by default)
+	# higher than the real one, which
 	# would clamp the charger to 500 mA at a board temperature where the
 	# vendor allows 2 A. Defined here rather than at the top of the file so
 	# that this entire change stays one reviewable block.
@@ -498,7 +501,25 @@ fi
 patched()  { grep -q "$MARKER" "$VENDOR"; }
 freqfixed(){ grep -q "$FIXMARKER" "$VENDOR"; }
 
-gauge_c()  { echo $(( $(cat /sys/class/thermal/thermal_zone3/temp 2>/dev/null || echo 0) / 1000 )); }
+# A zone's temperature in whole degrees, found by type as the daemon itself
+# finds them; zone numbering is not stable across kernels. Prints nothing if
+# the zone does not exist.
+zone_c() {
+	local z
+	for z in /sys/class/thermal/thermal_zone*; do
+		if [ "$(cat "$z/type" 2>/dev/null)" = "$1" ]; then
+			echo $(( $(cat "$z/temp") / 1000 ))
+			return 0
+		fi
+	done
+}
+gauge_c()  { zone_c bq27421-0; }
+# The hotter of the two SoC zones, which is what the new ladder reads.
+cpu_c() {
+	local a b
+	a=$(zone_c core_thermal); b=$(zone_c cpu_thermal)
+	if [ -n "$a" ] && [ -n "$b" ] && [ "$b" -gt "$a" ]; then echo "$b"; else echo "${a:-$b}"; fi
+}
 
 state() {
 	say "state"
@@ -518,7 +539,7 @@ state() {
 	fi
 	note "service       : $(systemctl is-active $SERVICE 2>/dev/null || echo inactive)"
 	note "ceiling now   : $(cat $CPUFREQ/scaling_max_freq) kHz"
-	note "core / gauge  : $(( $(cat /sys/class/thermal/thermal_zone2/temp) / 1000 )) C / $(gauge_c) C"
+	note "core / cpu / gauge : $(zone_c core_thermal) C / $(zone_c cpu_thermal) C / $(gauge_c) C"
 }
 
 # ---------------------------------------------------------------- check ------
@@ -583,10 +604,13 @@ DECIDED=$(echo "$OUT" | awk '/^MaxFreq:/ {print $2}')
 [ -n "$DECIDED" ] || die "the patched daemon printed no decision"
 
 G=$(gauge_c)
-C=$(( $(cat /sys/class/thermal/thermal_zone2/temp) / 1000 ))
+C=$(cpu_c)
+[ -n "$G" ] && [ -n "$C" ] || die "could not find the core_thermal/cpu_thermal or bq27421-0
+  zones by name, so the decision cannot be checked."
 # Only assert when both sensors are below their first rung. If the core is
 # genuinely hot right now then a cap is the correct answer and failing here
-# would be the check being wrong, not the ladder.
+# would be the check being wrong, not the ladder. C is the hotter of the two
+# SoC zones, because that is what the ladder reads.
 if [ "$G" -lt $(( GAUGE_HOT5 / 1000 )) ] && [ "$C" -lt 77 ] && [ "$DECIDED" != 1500 ]; then
 	die "the gauge is at ${G} C and the core at ${C} C, both below their first
   rung, and the ladder still chose ${DECIDED} MHz. That is not what this change
