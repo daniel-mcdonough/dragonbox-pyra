@@ -1,0 +1,72 @@
+== this machine ==
+        kernel   5.6.19-m4demo
+        soc      OMAP5432 ES2.0 GP
+        remoteproc0  44000000.ocp:dsp  state=offline
+        remoteproc1  55020000.ipu  state=offline
+
+== starting both M4s ==
+  ok    ipu state: running
+
+        | pyra-m4-hello: running on the OMAP5432 IPU (2 x Cortex-M4)
+        | text carveout da=0x00000000 len=0x00100000
+        | trace da=0x00002670 len=4096
+        | core0: state=alive beats=0000000001
+        | core1: state=alive beats=0000000001
+        | mode: demo, core clock counter per core
+        | core0 cpu-cycles=0002192490
+        | core0 clock-src=systick dwt-ctrl=0x4f000000 dwt-fault=0 systick=0x00000005
+        | core1 cpu-cycles=0001114795
+        | core1 clock-src=systick dwt-ctrl=0x4f000000 dwt-fault=0 systick=0x00000005
+
+== live, 15s ==
+           t   core0-beats        MHz   core1-beats        MHz
+          1s    0000000001      214.3    0000000001      213.6
+          2s    0000000002      213.0    0000000002      213.3
+          3s    0000000003      212.9    0000000002      213.2
+          4s    0000000003      212.2    0000000003      212.5
+          5s    0000000004      212.6    0000000004      212.0
+          6s    0000000005      213.9    0000000005      213.3
+          7s    0000000005      212.4    0000000005      212.7
+          8s    0000000006      212.9    0000000006      214.3
+          9s    0000000007      212.3    0000000007      211.6
+         10s    0000000007      213.0    0000000007      213.4
+         11s    0000000008      211.9    0000000008      211.2
+         12s    0000000009      212.8    0000000009      213.1
+         13s    0000000009      213.8    0000000009      214.1
+         14s    0000000010      212.1    0000000010      212.4
+         15s    0000000011      213.2    0000000011      212.6
+
+  ok    core0 reports alive
+  ok    core1 reports alive
+  ok    core0 executed: beats 1 -> 11
+  ok    core1 executed: beats 1 -> 11
+  ok    core0: 212.9 MHz, core clock, from SysTick (15 one-second samples, median 212.9)
+  ok    core1: 212.9 MHz, core clock, from SysTick (15 one-second samples, median 213.1)
+
+== stopping the ipu ==
+  ok    ipu state: offline
+  ok    trace0 is gone with it
+
+== starting again: the count must begin from scratch ==
+        core0 beats now 0000000001 (was 0000000011 before the stop)
+        core1 beats now 0000000001 (was 0000000011)
+  ok    a fresh count: .bss was zeroed by the loader and an M4 started over
+  ok    core1 came back too
+
+== what the kernel logged ==
+        [  124.660298] remoteproc remoteproc1: powering up 55020000.ipu
+        [  124.661396] remoteproc remoteproc1: Booting fw image omap5-ipu-fw.xem4, size 17044
+        [  124.665913] remoteproc remoteproc1: remote processor 55020000.ipu is now up
+        [  141.120556] remoteproc remoteproc1: stopped remote processor 55020000.ipu
+        [  141.127766] remoteproc remoteproc1: powering up 55020000.ipu
+        [  141.128880] remoteproc remoteproc1: Booting fw image omap5-ipu-fw.xem4, size 17044
+        [  141.133076] remoteproc remoteproc1: remote processor 55020000.ipu is now up
+        [  141.682520] remoteproc remoteproc1: stopped remote processor 55020000.ipu
+  ok    no IOMMU fault
+  ok    no BUG or WARNING
+
+== summary ==
+        Both Cortex-M4s in the OMAP5432 IPU ran this firmware, under Linux remoteproc.
+        Measured: core0 212.9 MHz, core1 212.9 MHz (core clock, from SysTick).
+        firmware removed from /lib/firmware; ipu offline
+13 ok, 0 failed

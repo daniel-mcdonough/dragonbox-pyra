@@ -12,12 +12,13 @@ hardware: device tree, IOMMU, carveout memory, firmware loading and both cores
 coming out of reset.
 
 **Status.** The kernel changes and the heartbeat firmware were first booted on
-a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`). The demo firmware and script in
-this kit ran on that unit on 2026-10-18, on the project's `5.6.19-m4-kbdled`
-kernel, which carries the same four M4 patches: **13 ok, 0 failed, both cores
-measured at 212.8 MHz.** The `5.6.19-m4demo` kernel in the kit is the same M4
-work without this project's unrelated experiments, and is the one part of the
-kit that has not itself been booted yet.
+a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`). **The whole kit was run on that
+unit on 2026-10-18**, following the steps below: the `5.6.19-m4demo` kernel
+booted, the desktop, GPU driver and both backlights came up as usual, and the
+one-boot revert set the default back. On that kernel `pyra-m4-check.sh` gave
+13 ok, `pyra-m4-demo.sh` 13 ok with **both cores measured at 212.9 MHz**, and
+`pyra-m4-run.sh` 11 ok, all with 0 failed. The logs are in
+`experiments/m4-ipu/results/`.
 
 ---
 
@@ -86,7 +87,11 @@ Why this is evidence rather than a script printing numbers:
 
   On an HS part the firmware would have to be signed by TI and none of this
   works.
-- SSH or a terminal on the Pyra, and about 60 MB free across `/boot` and `/usr` (the kernel stages at 57 MB).
+- SSH or a terminal on the Pyra, about **47 MB free in `/boot`** (kernel,
+  initrd and device trees) and 41 MB in `/usr`. The installer checks both and
+  stops before changing anything if either is short. A `/boot` that has
+  collected test kernels may not have room: kernels that no boot entry points
+  at still keep their files there.
 
 ---
 

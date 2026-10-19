@@ -64,6 +64,10 @@ firmware:
   anything else; real firmware has to turn the unicache on or run from the
   64 KB L2 RAM.
 
+The same figure, 212.9 MHz, came back on `5.6.19-m4demo` after a reboot: the
+M4-only kernel that `docs/m4-demo.md` hands to other people, which carries the
+same four patches without the AESS or OPP work.
+
 The DSP's gate clock (465.9 MHz) has not been measured against anything.
 
 **`GP` matters.** This is a General Purpose part, not High Security, so

@@ -86,8 +86,16 @@ echo "== the backlight still owns timer9 =="
 # backlight would lose nothing, but starting the IPU would fail -EBUSY.
 [ -e /sys/class/backlight/backlight ] \
 	&& ok "display backlight present" || bad "display backlight MISSING"
-[ -e /sys/class/backlight/keyboard-backlight ] \
-	&& ok "keyboard backlight present" || bad "keyboard backlight MISSING"
+# The keyboard light is on timer8, and kernel-m4-kbdled declares it as an LED
+# (experiments/kbd-led) rather than a second backlight, so look for both. Only
+# checking /sys/class/backlight failed that kernel with nothing wrong.
+if [ -e /sys/class/backlight/keyboard-backlight ]; then
+	ok "keyboard backlight present"
+elif [ -e /sys/class/leds/pyra::kbd_backlight ]; then
+	ok "keyboard backlight present (as the LED pyra::kbd_backlight)"
+else
+	bad "keyboard backlight MISSING"
+fi
 b=$(cat /sys/class/backlight/backlight/actual_brightness 2>/dev/null)
 [ -n "$b" ] && note "display brightness reads $b"
 
