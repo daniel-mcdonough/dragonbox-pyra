@@ -70,6 +70,10 @@ Two independent limiters will silently clamp your measurement:
 - **Vsync quantises to 60/N** — 60, 30, 20, 15 fps and nothing between. A change
   that moves you from 28.7 to 30.5 fps shows up as *no change at all* until it
   crosses 33.3 ms. Turn vsync off for A/B work.
+  *(2026-10-18: the advice stands, but the mechanism is uncertain. As shipped,
+  the window system only holds a frame for vblank when it arrives within one
+  refresh of the last. Its real vsync wait needs `DRI3_VSYNC=1`, which nothing
+  sets. `rendering-guidelines.md` §1.2.)*
 - **The application's own frame cap.** Frame times pinned at exactly 50.00 ms
   with vsync off is the signature of an internal 20 fps limiter. Raise it.
 
@@ -134,6 +138,13 @@ and nothing else.
 - Frame rate sensitive to shader complexity and to overdraw
 - `perf` shows time in `libGLESv2`/`pvr` symbols, `_SegmentListInsert`, PVR
   mutexes and spinlocks — that is the driver *waiting*, not working
+
+Under X on this image, `eglSwapBuffers` always waits for the frame's GPU work
+to finish, even in a frame that is not GPU-bound. The window system does it
+explicitly (`rendering-guidelines.md` §1.6). So swap time measures the GPU's
+unoverlapped share of the frame plus one X round trip. Frame time is roughly CPU
+time plus that tail, not the larger of the two, and that changes how a saving
+on either side shows up. Read from source, 2026-10-18; not measured.
 
 **Bound by draw calls looks like:**
 

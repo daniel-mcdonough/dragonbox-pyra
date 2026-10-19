@@ -95,13 +95,14 @@ Ranked by what to do next, not by size. Full evidence in `improvements.md`.
 | **The TWL6040 96000 Hz mode** | Two mixer writes, fully reversible. The machine is currently tuned for 44.1 kHz music and *against* 48 kHz games | Does not save CPU — 96000 is more output samples. It is a quality lever |
 | **XLibre, for the AIGLX fix only** | If it has fixed Xorg 21.1.16's AIGLX DRI2 NULL dereference, it retires fix 4 and gives the machine back desktop GLX — which unblocks Wine's 3D path | Check the diff. Do **not** port the server on spec. No performance value |
 | **`nodiscard` + weekly `fstrim`** | Inline discard on an SD card can stall writes | One `fio` run to find out |
+| **Present from a worker thread in `libpvrDRI3WSEGL.so`** *(added 2026-10-18)* | The window system makes every swap wait for the SGX to finish the frame, so CPU and GPU never overlap. Its source is MIT and archived. Up to ~5 ms of SoH's 31.8 ms frame, if the CPU has next-frame work to overlap | From source, not measured. Up to one frame of extra latency. Testable per process, no system change. `improvements.md` §6 |
 
 ### Closed — do not re-derive
 
 | Item | Verdict |
 | --- | --- |
 | 3D on the SGX rather than software Mesa | Done and verified. `glxgears` ~870 fps, glmark2 246 |
-| Framebuffer copies / TILER rotation | Rotation is already in hardware; the 211 MB/s CPU-copy arithmetic describes a different machine. **One copy does exist:** Xorg has the GC320 copy each fullscreen game frame to the scanout, with no flip. Open, `improvements.md` §6 |
+| Framebuffer copies / TILER rotation | Rotation is already in hardware; the 211 MB/s CPU-copy arithmetic describes a different machine. **One copy does exist:** Xorg has the GC320 copy each fullscreen game frame to the scanout, with no flip. Open, `improvements.md` §6. **2026-10-18:** the cause is that the DDX's Present flip is compiled out. From the source, the copy costs watts, not swap time. The same reading found the swap waiting for the GPU every frame, which is the larger lead: see the row added under "Worth a look, cheaply" |
 | Desktop compositing | Off. 3.5% of all busy CPU, one `gsettings` call |
 | Governor tuning | Done. `sampling_down_factor` 1→10 is the whole win, 23% of burst latency |
 | Thermal daemon and ladder | Fixed. Five faults in one function; 107 °C → 87 °C on two cores |

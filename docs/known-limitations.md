@@ -248,9 +248,18 @@ Stated so they are not mistaken for settled.
   fails to happen. This outranks every performance item in the project.
 - **Why fullscreen games are copied, not flipped.** Measured 2026-09-27: no
   `PAGE_FLIP`. Xorg has the GC320 copy every frame into the TILER front buffer.
-  The cause is probably that SGX buffers cannot be TILER-backed for the rotated
-  plane, but that is not proven. The copy's cost is not measured either.
+  ~~The cause is probably that SGX buffers cannot be TILER-backed for the rotated
+  plane, but that is not proven.~~ **Cause found in source, 2026-10-18:** the DDX
+  is built with its Present flip commented out (`ARMSOC_PRESENT_FLIP`), so it
+  copies by design. Rotation would also block a flip, because the window
+  system's buffers are not TILER buffers. The copy's cost is not measured
+  either; from the source it is bandwidth and watts, not swap time. The open
+  part is whether the SGX can render into a TILER buffer.
   `improvements.md` §6.
+- **`eglSwapBuffers` under X waits for the GPU.** From source, 2026-10-18,
+  not measured. The window system library sleeps until the SGX has finished
+  each frame before presenting, so CPU and GPU never overlap across frames.
+  It is open source and fixable. `improvements.md` §6, "What the source says".
 - **The WiFi driver can loop in a hardware restart** and flood the kernel log with mac80211 warnings
   (~17 stack traces a second), starving userspace until a reboot. Seen once, 2026-09-28, while idle;
   trigger unknown, because the image's 50 MB journal cap let the storm erase it. Mitigations, none

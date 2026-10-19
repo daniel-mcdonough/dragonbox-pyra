@@ -19,7 +19,7 @@ Know this before deciding what resolution to render at.
 | Scaling | DISPC has hardware scalers |
 | Composition | X11, DRI3 + Present, `omap5` DDX. Desktop compositing is **off** |
 | 2D acceleration | Vivante GC320, fills and blits |
-| Swap | `Option "SwapbuffersWait" "true"` — swaps tied to vblank |
+| Swap | ~~`Option "SwapbuffersWait" "true"` — swaps tied to vblank~~ Decided by the window system library `libpvrDRI3WSEGL.so` and X's Present, not by any X config option. See §1.2 |
 
 ### 1.1 Rotation is free; do not re-implement it
 
@@ -34,6 +34,12 @@ the driver confirms it, and the kernel boots with `drm.force_hw_rotation` and
 
     (II) OMAP5(0): Buffer Flipping is Enabled
     (II) OMAP5(0): TILER rotation set to 270 degrees
+
+> **Corrected 2026-10-18, from the driver source.** The first log line is about
+> DRI2, not about games. "Buffer Flipping is Enabled" reports the DDX's `NoFlip`
+> option, which only the DRI2 swap path reads (`armsoc_dri2.c:122`). GLES clients
+> here present through DRI3 and Present, and that path cannot flip at all (§1.5).
+> The rotation statement is unaffected: rotation really is free.
 
 **Render landscape at 1280x720 and let the hardware handle orientation.** Do not
 add a rotation pass, do not render portrait and rotate, do not ask for a
@@ -65,6 +71,39 @@ Guidance:
 This also means a benchmark that "mysteriously refuses to exceed 60" is not
 mysterious, and any A/B must be taken with vsync off or the limiter hides the
 change.
+
+> **Corrected 2026-10-18, from source. The mechanism this section names does not
+> exist.** `SwapbuffersWait` is not an option of `omap5_drv.so`: the string occurs
+> nowhere in the 0.6 driver source, so X ignores the line. (X should list it
+> among unused options in `Xorg.0.log`. That was not checked on the device.)
+>
+> For GLES clients, vsync is decided by `libpvrDRI3WSEGL.so`. Its source is
+> `dri3wsegl-pyra` 0.4, archived in
+> `pyra-packages-archive/packages.pyra-handheld.com/trixie/`, and that package's
+> binary has the stock sha256 `d852ce4d…`. What it does, read from the source
+> and **not measured**:
+>
+> - Each swap asks Present for `target_msc = last_msc + swap_interval` with
+>   divisor 1 (`dri3_ws.c:806`). `last_msc` is the vblank count of the last
+>   *completed* present, and it is only updated when the library polls events at
+>   swap time.
+> - A frame that arrives within the same refresh as the previous one waits for
+>   the next vblank. A frame that took longer than one refresh already has a
+>   target in the past, so X copies it at once, not aligned to vblank. Slow
+>   frames can therefore tear.
+> - A real wait for the previous frame's scanout exists (`dri3_ws.c:787`), but
+>   only when the environment variable `DRI3_VSYNC` is set non-zero. Nothing on
+>   this image sets it.
+>
+> So the window system, as configured here, does not quantise to 60/N. The
+> measurement above (28.7 fps unsynced, exactly 20.00 fps "vsync on") still
+> stands as a measurement, but its cause is not identified. One candidate is the
+> application's own pacing: `profiling-guide.md` §1.3 already calls exactly
+> 50.00 ms the signature of an internal 20 fps limiter. Another is the swap
+> interval change, which makes the library rebuild its buffers. The guidance to
+> take every A/B with vsync off stays correct either way. The three bullets on
+> when to turn vsync off are unverified until the toggle is re-measured with
+> `DRI3_VSYNC` unset and set.
 
 ### 1.3 Render low, upscale in hardware
 
@@ -120,6 +159,48 @@ For a game, that means:
   resolution.
 - The cause and the options for removing it (a DDX flip, KMS-direct games,
   prerotation and where it would cost) are in `improvements.md` §6.
+
+> **Cause identified 2026-10-18, from source.** The DDX builds its Present
+> support with `//#define ARMSOC_PRESENT_FLIP 1` commented out
+> (`armsoc_present.c:49`), so Present has no flip hooks and copies every frame by
+> design. The stock binary agrees: it lacks the flip function's error string. If
+> the flip were compiled in, rotation would still stop it, because the
+> client's buffers are plain dumb buffers, not TILER buffers.
+>
+> **The copy is probably not in your frame time.** X submits the GC320 copy
+> without waiting for it, and the window system keeps three buffers, so the
+> client never waits for a copy to finish. The copy costs memory bandwidth and
+> power. That is read from the source and not measured. What the swap *does*
+> wait for is §1.6.
+
+### 1.6 `eglSwapBuffers` waits for the GPU to finish the frame
+
+Read from the window system's source on 2026-10-18; not yet measured directly.
+
+Under X, every swap blocks the calling thread until the SGX has finished
+rendering that frame. `WSEGL_SwapDrawable` calls `WaitForOpsComplete` on the
+back buffer before it presents (`dri3_ws.c:792` in `dri3wsegl-pyra` 0.4). The
+library does this because Present has no fence that could make X wait for the
+SGX. The DDK itself does not wait: under the GBM window system, the swap took
+~0.1 ms while the wait moved to buffer lock (`experiments/kms-plane/`, 0.75 to
+12.5 ms by load).
+
+It then makes a blocking round trip to X: `xcb_present_pixmap_checked` followed
+by `xcb_request_check` (`dri3_ws.c:828`).
+
+What follows for a renderer:
+
+- **CPU and GPU do not overlap across frames.** Frame time is roughly CPU time
+  plus the GPU's tail after the last submit, not the larger of the two. Work
+  you move from CPU to GPU, or the reverse, does not hide behind the other side.
+- **Swap time is a GPU measurement.** A long `eglSwapBuffers` here means the
+  GPU's share of the frame, plus one X round trip. It does not mean a vsync wait
+  or the X copy (§1.5).
+- **Only the thread that swaps is blocked.** Game logic on another thread still
+  overlaps with the GPU. The next frame's GL submission does not.
+
+The fix is in the open-source library, not in your renderer: `improvements.md`
+§6, "What the source says".
 
 ---
 

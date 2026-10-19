@@ -111,6 +111,11 @@ kernel is booted with `drm.force_hw_rotation` and
     (II) OMAP5(0): Buffer Flipping is Enabled
     (II) OMAP5(0): TILER rotation set to 270 degrees
 
+> **Corrected 2026-10-18.** The first of those lines is about DRI2. It reports
+> the `NoFlip` option, which only the DRI2 swap path reads. GLES clients present
+> through DRI3 and Present, which cannot flip in this driver (§6). The rotation
+> claim stands.
+
 The panel is 720x1280 at 60 Hz and the desktop is 1280x720 rotated right. No CPU
 rotate pass exists to remove. The 211 MB/s-per-copy arithmetic in the proposal
 is sound but it is describing a machine other than this one.
@@ -883,8 +888,12 @@ The submits come from the `Xorg` process, not the game. The game's own ioctls go
 to the PVR bridge. So each frame is drawn by the SGX into the client's back
 buffer, and then Xorg's EXA (`viv2d`) has the **GC320 copy it into the
 TILER-backed front buffer**. That is 3.7 MB read and 3.7 MB written per frame,
-about 220 MB/s at 30 fps. It costs little CPU, but it takes memory bandwidth and
-it sits inside the swap.
+about 220 MB/s at 30 fps. It costs little CPU, but it takes memory bandwidth ~~and
+it sits inside the swap~~.
+
+> **Corrected 2026-10-18, from source: probably not inside the swap.** X submits
+> the copy without waiting for it, and the client never waits for a copy. See
+> "What the source says" at the end of this item.
 
 glmark2 alone would not have settled it: an unsynced client is always copied, and
 the DDK ignores `--swap-mode fifo` (still ~255 fps). SoH is vsynced and is copied
@@ -907,8 +916,25 @@ probe (`perf_event_open` returns EINVAL). Two things read from the DDX source
   the client pixmap's (`armsoc_present.c:649`). It also treats a zero return as
   failure. Even if Present chose to flip, it would show the wrong buffer.
 
+> **Resolved 2026-10-18, from source: no flip is ever attempted, because the flip
+> is not compiled in.** `armsoc_present.c:49` reads `//#define ARMSOC_PRESENT_FLIP
+> 1`. Without it, the `check_flip`, `flip` and `unflip` hooks are absent from
+> `armsoc_present_screen_info`, and Present copies every frame. The stock
+> `omap5_drv.so` agrees: "ARMSOC DRI3 init" is in it, and the flip function's
+> "present flip failed" is not. The broken `armsoc_present_flip` above is
+> therefore dead code. DRI2 is not on the games' path at all, since the window
+> system is DRI3. Rotation would block a flip as well, because the client's
+> buffers are dumb buffers, not TILER buffers. So "the likely reason is
+> rotation" was a second cause hiding behind the first.
+
 **The ~3.4 ms of SoH's swap that does not scale with pixels** is the right size
 for this copy. That is inference. It has not been measured.
+
+> **Probably wrong, 2026-10-18 (reasoning from source, not measured).** The swap
+> does not wait for the copy. The part of SoH's frame that does not scale with
+> internal resolution is better explained by the game's own 1280x720 present
+> quad: Shipwright §8.42 measured it at 2.87 ms of 3D, and the swap waits for
+> the GPU to finish it.
 
 #### What could be done, cheapest first
 
@@ -917,10 +943,14 @@ for this copy. That is inference. It has not been measured.
    or compare a fullscreen window with a small one. If the copy is not most of
    it, stop here. Also find out whether the DDK's X11 path is DRI2 or DRI3.
    That choice decides between options 2 and 3.
+   *(2026-10-18: DRI3 and Present, from the window system's source. The swap
+   does not include the copy, so this sizing should be in watts, not ms.)*
 1. **Hide the copy rather than remove it.** If the swap blocks until the copy
    retires, a third buffer, or a looser swap throttle, lets the SGX start the
    next frame while the GC320 copies. This is the pipelining question below.
    It is config, not code. Watch input latency at 30 fps on a 60 Hz panel.
+   *(2026-10-18: already the case. Three buffers, and nothing waits for the
+   copy. What the swap does wait for is the SGX: see the end of this item.)*
 2. **Make X flip (only if the DDK uses DRI2).** Under DRI2 the DDX allocates
    the back buffers. It could allocate them the way it allocates the screen
    buffer (TILER-backed, rotated, scanout; `armsoc_driver.c:1101`), and flips
@@ -929,6 +959,11 @@ for this copy. That is inference. It has not been measured.
    Under DRI3 the client allocates, and the SGX cannot allocate TILER buffers.
    Fixing that is a dead end in a closed driver, on top of the broken
    Present flip.
+   *(2026-10-18: the DDK is DRI3, so the DRI2 half does not apply. The DRI3 half
+   was wrong about the allocator. Under DRI3 the buffers are allocated by
+   `libpvrDRI3WSEGL.so`, which is MIT source, not by the closed driver. It could
+   ask omapdrm for TILER buffers. Whether the SGX renders correctly into one is
+   untested. Proposal 4 below.)*
 3. **Skip X for games, keeping hardware rotation.** A game driving KMS
    directly from the game-mode VT (SDL `kmsdrm`, GBM) has no X copy, and no
    Xorg or marco time either. Real play measured about 1.5 ms and 0.9 ms of CPU
@@ -955,12 +990,102 @@ for this copy. That is inference. It has not been measured.
 plus ~2.4 ms of CPU per frame. SoH runs capped at 20 fps / 625 MHz by choice, so
 this arrives as headroom (a lower clock, less heat, or 30 fps where it now needs
 more clock), not as frame rate. Moderate, not transformative.
+*(2026-10-18: the ~3.4 ms part rests on the inference corrected above. The CPU
+part stands.)*
 
 **The pipelining question still stands.** Is the client a frame ahead of the
 GPU at all? On a tile-based deferred renderer the CPU should be. If the swap
 blocks until the previous frame's tile pass retires, SoH's ~5.0 ms swap is
 serialised dead time rather than overlapped work. The EGL buffer count decides
 which. Option 1 above is the same question from the copy's side.
+
+> **Answered 2026-10-18, from source: the client is not a frame ahead.** The
+> swap blocks until *this* frame's render has retired, not the previous one's.
+> The buffer count is not what decides it. The wait is an explicit call in the
+> window system. Below.
+
+#### What the source says (2026-10-18)
+
+Read from source and checked against the shipped binaries. **Nothing here has
+been measured on the device.** The sources:
+
+- `libpvrDRI3WSEGL.so` is `dri3wsegl-pyra` 0.4, MIT licensed. Source is in
+  `pyra-packages-archive/packages.pyra-handheld.com/trixie/dri3wsegl-pyra_0.4.tar.xz`.
+  The .deb beside it carries the stock sha256 `d852ce4d…`, so this is the code
+  that runs. 0.5 differs only in its changelog. TI's upstream, without the Pyra
+  vsync changes, is cloned at `~/git/dragonbox-pyra-repos/dragonbox-pyra-supporing-repos/dri3wsegl`.
+- The DDX is the 0.6 source in `dragonbox-pyra-build/ddx/build/src`.
+
+**What a GLES frame under X does:**
+
+1. The client renders into one of three dumb buffers. The library creates them
+   with `DRM_IOCTL_MODE_CREATE_DUMB` on the omapdrm fd that DRI3 hands it
+   (`-DBO_TYPE=DUMB` in `debian/rules`). They are linear, not TILER.
+2. On swap, the library calls `WaitForOpsComplete` on that buffer
+   (`dri3_ws.c:792`). **The calling thread sleeps until the SGX has finished
+   the frame.** The DDK does not do this by itself: under the GBM window system
+   the swap took ~0.1 ms and the wait moved to buffer lock
+   (`experiments/kms-plane/`). The wait exists because Present here has no
+   fence that could make X wait for the SGX.
+3. It sends `PresentPixmap` and blocks on a round trip to X
+   (`xcb_request_check`, `dri3_ws.c:828`).
+4. X copies the buffer to the screen through EXA. The GC320 stream is committed
+   asynchronously (`_Viv2DStreamCommit(v2d, TRUE)`), and Present reports the
+   buffer idle once the copy is submitted. With three buffers, the client never
+   waits for a copy.
+
+**Vsync.** The library targets `last_msc + swap_interval` (`dri3_ws.c:806`),
+where `last_msc` is the last completed present as of the last event poll. A frame
+slower than one refresh is therefore copied at once, not at vblank. The real
+wait is only active when the `DRI3_VSYNC` environment variable is set, and
+nothing on this image sets it. `SwapbuffersWait` in the X config is not an
+option this driver has (see the end of this document). That fits glmark2
+ignoring `--swap-mode fifo`, but it has not been measured.
+
+**What this changes.** SoH's ~5.0 ms swap is most likely the SGX finishing the
+frame while the render thread waits, with one X round trip on top. The X copy
+costs bandwidth and watts, not swap time.
+
+**Proposals, ranked.** All four are changes to MIT code. None touches the
+PowerVR binaries. A test build can be loaded per process, with no system
+change: a private copy under the same name on `LD_LIBRARY_PATH`, or a
+`powervr.ini` in the working directory (the kms-plane method). Measure on the
+Shipwright rig: ABBA, CPU pinned, vsync off.
+
+1. **Present from a worker thread.** The swap marks the buffer busy, queues it
+   and returns. A per-drawable thread waits for the SGX and then presents. The
+   existing busy-buffer wait in `WSEGL_GetDrawableParameters` already stops a
+   client running more than two frames ahead. **Prize: up to the GPU-wait part
+   of the swap, ~5.0 ms of SoH's 31.8 ms, but only when the CPU has work for the
+   next frame to overlap with it.** Under a frame cap it arrives as headroom.
+   Cost: up to one frame of extra input latency, so measure latency as well as
+   frame time.
+2. **Unchecked `PresentPixmap`, with a flush.** This removes one blocking X
+   round trip per frame. Small, and it costs more when Xorg is busy on the
+   other core. Same build as 1.
+3. **Make vsync behave.** Honour the swap interval without `DRI3_VSYNC`. Use
+   `XCB_PRESENT_OPTION_ASYNC` for interval 0, and a target Present computes
+   itself for interval 1. Judge it on frame-time variance and tearing, not mean
+   fps. Then re-take `rendering-guidelines.md` §1.2's 28.7 → 20.00 fps
+   measurement, whose mechanism is now unknown.
+4. **Flip without a copy, keeping hardware rotation.** The library would allocate
+   TILER buffers through omapdrm's `OMAP_GEM_NEW` with a tiled flag, and the
+   DDX would compile in the Present flip and fix it
+   (`reports/pyra-armsoc-present-flip-fb-id.md`). **First, the gate, which is
+   cheap and decides it:** does `PVRSRVMapDmaBuf` accept a TILER dma-buf, does
+   the SGX render correctly at its stride, and how fast? kms-plane only showed
+   that the GBM backend cannot import one. This library controls its own
+   allocation, so it has not been tested. The test changes only `create_buffer`;
+   X keeps copying while it runs. Prize: 7.4 MB of copy traffic per frame,
+   mostly as watts (~0.1 W by analogy with Shipwright §8.54, an estimate).
+   It also removes the copy racing a scan that runs perpendicular to it under
+   270° rotation. Little frame time, if the source reading above is right.
+   Risks: flips go through the vblank path, and TILER container space is
+   finite.
+
+While the library is being rebuilt, fix the dma-buf double close in source:
+drop the `close(buffer->dmabuf_fd)` at `dri3_ws.c:324`, replacing the binary
+patch (`reports/pyra-ddk-dri3-wsegl-double-close.md`).
 
 ### 7. Profile gl4es before rebuilding it
 
@@ -1835,11 +1960,14 @@ the first thing tried.
   in `troubleshooting.md` and present from the image's first boot. It is still
   worth ten minutes with `/proc/36/stack` to find out what they are blocked on,
   because a driver blocked forever on an i2c transfer is not always harmless.
-- **`Option "SwapbuffersWait" "true"`** ties buffer swaps to vblank. That is
+- ~~**`Option "SwapbuffersWait" "true"`** ties buffer swaps to vblank. That is
   almost certainly correct — it is what prevents tearing — but it caps
   fullscreen throughput at 60 FPS and should be named as a deliberate choice
   rather than discovered during a benchmark that mysteriously refuses to exceed
-  60.
+  60.~~ **Corrected 2026-10-18:** `omap5_drv.so` has no such option. The string
+  is in neither the 0.6 source nor the binary, so the line does nothing. Vsync
+  for GLES clients is decided by `libpvrDRI3WSEGL.so` (§6, "What the source
+  says"). The line can go, or stay with a comment saying it is inert.
 
 ---
 
