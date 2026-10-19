@@ -12,27 +12,46 @@ hardware: device tree, IOMMU, carveout memory, firmware loading and both cores
 coming out of reset.
 
 **Status.** The kernel changes and the heartbeat firmware were first booted on
-a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`). The `5.6.19-m4demo` kernel and
-the cycle-counter firmware in this kit are newer builds of the same work, and
-the output below is a sample of what the demo prints, not a recorded run.
+a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`). The demo firmware and script in
+this kit ran on that unit on 2026-10-18, on the project's `5.6.19-m4-kbdled`
+kernel, which carries the same four M4 patches: **13 ok, 0 failed, both cores
+measured at 212.8 MHz.** The `5.6.19-m4demo` kernel in the kit is the same M4
+work without this project's unrelated experiments, and is the one part of the
+kit that has not itself been booted yet.
 
 ---
 
 ## What you will see
 
-`sudo ./pyra-m4-demo.sh` goes through four steps. The core boot lines it prints
-first look like this:
+`sudo ./pyra-m4-demo.sh` goes through four steps. From the 2026-10-18 run,
+trimmed:
 
-    pyra-m4-hello: running on the OMAP5432 IPU (2 x Cortex-M4)
-    core0: state=alive beats=0000000004
-    core1: state=alive beats=0000000004
-    mode: demo, DWT cycle counter per core
-    core0 cpu-cycles=0001234567
-    core1 cpu-cycles=0001233210
+    | pyra-m4-hello: running on the OMAP5432 IPU (2 x Cortex-M4)
+    | core0: state=alive beats=0000000001
+    | core1: state=alive beats=0000000001
+    | core0 clock-src=systick dwt-ctrl=0x4f000000 dwt-fault=0 systick=0x00000005
+    | core1 clock-src=systick dwt-ctrl=0x4f000000 dwt-fault=0 systick=0x00000005
 
-1. **Live.** For ten seconds it prints both cores' heartbeat counters and each
-   core's clock speed. The speed comes from the M4's own cycle counter (DWT
-   `CYCCNT`) sampled against Linux's clock.
+    == live, 15s ==
+           t   core0-beats        MHz   core1-beats        MHz
+          1s    0000000001      213.8    0000000001      214.2
+          2s    0000000002      213.1    0000000002      212.5
+          ...
+         15s    0000000011      212.6    0000000011      211.9
+
+      ok    core0: 212.8 MHz, core clock, from SysTick (15 one-second samples, median 213.0)
+      ok    core1: 212.8 MHz, core clock, from SysTick (15 one-second samples, median 212.5)
+      ok    a fresh count: .bss was zeroed by the loader and an M4 started over
+      ok    no IOMMU fault
+      ok    no BUG or WARNING
+    13 ok, 0 failed
+
+The beats are slow, about one every 1.4 s, on purpose. The firmware runs
+uncached straight from DDR, which is slow on this hardware (see `docs/m4-ipu.md`).
+
+1. **Live.** For ten seconds (`--seconds N` for longer) it prints both cores'
+   heartbeat counters and each core's clock speed. The speed comes from each
+   M4 counting its own clock in SysTick, sampled against Linux's clock.
 2. **Stop.** The IPU goes offline and its trace buffer disappears.
 3. **Start again.** The counters begin again from near zero.
 4. **Kernel log.** It checks for IOMMU faults, `BUG`s and `WARNING`s over the
@@ -48,8 +67,9 @@ Why this is evidence rather than a script printing numbers:
 - **They keep running.** The counters advance between samples. A core that
   wrote one line and crashed would show a frozen number.
 - **The clock speed is measured, not looked up.** Linux's clock tree reports a
-  425 MHz gate clock for the IPU, while TI documents roughly half that for the
-  cores. The cycle counter settles which is right on your unit.
+  425.472 MHz gate clock for the IPU. The cores measure 212.8 MHz, exactly half,
+  which is also TI's documented figure. The script checks that two independent
+  estimates agree within 2% before it reports a number.
 
 ---
 
@@ -149,7 +169,9 @@ clock measurement is worth more than the first.
 | `writing 'start' failed`, `-EBUSY` in dmesg | Something asked for a hardware timer the backlight owns. The kit's device tree deliberately gives the IPU none. If you edited it, see "The one Pyra-specific trap" in `docs/m4-ipu.md`. |
 | `core1 never ran` / `did not advance` | Only one M4 left reset. Please post the log; this has not been seen. |
 | `state=FAULT` | The firmware took a fault. Please post the log and `dmesg`. |
-| `no-dwt` instead of cycle counts | Your M4s report no cycle counter. The heartbeat is still the proof they run, and the clock is simply not measured. |
+| `clock-src=none` | Neither the DWT cycle counter nor SysTick worked on your M4s. The heartbeat is still the proof they run, and the clock is simply not measured. Please post the `clock-src` line. |
+| `clock-src=dwt` | Your M4s have a DWT cycle counter, unlike the unit this was developed on. Please post it. |
+| `the count stood still` or `disagree by more than 2%` | The clock reading was not trustworthy, so no figure is reported. Run again with `--seconds 30`. If it persists, post the log. |
 | `BUG: scheduling while atomic` | The kernel is missing `0012`. This kit's kernel has it, so you are on a different one. |
 | `/lib/firmware/omap5-ipu-fw.xem4 already exists` | Left behind by something else. `sudo ./pyra-m4-run.sh --stop` removes it. |
 

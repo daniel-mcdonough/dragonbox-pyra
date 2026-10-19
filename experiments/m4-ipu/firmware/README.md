@@ -101,6 +101,27 @@ and a backtrace does not repeat the subsystem name on every line. It now
 checks for `BUG:`/`WARNING:` by line prefix, separately from anything
 topical.
 
+## The demo build
+
+`make demo` builds `pyra-m4-demo.xem4` from the same source with
+`-DPYRA_M4_DEMO`: the same heartbeat, plus a free-running count of each core's
+own clock for `device/pyra-m4-demo.sh` to time against Linux. The plain build
+does not change, and its loaded image is byte-identical with or without the
+demo code in the source.
+
+The count comes from SysTick, extended to 32 bits by polling it, because the
+IPU's M4s have no DWT cycle counter (`DWT_CTRL = 0x4f000000`, `NOCYCCNT` set).
+The firmware still probes the DWT first, with bus faults masked so that a
+missing one cannot take the core down, and reports what it found on a
+`clock-src=` line. Measured on 2026-10-18: **212.8 MHz on both cores**, half
+the 425.472 MHz IPU gate clock.
+
+One mistake to avoid repeating: the count must be republished much more often
+than Linux samples it. The first version republished it once per beat, which is
+about every 1.4 s on this hardware. With one-second sampling, every interval
+then saw a whole beat's worth of cycles or none, and it reported 293 MHz.
+`pyra-m4-demo.sh` now refuses to report a figure from samples like that.
+
 ## Files
 
 | | |

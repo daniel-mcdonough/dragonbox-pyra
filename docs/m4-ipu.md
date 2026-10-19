@@ -41,11 +41,30 @@ Measured on the unit, 2026-09-20:
 Two cautions about that table.
 
 **The clock figures are the subsystem gate clocks off `dpll_core`, not
-confirmed core rates.** They are what `/sys/kernel/debug/clk/clk_summary`
-reports for the clkctrl gates. TI's published figure for the OMAP5 M4s is
-roughly half this, which would mean an internal divider this measurement cannot
-see. Treat 425 MHz as an upper bound and check the TRM before planning
-anything that depends on the number.
+core rates.** They are what `/sys/kernel/debug/clk/clk_summary` reports for
+the clkctrl gates. **The M4s run at half the IPU figure: 212.8 MHz, measured
+on 2026-10-18** — 425.472 / 2 is 212.736, and TI's published figure is about
+half the gate clock too. The measurement is the demo firmware's (`make demo`,
+`device/pyra-m4-demo.sh`): each core counts its own clock in SysTick, extended
+to 32 bits in software, and Linux times the count against its own clock over
+15 one-second samples. Both cores read 212.8 MHz, the per-second readings stay
+within 211.5–214.3, and the total-over-time and per-second-median estimates
+agree. The log is `experiments/m4-ipu/results/`.
+
+Two things were learned on the way, both worth knowing before writing
+firmware:
+
+- **The IPU's M4s have no DWT cycle counter.** `DWT_CTRL` reads `0x4f000000`:
+  four comparators, with `NOCYCCNT`, `NOPRFCNT`, `NOEXTTRIG` and `NOTRCPKT`
+  all set. SysTick is the only cycle-rate counter inside the core.
+- **Code running uncached from DDR is very slow.** The heartbeat's delay loop
+  takes about 2 µs per iteration — on the order of 400 cycles for a handful of
+  instructions — because with the unicache off every fetch and every stack
+  access crosses the L3 to DDR. That is fine for a heartbeat and ruinous for
+  anything else; real firmware has to turn the unicache on or run from the
+  64 KB L2 RAM.
+
+The DSP's gate clock (465.9 MHz) has not been measured against anything.
 
 **`GP` matters.** This is a General Purpose part, not High Security, so
 firmware does not have to be signed by TI to load. On an HS part none of what

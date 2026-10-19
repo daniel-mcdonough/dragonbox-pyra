@@ -13,11 +13,11 @@
 #
 # What you see, and why each part means something:
 #
-#   1. live: both cores' heartbeat counters, and each core's own cycle
-#      counter (the Cortex-M4 DWT CYCCNT), sampled once a second against
-#      Linux's clock. The beats prove the code is running; the cycle
-#      counter divided by wall time is the M4 core clock, measured rather
-#      than read off a clock tree.
+#   1. live: both cores' heartbeat counters, and each core's own clock
+#      counter (DWT CYCCNT where usable, otherwise SysTick extended to 32
+#      bits by the firmware), sampled once a second against Linux's clock.
+#      The beats prove the code is running; the count divided by wall time
+#      is the M4 clock, measured rather than read off a clock tree.
 #   2. stop: the IPU goes offline and the trace buffer disappears with it.
 #   3. start again: the counters begin again from near zero. They live in
 #      .bss, which is not in the firmware file and is zeroed by the loader
@@ -118,6 +118,7 @@ field() {  # field <core> <beats|state|cycles> <text>
 	beats)  sed -n "s/^core$1: state=[a-zA-Z]* beats=\([0-9]*\)$/\1/p" <<<"$3" ;;
 	state)  sed -n "s/^core$1: state=\([a-zA-Z]*\) beats=[0-9]*$/\1/p" <<<"$3" ;;
 	cycles) sed -n "s/^core$1 cpu-cycles=\([0-9a-z-]*\) *$/\1/p" <<<"$3" ;;
+	src)    sed -n "s/^core$1 clock-src=\([a-z]*\) .*/\1/p" <<<"$3" ;;
 	esac
 }
 now_ns() { date +%s%N; }
@@ -133,12 +134,23 @@ ok "ipu state: $(cat "$RP/state")"
 echo
 cat "$TRACE" 2>/dev/null | sed 's/^/        | /'
 
+# Where the count comes from: the DWT cycle counter, SysTick on the core
+# clock, or SysTick on a reference clock (sysext), which is NOT the core
+# clock and is labelled as such below.
 have_cyc=1
+boot=$(cat "$TRACE" 2>/dev/null)
+CLKSRC=$(field 0 src "$boot")
 for c in 0 1; do
-	case "$(field $c cycles "$(cat "$TRACE" 2>/dev/null)")" in
-	''|no-dwt) have_cyc=0 ;;
+	case "$(field $c cycles "$boot")" in
+	''|no-dwt|none) have_cyc=0 ;;
 	esac
 done
+case "$CLKSRC" in
+dwt)     WHAT="core clock, from the DWT cycle counter" ;;
+systick) WHAT="core clock, from SysTick" ;;
+sysext)  WHAT="SysTick reference clock, NOT the core clock" ;;
+*)       WHAT="" ;;
+esac
 
 echo
 echo "== live, ${WATCH}s =="
@@ -191,20 +203,38 @@ fi
 declare -A CLOCK
 if [ "$have_cyc" = 1 ]; then
 	for c in 0 1; do
-		# Median rather than mean: a read can catch the M4 halfway
-		# through rewriting its ten digits, and one torn sample should
-		# cost one interval, not the result.
-		CLOCK[$c]=$(awk -v c="$c" '$1 == c { print $3 * 1000 / $2 }' <<<"$samples" \
+		# Two estimates, which have to agree. The main one is total
+		# count over total time, whose only error is how stale the
+		# first and last readings were. The median of the one-second
+		# rates is the check on it: robust to a read that catches the
+		# M4 halfway through rewriting its ten digits, and the thing
+		# that would have caught the first firmware, which republished
+		# the count once per beat -- slower than this samples -- so
+		# that every interval saw a whole beat's worth of cycles or
+		# none, and the "rate" was the beat length in disguise.
+		zeros=$(awk -v c="$c" '$1 == c && $3 == 0' <<<"$samples" | wc -l)
+		total=$(awk -v c="$c" '$1 == c { y += $3; t += $2 } END {
+			if (t > 0) printf "%.1f", y * 1000 / t }' <<<"$samples")
+		median=$(awk -v c="$c" '$1 == c { print $3 * 1000 / $2 }' <<<"$samples" \
 			| sort -n | awk '{ v[NR] = $1 } END {
 				if (NR == 0) exit
 				m = (NR % 2) ? v[(NR + 1) / 2] : (v[NR / 2] + v[NR / 2 + 1]) / 2
 				printf "%.1f", m }')
-		[ -n "${CLOCK[$c]}" ] \
-			&& ok "core$c clock measured: ${CLOCK[$c]} MHz (median of $(grep -c "^$c " <<<"$samples") one-second samples)" \
-			|| bad "core$c: no usable cycle-counter samples"
+		n=$(grep -c "^$c " <<<"$samples")
+		if [ -z "$total" ] || [ -z "$median" ]; then
+			bad "core$c: no usable clock-counter samples"
+		elif [ "$zeros" -gt 0 ]; then
+			bad "core$c: the count stood still in $zeros of $n one-second samples — it is published too rarely to be a rate"
+		elif ! awk -v a="$total" -v b="$median" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= a * 0.02) }'; then
+			bad "core$c: total-over-time ($total MHz) and the per-second median ($median MHz) disagree by more than 2%"
+		else
+			CLOCK[$c]=$total
+			ok "core$c: $total MHz, $WHAT ($n one-second samples, median $median)"
+		fi
 	done
 else
-	note "no DWT cycle counter reported (no-dwt): the clock was not measured."
+	note "no usable clock counter on the M4s: the clock was not measured."
+	note "$(grep 'clock-src=' <<<"$boot" | head -1)"
 	note "The heartbeat above is still the proof that both cores run."
 fi
 
@@ -251,7 +281,8 @@ echo
 echo "== summary =="
 if [ "$fail" = 0 ]; then
 	note "Both Cortex-M4s in the OMAP5432 IPU ran this firmware, under Linux remoteproc."
-	[ "$have_cyc" = 1 ] && note "Core clock: core0 ${CLOCK[0]} MHz, core1 ${CLOCK[1]} MHz."
+	[ -n "${CLOCK[0]:-}" ] && [ -n "${CLOCK[1]:-}" ] \
+		&& note "Measured: core0 ${CLOCK[0]} MHz, core1 ${CLOCK[1]} MHz ($WHAT)."
 fi
 note "firmware removed from /lib/firmware; ipu offline"
 echo "$pass ok, $fail failed"
