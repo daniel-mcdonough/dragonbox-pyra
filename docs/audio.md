@@ -6,7 +6,8 @@ Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
 This is the map. The repair instructions for the faults that make the machine
 silent are fix 9 and fix 10 in `fixes.md`; the performance survey and its
 numbers are item 10 in `improvements.md`; the history of the audio DSP work is in
-the development log (sections 22 to 34) and `experiments/aess/`. This document is what
+the development log (sections 22 to 34) and `experiments/aess/`; how that work
+compares with letux 7.3, and how to move to it, is `aess-letux-7.3.md`. This document is what
 you want open when someone says "there is no sound" and you do not yet know
 which of those you are looking at — or when you are about to write something
 that touches audio and need to know what the hardware will and will not do.

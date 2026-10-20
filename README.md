@@ -105,6 +105,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/kernel-changes.md](docs/kernel-changes.md) | Every patch made to the kernel, what each one does, and which kernel builds carry it. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
+| [docs/aess-letux-7.3.md](docs/aess-letux-7.3.md) | Our AESS (audio DSP) patches against letux 7.3: what upstream changed, which of our fixes it still lacks, how to port them, and how to test its probe order. |
 | [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, what it changes, how to undo it, and what the output proves. |
 | [docs/building.md](docs/building.md) | Compiling the X display driver and the kernel from source, on a PC, and installing a test build safely. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
