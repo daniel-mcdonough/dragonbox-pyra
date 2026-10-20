@@ -70,9 +70,11 @@ battery runs, no L3/PVR error/recovery/lockup/oops line): `pvrsrvkm-apm.ko` (src
 and `depmod` resolves the module there, ahead of the stock one in `kernel/`. It is not in the
 initramfs. Only m4-kbdled (l5, the default, and l1) has it; the fallback l4 (`5.6.19-m4`)
 keeps the stock module. Undo: delete that file and `depmod -a 5.6.19-m4-kbdled`.
-**Trap:** the installer extracts over the module tree, so a *rebuilt* m4-kbdled still loads
-this module from `updates/`. Rebuild it with the kernel (`PYRA_KERNEL_SUFFIX=m4-kbdled
-./build-module.sh`) or delete it. The durable form is still 0034 in `patches/`.
+**Now built into `kernel-m4-kbdled`** (`pc/pyra-crossbuild.sh kernel-m4-kbdled`). The installer
+extracts over the module tree, so a card that still has the old module in `updates/` keeps
+loading it ahead of the built-in one: after installing a rebuilt m4-kbdled, delete
+`/lib/modules/5.6.19-m4-kbdled/updates/pvrsrvkm_omap5_sgx544_116.ko` and run
+`depmod -a 5.6.19-m4-kbdled`.
 
 **Idle:** usage 0, `suspended`, parent suspended, PD_GPU OFF, clocks gated, all with
 the driver loaded.

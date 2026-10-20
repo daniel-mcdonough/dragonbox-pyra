@@ -27,11 +27,12 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4demo` | `5.6.19-m4demo` | `patches/` + `experiments/m4-ipu` only. This is what the demo kit ships |
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
-| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + `experiments/kbd-led` |
+| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` |
 
 **The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
-(`5.6.19-m4`) is the fallback. The undervolt module and the 0034 GPU module (below) are
-installed for m4-kbdled only.
+(`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
+only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads from
+the separately built copy in `updates/` until that kernel is reinstalled.
 
 ---
 
@@ -165,11 +166,12 @@ Report: `reports/pyra-kernel-kbd-backlight.md`.
 **0034 (`gpu-power/`) — pvrsgx: let the SGX power domain go off at idle.** The GPU driver
 takes a runtime-PM reference at probe and only gives it back at remove, so the GPU never
 powers down while the driver is loaded. That costs about 0.22 W at desktop idle. This
-balances the reference and lets the power domain autosuspend after 100 ms. *Not built into
-any kernel.* It is installed as a rebuilt module at
-`/lib/modules/5.6.19-m4-kbdled/updates/` since 2026-09-26. If m4-kbdled is rebuilt, that
-module still loads unless it is rebuilt too or deleted. The README says the durable form
-is "0034 in `patches/`", but it is not there. It is still only in `experiments/gpu-power/`.
+balances the reference and lets the power domain autosuspend after 100 ms. *Built into
+`kernel-m4-kbdled`*, the running kernel. Before that it ran as a separately built module at
+`/lib/modules/5.6.19-m4-kbdled/updates/`, installed 2026-09-26; a card that still has that
+file loads it ahead of the built-in one, so delete it and run `depmod -a 5.6.19-m4-kbdled`
+after installing a rebuilt m4-kbdled. Kept in `experiments/gpu-power/` rather than
+`patches/` because it has not had a long soak in ordinary use.
 Report: `reports/kernel-pvrsrvkm-runtime-pm-reference.md`.
 
 **`undervolt/pyra_undervolt.ko` — out-of-tree module, not a patch.** Changes one CPU
