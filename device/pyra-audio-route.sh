@@ -115,12 +115,18 @@ if [ -n "$(get 'DL1 PDM Switch')" ]; then
 		$AMIXER -c "$CARD" -q cset name="${pair%%=*}" "${pair#*=}" 2>/dev/null ||
 			logger -t pyra-audio-route "could not set ${pair%%=*}"
 	done
-	# The DSP gains are 0 = muted. Lifted to unity only when found there.
+	# The DSP gains, all at unity (120 = 0 dB; 0 is muted). None of them is a
+	# user control -- PulseAudio does the volume and the wheel sets the codec --
+	# so anything below unity is a leftover, and alsa-restore replays it on
+	# every boot. DL2 Playback Volume sat at 113 for weeks that way, putting
+	# the speakers 7 dB below the headphones. Set unconditionally.
 	for c in 'DL1 Media Playback Volume' 'DL2 Media Playback Volume'; do
-		[ "$(get "$c")" = 0 ] && $AMIXER -c "$CARD" -q cset name="$c" 120 2>/dev/null
+		$AMIXER -c "$CARD" -q cset name="$c" 120 2>/dev/null ||
+			logger -t pyra-audio-route "could not set $c"
 	done
 	for c in 'DL1 Playback Volume' 'DL2 Playback Volume'; do
-		[ "$(get "$c")" = '0,0' ] && $AMIXER -c "$CARD" -q cset name="$c" 120,120 2>/dev/null
+		$AMIXER -c "$CARD" -q cset name="$c" 120,120 2>/dev/null ||
+			logger -t pyra-audio-route "could not set $c"
 	done
 fi
 
@@ -175,7 +181,8 @@ say_state() {
 		echo "AESS:"
 		for c in 'DL1 PDM Switch' 'Sidetone Mixer Playback' \
 		         'DL1 Mixer Multimedia' 'DL2 Mixer Multimedia' \
-		         'DL1 Media Playback Volume' 'DL2 Media Playback Volume'; do
+		         'DL1 Media Playback Volume' 'DL2 Media Playback Volume' \
+		         'DL1 Playback Volume' 'DL2 Playback Volume'; do
 			v=$(amixer -c "$CARD" cget name="$c" 2>/dev/null | sed -n 's/^[[:space:]]*: values=//p')
 			printf '  %-26s %s\n' "$c" "${v:-?}"
 		done

@@ -135,15 +135,16 @@ The gains in front of both paths:
 | control | value | note |
 | --- | --- | --- |
 | `DL1 Media Playback Volume`, `DL2 Media Playback Volume` | 120 | 0 is muted |
-| `DL1 Playback Volume`, `DL2 Playback Volume` | 120,120 | 0,0 is muted. DL2 sat at 113 (-7 dB) until 2026-10-20, restored from `asound.state` every boot; nothing chose it |
+| `DL1 Playback Volume`, `DL2 Playback Volume` | 120,120 | 0,0 is muted. DL2 sat at 113 (-7 dB) until 2026-10-20, restored from `asound.state` every boot; nothing chose it. Fix 9's helper now asserts 120 |
  Set these with `amixer -c L15 cset name='...'`, **never `sset`**:
 `sset` takes the *simple* control name, with `Switch` and `Playback Volume`
 stripped, and silently does nothing when handed the full one.
 
 **Nothing but fix 9 keeps them on.** `pyra-audio-route.sh` installs a udev rule
 that runs `/usr/local/sbin/pyra-audio-route-apply` after `alsa-restore`, and
-since 2026-09-24 that helper sets the four switches whenever the card has them,
-and lifts the DSP gains only when it finds them at 0. Before that they lived
+since 2026-09-24 that helper sets the four switches whenever the card has them.
+Since 2026-10-20 it also sets the four DSP gains to unity every time, not
+only when it finds them at 0, so a leftover like DL2's 113 cannot persist. Before that they lived
 only in `asound.state`, and one session that left them off broke every boot
 after it — see *Traps* below.
 
