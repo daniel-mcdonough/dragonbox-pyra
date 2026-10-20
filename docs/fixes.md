@@ -872,3 +872,29 @@ Checked on hardware: a bottom-to-top sweep gave steps 0, 8, 10, 13, 15, 16, 18,
 19, 22, 24, 27, 29, and it sounds even by ear. The calibration comes from one
 unit, and another unit's pot may differ. The table is at the top of the source.
 
+## Fixes 6, 7 and 12 as a package
+
+All three change files that `pyra-hacks` owns, so the prep script and the
+device scripts patch or override that package in place. The packaged form is
+`../pyra-hacks-pyra`: `main` is the package's release history rebuilt from
+the source packages (upstream's repository is not public), each fix is a
+branch off it (`feature/thermal-cap`, `feature/thermal-ladder`,
+`feature/volumed-taper`), and `pyra` merges them with a `0.38+pyra1`
+version. `git diff main...feature/<name>` is the patch to send upstream.
+
+    ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra1_armhf.deb
+
+Its `pyra-thermal.sh` is byte-identical to what fixes 6 and 7 produce from the
+0.38 script, and its `pyra_volumed` is fix 12's mapping on upstream's own
+libiio and alsa-lib code, with the calibration readable from
+`/etc/pyra_volumed.conf`. With it installed, `dpkg --verify pyra-hacks` is
+clean and the three fixes have nothing left to do. Undo fix 12's override
+(`device/pyra-volumed/install.sh --undo`), because its runner would otherwise
+take over the packaged daemon.
+
+The running unit has had it since 2026-10-20, replacing 0.38. The previous
+thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
+go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
+7 and 12 again. The fixes stay in the prep script for cards with the stock
+package.
+

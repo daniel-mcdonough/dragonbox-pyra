@@ -272,7 +272,9 @@ that goes back from the reading to wheel travel through those measured points
 and spreads -40 to +6 dB evenly over it, with the very bottom at -52 dB. It
 needs only libc, so a fresh card builds it on first boot (fix 12 in
 `fixes.md`, applied by the prep script). `sudo ./install.sh` does the same on
-a running Pyra, and `--undo` reverts it. Installed here 2026-10-20. Another unit's pot may read
+a running Pyra, and `--undo` reverts it. This unit now runs the same mapping
+from the `pyra-hacks 0.38+pyra1` package instead (*Fixes 6, 7 and 12 as a
+package* in `fixes.md`). Another unit's pot may read
 differently; the calibration table is at the top of the source.
 
 The control runs 0 to 29, -52 dB to +6 dB in 2 dB steps. On
