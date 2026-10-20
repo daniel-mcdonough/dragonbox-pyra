@@ -31,7 +31,7 @@ pyra-local.conf
 # kept locally for reference, never committed.
 docs/*.pdf
 
-# Private development notes live in a separate private repository. Keep stray copies out.
+# Private development notes are kept outside this repository. Keep stray copies out.
 /TODO.md
 /docs/progress.md
 /docs/release-readiness.md

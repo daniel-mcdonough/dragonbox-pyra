@@ -74,7 +74,7 @@ while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done
 sleep 30
 
 # Pin the CPU so the governor cannot answer the change on its own
-# (memory: pyra-thermal overrides min==max, so userspace + setspeed).
+# (pyra-thermal rewrites scaling_max_freq, so min==max does not hold: use userspace + setspeed).
 for p in $CPU/cpu*/cpufreq; do
   [ -e $p/scaling_governor ] || continue
   echo userspace > $p/scaling_governor; echo 1000000 > $p/scaling_setspeed

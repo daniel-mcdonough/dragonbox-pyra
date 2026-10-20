@@ -126,7 +126,9 @@ the driver's per-draw CPU cost (~10–17 µs, Shipwright §8.37) is still in it.
 ## PVRTune — hardware counters
 
 **Works.** PVRTune for SGX (SDK 17.1, PVRPerfServerDeveloper v14.143), unpacked into `pvrtune/`
-(git-ignored). The server identifies `DRIVER BUILD 1.14.369.9939`, `PowerVR SGX544MP2`,
+(git-ignored). It is Imagination's proprietary tool and is not redistributed here: download
+"PVRTune for SGX" (`PVRTune_for_SGX.tgz`) from Imagination's developer site and unpack it into
+`pvrtune/`. The server identifies `DRIVER BUILD 1.14.369.9939`, `PowerVR SGX544MP2`,
 `Series5XT`, and streams HWPerf TA/3D timing events plus derived counters (tiler/renderer
 active, vertex and pixel load, HSR efficiency, memory words/s, per-CPU load).
 
