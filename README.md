@@ -102,6 +102,7 @@ Each one stands alone. Read the one that matches what you are doing.
 | [docs/porting-checklist.md](docs/porting-checklist.md) | A phased checklist from "is this feasible" to "confirm it in real play". |
 | [docs/known-limitations.md](docs/known-limitations.md) | The hard walls, and everything already tried that did not work. |
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
+| [docs/kernel-changes.md](docs/kernel-changes.md) | Every patch made to the kernel, what each one does, and which kernel builds carry it. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it: what is proven, what it costs, what to build. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP: what they are, the kernel work to reach them, the test firmware that now runs on both cores, the upstream iommu bug that turned up when it did, the letux 7.x alternative, and whether it is worth finishing. |
 | [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, what it changes, how to undo it, and what the output proves. |
@@ -155,7 +156,7 @@ need no privileges beyond reading `/proc`.
 | `experiments/thermals-and-frequency/` | Third-party, never booted here: an unlocked device tree with sixteen frequency steps from 250 MHz to 2 GHz, read out and reviewed, and rewritten as two device tree patches so the half that is not overclocking can be built on its own. Also the one change in its example thermal script that can damage a battery. |
 | `experiments/undervolt/` | A module that changes one CPU operating point's voltage at runtime, and how the 750 MHz point was stepped from 950 mV to 850 (all clean) and chosen at 870: stress-ng with result checks, Ship of Harkinian's frame dumps, the watts, and a 60-minute soak. Shipped as `device/pyra-undervolt`. |
 | `experiments/gpu-tools/` | GPU profiling that works here: PVRTune's server reads the SGX's HWPerf timing on the stock kernel and DDK, and apitrace records a game's GLES2 calls for a desktop frame debugger. Build script, the `eglretrace` patch the DDK needs, and `pvrtune_frames.py` for per-frame GPU time. First result: Ship of Harkinian's GPU is 20% busy at 30 fps. |
-| `patches/` | Six kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, and one that prints an error the driver was discarding. Applied by `pc/pyra-crossbuild.sh kernel-fix`. |
+| `patches/` | Seven kernel patches: the candidate display fix, the suspend fix, the fix for the interrupt storm on resume, the fix for the nubs dying on resume, the fix for the keyboard going silent, one that prints an error the driver was discarding, and an upstream backport that stops kprobes panicking. Applied by `pc/pyra-crossbuild.sh kernel-fix`. Every kernel change, including the experiments, is listed in `docs/kernel-changes.md`. |
 
 ### On the Pyra
 
