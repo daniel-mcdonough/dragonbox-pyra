@@ -40,7 +40,7 @@ Tags as elsewhere: **measured** on the device, **spec** from the TRM,
 
 1. **Run on the device, detached**, with `setsid nohup … &`, stdout redirected. Unplugging the
    cable, switching wifi off or suspending cuts the ssh session, and the run must
-   not care. Reach the device over wifi (`<wlan-address>`) when the USB network has
+   not care. Reach the device over wifi (its WLAN address in `PYRA_HOST`) when the USB network has
    to go. `. ./pyra-local.conf` sets `PYRA_HOST` and the ssh agent.
 2. **Wait for `bq24297/online` = 0** before measuring, then settle 20–30 s.
 3. **Pin the CPU**: userspace governor + `scaling_setspeed`, both cores, and put
