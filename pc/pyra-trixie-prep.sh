@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the eleven known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twelve known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, before the card's first boot.
 #
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
@@ -73,6 +73,9 @@ GREETER_FIX=$PAYLOADS/pyra-greeter-audio.sh
 
 SGX_FIX=$PAYLOADS/pyra-sgx-init.sh
 [[ -x $SGX_FIX ]] || die "fix11: pyra-sgx-init.sh not found or not executable (looked in $PAYLOADS)"
+
+WHEEL_FIX=$PAYLOADS/pyra-volumed/install.sh
+[[ -x $WHEEL_FIX ]] || die "fix12: pyra-volumed/install.sh not found or not executable (looked in $PAYLOADS)"
 
 
 echo
@@ -695,6 +698,49 @@ rm -rf "$SGX_STAGE"
 
 if [[ $SGX_CHANGED -eq 1 ]]; then
     ok "fix11: GL will find the SGX services up on every boot, not about half of them"
+fi
+
+# ---------------------------------------------------------------------- fix 12
+#
+# The volume wheel is a tapered pot, and pyra-hacks' pyra_volumed reads it as
+# a linear one into a control that is already in dB, so the lower half of the
+# wheel is silent and the rest is too steep. This installs a replacement that
+# maps the wheel through its measured taper. It is C, and this script builds
+# nothing, so it goes on the card as source: on its first start the unit's
+# runner compiles it with the image's own gcc (it needs only libc6-dev), and
+# falls back to the packaged daemon if that fails. The package is untouched;
+# a drop-in points its unit at the runner.
+
+WHEEL_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix12.XXXXXX")
+if ! WHEEL_FILES=$("$WHEEL_FIX" --emit-into "$WHEEL_STAGE" 2>&1); then
+    rm -rf "$WHEEL_STAGE"
+    die "fix12: could not generate the volume-wheel files:
+       $WHEEL_FILES"
+fi
+[[ -x $ROOT/usr/bin/cc || -x $ROOT/usr/bin/gcc ]] ||
+    warn "fix12: no gcc on the card; the packaged pyra_volumed will run until it is installed"
+[[ -r $ROOT/usr/include/sound/asound.h ]] ||
+    warn "fix12: no <sound/asound.h> on the card (libc6-dev / linux-libc-dev); the build will fail and fall back"
+
+WHEEL_CHANGED=0
+while read -r staged; do
+    [[ -n $staged ]] || continue
+    rel=${staged#$WHEEL_STAGE}
+    dst=$ROOT$rel
+    if [[ -e $dst ]] && cmp -s "$staged" "$dst"; then
+        ok "fix12: ${rel} already in place"
+        continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cat "$staged" > "$dst"
+    chmod --reference="$staged" "$dst"
+    ok "fix12: wrote ${rel}"
+    WHEEL_CHANGED=1
+done <<<"$WHEEL_FILES"
+rm -rf "$WHEEL_STAGE"
+
+if [[ $WHEEL_CHANGED -eq 1 ]]; then
+    ok "fix12: the volume wheel will be built on first boot and map evenly in dB"
 fi
 
 echo

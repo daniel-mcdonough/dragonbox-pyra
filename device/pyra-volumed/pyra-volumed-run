@@ -1,0 +1,25 @@
+#!/bin/sh
+# pyra-volumed-run -- start the calibrated volume-wheel daemon, building it
+# first if the source is newer than the binary (or there is no binary yet,
+# as on a card fresh from pyra-trixie-prep.sh). Falls back to the packaged
+# /usr/bin/pyra_volumed if the build fails, so the wheel never goes dead.
+#
+# ExecStart of pyra_volumed.service, through the drop-in calibrated.conf.
+# From dragonbox-pyra device/pyra-volumed/.
+SRC=/usr/local/src/pyra-volumed/pyra_volumed.c
+BIN=/usr/local/bin/pyra_volumed
+
+if [ -r "$SRC" ] && ! [ "$BIN" -nt "$SRC" ]; then
+	if out=$(cc -O2 -Wall -o "$BIN.new" "$SRC" -lm 2>&1); then
+		mv "$BIN.new" "$BIN"
+		logger -t pyra_volumed "built $BIN from $SRC"
+	else
+		rm -f "$BIN.new"
+		logger -t pyra_volumed "build failed: $out"
+	fi
+fi
+if [ -x "$BIN" ]; then
+	exec "$BIN"
+fi
+logger -t pyra_volumed "no calibrated daemon; running the packaged one"
+exec /usr/bin/pyra_volumed

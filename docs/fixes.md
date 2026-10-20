@@ -1,4 +1,4 @@
-# The eleven fixes, and what they actually do
+# The twelve fixes, and what they actually do
 
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
@@ -835,3 +835,40 @@ A manual `udevadm trigger --action=add` on the card would run `pvrsrvctl --start
 second time. That fails with "already initialized" and changes nothing.
 
 ---
+
+## Fix 12 — the volume wheel is silent for half its travel
+
+Found 2026-10-20, once the speakers played through the DSP. You had to turn
+the wheel nearly to the top to hear anything, and then it rose too fast.
+
+`pyra_volumed` (pyra-hacks 0.38) reads the wheel on `palmas-gpadc` channel 2
+and sets `Handsfree Playback Volume` to `raw * 29 / 2052`. That control is
+already in dB: 0 to 29 is -52 to +6 dB in 2 dB steps. The wheel is not linear
+either. Held at quarter turns, one unit read
+
+| wheel | min | 1/4 | 1/2 | 3/4 | max |
+| --- | --- | --- | --- | --- | --- |
+| raw | 16 | 144 | 394 | 1071 | 2068 |
+
+so the lower half of the travel gave steps 0 to 5, -52 to -42 dB, which is
+inaudible on the speakers, and the upper half had to cover the other 48 dB.
+
+`device/pyra-volumed/pyra_volumed.c` converts the reading back into travel
+through those five points (interpolating in log(raw)) and spreads -40 to
++6 dB evenly over it, with the very bottom at -52 dB. It needs only libc and
+libm: the ADC comes from sysfs and the volume goes in with the ALSA control
+ioctl, so it does not need `libasound2-dev` or `libiio-dev`, which the image
+does not ship.
+
+The prep script cannot build C, so the card gets the source, a runner
+(`/usr/local/sbin/pyra-volumed-run`) and a drop-in that points the packaged
+`pyra_volumed.service` at the runner. On the first start the runner builds
+`/usr/local/bin/pyra_volumed` with the image's gcc, and it rebuilds whenever
+the source is newer than the binary. If the build fails it logs why (`journalctl
+-t pyra_volumed`) and runs the packaged daemon. On a running Pyra, `sudo
+device/pyra-volumed/install.sh` does the same and `--undo` reverts it.
+
+Checked on hardware: a bottom-to-top sweep gave steps 0, 8, 10, 13, 15, 16, 18,
+19, 22, 24, 27, 29, and it sounds even by ear. The calibration comes from one
+unit, and another unit's pot may differ. The table is at the top of the source.
+

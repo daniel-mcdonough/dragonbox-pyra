@@ -19,22 +19,26 @@
 // because below about -40 dB the speakers are silent. The very bottom of the
 // wheel still goes to step 0.
 //
-// It reads the ADC from sysfs instead of through libiio, which drops that
-// build dependency; the channel is the same one.
+// It needs nothing but libc and libm, so a fresh card can build it on its
+// first boot with the gcc the image already has (pyra-trixie-prep.sh, fix 12;
+// the image has no libasound2-dev or libiio-dev). The ADC is read from sysfs,
+// the same channel libiio reads, and the volume is written with the ALSA
+// control ioctl, the same control alsa-lib's simple mixer writes.
 //
-//     cc -O2 -Wall -o pyra_volumed pyra_volumed.c -lasound -lm
+//     cc -O2 -Wall -o pyra_volumed pyra_volumed.c -lm
 
-#include <alsa/asoundlib.h>
 #include <fcntl.h>
 #include <glob.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
+#include <sound/asound.h>
 
-#define CARD    "hw:CARD=L15"
-#define SELEM   "Handsfree"
+#define CARD_ID "L15"
+#define CONTROL "Handsfree Playback Volume"
 #define ADCNAME "palmas-gpadc"
 #define CHANNEL "in_voltage2_raw"
 
@@ -79,12 +83,49 @@ static int open_adc(void)
 		    strncmp(name, ADCNAME, strlen(ADCNAME)) == 0) {
 			snprintf(path, sizeof(path), "%s/%s",
 				 g.gl_pathv[i], CHANNEL);
-			fd = open(path, O_RDONLY);
+			fd = open(path, O_RDONLY | O_CLOEXEC);
 		}
 		fclose(n);
 	}
 	globfree(&g);
 	return fd;
+}
+
+// The card's control device, found by id: its number moves between boots.
+static int open_card(void)
+{
+	glob_t g;
+	int fd = -1;
+
+	if (glob("/dev/snd/controlC*", 0, NULL, &g) != 0)
+		return -1;
+	for (size_t i = 0; i < g.gl_pathc && fd < 0; i++) {
+		struct snd_ctl_card_info info;
+		int c = open(g.gl_pathv[i], O_RDWR | O_CLOEXEC);
+
+		if (c < 0)
+			continue;
+		memset(&info, 0, sizeof(info));
+		if (ioctl(c, SNDRV_CTL_IOCTL_CARD_INFO, &info) == 0 &&
+		    strcmp((const char *)info.id, CARD_ID) == 0)
+			fd = c;
+		else
+			close(c);
+	}
+	globfree(&g);
+	return fd;
+}
+
+static int set_volume(int card, long v)
+{
+	struct snd_ctl_elem_value val;
+
+	memset(&val, 0, sizeof(val));
+	val.id.iface = SNDRV_CTL_ELEM_IFACE_MIXER;
+	strncpy((char *)val.id.name, CONTROL, sizeof(val.id.name) - 1);
+	val.value.integer.value[0] = v;
+	val.value.integer.value[1] = v;
+	return ioctl(card, SNDRV_CTL_IOCTL_ELEM_WRITE, &val);
 }
 
 // pread at offset 0, not stdio: rewind() may hand back the old buffer
@@ -123,32 +164,21 @@ static double position(double raw)
 
 int main(void)
 {
-	snd_mixer_t *handle;
-	snd_mixer_selem_id_t *sid;
-	snd_mixer_elem_t *elem;
-	int adc;
+	int adc, card;
 	int delay = MIN_DELAY;
 	long cur = -1;
 
-	if (snd_mixer_open(&handle, 0) < 0 ||
-	    snd_mixer_attach(handle, CARD) < 0 ||
-	    snd_mixer_selem_register(handle, NULL, NULL) < 0 ||
-	    snd_mixer_load(handle) < 0) {
-		fprintf(stderr, "pyra_volumed: cannot open the mixer on %s\n", CARD);
-		return 1;
-	}
-	snd_mixer_selem_id_alloca(&sid);
-	snd_mixer_selem_id_set_index(sid, 0);
-	snd_mixer_selem_id_set_name(sid, SELEM);
-	elem = snd_mixer_find_selem(handle, sid);
-	if (!elem) {
-		fprintf(stderr, "pyra_volumed: no '%s' control on %s\n", SELEM, CARD);
-		return 1;
-	}
-	adc = open_adc();
-	if (adc < 0) {
-		fprintf(stderr, "pyra_volumed: no %s %s\n", ADCNAME, CHANNEL);
-		return 1;
+	// The sound card and the ADC can both come up after this starts. Wait
+	// rather than exit: the packaged unit's Restart=on-failure would hit
+	// systemd's start limit within a second and give up for the boot.
+	for (int waited = 0; (card = open_card()) < 0 || (adc = open_adc()) < 0;
+	     waited++) {
+		if (card >= 0)
+			close(card);
+		if (waited == 30)
+			fprintf(stderr, "pyra_volumed: still waiting for card %s "
+				"and %s %s\n", CARD_ID, ADCNAME, CHANNEL);
+		sleep(1);
 	}
 
 	for (;;) {
@@ -160,7 +190,10 @@ int main(void)
 
 			if (cur < 0 || (want != cur &&
 			    fabs(pos - cur) > 0.5 + HYSTERESIS)) {
-				snd_mixer_selem_set_playback_volume_all(elem, want);
+				// On failure, log it once and try again on the next
+				// movement rather than every 100 ms.
+				if (set_volume(card, want) != 0)
+					perror("pyra_volumed: " CONTROL);
 				cur = want;
 				delay = MIN_DELAY;
 			} else {
