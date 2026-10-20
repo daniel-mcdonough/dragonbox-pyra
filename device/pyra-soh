@@ -187,11 +187,20 @@ check() {
 	fi
 
 	# oot.o2r is generated from the user's own retail ROM and is the one file
-	# that cannot be rebuilt from this repository or redownloaded.
+	# that cannot be rebuilt from this repository or redownloaded. Without it
+	# the game's own extractor makes it on first launch, given the assets/
+	# folder from the release and a ROM in the game directory (about 2.5
+	# minutes at 750 MHz).
 	if [ -r "$GAME_DIR/oot.o2r" ]; then
 		printf 'assets:  oot.o2r %s\n' "$(du -h "$GAME_DIR/oot.o2r" | cut -f1)"
+	elif [ -r "$GAME_DIR/oot-mq.o2r" ]; then
+		printf 'assets:  oot-mq.o2r %s\n' "$(du -h "$GAME_DIR/oot-mq.o2r" | cut -f1)"
+	elif [ -d "$GAME_DIR/assets/xml" ] &&
+	     find "$GAME_DIR" -maxdepth 1 -type f \( -iname '*.z64' -o -iname '*.n64' -o -iname '*.v64' \) |
+	     grep -q .; then
+		printf 'assets:  oot.o2r not made yet — the game extracts it from your ROM on this launch\n'
 	else
-		printf 'assets:  oot.o2r — MISSING (generate it from your own ROM)\n'; ok=1
+		printf 'assets:  oot.o2r — MISSING (put your ROM in %s, with the release'"'"'s assets/ folder)\n' "$GAME_DIR"; ok=1
 	fi
 
 	if [ -r "$GAME_DIR/soh.o2r" ]; then
