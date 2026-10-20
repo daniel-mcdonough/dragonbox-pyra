@@ -9,17 +9,19 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Seven fixes are needed, and `fixes.md` explains each one. Four of them are not
+Twelve fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
-cap at all; and fix 7 corrects the ladder it applies, which throttles on the
-fuel gauge's die temperature and can overwrite its own deeper cap.
+cap at all; fix 7 corrects the ladder it applies, which throttles on the
+fuel gauge's die temperature and can overwrite its own deeper cap; and fixes 8
+to 12 cover charging, sound, the greeter holding the sound card, GL on every
+boot, and the volume wheel.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all eight fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twelve fixes offline.
 Fix 5 installs two files that live beside it, so run it from a checkout of the
 repository rather than copying the script somewhere on its own.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---

@@ -188,7 +188,7 @@ Two things cost time when reproducing this:
 
 ## Status
 
-This is a helper, not one of the eight fixes: `pc/pyra-trixie-prep.sh` does not
+This is a helper, not one of the numbered fixes: `pc/pyra-trixie-prep.sh` does not
 install it and the card does not depend on it. Whether it should be promoted —
 it is a silent, total failure of a whole class of software, which is the same
 argument the other eight rest on — is an open decision.

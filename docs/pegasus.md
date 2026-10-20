@@ -321,9 +321,9 @@ and hides what was changed.
 
 Ordered. Effort is one person's evenings, not ideal-world estimates.
 
-- [ ] **Decide whether `pyra-gles` becomes fix 9.** Every Qt5 GLES program on
+- [ ] **Decide whether `pyra-gles` becomes fix 13.** Every Qt5 GLES program on
       this image renders nothing until the shim exists, which is the same class
-      of silent, total failure the other eight fixes cover. Promoting it means
+      of silent, total failure the twelve numbered fixes cover. Promoting it means
       `pc/pyra-trixie-prep.sh`, the prep selftest, `procedure.md` and the "six
       faults" framing in the README all change. Leaving it as a helper means
       anyone hitting the bug has to find this document first. — *an open decision.*

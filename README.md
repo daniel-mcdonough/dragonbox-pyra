@@ -135,7 +135,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all ten fixes to a mounted rootfs, before the card's first boot. |
+| `pc/pyra-trixie-prep.sh` | Applies all twelve fixes to a mounted rootfs, before the card's first boot. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
