@@ -135,7 +135,7 @@ The gains in front of both paths:
 | control | value | note |
 | --- | --- | --- |
 | `DL1 Media Playback Volume`, `DL2 Media Playback Volume` | 120 | 0 is muted |
-| `DL1 Playback Volume`, `DL2 Playback Volume` | 120,120 | 0,0 is muted |
+| `DL1 Playback Volume`, `DL2 Playback Volume` | 120,120 | 0,0 is muted. DL2 sat at 113 (-7 dB) until 2026-10-20, restored from `asound.state` every boot; nothing chose it |
  Set these with `amixer -c L15 cset name='...'`, **never `sset`**:
 `sset` takes the *simple* control name, with `Switch` and `Playback Volume`
 stripped, and silently does nothing when handed the full one.
@@ -259,7 +259,22 @@ and never sets a route. The wheel therefore controls the **speakers and
 nothing else** — it does not reach the headphones, which have only
 PulseAudio's software volume and the `Headset Playback Volume` control. The
 TWL6040 controls are the same on both kernels, so this does not change on the
-AESS path. The control runs 0 to 29, -52 dB to +6 dB in 2 dB steps. On
+AESS path.
+
+**The packaged daemon maps the wheel wrongly, and this unit runs a
+replacement.** It computes `raw * 29 / 2052`, as if the ADC reading rose
+evenly with rotation. The wheel is a tapered pot: held at quarter turns it
+read 16, 144, 394, 1071 and 2068. The control is already in dB, so the lower
+half of the wheel covered -52 to -42 dB, all of it inaudible, and you had to
+go near the top to hear anything. `device/pyra-volumed/` holds a replacement
+that goes back from the reading to wheel travel through those measured points
+and spreads -40 to +6 dB evenly over it, with the very bottom at -52 dB. It
+reads the ADC from sysfs, so it needs no libiio. `sudo ./install.sh` builds
+it into `/usr/local/bin` and points the packaged service at it with a
+drop-in; `--undo` reverts. Installed 2026-10-20. Another unit's pot may read
+differently; the calibration table is at the top of the source.
+
+The control runs 0 to 29, -52 dB to +6 dB in 2 dB steps. On
 2026-10-20 it sat at 1, which is -50 dB and inaudible, and after it was set
 to 26 by hand `pyra_volumed` moved it to 15 without anyone touching the wheel. So when the speakers seem dead,
 read this control before anything else, and turn the wheel rather than
