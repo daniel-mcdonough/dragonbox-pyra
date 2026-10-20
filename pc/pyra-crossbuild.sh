@@ -14,6 +14,8 @@
 #   ./pyra-crossbuild.sh kernel-m4-uprobe    the same, plus user-space probes
 #   ./pyra-crossbuild.sh kernel-m4-uprobe-kprobe  the same, first with 0033, plus PM debug
 #   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED
+#   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks-pyra, the pyra
+#                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
@@ -95,6 +97,33 @@ build_ddx() {
 		dpkg-buildpackage -aarmhf -us -uc -b -j$(nproc)
 	'
 	echo
+	ls -la "$dir"/*.deb
+}
+
+# pyra-hacks has no public upstream repository; ../pyra-hacks-pyra rebuilds
+# its history from the released source packages and carries each change on a
+# branch (README.pyra.md there). This builds one ref of it as armhf debs. The
+# ref is exported with git archive, so uncommitted edits are not built.
+PYRA_HACKS_REPO=${PYRA_HACKS_REPO:-$SELF_DIR/../../pyra-hacks-pyra}
+build_pyra_hacks() {
+	local ref=${1:-pyra}
+	local dir=$BUILD_DIR/pyra-hacks
+	git -C "$PYRA_HACKS_REPO" rev-parse --verify -q "$ref^{commit}" >/dev/null ||
+		die "no ref $ref in $PYRA_HACKS_REPO"
+	rm -rf "$dir/src"
+	mkdir -p "$dir/src"
+	git -C "$PYRA_HACKS_REPO" archive "$ref" | tar -x -C "$dir/src"
+	run debian:trixie "$dir" '
+		dpkg --add-architecture armhf
+		apt-get update -qq
+		apt-get install -y --no-install-recommends \
+			build-essential crossbuild-essential-armhf dpkg-dev devscripts >/dev/null
+		cd src
+		apt-get build-dep -y -a armhf . >/dev/null
+		dpkg-buildpackage -aarmhf -us -uc -b -j$(nproc)
+	'
+	echo
+	echo "built from $ref ($(git -C "$PYRA_HACKS_REPO" rev-parse --short "$ref")):"
 	ls -la "$dir"/*.deb
 }
 
@@ -406,6 +435,7 @@ build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
+	pyra-hacks)   shift; build_pyra_hacks "$@" ;;
 	kernel)       shift; build_kernel "$@" ;;
 	kernel-debug) shift; build_kernel_debug ;;
 	kernel-fix)   shift; build_kernel_fix ;;
@@ -417,5 +447,5 @@ case "${1:-}" in
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
 	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
 	kernel-m4demo) shift; build_kernel_m4demo ;;
-	*)            die "usage: $0 ddx | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo" ;;
+	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo" ;;
 esac
