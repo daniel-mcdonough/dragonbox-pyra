@@ -137,6 +137,7 @@ are indexed in `reports/letux-aess-INDEX.md`.
 | 0030 | **Pop every downlink slot for the ABE.** The DSP writes six samples per frame and McPDM popped four, which aliased everything around a 2.67 kHz carrier. |
 | 0031 | **Never report the pointer going backwards.** For one read per buffer switch the position was a period behind. ALSA took that as a wrap, PulseAudio thought it underran and rewrote the ring, and resampled audio skipped back 128 to 384 ms like a scratched record. |
 | 0032 | **Don't map DMEM into userspace.** DMEM keeps only 32-bit stores, so mmap'd writes of any other width lost samples (crackle, or silence through alsa-lib's rate plugin). This drops mmap and copies with 32-bit stores. |
+| 0036 | **Keep OPP100 when no widget reports a level.** The speakers had never played through the DSP. Four times a second during playback the driver recalculated the firmware's OPP from DAPM widgets that this tree never fills in, got 0 from a shift by `fls(0) - 1`, and dropped the task network to OPP50, which runs the headset path but not the handsfree one. Built into `5.6.19-m4-kbdled` and installed 2026-10-20. |
 
 ---
 

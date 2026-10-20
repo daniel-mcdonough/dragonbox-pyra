@@ -80,6 +80,17 @@ numbers are on `origin/omap-aess-7.3`.
 | 0014 | linux-firmware `omap_aess-adfw.bin` rejected by the topology loader | `snd_soc_tplg_component_load()` only, `omap-aess-pcm.c:488` | `letux-aess-firmware-container.md` |
 | 0028 | equaliser coefficients written from an uninitialised stack local | `omap-aess-fw.c` unchanged | `letux-aess-equaliser-coefficients.md` |
 
+**0036, found 2026-10-20 after this comparison, is a seventh, but only
+partly.** 7.3's `aess_opp_recalc_level()` (`aess_opp.c:240`) is identical:
+with no `opp.widget[]` bit set it computes `(1 << (fls(0) - 1)) * 25`, a
+shift by -1, and drops the firmware to OPP50, where the speakers are silent.
+What differs is who fills `opp.widget[]`. On 5.6 nothing does, because our
+DAPM graph (0019) is hand-written. On 7.3 the topology loader sets it from
+the firmware's widgets (`omap-aess-fw.c:135, 268`), so whether the fault
+shows depends on what the topology declares. The shift is undefined behaviour
+either way, and the one-line guard ports unchanged. Check on hardware: during
+playback `/sys/kernel/debug/omap-aess/opp_level` should read 100.
+
 The smaller leftovers also stand: `aess_gain_to_val()` uses `val`, not its
 parameter (`omap-aess-fw.c:53`); `omap_aess_load_fw_param()` copies images
 without checking them against the bank size (`aess_ini.c`); and
@@ -137,9 +148,15 @@ most self-contained first:
    "use `build-aess-fw`". Ask them before writing the full fallback; the
    container report makes the case.
 
+7. **0036, keep OPP100 when no widget reports a level.** The same
+   `if (opp) ... else opp = 100;` guard in `aess_opp_recalc_level()`. Port it
+   regardless, for the shift by -1, but first read `opp_level` during
+   playback on 7.3: if it already reads 100 there, the topology fills in
+   `opp.widget[]` and the speakers will not show the fault.
+
 Not to port, because 7.3 already covers them: 0013, 0015-0025, 0027 and 0030
 (classes a and b in the INDEX). The PulseAudio side (`device/pulse/pyra-aess.pa`
-with `timeout=300`, `mmap=no`) still applies on 7.3. `mmap=no` becomes
+with `timeout=300`, `mmap=no`, and the profile set in `device/pulse/alsa-mixer/`) still applies on 7.3. `mmap=no` becomes
 unnecessary once 0032 is in, but it does no harm.
 
 The bounds check in `omap_aess_load_fw_param()` and the DT size/address

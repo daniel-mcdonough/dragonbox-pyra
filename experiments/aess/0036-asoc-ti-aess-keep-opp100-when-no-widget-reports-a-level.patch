@@ -1,0 +1,53 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: aess: keep OPP100 when no widget reports a level
+
+The speakers have never played through the AESS; only the headset did.
+The codec and the speaker amplifiers are not the cause: the direct McPDM
+link (legacy_link=1) plays through them on the same boot, and the whole
+DAPM path down to "Ext Spk" is powered while the AESS path is silent.
+
+The cause is the firmware's OPP task network. omap_aess_pcm_open() selects
+OPP100, but every DAPM stream event -- about four a second during playback
+-- calls aess_opp_recalc_level(), which derives the level from
+aess->opp.widget[]. Nothing in this tree's DAPM graph (0019) fills that in,
+so the OR is 0 and the level comes out as
+
+    (1 << (fls(0) - 1)) * 25
+
+a shift by -1, which evaluates to 0 here. aess_opp_set_level(0) takes its
+"decrease" branch, falls to the default case and writes OPP50 into
+MAXTASKBYTESINSLOT. Read back during playback: 0x0c, and debugfs opp_level
+reads 0. At OPP50 the DL1 (headset) path runs and the DL2 (handsfree) path
+does not.
+
+Proved by ear with the stream held open: MAXTASKBYTESINSLOT = 0x0c, both
+speakers silent; write 0x10 (OPP100), both speakers play; back to 0x0c,
+silent again. The headphones play in both.
+
+Treat "no widget reported a level" as unknown and keep OPP100, which is
+what the open path asked for. A tree whose topology does populate
+opp.widget[] is unaffected.
+
+---
+diff -ru a/sound/soc/ti/aess/aess_opp.c b/sound/soc/ti/aess/aess_opp.c
+--- a/sound/soc/ti/aess/aess_opp.c
++++ b/sound/soc/ti/aess/aess_opp.c
+@@ -250,7 +250,17 @@
+ 			opp |= aess->opp.widget[OMAP_AESS_WIDGET(i)];
+ 		}
+ 	}
+-	opp = (1 << (fls(opp) - 1)) * 25;
++	/*
++	 * If no widget reported a level: the DAPM graph in this tree carries no
++	 * OPP information, so that means "unknown", not "idle". Keep the full
++	 * task network: below OPP100 the firmware does not run the DL2
++	 * (handsfree) path and the speakers are silent. Also avoids the
++	 * shift by fls(0) - 1 = -1.
++	 */
++	if (opp)
++		opp = (1 << (fls(opp) - 1)) * 25;
++	else
++		opp = 100;
+ 
+ 	/* OPP requested outside AESS driver (e.g. McPDM) */
+ 	requested_opp = aess_opp_get_requested(aess);

@@ -133,6 +133,17 @@ tarsize() {  # tarsize <top-level dir>
 		END { printf "%d", (s + 0) / 1024 / 1024 }'
 }
 boot_need=$(( $(tarsize boot) + 30 ))   # +30 for the initrd this builds
+# A rebuild of an installed release overwrites that release's own files, so
+# they are space this install gets back, not space it needs on top. The old
+# initrd is not credited: it stays until the new one has been written.
+# Without this, a same-name rebuild was refused with room to spare.
+if [ -f "/boot/vmlinuz-$REL" ]; then
+	boot_have=$(du -cm "/boot/vmlinuz-$REL" "/boot/System.map-$REL" \
+		"/boot/config-$REL" "/boot/dtb/linux-image-$REL" 2>/dev/null |
+		awk 'END{print $1}')
+	echo "  $REL is already installed; its ${boot_have} MB in /boot is overwritten"
+	boot_need=$(( boot_need - boot_have ))
+fi
 root_need=$(( $(tarsize usr) + 5 ))
 boot_free=$(df -Pm /boot | awk 'NR==2{print $4}')
 root_free=$(df -Pm /usr/lib/modules | awk 'NR==2{print $4}')

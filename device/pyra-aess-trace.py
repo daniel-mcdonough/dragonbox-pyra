@@ -220,10 +220,14 @@ def opp():
     OPP50, 0x04 for OPP25.
 
     The "opp: no OPP data" and "No OPP definition" messages at probe are
-    benign for this: they come from the voltage/frequency table being absent,
-    and aess->device_scale is never assigned anywhere in the tree, so
-    aess_opp_set_level() skips scaling entirely and calls
-    aess_set_opp_processing(OPP_100) unconditionally. Do not chase them."""
+    benign: they come from the voltage/frequency table being absent, and
+    aess->device_scale is never assigned, so no clock is ever scaled.
+
+    What is NOT benign, and what this file used to say could not happen: the
+    open path sets OPP100, and then every DAPM stream event calls
+    aess_opp_recalc_level(), which on a kernel without experiments/aess/0036
+    computes 0 and drops the firmware to OPP50. At OPP50 the headset plays
+    and the speakers are silent. Expect 0x10 here during playback."""
     bank, base, by = MAP[69]
     v = struct.unpack_from("<I", MM[bank], base)[0]
     name = {0x10: "OPP100", 0x0C: "OPP50", 0x04: "OPP25"}.get(v, "unexpected")

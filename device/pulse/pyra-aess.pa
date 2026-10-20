@@ -19,8 +19,12 @@
 # a 48 kHz file: PulseAudio's own CPU went from 12% of a core to 4%, and
 # aplay's from 14.4% to 1.1%.
 #
-# Headphone versus speaker is NOT a channel-map choice here. The DSP decides it,
-# through the DL1 (headset) and DL2 (handsfree) mixers:
+# Headphone versus speaker is NOT a channel-map choice here. It is a port on
+# the one sink, chosen in the desktop's sound settings or with
+# `pactl set-sink-port aess pyra-speaker` / `pyra-headphones`; the port's
+# mixer path then switches the codec routes. Underneath, the DSP feeds the two
+# outputs through the DL1 (headset) and DL2 (handsfree) mixers, which must
+# both stay on:
 #
 #     amixer -c L15 cset name='DL1 Mixer Multimedia' on    # headset
 #     amixer -c L15 cset name='DL2 Mixer Multimedia' on    # speakers
@@ -63,7 +67,18 @@ load-module module-switch-on-port-available
 # copy, with word stores. It costs under a point of a core. Kernels with
 # experiments/aess/0032 refuse the mapping anyway; this line is what protects
 # one without it. See the development log, section 35.
-load-module module-alsa-sink device=hw:L15,5 sink_name=aess rate=48000 format=s16le channels=2 tsched=0 mmap=no fragments=4 fragment_size=8192 sink_properties="device.description='Audio DSP (AESS)'"
+#
+# Loaded as a card with our own profile set, so the desktop sees a card and
+# the sink has two ports, Speakers and Headphones. From device/pulse/alsa-mixer/
+# in the repo: the profile set goes to /etc/pulse/pyra-alsa-mixer/profile-sets/,
+# and the two paths to /usr/share/pulseaudio/alsa-mixer/paths/, the only place
+# PulseAudio 17 looks for a profile set's paths (paths_dir= does not apply).
+# The paths switch the codec routes; the DSP's own DL1/DL2 paths stay on so the
+# PCM can always open.
+# Without those files this line fails and PulseAudio falls back to auto_null.
+# The bare sink it replaced is kept commented out below, and needs nothing.
+load-module module-alsa-card device_id=L15 use_ucm=0 profile_set=/etc/pulse/pyra-alsa-mixer/profile-sets/pyra-aess.conf sink_name=aess rate=48000 format=s16le tsched=0 mmap=no fragments=4 fragment_size=8192 sink_properties="device.description='Audio DSP (AESS)'"
+#load-module module-alsa-sink device=hw:L15,5 sink_name=aess rate=48000 format=s16le channels=2 tsched=0 mmap=no fragments=4 fragment_size=8192 sink_properties="device.description='Audio DSP (AESS)'"
 
 # The direct McPDM link, bypassing the DSP. Costs about 12% of a core for a
 # 48 kHz stream because everything is converted to 96 kHz S32_LE, but it is

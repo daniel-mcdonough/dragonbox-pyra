@@ -55,6 +55,7 @@ Applied in name order by `pc/pyra-crossbuild.sh kernel-m4`, on top of
 | 0030 | McPDM: pop every downlink slot, plus the command word -- the tinny sound | §32 |
 | 0031 | never report the pointer going backwards (phantom buffer laps) | §35 |
 | 0032 | do not map DMEM into userspace; write it with 32-bit stores -- the crackle on music | §35 |
+| 0036 | keep OPP100 when no widget reports a level -- **the speakers** | 2026-10-20, in the patch |
 
 Tools that ship beside them:
 

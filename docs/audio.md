@@ -1,7 +1,9 @@
 # Audio on the Pyra: the chain, the limits, and how to diagnose silence
 
 Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
-(trixie). The direct-link sections were verified 2026-09-20 on `5.6.19-freq`.
+(trixie); the speakers, the ports and the OPP section on 2026-10-20 on
+`5.6.19-m4-kbdled`. The direct-link sections were verified 2026-09-20 on
+`5.6.19-freq`.
 
 This is the map. The repair instructions for the faults that make the machine
 silent are fix 9 and fix 10 in `fixes.md`; the performance survey and its
@@ -19,7 +21,7 @@ the kernel you booted**, not on anything in userspace:
 
 | kernel | path | PulseAudio script | healthy sinks |
 | --- | --- | --- | --- |
-| `5.6.19-m4` | audio DSP (AESS), `hw:L15,5` | `/etc/pulse/pyra-aess.pa` | `aess` |
+| `5.6.19-m4`, `-m4-kbdled` | audio DSP (AESS), `hw:L15,5` | `/etc/pulse/pyra-aess.pa` | `aess`, ports `pyra-speaker` and `pyra-headphones` |
 | `5.6.19-fix`, `-freq`, `-pyradef` | direct McPDM link, `hw:L15,0` | `/etc/pulse/pyra.pa` | `alsa_output.hw_CARD_L15_DEV_0`, `speakers`, `headphones` |
 
 Only `-m4` carries the AESS patches. Tell which one is running with:
@@ -51,8 +53,24 @@ PulseAudio drops from 12% to 4% (development log §25, §26).
 **PulseAudio** is pointed at `pyra-aess.pa` by `zz-pyra-aess.conf`, which is
 read after the packaged `pyra.conf` so its assignments win; the packaged
 `pyra.pa` is left untouched and reverting is one file deletion. The repository
-copies are in `device/pulse/`. The script loads one bare `module-alsa-sink` on
-`hw:L15,5`, stereo, `tsched=0`, `mmap=no`, 4 x 2048-frame fragments.
+copies are in `device/pulse/`. Since 2026-10-20 the script loads
+`module-alsa-card` with a profile set of our own, on `hw:L15,5`, stereo,
+`tsched=0`, `mmap=no`, 4 x 2048-frame fragments. That gives the desktop a
+card and the `aess` sink two ports. It needs three files besides the script,
+none of them packaged, all installed by hand:
+
+| repository | device |
+| --- | --- |
+| `device/pulse/alsa-mixer/profile-sets/pyra-aess.conf` | `/etc/pulse/pyra-alsa-mixer/profile-sets/pyra-aess.conf` |
+| `device/pulse/alsa-mixer/paths/pyra-speaker.conf` | `/usr/share/pulseaudio/alsa-mixer/paths/pyra-speaker.conf` |
+| `device/pulse/alsa-mixer/paths/pyra-headphones.conf` | `/usr/share/pulseaudio/alsa-mixer/paths/pyra-headphones.conf` |
+
+The paths have to be in `/usr/share`: PulseAudio 17 reads a profile set's
+paths from there only, ignores `paths_dir=`, and probes a missing path as an
+empty one, so the sink comes up with no ports and no error. Without the profile
+set the `load-module` line fails and the session gets `auto_null`; the bare
+`module-alsa-sink` line it replaced is still in the script, commented out,
+and needs none of these files.
 
 **`mmap=no` is not optional.** The ring buffer is the DSP's own memory, mapped
 into the process, and it keeps only 32-bit stores; 16- and 8-bit writes vanish.
@@ -69,10 +87,30 @@ at 48000 and PulseAudio converts 44.1 kHz material with `speex-float-1` — not
 into a 48 kHz sink measured 9% of a core; that has not been re-measured with
 `speex-float-1`. Most music is 44.1 kHz, so this is the case that matters.
 
-**Headphones versus speakers is a DSP mixer, not a channel map.** DL1 feeds the
-headset and DL2 the handsfree amplifier. There are no `speakers` / `headphones`
-sinks on this path and no ports to switch between; that would need a PulseAudio
-profile set mapping these mixers to ports, which does not exist yet.
+**Headphones versus speakers is a port, switched at the codec.** In the DSP,
+DL1 feeds the headset and DL2 the handsfree amplifier, and both DSP paths stay
+on. The ports switch the four codec routes instead: `pyra-speaker` sets
+`Handsfree Left/Right Playback` to `HF DAC` and the headset routes `Off`;
+`pyra-headphones` does the reverse. Choose one in MATE's Sound Preferences,
+Output tab, *Connector*, or with `pactl set-sink-port aess pyra-headphones`.
+The choice is remembered. The switching was not done with the DSP mixers
+because turning those off, even briefly during a port change, can leave the
+front end with no back end, and then the PCM will not open (below). There
+is no automatic switching on plug-in: the jack switch is stuck (*Open*,
+below). The speakers are the default.
+
+**The speakers need the DSP at OPP100, and only kernels with
+`experiments/aess/0036` keep it there.** The firmware has three task
+networks, OPP25, OPP50 and OPP100. At OPP50 it runs the headset path and
+**not** the handsfree one, so the headphones play and the speakers are silent.
+Without 0036 the driver selects OPP100 when a stream opens and then drops to
+OPP50 within a quarter of a second: every DAPM stream event recalculates the
+level from widgets this tree never fills in, and gets 0. This is why the
+speakers had never played through the DSP before 2026-10-20. During playback,
+check
+
+    sudo cat /sys/kernel/debug/omap-aess/opp_level           # 100 is right, 0 is the bug
+    sudo ./device/pyra-aess-trace.py opp                      # MAXTASKBYTESINSLOT 0x10
 
 **The controls.** The DSP graph has two output paths, and the playback device
 opens only if **at least one of them is complete**:
@@ -221,7 +259,11 @@ and never sets a route. The wheel therefore controls the **speakers and
 nothing else** — it does not reach the headphones, which have only
 PulseAudio's software volume and the `Headset Playback Volume` control. The
 TWL6040 controls are the same on both kernels, so this does not change on the
-AESS path.
+AESS path. The control runs 0 to 29, -52 dB to +6 dB in 2 dB steps. On
+2026-10-20 it sat at 1, which is -50 dB and inaudible, and after it was set
+to 26 by hand `pyra_volumed` moved it to 15 without anyone touching the wheel. So when the speakers seem dead,
+read this control before anything else, and turn the wheel rather than
+writing it.
 
 ## Diagnosing silence, in order
 
@@ -311,8 +353,11 @@ below the codec — go back to step 2, then check volumes.
     amixer -c L15 cget name='Handsfree Playback Volume'   # speakers: pyra_volumed's, from the wheel
     amixer -c L15 cget name='Headset Playback Volume'     # headphones: nobody's, 0..15
 
-If the speakers are quiet, turn the **wheel** — writing that control by hand
-is pointless, `pyra_volumed` overwrites it on the next movement. If the
+If the speakers are quiet, turn the **wheel**. Writing that control by hand
+does no good, because `pyra_volumed` overwrites it. To test at a fixed level,
+`sudo systemctl stop pyra_volumed` first and start it again afterwards. If
+the speakers are silent on the AESS path and the headphones are not, check
+the OPP (*The AESS path*) before anything else. If the
 headphones are quiet, that control and PulseAudio are the only two things in
 play. On the AESS path the DSP gains in the table above sit in front of both.
 
@@ -324,11 +369,13 @@ play. On the AESS path the DSP gains in the table above sit in front of both.
 
 These all look like faults and are not. Each has been chased at least once.
 
-* **MATE's Sound Preferences "Hardware" tab is empty, on both paths.** That
-  tab lists PulseAudio *cards*, and this machine has none — both scripts use a
-  bare `module-alsa-sink`, not `module-alsa-card`. The **Output** tab, which is
-  the one that does anything, lists the sinks.
-* **`pactl list short cards` returns nothing.** Same cause.
+* **MATE's Sound Preferences "Hardware" tab is empty on the direct link.**
+  That tab lists PulseAudio *cards*. The packaged `pyra.pa` uses a bare
+  `module-alsa-sink`, which makes no card, so `pactl list short cards` is
+  empty too. On the AESS path, since 2026-10-20, it lists the card
+  `alsa_card.L15` with one profile, and the Output tab has the
+  Speakers/Headphones connector. A MATE window that was open while
+  PulseAudio restarted shows stale devices; close it and open it again.
 * **The sink reports `Flags: HARDWARE` but PulseAudio does software volume.**
   Verified on the direct link: moving the sink volume between 100% and 50%
   leaves both ALSA volume elements untouched. Do not assume changing one
@@ -337,7 +384,15 @@ These all look like faults and are not. Each has been chased at least once.
   10 race at once, and is still wrong for the direct link.** It cannot do the
   4-channel open the Speakers/Headphones split depends on. That trade has been
   considered and rejected twice; see fixes 9 and 10. On the AESS path that
-  argument no longer applies, but no profile set for the DSP exists yet.
+  argument does not apply, and `pyra-aess.pa` loads `module-alsa-card` itself,
+  still without `module-udev-detect`.
+* **Why a profile set and not UCM.** A UCM profile for this card was written
+  and loaded first. PulseAudio 17 turns UCM devices that share a PCM into one
+  *profile* each, so Speakers and Headphones became two profiles in the
+  Hardware tab, and the Output tab had nothing to choose. This happens with or
+  without `ConflictingDevice`. A profile set with two paths on one mapping
+  gives one sink with two ports. Do not reinstall a UCM file for `L15`
+  alongside it; `alsactl` would start using it too.
 
 ## Traps that will cost you an afternoon
 
@@ -403,9 +458,14 @@ These all look like faults and are not. Each has been chased at least once.
   mismatch; nothing does it yet.
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
   figure predates it.
-* **Headphone/speaker switching on the AESS path.** Both DSP mixers are on, so
-  both outputs play. Jack-driven switching would mean a PulseAudio profile set
-  or a jack-event hook toggling `DL1`/`DL2 Mixer Multimedia`.
+* **Automatic headphone/speaker switching on the AESS path.** The ports exist
+  and switch by hand. Switching on plug-in needs the jack switch, and it is
+  stuck: `Headset Stereophone Jack` and `Headset Mic Jack` both read `on`,
+  and the input device reports `SW_HEADPHONE_INSERT 1`, with the jack empty
+  and with headphones in. Not traced. The plug interrupt `twl6040_irq_plug`
+  had counted 44598 after two hours of uptime, so it is firing, or
+  bouncing. Once the switch works, add a `[Jack Headset Stereophone]`
+  section to `pyra-headphones.conf`.
 * **The power cost of the five-minute idle timeout.** One word to revert.
 * **The High-Performance PLL mode (96000), direct link.** Would make 48 kHz
   content an exact 2:1 instead of ragged, which is a **quality** lever, not a
