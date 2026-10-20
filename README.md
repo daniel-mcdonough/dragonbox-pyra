@@ -147,6 +147,7 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |
 | `pc/pyra-devsetup-selftest.sh` | Proves that script does exactly that, against a synthetic rootfs in a container. No Pyra, no card, no root. |
 | `pc/pyra-crossbuild.sh` | Cross-builds the omap5 X driver or the pyradef kernel for armhf in a container, stock or with any of the patch sets. Touches neither the host nor the Pyra. |
+| `pc/pyra-kernel-tree.sh` | Turns the kernel patch sets into a git tree, one branch per set on the stock source, for review and `git format-patch`. See `docs/kernel-changes.md`. |
 | `pc/pyra-push-kernel.sh` | Copies a built kernel and the device scripts to the Pyra, and can install and reboot it in the same step. |
 | `pc/pyra-push-helpers.sh` | Copies the device scripts to the Pyra and installs them there, in one command from the workstation. The same thing `pyra-push-kernel.sh` does on its way past, without needing a built kernel to do it. |
 | `pc/pyra-m4-verify.sh` | Asserts the M4 patch set and the test firmware still say what `docs/m4-ipu.md` claims they say. Needs no Pyra; `--patches` needs no build either. |

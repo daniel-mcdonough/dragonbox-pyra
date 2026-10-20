@@ -9,6 +9,24 @@ The base is the Letux/Pyra **5.6.19** tree (`linux-5.6.19-pyradef`). Patches are
 numbered in the order they were written, which is why the directories do not hold
 contiguous runs. Two different patches are numbered 0007.
 
+**As git branches.** `pc/pyra-kernel-tree.sh` builds `../linux-pyra-5.6.19`: `main` is the
+stock source package, and each patch set below is one branch stacked on the last, in the
+order the builds apply them. That is the form to review or send them in:
+
+| Branch | On | Carries |
+| --- | --- | --- |
+| `pyra/fixes` | `main` | `patches/` |
+| `pyra/opp` | `pyra/fixes` | 0007 (intermediate OPPs) |
+| `pyra/m4-ipu` | `pyra/opp` | `experiments/m4-ipu` |
+| `pyra/aess` | `pyra/m4-ipu` | `experiments/aess` |
+| `pyra/device` | `pyra/aess` | 0034 and `experiments/kbd-led`: the source of `5.6.19-m4-kbdled` |
+| `pyra/overclock` | `pyra/opp` | 0008 |
+| `pyra/c2-idle` | `pyra/fixes` | the other 0007 |
+
+`git log main..pyra/fixes` is the fix series; `git format-patch -s pyra/m4-ipu..pyra/aess`
+makes the audio series ready to send. The tree is generated and its hashes are
+reproducible: change a patch file here and rerun the script, never commit there.
+
 ---
 
 ## Which kernel carries what
