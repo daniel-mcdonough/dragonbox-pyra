@@ -1,0 +1,121 @@
+# Build the Pyra kernels and publish them as a release.
+#
+# Two variants, both built by pc/pyra-crossbuild.sh exactly as on a PC:
+#
+#   m4-kbdled  5.6.19-m4-kbdled  the everyday kernel on the development unit:
+#                                patches/, the intermediate OPPs, the M4 stack,
+#                                the AESS audio series and the keyboard light
+#                                as an LED, with uprobes and PM debug
+#   m4demo     5.6.19-m4demo     patches/ plus the M4 stack and nothing else,
+#                                the kernel the M4 demo kit ships
+#
+# Pushing a tag named kernel-* builds both and creates a release for that tag.
+# Running the workflow by hand builds both and keeps them as workflow
+# artifacts, without a release, to check a change before tagging it.
+#
+# The build script fetches the pyradef source package from
+# packages.pyra-handheld.com and checks it against the .dsc hash pinned in the
+# script, so a release cannot be built from anything else.
+
+name: Kernel release
+
+on:
+  push:
+    tags: ['kernel-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kernel-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build 5.6.19-${{ matrix.variant }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [m4-kbdled, m4demo]
+    steps:
+      - uses: actions/checkout@v4
+
+      # Outside the checkout: the kernel source unpacks to about 1.5 GB.
+      - name: Work tree
+        run: echo "PYRA_BUILD_DIR=$RUNNER_TEMP/pyra-build" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: ./pc/pyra-crossbuild.sh kernel-${{ matrix.variant }}
+
+      # The tarball unpacks over / beside the stock kernel. The patch list is
+      # the build's own record of what it applied, in order, so the release
+      # notes cannot drift from the script.
+      - name: Collect
+        run: |
+          v=${{ matrix.variant }}
+          k=$PYRA_BUILD_DIR/kernel
+          mkdir -p dist
+          cp "$k/$v-kernel.tar.gz" dist/
+          cp "$k/src-$v/.config" "dist/config-5.6.19-$v"
+          cp "$k/src-$v/.patches-applied" "dist/$v-patches.txt"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kernel-${{ matrix.variant }}
+          path: dist/
+          if-no-files-found: error
+
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/kernel-')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write checksums and notes
+        run: |
+          cd dist
+          sha256sum -- *.tar.gz config-* > SHA256SUMS
+          {
+            echo "Cross-built from the pinned \`linux-5.6.19-pyradef\` source package with the patches below, by \`pc/pyra-crossbuild.sh\` at ${GITHUB_SHA::12}."
+            echo
+            echo "Each kernel installs beside the stock one under its own release name, and the stock kernel stays bootable. The initrd is not included: the installer generates it on the device. Install with:"
+            echo
+            echo '    ./pc/pyra-push-kernel.sh --install --tarball m4-kbdled-kernel.tar.gz pyra@<address>'
+            echo
+            echo "See \`docs/building.md\` and \`docs/kernel-changes.md\` before installing."
+            echo
+            echo "## 5.6.19-m4-kbdled"
+            echo
+            echo "The everyday kernel on the development unit. Carries the experimental AESS audio path and the intermediate CPU frequency steps. The keyboard light is an LED (\`pyra::kbd_backlight\`), so anything hard-coding \`/sys/class/backlight/keyboard-backlight\` stops reaching it."
+            echo
+            sed 's/^/- `/; s/$/`/' m4-kbdled-patches.txt
+            echo
+            echo "## 5.6.19-m4demo"
+            echo
+            echo "The fix set and the M4 stack only, for running the M4 demo kit (\`docs/m4-demo.md\`) without changing audio or the frequency table."
+            echo
+            sed 's/^/- `/; s/$/`/' m4demo-patches.txt
+          } > ../notes.md
+          cat ../notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Kernels $GITHUB_REF_NAME" \
+            --notes-file notes.md \
+            --prerelease \
+            dist/*
