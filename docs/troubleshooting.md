@@ -16,6 +16,31 @@ payload files left behind, which now aborts rather than half-applying. See fix
 5 in `fixes.md` for the diagnosis and the manual rebind. A cold power cycle avoids the
 problem entirely and is the way back in if you are locked out.
 
+**USB dies while running: `disabled by hub (EMI?)`, then `port 2 reset error
+-110`.** This is not the warm-reboot case and fix 5 does not cover it. Seen on
+2026-10-22, about fifteen seconds after a charger was pulled from the USB3
+micro port while cables were being swapped:
+
+    usb usb1-port2: disabled by hub (EMI?), re-enabling...
+    ehci-omap 4a064c00.ehci: port 2 reset error -110
+
+Port 2 is the HSIC link to the on-board hub, and once it is in this state none
+of the following recovers it, all tried in turn: running
+`pyra-usb3503-rescue` by hand; rebinding `ehci-omap` as well; pulsing the hub's
+reset line (gpio 144, active low) low by hand, which does bring the hub back
+onto the port but the link still times out; and holding the hub in reset across
+an `ehci-omap` rebind. **Reboot.** The rescue unit handles the warm boot that
+follows.
+
+Do **not** rebind `usbhs_omap` (`4a064000.usbhshost`) to try to reinitialise
+the link. On this kernel it removes the EHCI and OHCI children and does not
+recreate them, which leaves USB host gone for the rest of the boot, and the
+reboot that followed panicked on the way down: PID 1 took a fault inside
+`openat` and the kernel died with `Attempted to kill init! exitcode=0x0000000b`.
+The machine had to be power-cycled. The faulting address scrolled off the
+console and `CONFIG_PSTORE` is not set, so the half-removed devices are the
+likely cause rather than a proven one.
+
 **Configure wifi anyway before you reboot remotely.** Fix 5 restores the
 ethernet adapter a second or two into the boot, but it is a workaround on a
 path you cannot watch, and wifi is a second way in that does not depend on it.
