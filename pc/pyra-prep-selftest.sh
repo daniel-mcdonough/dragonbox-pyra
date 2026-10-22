@@ -329,7 +329,7 @@ fi
 ########################################################################
 i "assert fix 8 — the card can charge while it runs"
 ########################################################################
-# Fix 8 writes three new files rather than transforming a packaged one, so
+# Fix 8 writes four new files rather than transforming a packaged one, so
 # there is no vendor original to diff against. What matters is that what is on
 # the card is exactly what the device script generates, that the rule names
 # the charger this board actually has, and that the helper is valid /bin/sh —
@@ -344,7 +344,8 @@ if "$PAYLOADS/pyra-charge-current.sh" --emit-into "$F8_STAGE" >/dev/null 2>&1; t
     p "fix8: pyra-charge-current.sh --emit-into produced a tree"
     for rel in /etc/default/pyra-charge-current \
                /usr/local/sbin/pyra-charge-current-apply \
-               /etc/udev/rules.d/60-pyra-charge-current.rules; do
+               /etc/udev/rules.d/60-pyra-charge-current.rules \
+               /etc/udev/rules.d/charging.rules; do
         if [[ ! -e $MNT$rel ]]; then
             f "fix8: $rel is not on the card"
         elif cmp -s "$F8_STAGE$rel" "$MNT$rel"; then
@@ -397,8 +398,16 @@ else
     f "fix8: input limit is '${F8_UA:-absent}', which is not a working value"
 fi
 
+# The stock rules must be masked, or the thermal daemon's charge ladder can
+# win a boot-order race and drive the input limit from the fuel gauge's die.
+if grep -qs 'pyra-charge-current' "$MNT/etc/udev/rules.d/charging.rules"; then
+    p "fix8: the stock charging.rules is masked from /etc/udev/rules.d"
+else
+    f "fix8: the stock charging.rules is not masked; the thermal daemon can reach the charger"
+fi
+
 # The stock rules must be left alone: this fix takes precedence by living in
-# /etc, and reverting it should mean deleting one file, not restoring /lib.
+# /etc, and reverting it should mean deleting files there, not restoring /lib.
 if [[ -e $MNT/lib/udev/rules.d/charging.rules ]]; then
     if grep -q 'neither tested nor complete nor working' "$MNT/lib/udev/rules.d/charging.rules"; then
         p "fix8: the stock /lib/udev/rules.d/charging.rules is untouched"

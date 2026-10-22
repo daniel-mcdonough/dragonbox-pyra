@@ -485,6 +485,13 @@ were supposed to and none of them do.
    It is an ordinary file, created by the first thing that wrote to it as root
    — the thermal daemon. This is the correction to fix 6 above.
 
+   **Not always, as it turned out.** It is a race between that rule and the
+   daemon's first poll. On 2026-10-22 the rule won on two boots in a row, the
+   symlink was made, and the ladder drove the real limit: it flapped between
+   1, 2 and 3 A every few seconds while charging. Fix 8 now masks the stock
+   rules, so the race no longer exists. The logs are in
+   `experiments/charging/README.md`.
+
 3. The driver reads the right numbers out of the device tree at probe and never
    applies them:
 
@@ -494,8 +501,9 @@ were supposed to and none of them do.
 So the limit stays wherever the chip powers up, which is the 500 mA USB floor,
 for the life of the boot.
 
-**What this fix does not do, deliberately.** It does not connect the thermal
-daemon's charge ladder to the real knob. That ladder reads `bq27421-0`, the
+**What this fix does not do, deliberately.** It does not let the thermal
+daemon's charge ladder reach the real knob, and since 2026-10-22 it enforces
+that rather than relying on boot order. That ladder reads `bq27421-0`, the
 fuel gauge's own die (fault 1 of fix 7), and it drops to 500 mA above 44°C.
 This machine idles with that sensor at 46–47°C. Wiring the daemon to the
 working knob without first recalibrating it onto a sensor that means something
@@ -530,12 +538,18 @@ with `DPM_STAT` set the whole time at a total input draw well under 1 A. That
 is VINDPM, not the limit — VBUS is sagging, which is the cable. A shorter or
 thicker one should be worth real charge rate; a bigger number here is not.
 
-**Where it is applied.** `device/pyra-charge-current.sh` installs three files
+That held for that cable. On 2026-10-22, with a 15 W brick on the USB3 micro
+port, 2 A gave +1342 mA and 3 A gave +1518 mA. A short cable on the normal
+micro port gave +999 mA at 2 A. The default stays at 2 A, because it applies to
+whatever gets plugged in.
+
+**Where it is applied.** `device/pyra-charge-current.sh` installs four files
 and verifies the result:
 
     /etc/default/pyra-charge-current              the number
     /usr/local/sbin/pyra-charge-current-apply     one idempotent sysfs write
     /etc/udev/rules.d/60-pyra-charge-current.rules
+    /etc/udev/rules.d/charging.rules              masks the stock rules
 
 The limit is a register: it resets on every unplug and every boot, which is
 what the udev rule is for. `--check` reports the state, `--undo` puts 500 mA
@@ -543,8 +557,9 @@ and the stock rules back. `device/pyra-chgwatch.sh` watches the charge path
 once a second and changes nothing.
 
 **Unlike fixes 6 and 7, this one does not edit a packaged file**, so an upgrade
-will not silently revert it. It adds a rule in `/etc/udev/rules.d`, which takes
-precedence over the stock `/lib/udev/rules.d` and leaves it untouched.
+will not silently revert it. Its rule and its mask both live in
+`/etc/udev/rules.d`, which takes precedence over the stock
+`/lib/udev/rules.d` and leaves it untouched.
 
 **Verified:** the rule re-applies the limit on both `add` and `change` events,
 tested by knocking the register down to 500000 and firing each event with

@@ -482,9 +482,10 @@ rm -f "$THERMAL_TMP"
 #   The driver parses usb_input_current and adp_input_current out of the
 #   device tree at probe and does not apply either.
 #
-# This writes a rule in /etc/udev/rules.d, which takes precedence over the
-# stock one in /lib and leaves it alone. Unlike fixes 6 and 7 it edits no
-# packaged file, so an upgrade will not silently revert it.
+# This writes a rule in /etc/udev/rules.d, and a charging.rules there that
+# masks the stock one of the same name in /lib without editing it. Unlike
+# fixes 6 and 7 it edits no packaged file, so an upgrade will not silently
+# revert it.
 #
 # It asserts a current rather than detecting one, because nothing here can:
 # real BC1.2 detection means driving FORCE_DPDM in the charger's REG07 and
@@ -492,14 +493,16 @@ rm -f "$THERMAL_TMP"
 # default is 2000000, which is what this board's device tree already calls
 # adp_input_current.
 #
-# It deliberately does NOT connect the thermal daemon's charge ladder to the
+# It deliberately keeps the thermal daemon's charge ladder away from the
 # working knob. That ladder reads the fuel gauge's die and caps at 500 mA
-# above 44 C, and a Pyra idles with that sensor at 46-47 C; wiring it up
-# before recalibrating it would make this bug permanent. The pack is protected
-# by the charger's TS pin, in hardware, either way.
+# above 44 C, and a Pyra idles with that sensor at 46-47 C. The stock rules'
+# symlink is what would connect them, and it is a boot-order race: on
+# 2026-10-22 the rule won, and the ladder flapped the limit between 1, 2 and
+# 3 A while charging. The mask is what stops that. The pack is protected by
+# the charger's TS pin, in hardware, either way.
 
 # Emit into a staging root first and install only what differs, so a second
-# run of this script writes nothing at all rather than rewriting three
+# run of this script writes nothing at all rather than rewriting four
 # identical files with new timestamps.
 CHARGE_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix8.XXXXXX")
 if ! CHARGE_FILES=$("$CHARGE_FIX" --emit-into "$CHARGE_STAGE" 2>&1); then

@@ -8,11 +8,11 @@
 #
 #        ./pyra-charge-current.sh --emit-into ROOT
 #
-# writes the three files below under ROOT instead of under /, touches nothing
+# writes the four files below under ROOT instead of under /, touches nothing
 # else, and does not care whether it is running on a Pyra. That mode is the
 # door `pc/pyra-trixie-prep.sh` goes through to put this on a card offline, as
 # fix 8, so a freshly prepared card charges from its first boot. There is one
-# implementation of the three files and every mode calls it.
+# implementation of the four files and every mode calls it.
 #
 # WHAT IS WRONG
 #
@@ -56,6 +56,15 @@
 #    The thermal daemon writes its charge-current decision there every poll.
 #    Nothing reads it. That half of the daemon has never done anything.
 #
+#    That was true on 2026-09-13 and was not true on 2026-10-22. It is a race:
+#    whichever of the stock rule and the daemon's first poll reaches the path
+#    first decides what it is. On 2026-10-22 the rule won, on two boots in a
+#    row, and the symlink pointed at the real limit. The daemon's ladder then
+#    drove the charger from the fuel gauge's die temperature, which sits at
+#    42-43.5 C while charging, right on its 1 A and 2 A rungs, and the limit
+#    flapped between 1, 2 and 3 A every few seconds. This script now masks the
+#    stock rules so the wrong side cannot win the race. See below.
+#
 # 3. The driver parses limits out of the device tree at probe and does not
 #    apply them:
 #
@@ -98,11 +107,28 @@
 # here: the daemon's charge half stays disconnected, and the pack is protected
 # by the TS pin that was always doing that job anyway.
 #
+# Recalibrating its thresholds would not be enough either. The knob it turns
+# is the INPUT limit, which feeds the system first and the battery with what
+# is left, so lowering it under load drains the battery rather than sparing
+# it. The ladder has no hysteresis, and charging heats the very sensor it
+# reads, so it oscillates. A guard that protects the cell would read a cell
+# temperature and act on the charge current (REG02), not on this.
+#
+# Keeping it disconnected used to be an accident of boot ordering. It is now
+# done on purpose, by the fourth file: a `charging.rules` in /etc/udev/rules.d
+# masks the stock one of the same name in /lib, which is udev's documented
+# override. Every rule in the stock file is either for the twl4030, which this
+# board does not have, or one of the two broken bq24297 rules, so masking the
+# whole file loses nothing on a Pyra. With no symlink, the daemon's write lands
+# in an ordinary file in /dev that nothing reads, as it always did when it won
+# the race.
+#
 # WHAT IT INSTALLS
 #
 #   /etc/default/pyra-charge-current        the number, so you can change it
 #   /usr/local/sbin/pyra-charge-current-apply   one idempotent sysfs write
 #   /etc/udev/rules.d/60-pyra-charge-current.rules   re-apply on plug events
+#   /etc/udev/rules.d/charging.rules        masks the stock rules, see above
 #
 # The limit is a register. It does not survive an unplug or a reboot, which is
 # what the udev rule is for.
@@ -112,6 +138,8 @@ set -u
 CONF=/etc/default/pyra-charge-current
 HELPER=/usr/local/sbin/pyra-charge-current-apply
 RULE=/etc/udev/rules.d/60-pyra-charge-current.rules
+MASK=/etc/udev/rules.d/charging.rules
+LINK=/dev/usb_max_current
 MARKER='pyra-charge-current'
 SELFPATH=/usr/local/sbin/pyra-charge-current.sh
 
@@ -165,11 +193,19 @@ state() {
 	note "config          : $( [ -r "$CONF" ] && grep -h '^PYRA_INPUT_CURRENT_UA' "$CONF" || echo "not installed" )"
 	note "helper          : $( [ -x "$HELPER" ] && echo present || echo "not installed" )"
 	note "udev rule       : $( [ -r "$RULE" ] && echo present || echo "not installed" )"
+	note "stock rules     : $( grep -qs "$MARKER" "$MASK" && echo masked || echo "NOT masked" )"
+	if [ -L "$LINK" ]; then
+		note "$LINK : SYMLINK to the charger; the thermal daemon is driving the limit"
+	elif [ -e "$LINK" ]; then
+		note "$LINK : ordinary file, nothing reads it"
+	else
+		note "$LINK : absent"
+	fi
 	return 0
 }
 
 # ------------------------------------------------------------------ the files
-# One implementation of the three files. `--emit-into` writes them under a
+# One implementation of the four files. `--emit-into` writes them under a
 # card, the apply path writes them under /. Nothing else knows their content.
 emit_into() {
 	# $1 is the root to write under: "" for the live system, a mount point
@@ -236,6 +272,25 @@ EOF
 
 ACTION=="add|change", SUBSYSTEM=="power_supply", KERNEL=="bq24297", RUN+="$HELPER"
 EOF
+
+	cat > "$root$MASK" <<EOF
+# $MARKER
+#
+# This file masks /lib/udev/rules.d/charging.rules, from pyra-config-udev. A
+# file in /etc/udev/rules.d replaces the one of the same name in /lib.
+#
+# The stock file's working rules are for the twl4030, the GTA04's charger, and
+# its bq24297 rules are marked by the vendor as "neither tested nor complete
+# nor working". One of them does work, sometimes: it links $LINK to the
+# bq24297's input_current_limit, which hands the input limit to the thermal
+# daemon's charge ladder. That ladder reads the fuel gauge's die, not the cell,
+# turns the input limit rather than the charge current, and has no hysteresis.
+# Measured on 2026-10-22, it flapped the limit between 1, 2 and 3 A every few
+# seconds while charging. With this mask nothing creates the link, and the
+# limit is set by $HELPER alone.
+#
+# Installed by $SELFPATH. Delete this file to restore the stock rules.
+EOF
 }
 
 # --------------------------------------------------------------------- check
@@ -253,14 +308,14 @@ fi
 
 # ----------------------------------------------------------------- emit-into
 # Needs no root if ROOT is writable, and needs no Pyra. This is how the card
-# prep applies the same three files offline.
+# prep applies the same four files offline.
 if [ "${1:-}" = --emit-into ]; then
 	root=${2:-}
 	[ -n "$root" ] || die "--emit-into needs a root to write under"
 	[ -d "$root" ] || die "not a directory: $root"
 	UA=$DEFAULT_UA
 	emit_into "$root" "$UA"
-	printf '%s\n%s\n%s\n' "$root$CONF" "$root$HELPER" "$root$RULE"
+	printf '%s\n%s\n%s\n%s\n' "$root$CONF" "$root$HELPER" "$root$RULE" "$root$MASK"
 	exit 0
 fi
 
@@ -269,7 +324,7 @@ fi
 # ---------------------------------------------------------------------- undo
 if [ "${1:-}" = --undo ]; then
 	say "removing"
-	for f in "$RULE" "$HELPER" "$CONF"; do
+	for f in "$MASK" "$RULE" "$HELPER" "$CONF"; do
 		if [ -e "$f" ]; then
 			if grep -q "$MARKER" "$f" 2>/dev/null; then
 				rm -f "$f"; note "removed $f"
@@ -311,9 +366,18 @@ note "wrote $CONF"
 note "wrote $HELPER"
 chown 0:0 "$HELPER"
 note "wrote $RULE"
+note "wrote $MASK"
 
 udevadm control --reload || die "could not reload udev rules"
 note "udev rules reloaded"
+
+# The mask stops the link being made at the next boot. One made at this boot
+# is still there: remove it, and the daemon's next write recreates the path as
+# the ordinary file nothing reads.
+if [ -L "$LINK" ]; then
+	rm -f "$LINK"
+	note "removed the $LINK symlink; the thermal daemon no longer reaches the charger"
+fi
 
 "$HELPER"
 note "applied now"

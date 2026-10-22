@@ -179,3 +179,85 @@ working knob. That ladder reads the fuel gauge's die temperature and caps at
 500 mA above 44°C, and this machine idles with that sensor at 46–47°C. Wiring
 it up before recalibrating it would re-impose the exact cap this work removed,
 permanently. See [fault 1](../thermal-ladder/README.md).
+
+## 2026-10-22: the ladder got connected, and the USB3 port
+
+Kernel `5.6.19-m4-kbdled`, `pyra-hacks 0.38+pyra1`. A 15 W USB-C brick.
+
+### The daemon's charge half was not disconnected any more
+
+The section above says the ladder writes into a plain file that nothing reads.
+On this date `/dev/usb_max_current` was a **symlink to the charger's
+`input_current_limit`**, on two consecutive boots. It is a race: the stock
+`charging.rules` and the daemon's first poll both go for the path, and
+whichever is first decides what it is. In September the daemon won. Here the
+rule did, and the ladder was driving the real limit.
+
+The gauge die sits at 42–43.5 °C while charging, which is exactly where the
+ladder's 3 A / 2 A / 1 A rungs are, and the charge ladder has no hysteresis.
+The limit flapped every few seconds:
+
+| log | limit changes in 300 s | time at 1 A |
+| --- | --- | --- |
+| [USB3 port](chgwatch-usb3-ladder-20261022.tsv) | 10, all in the first minute | 8 samples |
+| [normal micro port](chgwatch-micro-ladder-20261022.tsv) | 21 | 62 samples, mean +297 mA into the battery |
+
+Fix 8 now masks the stock rules with a `charging.rules` of its own in
+`/etc/udev/rules.d`, so the link is never made. Checked live: after the
+change the daemon's next poll wrote `1000000` into an ordinary file in `/dev`
+and the charger stayed at 2 A.
+
+### USB3 micro port against the normal micro port
+
+Same brick throughout. Settled samples only: three seconds after any limit
+change are discarded, because the gauge's `current_now` lags the register.
+
+| path | limit | into the battery |
+| --- | --- | --- |
+| normal micro, long cable (2026-09-13) | 2 A | +476 mA |
+| normal micro, USB-C→A adapter, short micro cable | 2 A | **+999 mA** (177 samples) |
+| USB3 micro, USB-C adapter | 2 A | **+1312 mA** (237 samples) |
+
+The short cable alone doubled the normal port, which bears out the cable
+diagnosis above. The USB3 path gives another ~310 mA at the same limit. Both
+had `DPM_STAT` set, so the gap is most likely VBUS lost along the adapter,
+cable and connector on the micro path. That is not separated out: the two
+paths differ in adapter as well as port.
+
+On plug events the charger classified the brick as an adapter on the USB3
+port (REG08 `0xac`, `VBUS_STAT` `10`) and as unknown on the normal port
+(`0x2c`). After a boot with the cable already in, it reads `00` on either,
+and `bq24297/online` reads `0` while charging at 1.2 A. Neither affects the
+limit, which is set by the helper regardless.
+
+### 2 A against 3 A, with nothing else touching the limit
+
+USB3 port, 240 s each, back to back, 56% → 60%:
+
+| limit | into the battery | REG08 |
+| --- | --- | --- |
+| [2 A](chgwatch-usb3-2A-20261022.tsv) | **+1342 mA** | `0x2c` on all 217 samples: input-limited |
+| [3 A](chgwatch-usb3-3A-20261022.tsv) | **+1518 mA** | `0x24` on 216 of 217: not input-limited |
+
+Unlike September, 3 A does buy something here (+176 mA), because this supply
+and cable no longer sag to VINDPM. It also stops being the input limit that
+binds, but the result still falls short of the 2048 mA charge setting
+(REG02 `0x60`), and nothing in REG08 says why. The default stays at 2 A,
+because the setting applies to every supply plugged in. A 3 A brick can be
+given 3 A in `/etc/default/pyra-charge-current`.
+
+### What protects the cell, now that nothing in software does
+
+The charger's TS pin, on the pack's 10 k 103AT thermistor. A community
+member measured that divider on a stock board
+([forum thread](https://pyra-handheld.com/boards/threads/bq24297-thermistor-ntc-resistors-hot-fault.99405/)).
+The design intends a hot cut-off at 45 °C. Because the CPU module's
+R2001/R2002 sit in parallel with R710, the board actually trips at about
+**38 °C**. That is conservative. This machine has latched the fault: the
+kernel log on 2026-10-22 has `r9=11 UNPLUG HOT` at 165 s.
+
+Those figures are from another board and have not been measured on this one.
+The same thread says the thermistor line also reaches the CPU module. If so,
+a real cell temperature may be readable through the Palmas GPADC. That is the
+sensor a software guard would need, and the charge current, not the input
+limit, is what it should act on.
