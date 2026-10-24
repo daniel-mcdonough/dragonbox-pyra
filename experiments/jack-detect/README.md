@@ -1,0 +1,227 @@
+# Headphone jack detection
+
+The card always reports a headset plugged in, so PulseAudio cannot switch
+between speakers and headphones on its own. This is the diagnosis and the plan
+to fix it. Nothing here is built yet.
+
+**Status: diagnosed on hardware 2026-10-23, on the stock bookworm-7 card
+(`experiments/bookworm-baseline/`). Fix planned, not written.**
+
+## The fault
+
+`Headset Stereophone Jack` and `Headset Mic Jack` both read `on`, and the
+`Letux Cortex 15 Headset Jack` input device reports `SW_HEADPHONE_INSERT 1`,
+whether or not anything is in the jack. It does this on stock bookworm with
+the stock kernel, on the trixie card, and on every kernel of ours. It is not
+caused by the AESS work.
+
+## Two faults, not one
+
+The Pyra has a dedicated jack-detect chip, a **TS3A227E** on i2c5 at `0x3b`
+(`4-003b`). Its interrupt goes to pin 14 of the **PCAL6524** GPIO expander at
+`4-0022` (the line the DT names `mic-int`, `P16` in the expander's own
+numbering). Two separate things stop it reaching the sound card.
+
+### 1. The chip never probes: its interrupt pin is an output
+
+Every boot:
+
+    gpio gpiochip10: (4-0022): gpiochip_lock_as_irq: tried to flag a GPIO set as output for IRQ
+    gpio gpiochip10: (4-0022): unable to lock HW IRQ 14 for IRQ
+    genirq: Failed to request resources for TS3A227E (irq 197) on irqchip 4-0022
+    ts3a227e 4-003b: Cannot request irq 197 (-5)
+    ts3a227e: probe of 4-003b failed with error -5
+
+The expander's configuration registers, read raw right after a fresh boot
+(`i2ctransfer -f -y 4 w1@0x22 0x8c r3`):
+
+| bank | config (1 = input) | pin 14 |
+| --- | --- | --- |
+| 0 | `0xfc` | |
+| 1 | `0x08` | P16 = bit 6 = **0, output** |
+| 2 | `0xf2` | |
+
+Bank 1 has only P13 (`chg-int`) as an input. The PCAL6524 resets to all
+inputs, so something writes `0x08` before the kernel probes the expander. The
+kernel reads that direction once at `gpiochip_add`, and because the expander
+is an i2c device (`can_sleep`), `gpiochip_lock_as_irq()` trusts the cached
+flag rather than re-reading. `pca953x_irq_bus_sync_unlock()` would make the
+line an input, but it runs only after the resource request, which has
+already failed.
+
+**Who writes `0x08` is not established.** The obvious suspect is U-Boot: the
+Pyra board file in `u-boot-pyra` 0.1.5
+(`board/pandora/pyra+lc15/pyra+lc15.c`) pulses the peripheral reset and then
+writes an initial state to the expander. But its table makes P16 an input
+(`P16_MICPRES | P13_CHG_INT`, `0x48`), and the compiled table could not be
+found in the SPL or `u-boot.img` to confirm which version is running. The SPL
+on the bookworm card is byte-identical to the packaged
+`/usr/lib/u-boot/pyra/MLO`; the eMMC has an older 2016.11 build from 2020. A
+`i2c md` from the U-Boot prompt over serial would settle it. The fix below
+does not depend on the answer.
+
+**Setting the pin to input by hand makes it work.** On the running stock
+system:
+
+    echo 490 > /sys/class/gpio/export
+    echo in  > /sys/class/gpio/gpio490/direction
+    echo 490 > /sys/class/gpio/unexport
+    echo 4-003b > /sys/bus/i2c/drivers/ts3a227e/bind
+
+The driver binds, IRQ 197 appears in `/proc/interrupts`, and the chip is
+right. Its accessory status register (`0x0b`) reads `0x00` with the jack
+empty and `0x09` (`JACK_INSERTED | TYPE_3_POLE`) with 3-pole headphones in.
+Three unplug/replug cycles, logged every 200 ms (`plug-cycle-20261023.log`):
+
+    22:31:28.204 acc=09 irq=0 twl_hp=10
+    22:31:59.354 acc=00 irq=1 twl_hp=10
+    22:32:04.202 acc=09 irq=2 twl_hp=10
+    22:32:08.983 acc=00 irq=3 twl_hp=10
+    22:32:13.171 acc=09 irq=4 twl_hp=10
+    22:32:20.660 acc=00 irq=5 twl_hp=10
+    22:32:23.892 acc=09 irq=6 twl_hp=10
+
+One interrupt per transition, no storm, no missed edge. `twl_hp=10` is
+`evtest --query` saying the card's jack is still "inserted" throughout, which
+is the second fault.
+
+The TS3A227E driver asks for `IRQF_TRIGGER_LOW`; the PCAL6524 driver only
+does edges and turns a low-level request into falling-edge. The log shows
+that is enough for one event at a time. Two events closer together than the
+handler can read the chip have not been tested.
+
+### 2. The sound card does not use the chip
+
+`sound/soc/ti/omap-abe-twl6040.c` takes jack state from the codec:
+
+    snd_soc_card_jack_new(rtd->card, "Headset Jack", SND_JACK_HEADSET, &hs_jack, ...);
+    twl6040_hs_jack_detect(component, &hs_jack, SND_JACK_HEADSET);
+
+The TWL6040's own plug comparator says "inserted" at boot and never changes.
+On stock its `twl6040_irq_plug` count stays at 0. On our AESS kernel it had
+counted 44598 after two hours (`docs/audio.md`), so there it fires, or
+bounces, without ever reporting removal. Either way the Pyra does not route
+jack detection through the codec. Nothing in the tree calls
+`ts3a227e_enable_jack_detect()` for this card.
+
+**letux has not fixed this.** In `letux-7.3`, `letux-current` and master
+(checked 2026-10-23) `omap-abe-twl6040.c` still calls only
+`twl6040_hs_jack_detect()`, and no Pyra dtsi hogs the pin. The v5.2 and
+v5.3 mainboard dtsi there carry the TS3A227E interrupt with the comment
+"interrupts now working with pcal6524", but nothing consumes the chip's
+reports.
+
+## The plan
+
+Patch numbers are the next free ones. Each step is tested before the next.
+
+### Step 1: `0037` arm: dts: pyra: make the jack-detect line an input
+
+In `pyra-mainboard-v5.2.dtsi` and `pyra-mainboard-v5.3.dtsi` (the two that
+give the TS3A227E an interrupt), add a GPIO hog on `gpio99` line 14:
+
+    &gpio99 {
+        mic-int-hog {
+            gpio-hog;
+            gpios = <14 GPIO_ACTIVE_HIGH>;
+            input;
+            line-name = "mic-int";
+        };
+    };
+
+Hogs are applied inside `gpiochip_add`, after the initial direction read and
+before any consumer probes, and `gpiochip_lock_as_irq()` only refuses lines
+flagged as outputs. A hogged input can still be used as an IRQ.
+
+- **Why not the driver.** Making `pca953x` set a line to input in its
+  `irq_request_resources` is the more general fix, and worth proposing
+  upstream, but it changes behaviour for every board using that driver. The
+  hog only touches the Pyra.
+- **Why not the bootloader.** We cannot show which table the running SPL
+  uses, and a fix there does nothing for anyone who has not reflashed it.
+
+**Test:** cold boot and warm boot, 5 each. `ts3a227e` bound, IRQ 197 present,
+no `gpiochip_lock_as_irq` line in `dmesg`, register `0x0b` follows the plug.
+Confirm in `/sys/kernel/debug/gpio` that the line shows as an input hog and
+nothing else on the expander changed direction.
+
+### Step 2: `0038` ASoC: ti: omap-abe-twl6040: use the TS3A227E for the jack
+
+The pattern is `sound/soc/rockchip/rockchip_max98090.c`: the detector is a
+card auxiliary device, and its `init` callback hands it the jack.
+
+1. DT: add `ti,jack-detect = <&ts3a227>;` to the `sound` node (a label on
+   the `ts3a227@3b` node in `pyra-mainboard-common.dtsi`), only in the
+   v5.2/v5.3 mainboard dtsi. Boards without it keep the TWL6040 path.
+2. Probe: if the phandle is present, add one `snd_soc_aux_dev` with
+   `dlc.of_node` set to it and `init` set to a new
+   `omap_abe_ts3a227e_init()`.
+3. `omap_abe_ts3a227e_init()`: create `hs_jack` there with
+   `SND_JACK_HEADSET | SND_JACK_BTN_0..3` and the existing `hs_jack_pins`, map
+   the buttons to `KEY_PLAYPAUSE`, `KEY_VOICECOMMAND`, `KEY_VOLUMEUP`,
+   `KEY_VOLUMEDOWN` as rockchip does, and call
+   `ts3a227e_enable_jack_detect()`. In 5.6 `snd_soc_bind_card()` probes aux
+   devices before it runs the DAI links' `init`
+   (`soc_probe_aux_devices()` then `soc_init_pcm_runtime()`), so the jack
+   exists by the time the link init runs.
+4. `omap_abe_twl6040_init()`: when the TS3A227E path is active, skip
+   `snd_soc_card_jack_new()` and `twl6040_hs_jack_detect()`.
+5. Kconfig: `select SND_SOC_TS3A227E` from `SND_SOC_OMAP_ABE_TWL6040`, since
+   the call is now a hard symbol dependency. It is already built as a module
+   in `pyradef`; check the defconfig still agrees.
+
+This must work on both of our link layouts: the direct McPDM link and the
+AESS DL1 link. Both run `omap_abe_twl6040_init()` (and the AESS reference
+link deliberately runs no init, see the comment at `ADD_DAILINK(...
+"McPDM-direct" ...)`), so the change is in one place.
+
+**Test:**
+
+- Empty jack at boot reads `off`; plugged at boot reads `on`. Plug and unplug
+  20 times on each of `-m4-kbdled` (AESS) and a direct-link kernel.
+- A 4-pole headset sets `Headset Mic Jack` as well, and its buttons produce
+  key events in `evtest`. 3-pole headphones do not set the mic.
+- Suspend with headphones in, unplug while asleep, resume: state must be
+  correct after resume. Then the reverse. The TS3A227E driver has
+  no suspend/resume handling of its own, so this is the step most likely to
+  find something.
+- `twl6040_irq_plug` count after an hour of uptime on the AESS kernel, to
+  see whether the 44598-count bouncing still happens and needs masking.
+
+### Step 3: PulseAudio switches on plug
+
+With the switch working, PulseAudio's `module-switch-on-port-available` does
+the rest once the paths know about the jack. In
+`device/pulse/alsa-mixer/paths/`:
+
+- `pyra-headphones.conf`: `[Jack Headset Stereophone]`, `required-any = any`,
+  so the port is available only when plugged.
+- `pyra-speaker.conf`: `[Jack Headset Stereophone]`, `state.plugged = no`,
+  `state.unplugged = unknown`, so the speakers become unavailable when
+  headphones go in.
+
+**Test:** plug in during playback; the sound moves to the headphones within a
+second and comes back to the speakers on unplug. A manual port choice in MATE's
+sound preferences still works.
+
+This covers the AESS path only, which is the one with ports. The direct-link
+setup uses two remap sinks instead of ports, so on that path the switch would
+need a small udev or `module-switch-on-connect` arrangement. Not planned
+unless the direct link is still in use when steps 1 and 2 land.
+
+### Step 4: carry it forward
+
+- Add 0037 and 0038 to `docs/kernel-changes.md` and the kernel targets in
+  `pc/pyra-crossbuild.sh`, and regenerate `linux-pyra-5.6.19`
+  (`pc/pyra-kernel-tree.sh`), probably as a new `pyra/jack` branch on
+  `pyra/device`.
+- The same two changes apply to letux 7.3 almost unchanged. Add them to the
+  porting list in `docs/aess-letux-7.3.md`.
+- Draft `reports/letux-pyra-jack-detect.md`. Not to be sent without asking.
+
+## Open
+
+- What leaves P16 as an output: U-Boot (which build), or something else
+  before the kernel. Needs the serial console.
+- Why the TWL6040 plug interrupt bounces on the AESS kernel and is silent on
+  stock.

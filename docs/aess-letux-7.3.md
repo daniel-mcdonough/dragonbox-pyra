@@ -154,6 +154,12 @@ most self-contained first:
    playback on 7.3: if it already reads 100 there, the topology fills in
    `opp.widget[]` and the speakers will not show the fault.
 
+Not AESS, but due on the same tree: the headphone jack. `letux-7.3` (and master) still
+takes it from `twl6040_hs_jack_detect()`, so the Pyra's TS3A227E is never
+used, and its interrupt pin needs the same DT hog. Both changes are planned
+as 0037 and 0038 in `experiments/jack-detect/` and should port almost
+unchanged.
+
 Not to port, because 7.3 already covers them: 0013, 0015-0025, 0027 and 0030
 (classes a and b in the INDEX). The PulseAudio side (`device/pulse/pyra-aess.pa`
 with `timeout=300`, `mmap=no`, and the profile set in `device/pulse/alsa-mixer/`) still applies on 7.3. `mmap=no` becomes

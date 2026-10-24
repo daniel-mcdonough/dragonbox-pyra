@@ -752,3 +752,37 @@ copy's cost, nor what the vsync toggle actually does.
 **Corrected in place:** `rendering-guidelines.md` §§1.1, 1.2, 1.5 (and new
 §1.6), `improvements.md` §6 and the `SwapbuffersWait` entry,
 `known-limitations.md` §5, `profiling-guide.md` §§1.3 and 2.2, and the playbook.
+
+## 2026-10-23 — stock bookworm-7 as a baseline, and the headphone jack traced
+
+A second SD card with stock `pyra-bookworm-7` booted on the V5.3 unit, same
+`5.6.19-pyradef #10` kernel as the trixie card. Captures and detail in
+`experiments/bookworm-baseline/` and `experiments/jack-detect/`.
+
+**Established, on the device.**
+
+- Bookworm's X falls back to software GLX: `AIGLX error: unable to load
+  driver armsoc`, then `GLX: Initialized DRISWRAST GL provider`. `glxinfo -B`
+  says `llvmpipe (LLVM 15.0.6)`, Mesa 22.3.6, not accelerated. The X and Mesa
+  reports now quote this instead of the development log.
+- Stock audio does not use the AESS. `CONFIG_SND_SOC_OMAP_AESS=y` and the
+  component registers, but the only PCM is `twl6040-legacy-0` and no AESS
+  firmware is requested.
+- The jack reads "inserted" with nothing plugged in on stock too.
+- The TS3A227E jack detector fails its probe on every boot (`Cannot request
+  irq 197 (-5)`) because PCAL6524 pin 14 is an output. Bank 1's config
+  register reads `0x08` straight after boot; P16 needs bit 6 set.
+- With the pin set to input from sysfs and the driver rebound, the TS3A227E
+  is right: accessory status `0x00` empty, `0x09` with 3-pole headphones,
+  one interrupt per transition over three unplug/replug cycles. The card's
+  jack, fed by the TWL6040, stayed "inserted" through all of them.
+- Bookworm ships `cpufreq-set`, so its thermal daemon can apply caps.
+
+**Not established.** What leaves P16 as an output: the packaged U-Boot 0.1.5
+source would write it as an input, and its compiled table could not be found
+in the binary. A stock thermal load run. Suspend and resume with the
+TS3A227E bound.
+
+**Corrected in place:** `audio.md` (the jack entry under *Open*, and the
+stock path), `reports/xorg-aiglx-dri2-null-deref.md`,
+`reports/mesa-dril-omapdrm-no-fallback.md`.

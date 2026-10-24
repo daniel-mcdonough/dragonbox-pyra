@@ -1,0 +1,645 @@
+[    0.000000] Booting Linux on physical CPU 0x0
+[    0.000000] Linux version 5.6.19-pyradef (pyra@nspawn-bookworm-armhf) (gcc version 12.2.0 (Debian 12.2.0-14)) #10 SMP PREEMPT Sat Jan 11 00:08:13 CET 2025
+[    0.000000] CPU: ARMv7 Processor [412fc0f2] revision 2 (ARMv7), cr=30c5387d
+[    0.000000] CPU: div instructions available: patching division code
+[    0.000000] CPU: PIPT / VIPT nonaliasing data cache, PIPT instruction cache
+[    0.000000] OF: fdt: Machine model: Pyra-Handheld-V5.3
+[    0.000000] printk: debug: ignoring loglevel setting.
+[    0.000000] Memory policy: Data cache writealloc
+[    0.000000] cma: Reserved 64 MiB at 0x00000000fb000000
+[    0.000000] OMAP4: Map 0x00000000afd00000 to (ptrval) for dram barrier
+[    0.000000] On node 0 totalpages: 1043712
+[    0.000000]   DMA zone: 2295 pages used for memmap
+[    0.000000]   DMA zone: 0 pages reserved
+[    0.000000]   DMA zone: 195840 pages, LIFO batch:63
+[    0.000000]   HighMem zone: 847872 pages, LIFO batch:63
+[    0.000000] OMAP5432 ES2.0
+[    0.000000] percpu: Embedded 20 pages/cpu s50316 r8192 d23412 u81920
+[    0.000000] pcpu-alloc: s50316 r8192 d23412 u81920 alloc=20*4096
+[    0.000000] pcpu-alloc: [0] 0 [0] 1 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 1041417
+[    0.000000] Kernel command line: root=PARTUUID=160ddd96-02 console=ttyO2,1500000n8 console=tty0 vram=12M omapfb.vram=0:8M,1:4M omapfb.rotate_type=0 omapdss.def_disp=lcd rootwait twl4030_charger.allow_usb=1 musb_hdrc.preserve_vbus=1 log_buf_len=8M ignore_loglevel earlyprintk drm_kms_helper.fbdev_rotation=8 drm.force_hw_rotation fastboot
+[    0.000000] printk: log_buf_len: 8388608 bytes
+[    0.000000] printk: early log buf free: 63884(97%)
+[    0.000000] Dentry cache hash table entries: 131072 (order: 7, 524288 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 65536 (order: 6, 262144 bytes, linear)
+[    0.000000] mem auto-init: stack:off, heap alloc:off, heap free:off
+[    0.000000] software IO TLB: mapped [mem 0xa53bf000-0xa93bf000] (64MB)
+[    0.000000] Memory: 3946108K/4174848K available (10668K kernel code, 909K rwdata, 2752K rodata, 2048K init, 269K bss, 163204K reserved, 65536K cma-reserved, 3325952K highmem)
+[    0.000000] random: get_random_u32 called from __kmem_cache_create+0x34/0x544 with crng_init=0
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=2, Nodes=1
+[    0.000000] rcu: Preemptible hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=4 to nr_cpu_ids=2.
+[    0.000000] 	Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 10 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=2
+[    0.000000] NR_IRQS: 16, nr_irqs: 16, preallocated irqs: 16
+[    0.000000] GIC: Using split EOI/Deactivate mode
+[    0.000000] OMAP clockevent source: timer1 at 32768 Hz
+[    0.000000] arch_timer: cp15 timer(s) running at 6.14MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0xffffffffffffff max_cycles: 0x16ac02862, max_idle_ns: 440795202218 ns
+[    0.000011] sched_clock: 56 bits at 6MHz, resolution 162ns, wraps every 4398046511085ns
+[    0.000035] Switching to timer-based delay loop, resolution 162ns
+[    0.000164] clocksource: 32k_counter: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 58327039986419 ns
+[    0.000180] OMAP clocksource: 32k_counter at 32768 Hz
+[    0.001945] Console: colour dummy device 80x30
+[    0.002793] printk: console [tty0] enabled
+[    0.002871] Calibrating delay loop (skipped), value calculated using timer frequency.. 12.28 BogoMIPS (lpj=61440)
+[    0.002921] pid_max: default: 32768 minimum: 301
+[    0.003204] LSM: Security Framework initializing
+[    0.003332] Yama: becoming mindful.
+[    0.003509] AppArmor: AppArmor initialized
+[    0.003548] TOMOYO Linux initialized
+[    0.003669] Mount-cache hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.003716] Mountpoint-cache hash table entries: 2048 (order: 1, 8192 bytes, linear)
+[    0.005027] CPU: Testing write buffer coherency: ok
+[    0.005111] CPU0: Spectre v2: firmware did not set auxiliary control register IBE bit, system vulnerable
+[    0.005571] /cpus/cpu@0 missing clock-frequency property
+[    0.005631] /cpus/cpu@1 missing clock-frequency property
+[    0.005665] CPU0: thread -1, cpu 0, socket 0, mpidr 80000000
+[    0.059708] Setting up static identity map for 0x80200000 - 0x80200060
+[    0.079703] rcu: Hierarchical SRCU implementation.
+[    0.119745] smp: Bringing up secondary CPUs ...
+[    0.200077] CPU1: thread -1, cpu 1, socket 0, mpidr 80000001
+[    0.200089] CPU1: Spectre v2: using ICIALLU workaround
+[    0.200211] smp: Brought up 1 node, 2 CPUs
+[    0.200236] SMP: Total of 2 processors activated (24.57 BogoMIPS).
+[    0.200241] CPU: All CPU(s) started in HYP mode.
+[    0.200259] CPU: Virtualization extensions available.
+[    0.200699] devtmpfs: initialized
+[    0.215131] VFP support v0.3: implementor 41 architecture 4 part 30 variant f rev 0
+[    0.215589] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns
+[    0.215615] futex hash table entries: 512 (order: 3, 32768 bytes, linear)
+[    0.216874] pinctrl core: initialized pinctrl subsystem
+[    0.217697] thermal_sys: Registered thermal governor 'fair_share'
+[    0.217697] thermal_sys: Registered thermal governor 'step_wise'
+[    0.217725] thermal_sys: Registered thermal governor 'user_space'
+[    0.218595] NET: Registered protocol family 16
+[    0.220597] DMA: preallocated 256 KiB pool for atomic coherent allocations
+[    0.221634] omap_hwmod: l3_main_3 using broken dt data from ocp
+[    0.222440] omap_hwmod: l3_main_2 using broken dt data from ocp
+[    0.235337] audit: initializing netlink subsys (disabled)
+[    0.235642] audit: type=2000 audit(0.230:1): state=initialized audit_enabled=0 res=1
+[    0.239914] cpuidle: using governor menu
+[    0.265671] platform 50000000.gpmc: Cannot lookup hwmod 'gpmc'
+[    0.265854] omap-gpmc 50000000.gpmc: _od_fail_runtime_resume: FIXME: missing hwmod/omap_dev info
+[    0.265885] omap-gpmc 50000000.gpmc: GPMC revision 6.0
+[    0.274552] No ATAGs?
+[    0.274613] hw-breakpoint: found 5 (+1 reserved) breakpoint and 4 watchpoint registers.
+[    0.274644] hw-breakpoint: maximum watchpoint size is 8 bytes.
+[    0.296385] HugeTLB registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.302551] vsys_cobra: supplied by vmain
+[    0.306690] iommu: Default domain type: Translated 
+[    0.308854] vgaarb: loaded
+[    0.309466] SCSI subsystem initialized
+[    0.309769] libata version 3.00 loaded.
+[    0.310349] usbcore: registered new interface driver usbfs
+[    0.310470] usbcore: registered new interface driver hub
+[    0.310602] usbcore: registered new device driver usb
+[    0.310926] usb_phy_generic hsusb2_phy: hsusb2_phy supply vcc not found, using dummy regulator
+[    0.312827] Advanced Linux Sound Architecture Driver Initialized.
+[    0.313501] NetLabel: Initializing
+[    0.313523] NetLabel:  domain hash size = 128
+[    0.313525] NetLabel:  protocols = UNLABELED CIPSOv4 CALIPSO
+[    0.313589] NetLabel:  unlabeled traffic allowed by default
+[    0.314316] clocksource: Switched to clocksource arch_sys_counter
+[    0.381119] VFS: Disk quotas dquot_6.6.0
+[    0.381188] VFS: Dquot-cache hash table entries: 1024 (order 0, 4096 bytes)
+[    0.381830] AppArmor: AppArmor Filesystem Enabled
+[    0.393479] NET: Registered protocol family 2
+[    0.393967] tcp_listen_portaddr_hash hash table entries: 512 (order: 0, 6144 bytes, linear)
+[    0.393999] TCP established hash table entries: 8192 (order: 3, 32768 bytes, linear)
+[    0.394088] TCP bind hash table entries: 8192 (order: 4, 65536 bytes, linear)
+[    0.394211] TCP: Hash tables configured (established 8192 bind 8192)
+[    0.394364] UDP hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.394415] UDP-Lite hash table entries: 512 (order: 2, 16384 bytes, linear)
+[    0.394626] NET: Registered protocol family 1
+[    0.395096] PCI: CLS 0 bytes, default 64
+[    0.395554] Trying to unpack rootfs image as initramfs...
+[    1.452747] Freeing initrd memory: 21212K
+[    1.453223] hw perfevents: no interrupt-affinity property for /pmu, guessing.
+[    1.453446] hw perfevents: enabled with armv7_cortex_a15 PMU driver, 7 counters available
+[    1.455277] Initialise system trusted keyrings
+[    1.455667] workingset: timestamp_bits=14 max_order=20 bucket_order=6
+[    1.463547] zbud: loaded
+[    1.469437] jitterentropy: Initialization failed with host not compliant with requirements: 2
+[    1.469467] Key type asymmetric registered
+[    1.469483] Asymmetric key parser 'x509' registered
+[    1.469528] bounce: pool size: 64 pages
+[    1.469583] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 249)
+[    1.469595] io scheduler mq-deadline registered
+[    1.469620] io scheduler kyber registered
+[    1.474550] OMAP GPIO hardware version 0.1
+[    1.494872] omap-dma-engine 4a056000.dma-controller: OMAP DMA engine driver (LinkedList1/2/3 supported)
+[    1.568619] GPIO line 74 (gpio8_234/msecure) hogged as output/high
+[    1.596237] ti-pipe3 4a096000.phy: can't get syscon-pllreset, sata dpll won't idle
+[    1.597749] pinctrl-single 4ae0c840.pinmux: 30 pins, size 60
+[    1.598404] pinctrl-single 4a002840.pinmux: 219 pins, size 438
+[    1.602436] pwm-backlight keyboard-backlight: keyboard-backlight supply power not found, using dummy regulator
+[    1.602738] pwm-backlight backlight: backlight supply power not found, using dummy regulator
+[    1.607621] ti_abb 4ae07cdc.regulator-abb-mpu: can't request region for resource [mem 0x4ae07cdc-0x4ae07ce3]
+[    1.607651] ti_abb: probe of 4ae07cdc.regulator-abb-mpu failed with error -16
+[    1.607712] ti_abb 4ae07ce4.regulator-abb-mm: can't request region for resource [mem 0x4ae07ce4-0x4ae07ceb]
+[    1.607743] ti_abb: probe of 4ae07ce4.regulator-abb-mm failed with error -16
+[    1.608200] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    1.610893] 48020000.serial: ttyO2 at MMIO 0x48020000 (irq = 108, base_baud = 3000000) is a OMAP UART2
+[    1.768479] printk: console [ttyO2] enabled
+[    1.769882] omap_uart 48068000.serial: no wakeirq for uart5
+[    1.771044] 48068000.serial: ttyO5 at MMIO 0x48068000 (irq = 121, base_baud = 3000000) is a OMAP UART5
+[    1.773331] omap_uart 4806c000.serial: no wakeirq for uart1
+[    1.774521] 4806c000.serial: ttyO1 at MMIO 0x4806c000 (irq = 122, base_baud = 3000000) is a OMAP UART1
+[    1.776414] serial serial0: tty port ttyO1 registered
+[    1.777512] omap_uart 4806e000.serial: no wakeirq for uart3
+[    1.778672] 4806e000.serial: ttyO3 at MMIO 0x4806e000 (irq = 123, base_baud = 3000000) is a OMAP UART3
+[    1.782267] omap_rng 48090000.rng: Random Number Generator ver. 20
+[    1.782791] random: fast init done
+[    1.784048] random: crng init done
+[    1.784801] omapdss_dss 58000000.dss: 58000000.dss supply vdda_video not found, using dummy regulator
+[    1.786538] DSS: OMAP DSS rev 6.1
+[    1.800847] brd: module loaded
+[    1.806443] loop: module loaded
+[    1.807040] wwan_on_off_init: wwan_on_off_init
+[    1.808243] wwan_on_off_probe: wwan_on_off_probe()
+[    1.811356] ahci 4a140000.sata: 4a140000.sata supply ahci not found, using dummy regulator
+[    1.812909] ahci 4a140000.sata: 4a140000.sata supply phy not found, using dummy regulator
+[    1.814499] ahci 4a140000.sata: 4a140000.sata supply target not found, using dummy regulator
+[    1.816208] ahci 4a140000.sata: SSS flag set, parallel bus scan disabled
+[    1.817405] ahci 4a140000.sata: AHCI 0001.0300 32 slots 1 ports 3 Gbps 0x1 impl platform mode
+[    1.818946] ahci 4a140000.sata: flags: 64bit ncq sntf stag pm led clo only pmp pio slum part ccc apst 
+[    1.821579] scsi host0: ahci
+[    1.822525] ata1: SATA max UDMA/133 mmio [mem 0x4a140000-0x4a1410ff] port 0x100 irq 31
+[    1.824784] mtdoops: mtd device (mtddev=name/number) must be supplied
+[    1.828331] libphy: Fixed MDIO Bus: probed
+[    1.833184] omap-dwc3 4a020000.omap_dwc3: vbus init failed
+[    1.834732] ehci_hcd: USB 2.0 'Enhanced' Host Controller (EHCI) Driver
+[    1.835923] ehci-pci: EHCI PCI platform driver
+[    1.836928] usbcore: registered new interface driver usb-storage
+[    1.838768] mousedev: PS/2 mouse device common for all mice
+[    1.841690] i2c /dev entries driver
+[    1.842453] IR NEC protocol handler initialized
+[    1.843259] IR RC5(x/sz) protocol handler initialized
+[    1.844174] IR RC6 protocol handler initialized
+[    1.845044] IR JVC protocol handler initialized
+[    1.845852] IR Sony protocol handler initialized
+[    1.846694] IR SANYO protocol handler initialized
+[    1.847531] IR Sharp protocol handler initialized
+[    1.848386] IR MCE Keyboard/mouse protocol handler initialized
+[    1.849440] IR XMP protocol handler initialized
+[    1.850247] Driver for 1-wire Dallas network protocol.
+[    1.855539] omap_wdt: OMAP Watchdog Timer Rev 0x01: initial timeout 60 sec
+[    1.859635] sdhci: Secure Digital Host Controller Interface driver
+[    1.860730] sdhci: Copyright(c) Pierre Ossman
+[    1.862486] omap_gpio 48053000.gpio: Could not set line 4 debounce to 200000 microseconds (-22)
+[    1.864045] omap_hsmmc 4809c000.mmc: Got CD GPIO
+[    1.864945] omap_hsmmc 4809c000.mmc: Got WP GPIO
+[    1.900956] omap_gpio 48057000.gpio: Could not set line 13 debounce to 200000 microseconds (-22)
+[    1.902528] omap_hsmmc 480d1000.mmc: Got CD GPIO
+[    1.903380] omap_hsmmc 480d1000.mmc: Got WP GPIO
+[    1.905014] sdhci-pltfm: SDHCI platform and OF driver helper
+[    1.906754] txs02612 txs02612: probe
+[    1.907486] txs02612 txs02612: failed to get mmc phandle in /txs02612 node
+[    1.908712] txs02612 txs02612: could not get access to host port, using manual mode
+[    1.935310] txs02612_request: current=1 client=0
+[    1.961326] txs02612 txs02612: probed
+[    1.962021] txs02612_request: current=0 client=1
+[    1.963255] ledtrig-cpu: registered to indicate activity on CPUs
+[    1.967362] usbcore: registered new interface driver usbhid
+[    1.968367] usbhid: USB HID core driver
+[    1.969374] ashmem: initialized
+[    1.976944] oprofile: using timer interrupt.
+[    1.977791] drop_monitor: Initializing network drop monitor service
+[    1.979904] NET: Registered protocol family 10
+[    2.010849] Segment Routing with IPv6
+[    2.011612] mip6: Mobile IPv6
+[    2.012151] NET: Registered protocol family 17
+[    2.012955] mpls_gso: MPLS GSO support
+[    2.013874] ThumbEE CPU extension supported.
+[    2.014686] Registering SWP/SWPB emulation handler
+[    2.015580] omap_vc_init_channel: No PMIC info for vdd_core
+[    2.016569] omap_vp_init: No PMIC info for vdd_core
+[    2.017463] omap_vc_init_channel: No PMIC info for vdd_mm
+[    2.018429] omap_vp_init: No PMIC info for vdd_mm
+[    2.019294] omap_vc_init_channel: No PMIC info for vdd_mpu
+[    2.020277] omap_vp_init: No PMIC info for vdd_mpu
+[    2.021132] Power Management for TI OMAP4+ devices.
+[    2.022629] Loading compiled-in X.509 certificates
+[    2.026871] Loaded X.509 cert 'Build time autogenerated kernel key: 5a603e0c86f14a6a76b9c2cd300595766539f23a'
+[    2.028946] Key type ._fscrypt registered
+[    2.029661] Key type .fscrypt registered
+[    2.030379] Key type fscrypt-provisioning registered
+[    2.031475] AppArmor: AppArmor sha1 policy hashing enabled
+[    2.053074] dmm 4e000000.dmm: initialized all PAT entries
+[    2.057450] omap-iommu 4a066000.mmu: 4a066000.mmu registered
+[    2.060135] bmc150_accel_i2c 2-0010: mounting matrix not found: using identity...
+[    2.086960] bmc150_accel_i2c 2-0010: Error: Reading chip id
+[    2.088028] bmc150_accel_i2c: probe of 2-0010 failed with error -121
+[    2.089519] bmc150_magn_i2c 2-0012: mounting matrix not found: using identity...
+[    2.090913] bmc150_magn_i2c 2-0012: Failed to bring up device from suspend mode
+[    2.092317] bmc150_magn_i2c: probe of 2-0012 failed with error -121
+[    2.093711] bmp280 2-0077: 2-0077 supply vddd not found, using dummy regulator
+[    2.095108] bmp280 2-0077: 2-0077 supply vdda not found, using dummy regulator
+[    2.106797] bmp280: probe of 2-0077 failed with error -121
+[    2.108017] bmp280 2-0076: 2-0076 supply vddd not found, using dummy regulator
+[    2.109360] bmp280 2-0076: 2-0076 supply vdda not found, using dummy regulator
+[    2.113053] bmp280: probe of 2-0076 failed with error -121
+[    2.114212] bno055 2-0029: mounting matrix not found: using identity...
+[    2.115586] bno055 2-0029: failed to switch to register page 0
+[    2.116715] bno055: probe of 2-0029 failed with error -121
+[    2.117729] omap_i2c 48060000.i2c: bus 2 rev0.12 at 400 kHz
+[    2.119583] palmas 0-0048: Irq flag is 0x00000008
+[    2.156499] palmas 0-0048: Muxing GPIO 3, PWM 0, LED 0
+[    2.157450] ata1: SATA link down (SStatus 0 SControl 300)
+[    2.166947] palmas-rtc 48070000.i2c:palmas@48:rtc: registered as rtc0
+[    2.171125] SMPS123: supplied by regulator-dummy
+[    2.173539] SMPS45: supplied by regulator-dummy
+[    2.175980] SMPS6: supplied by vsys_cobra
+[    2.178098] SMPS7: supplied by vsys_cobra
+[    2.180222] SMPS8: supplied by vsys_cobra
+[    2.182450] SMPS9: supplied by vsys_cobra
+[    2.183347] smps9: Bringing 0uV into 2100000-2100000uV
+[    2.185640] SMPS10_OUT2: supplied by regulator-dummy
+[    2.187631] SMPS10_OUT1: supplied by regulator-dummy
+[    2.189194] LDO1: supplied by vsys_cobra
+[    2.190081] ldo1: Bringing 0uV into 1800000-1800000uV
+[    2.192246] LDO2: supplied by vsys_cobra
+[    2.193149] ldo2: Bringing 0uV into 1800000-1800000uV
+[    2.197211] ldo4: Bringing 0uV into 1800000-1800000uV
+[    2.199460] LDO5: supplied by vsys_cobra
+[    2.204819] LDO7: supplied by vsys_cobra
+[    2.205704] ldo7: Bringing 0uV into 2000000-2000000uV
+[    2.207906] LDO8: supplied by vsys_cobra
+[    2.210190] LDO9: supplied by vmmcsd_fixed
+[    2.212937] LDOLN: supplied by vsys_cobra
+[    2.215249] LDOUSB: supplied by vsys_cobra
+[    2.219568] palmas_pwrbutton 48070000.i2c:palmas@48:palmas_power_button: h/w controlled shutdown duration=8 seconds
+[    2.222489] input: palmas_pwron as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48070000.target-module/48070000.i2c/i2c-0/0-0048/48070000.i2c:palmas@48:palmas_power_button/input/input0
+[    2.229632] usb3503 0-0008: usb3503_probe
+[    2.234360] usb3503 0-0008: reset gpio state 1
+[    2.235170] usb3503 0-0008: usb3503_connect
+[    2.235932] usb3503 0-0008: usb3503_reset 1
+[    2.246779] usb3503 0-0008: SP_ILOCK failed (-121)
+[    2.247635] usb3503 0-0008: usb3503_probe: probed in hub mode
+[    2.248977] omap_i2c 48070000.i2c: bus 0 rev0.12 at 400 kHz
+[    2.274491] as5013 1-0040: ID code: 0c
+[    2.275332] as5013 1-0040: ID version: 0d
+[    2.276213] as5013 1-0040: silicon revision: 00
+[    2.277190] as5013 1-0040: control: f1
+[    2.278031] input: nub0 as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48072000.target-module/48072000.i2c/i2c-1/1-0040/input/input1
+[    2.281083] as5013 1-0040: probe 40, gpio -2, irq 0, "as5013"
+[    2.282608] as5013 1-0041: ID code: 0c
+[    2.283432] as5013 1-0041: ID version: 0d
+[    2.284301] as5013 1-0041: silicon revision: 00
+[    2.285270] as5013 1-0041: control: f1
+[    2.286103] input: nub1 as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48072000.target-module/48072000.i2c/i2c-1/1-0041/input/input2
+[    2.289122] as5013 1-0041: probe 41, gpio -2, irq 0, "as5013"
+[    2.291660] input: tca8418 as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48072000.target-module/48072000.i2c/i2c-1/1-0034/input/input3
+[    2.295060] bq27xxx_battery_setup
+[    2.295670] bq27xxx_battery_setup: dm_regs=2c5ee50a
+[    2.297002] bq27xxx_battery_settings
+[    2.297653] bq27xxx_battery_set_config
+[    2.298335] bq27xxx_battery_unseal
+[    2.307145] bq27xxx_battery_update_dm_block
+[    2.307896] bq27xxx-battery 1-0055: design-capacity has 6000
+[    2.308913] bq27xxx_battery_update_dm_block
+[    2.309662] bq27xxx-battery 1-0055: design-energy has 22200
+[    2.310665] bq27xxx_battery_update_dm_block
+[    2.311431] bq27xxx-battery 1-0055: terminate-voltage has 3200
+[    2.312484] bq27xxx_battery_seal
+[    2.317612] omap_i2c 48072000.i2c: bus 1 rev0.12 at 400 kHz
+[    2.344742] input: TSC2007 Touchscreen as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/4807a000.target-module/4807a000.i2c/i2c-3/3-0048/input/input4
+[    2.350043] omap_i2c 4807a000.i2c: bus 3 rev0.12 at 400 kHz
+[    2.352496] vdds_1v8_main: supplied by smps7
+[    2.353560] pca953x 4-0022: using AI
+[    2.377701] omap_i2c 4807c000.i2c: bus 4 rev0.12 at 400 kHz
+[    2.380448] omap-iommu 55082000.mmu: 55082000.mmu registered
+[    2.382950] pwm-backlight keyboard-backlight: keyboard-backlight supply power not found, using dummy regulator
+[    2.385025] dmtimer posted=0
+[    2.385788] pwm-backlight backlight: backlight supply power not found, using dummy regulator
+[    2.387884] ldo4: supplied by vdds_1v8_main
+[    2.391495] wwan_on_off_probe: wwan_on_off_probe()
+[    2.392746] omap-dwc3 4a020000.omap_dwc3: vbus init failed
+[    2.396321] omap_gpio 48053000.gpio: Could not set line 4 debounce to 200000 microseconds (-22)
+[    2.397889] omap_hsmmc 4809c000.mmc: Got CD GPIO
+[    2.398731] omap_hsmmc 4809c000.mmc: Got WP GPIO
+[    2.429459] omap_hsmmc 480ad000.mmc: allocated mmc-pwrseq
+[    2.486391] mmc3: new high speed SDXC card at address d555
+[    2.489092] mmcblk3: mmc3:d555 SA256 238 GiB 
+[    2.494947]  mmcblk3: p1 p2
+[    2.541306] omap_gpio 48057000.gpio: Could not set line 13 debounce to 200000 microseconds (-22)
+[    2.542954] omap_hsmmc 480d1000.mmc: Got CD GPIO
+[    2.543901] omap_hsmmc 480d1000.mmc: Got WP GPIO
+[    2.552265] omap_hsmmc 480ad000.mmc: card claims to support voltages below defined range
+[    2.567141] mmc4: new high speed SDIO card at address 0001
+[    2.664994] ldo3: supplied by vdds_1v8_main
+[    2.665960] ldo6: supplied by vdds_1v8_main
+[    2.852738] bq2429x_charger 1-006b: bq2429x_parse_dt,line=1537 chg_current = 2048000 usb_input_current = 3000000 adp_input_current = 2048000 bat_volt_max = 4200000
+[    2.855772] bq2429x_charger 1-006b: found regulator-max-microvolt = 4200000
+[    2.868515] vsys: Bringing 3300000uV into 3500000-3500000uV
+[    2.873411] omapdss_dss 58000000.dss: bound 58001000.dispc (ops 0xc0cd3618)
+[    2.874771] omapdss_dss 58000000.dss: bound 58004000.encoder (ops 0xc0cd53ac)
+[    2.876664] omap-hdmi-audio omap-hdmi-audio.1.auto: snd-soc-dummy-dai <-> 58040000.encoder mapping ok
+[    2.878698] omapdss_dss 58000000.dss: bound 58040000.encoder (ops 0xc0cd6220)
+[    2.881089] [drm] Supports vblank timestamp caching Rev 2 (21.10.2013).
+[    2.882278] [drm] No driver support for vblank timestamp query.
+[    2.908615] bq2429x_charger 1-006b: bq2429x_usb_detect: r8=34 CHGTERM PWRGOOD r9=00
+[    2.910014] bq2429x_charger 1-006b: bq2429x: VBUS became available
+[    2.927762] drm_setup_crtcs_fb: sw_rotations=1
+[    2.928604] drm_setup_crtcs_fb: fbcon_rotate_hint=0
+[    2.935318] ------------[ cut here ]------------
+[    2.935341] WARNING: CPU: 0 PID: 0 at drivers/bus/omap_l3_noc.c:141 l3_interrupt_handler+0x2a0/0x380
+[    2.935349] 44000000.ocp:L3 Custom Error: MASTER MPU TARGET L4WAKEUP (Idle): Data Access in User mode during Functional access
+[    2.935349] Modules linked in:
+[    2.935349] CPU: 0 PID: 0 Comm: swapper/0 Not tainted 5.6.19-pyradef #10
+[    2.935349] Hardware name: Generic OMAP5 (Flattened Device Tree)
+[    2.935377] [<c0212620>] (unwind_backtrace) from [<c020cf24>] (show_stack+0x10/0x14)
+[    2.935379] [<c020cf24>] (show_stack) from [<c0c49354>] (dump_stack+0x8c/0xa0)
+[    2.935385] [<c0c49354>] (dump_stack) from [<c023589c>] (__warn+0xd0/0xf8)
+[    2.935401] [<c023589c>] (__warn) from [<c0235c74>] (warn_slowpath_fmt+0x78/0xa8)
+[    2.935410] [<c0235c74>] (warn_slowpath_fmt) from [<c0659100>] (l3_interrupt_handler+0x2a0/0x380)
+[    2.935410] [<c0659100>] (l3_interrupt_handler) from [<c028f948>] (__handle_irq_event_percpu+0x44/0x274)
+[    2.935423] [<c028f948>] (__handle_irq_event_percpu) from [<c028fc5c>] (handle_irq_event+0x58/0xd0)
+[    2.935437] [<c028fc5c>] (handle_irq_event) from [<c02944ec>] (handle_fasteoi_irq+0x9c/0x204)
+[    2.935440] [<c02944ec>] (handle_fasteoi_irq) from [<c028f25c>] (__handle_domain_irq+0x68/0xc0)
+[    2.935440] [<c028f25c>] (__handle_domain_irq) from [<c065744c>] (gic_handle_irq+0x3c/0x7c)
+[    2.935448] [<c065744c>] (gic_handle_irq) from [<c0201ab8>] (__irq_svc+0x58/0x8c)
+[    2.935455] Exception stack(0xc1201ed0 to 0xc1201f18)
+[    2.935464] 1ec0:                                     00000000 00000000 2ec1b000 efc968c0
+[    2.935471] 1ee0: aef5693c efc95a78 c120a168 00000000 00000000 00000000 00000000 aee6828a
+[    2.935471] 1f00: 0015d938 c1201f20 c09206a4 c09206a8 80070113 ffffffff
+[    2.935471] [<c0201ab8>] (__irq_svc) from [<c09206a8>] (cpuidle_enter_state+0x158/0x398)
+[    2.935479] [<c09206a8>] (cpuidle_enter_state) from [<c092092c>] (cpuidle_enter+0x30/0x40)
+[    2.935492] [<c092092c>] (cpuidle_enter) from [<c026a330>] (do_idle+0x224/0x318)
+[    2.935501] [<c026a330>] (do_idle) from [<c026a724>] (cpu_startup_entry+0x18/0x1c)
+[    2.935501] [<c026a724>] (cpu_startup_entry) from [<c100139c>] (start_kernel+0x7e0/0x830)
+[    2.935501] [<c100139c>] (start_kernel) from [<00000000>] (0x0)
+[    2.935508] ---[ end trace a9fa9c937316b00a ]---
+[    3.117234] dmtimer posted=0
+[    3.183213] Console: switching to colour frame buffer device 160x45
+[    3.412036] omapdrm omapdrm.0: fb0: omapdrmdrmfb frame buffer device
+[    3.422181] [drm] Initialized omapdrm 1.0.0 20110917 for omapdrm.0 on minor 0
+[    3.432001] wwan_on_off_probe: wwan_on_off_probe()
+[    3.438492] modem_vbus_hdmi_power: supplied by vsys
+[    3.444781] modem_vbus_power: supplied by modem_vbus_hdmi_power
+[    3.451369] wwan_on_off_probe: onoff = 25a2142e indicator = 4ed77e09 -304280000 usb_phy = -1054427712
+[    3.458573] wwan_on_off_probe: wwan_on_off_probe() wwan=3073d091
+[    3.465042] wwan_on_off_is_powered_on: gpio value = 0
+[    3.471400] wwan_on_off_is_powered_on: return 'false'
+[    3.477747] wwan_on_off_rfkill_set_block: blocked: 1
+[    3.484049] wwan_on_off_set_power:on = 0
+[    3.490036] wwan_on_off_is_powered_on: gpio value = 0
+[    3.495987] wwan_on_off_is_powered_on: return 'false'
+[    3.501856] wwan_on_off_set_power: state 0
+[    3.507492] wwan_on_off_set_power: regulator 0
+[    3.513011] wwan_on_off_set_power: done
+[    3.518416] wwan_on_off_probe: successfully probed
+[    3.524186] otg_path: supplied by otg
+[    3.529923] dwc3 4a030000.dwc3: Failed to get clk 'ref': -2
+[    3.536545] dwc3 4a030000.dwc3: changing max_speed on rev 5533202a
+[    3.544870] input: user-buttons as /devices/platform/user-buttons/input/input5
+[    3.553001] input: pyra-game-buttons as /devices/platform/pyra-game-buttons/input/input6
+[    3.560379] input: pyra-lid-wakeup as /devices/platform/pyra-lid-wakeup/input/input7
+[    3.569972] palmas-rtc 48070000.i2c:palmas@48:rtc: setting system clock to 2026-10-24T02:08:38 UTC (1792807718)
+[    3.578947] cfg80211: Loading compiled-in X.509 certificates for regulatory database
+[    3.587984] cfg80211: Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+[    3.599037] l4sec_cm:clk:0038:0: failed to disable
+[    3.604556] platform regulatory.0: Direct firmware load for regulatory.db failed with error -2
+[    3.610733] platform regulatory.0: Falling back to sysfs fallback for: regulatory.db
+[    3.614365] ALSA device list:
+[    3.621970]   #0: HDMI 58040000.encoder
+[    3.629685] Freeing unused kernel memory: 2048K
+[    3.674548] Run /init as init process
+[    3.699784]   with arguments:
+[    3.725231]     /init
+[    3.749985]     earlyprintk
+[    3.774186]     fastboot
+[    3.798105]   with environment:
+[    3.821962]     HOME=/
+[    3.845024]     TERM=linux
+[    3.867864]     vram=12M
+[    3.967484] set_switch() to 0
+[    4.137354] mmc0: new high speed MMC card at address 0001
+[    4.154770] mmcblk0: mmc0:0001 HBG4a2 29.1 GiB 
+[    4.159391] mmcblk0boot0: mmc0:0001 HBG4a2 partition 1 4.00 MiB
+[    4.174362] mmcblk0boot1: mmc0:0001 HBG4a2 partition 2 4.00 MiB
+[    4.179093] mmcblk0rpmb: mmc0:0001 HBG4a2 partition 3 4.00 MiB, chardev (245:0)
+[    4.196277]  mmcblk0: p1 p2
+[    4.484482] drm_setup_crtcs_fb: sw_rotations=1
+[    4.489151] drm_setup_crtcs_fb: fbcon_rotate_hint=0
+[    4.799030] ehci-omap: OMAP-EHCI Host Controller driver
+[    4.885056] ehci-omap 4a064c00.ehci: EHCI Host Controller
+[    4.894403] ehci-omap 4a064c00.ehci: new USB bus registered, assigned bus number 1
+[    4.915805] ehci-omap 4a064c00.ehci: irq 106, io mem 0x4a064c00
+[    4.922257] etnaviv etnaviv: bound 59000000.bb2d (ops gpu_ops [etnaviv])
+[    4.931689] etnaviv-gpu 59000000.bb2d: model: GC320, revision: 5301
+[    4.954414] ehci-omap 4a064c00.ehci: USB 2.0 started, EHCI 1.00
+[    4.960758] usb usb1: New USB device found, idVendor=1d6b, idProduct=0002, bcdDevice= 5.06
+[    4.961504] [drm] Initialized etnaviv 1.3.0 20151214 for etnaviv on minor 1
+[    4.973496] usb usb1: New USB device strings: Mfr=3, Product=2, SerialNumber=1
+[    4.980433] cfg80211: failed to load regulatory.db
+[    4.985825] pvrsrvkm 56000000.gpu: Enabling quirks 00000000
+[    4.991593] usb usb1: Product: EHCI Host Controller
+[    4.996376] usb usb1: Manufacturer: Linux 5.6.19-pyradef ehci_hcd
+[    5.001572] usb usb1: SerialNumber: 4a064c00.ehci
+[    5.006791] [drm] Initialized pvr 1.14.3699939 20110701 for 56000000.gpu on minor 2
+[    5.012924] hub 1-0:1.0: USB hub found
+[    5.017807] hub 1-0:1.0: 3 ports detected
+[    5.384507] usb 1-2: new high-speed USB device number 2 using ehci-omap
+[    5.605240] usb 1-2: New USB device found, idVendor=0424, idProduct=3503, bcdDevice=a1.a0
+[    5.629166] usb 1-2: New USB device strings: Mfr=0, Product=0, SerialNumber=0
+[    5.657334] hub 1-2:1.0: USB hub found
+[    5.681658] hub 1-2:1.0: 3 ports detected
+[    6.024345] usb 1-2.1: new high-speed USB device number 3 using ehci-omap
+[    6.176155] usb 1-2.1: New USB device found, idVendor=0bda, idProduct=8153, bcdDevice=30.00
+[    6.178421] usb 1-2.1: New USB device strings: Mfr=1, Product=2, SerialNumber=6
+[    6.180368] usb 1-2.1: Product: USB 10/100/1000 LAN
+[    6.181656] usb 1-2.1: Manufacturer: Realtek
+[    6.182777] usb 1-2.1: SerialNumber: 000001
+[    6.248277] F2FS-fs (mmcblk3p2): invalid crc_offset: 0
+[    6.324486] usb 1-2.1: reset high-speed USB device number 3 using ehci-omap
+[    6.483949] r8152 1-2.1:1.0: Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2
+[    6.486344] r8152 1-2.1:1.0: Falling back to sysfs fallback for: rtl_nic/rtl8153a-4.fw
+[    6.779114] F2FS-fs (mmcblk3p2): Found nat_bits in checkpoint
+[    7.177344] F2FS-fs (mmcblk3p2): recover fsync data on readonly fs
+[    7.214371] F2FS-fs (mmcblk3p2): Mounted with checkpoint version = 4ca58d42
+[    7.338578] Not activating Mandatory Access Control as /sbin/tomoyo-init does not exist.
+[    7.872753] systemd[1]: Inserted module 'autofs4'
+[    7.896794] cgroup2: Unknown parameter 'memory_recursiveprot'
+[    7.914135] systemd[1]: systemd 252.38-1~deb12u1 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -IDN +IPTC +KMOD +LIBCRYPTSETUP +LIBFDISK +PCRE2 -PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD -BPF_FRAMEWORK -XKBCOMMON +UTMP +SYSVINIT default-hierarchy=unified)
+[    7.921475] systemd[1]: Detected architecture arm.
+[    7.936144] systemd[1]: Hostname set to <pyra-pyra>.
+[    8.748879] systemd[1]: Queued start job for default target graphical.target.
+[    8.756882] systemd[1]: Created slice system-getty.slice - Slice /system/getty.
+[    8.760422] systemd[1]: Created slice system-modprobe.slice - Slice /system/modprobe.
+[    8.763997] systemd[1]: Created slice system-serial\x2dgetty.slice - Slice /system/serial-getty.
+[    8.767258] systemd[1]: Created slice system-systemd\x2dfsck.slice - Slice /system/systemd-fsck.
+[    8.769981] systemd[1]: Created slice user.slice - User and Session Slice.
+[    8.771866] systemd[1]: Started systemd-ask-password-wall.path - Forward Password Requests to Wall Directory Watch.
+[    8.775108] systemd[1]: Set up automount proc-sys-fs-binfmt_misc.automount - Arbitrary Executable File Formats File System Automount Point.
+[    8.784818] systemd[1]: Expecting device dev-disk-by\x2dpartuuid-160ddd96\x2d01.device - /dev/disk/by-partuuid/160ddd96-01...
+[    8.794144] systemd[1]: Expecting device dev-ttyO2.device - /dev/ttyO2...
+[    8.810654] systemd[1]: Reached target integritysetup.target - Local Integrity Protected Volumes.
+[    8.827024] systemd[1]: Reached target nss-user-lookup.target - User and Group Name Lookups.
+[    8.844803] systemd[1]: Reached target slices.target - Slice Units.
+[    8.862442] systemd[1]: Reached target swap.target - Swaps.
+[    8.871323] systemd[1]: Reached target veritysetup.target - Local Verity Protected Volumes.
+[    8.904811] systemd[1]: Listening on rpcbind.socket - RPCbind Server Activation Socket.
+[    8.922104] systemd[1]: Listening on systemd-fsckd.socket - fsck to fsckd communication Socket.
+[    8.939804] systemd[1]: Listening on systemd-initctl.socket - initctl Compatibility Named Pipe.
+[    8.959732] systemd[1]: Listening on systemd-journald-audit.socket - Journal Audit Socket.
+[    8.977951] systemd[1]: Listening on systemd-journald-dev-log.socket - Journal Socket (/dev/log).
+[    8.997543] systemd[1]: Listening on systemd-journald.socket - Journal Socket.
+[    9.012698] systemd[1]: Listening on systemd-udevd-control.socket - udev Control Socket.
+[    9.038543] systemd[1]: Listening on systemd-udevd-kernel.socket - udev Kernel Socket.
+[    9.051010] systemd[1]: Mounting dev-hugepages.mount - Huge Pages File System...
+[    9.070145] systemd[1]: Mounting dev-mqueue.mount - POSIX Message Queue File System...
+[    9.090829] systemd[1]: Mounting sys-kernel-debug.mount - Kernel Debug File System...
+[    9.111069] systemd[1]: Mounting sys-kernel-tracing.mount - Kernel Trace File System...
+[    9.128772] systemd[1]: auth-rpcgss-module.service - Kernel Module supporting RPCSEC_GSS was skipped because of an unmet condition check (ConditionPathExists=/etc/krb5.keytab).
+[    9.133457] systemd[1]: Starting keyboard-setup.service - Set the console keyboard layout...
+[    9.174104] systemd[1]: Starting kmod-static-nodes.service - Create List of Static Device Nodes...
+[    9.201584] systemd[1]: Starting modprobe@configfs.service - Load Kernel Module configfs...
+[    9.216202] systemd[1]: Starting modprobe@dm_mod.service - Load Kernel Module dm_mod...
+[    9.233353] systemd[1]: Starting modprobe@drm.service - Load Kernel Module drm...
+[    9.263758] device-mapper: ioctl: 4.42.0-ioctl (2020-02-27) initialised: dm-devel@redhat.com
+[    9.281571] systemd[1]: Starting modprobe@efi_pstore.service - Load Kernel Module efi_pstore...
+[    9.306405] systemd[1]: Starting modprobe@fuse.service - Load Kernel Module fuse...
+[    9.341935] systemd[1]: Starting modprobe@loop.service - Load Kernel Module loop...
+[    9.349045] fuse: init (API version 7.31)
+[    9.378678] systemd[1]: Starting systemd-fsck-root.service - File System Check on Root Device...
+[    9.396164] systemd[1]: systemd-journald.service: unit configures an IP firewall, but the local system does not support BPF/cgroup firewalling.
+[    9.396178] systemd[1]: (This warning is only shown for the first unit using IP firewalling.)
+[    9.405158] systemd[1]: Starting systemd-journald.service - Journal Service...
+[    9.457321] systemd[1]: Starting systemd-modules-load.service - Load Kernel Modules...
+[    9.495163] systemd[1]: Starting systemd-udev-trigger.service - Coldplug All udev Devices...
+[    9.530425] systemd[1]: Mounted dev-hugepages.mount - Huge Pages File System.
+[    9.570359] systemd[1]: Mounted dev-mqueue.mount - POSIX Message Queue File System.
+[    9.624527] systemd[1]: Mounted sys-kernel-debug.mount - Kernel Debug File System.
+[    9.666737] systemd[1]: Mounted sys-kernel-tracing.mount - Kernel Trace File System.
+[    9.695908] systemd[1]: Finished keyboard-setup.service - Set the console keyboard layout.
+[    9.717148] systemd[1]: Finished kmod-static-nodes.service - Create List of Static Device Nodes.
+[    9.746689] systemd[1]: modprobe@configfs.service: Deactivated successfully.
+[    9.747177] systemd[1]: Finished modprobe@configfs.service - Load Kernel Module configfs.
+[    9.774674] systemd[1]: modprobe@dm_mod.service: Deactivated successfully.
+[    9.783954] systemd[1]: Finished modprobe@dm_mod.service - Load Kernel Module dm_mod.
+[    9.813073] systemd[1]: Started systemd-journald.service - Journal Service.
+[   10.089252] systemd-journald[1832]: Received client request to flush runtime journal.
+[   10.851578] PVR_K: UM DDK-(3699939) and KM DDK-(3699939) match. [ OK ]
+[   11.250534] input input2: as5013_open
+[   11.457099] EXT4-fs (mmcblk3p1): mounted filesystem without journal. Opts: (null)
+[   11.470414] input input1: as5013_open
+[   12.052957] RPC: Registered named UNIX socket transport module.
+[   12.052964] RPC: Registered udp transport module.
+[   12.052964] RPC: Registered tcp transport module.
+[   12.052964] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[   13.515016] bmg160_i2c 2-0069: mounting matrix not found: using identity...
+[   13.803452] bmg160_i2c 2-0069: Error reading reg_chip_id
+[   13.827927] Bluetooth: Core ver 2.22
+[   13.843003] bmg160_i2c: probe of 2-0069 failed with error -121
+[   13.850574] NET: Registered protocol family 31
+[   13.862070] Bluetooth: HCI device and connection manager initialized
+[   13.870332] Bluetooth: HCI socket layer initialized
+[   13.879410] Bluetooth: L2CAP socket layer initialized
+[   13.887284] Bluetooth: SCO socket layer initialized
+[   13.997126] Bluetooth: HCI UART driver ver 2.3
+[   14.083083] Bluetooth: HCI UART protocol H4 registered
+[   14.116051] ina2xx 1-004f: error configuring the device: -121
+[   14.136338] Bluetooth: HCI UART protocol BCSP registered
+[   14.148331] Bluetooth: HCI UART protocol LL registered
+[   14.156052] Bluetooth: HCI UART protocol Broadcom registered
+[   14.175756] input: twl6040:vibrator as /devices/platform/44000000.ocp/48000000.interconnect/48000000.interconnect:segment@0/48070000.target-module/48070000.i2c/i2c-0/0-004b/twl6040-vibra/input/input8
+[   14.305873] Bluetooth: hci0: change remote baud rate command in firmware
+[   14.322756] gpio gpiochip10: (4-0022): gpiochip_lock_as_irq: tried to flag a GPIO set as output for IRQ
+[   14.350376] gpio gpiochip10: (4-0022): unable to lock HW IRQ 14 for IRQ
+[   14.464391] genirq: Failed to request resources for TS3A227E (irq 197) on irqchip 4-0022
+[   14.473421] ts3a227e 4-003b: Cannot request irq 197 (-5)
+[   14.504563] ts3a227e: probe of 4-003b failed with error -5
+[   14.818039] input input1: as5013_open
+[   14.853134] input input2: as5013_open
+[   14.912796] input: pyraInput keyboard as /devices/virtual/input/input9
+[   14.968735] input: pyraInput Gamepad as /devices/virtual/input/input10
+[   15.021540] input: pyraInput Mouse as /devices/virtual/input/input11
+[   15.859876] emif_probe: error getting device data
+[   15.883103] emif_probe: error getting device data
+[   15.986618] emif_probe: error getting device data
+[   15.988572] emif_probe: error getting device data
+[   16.137101] wwan_on_off_rfkill_set_block: blocked: 0
+[   16.137985] wwan_on_off_set_power:on = 1
+[   16.140457] wwan_on_off_is_powered_on: gpio value = 0
+[   16.142212] wwan_on_off_is_powered_on: return 'false'
+[   16.143109] wwan_on_off_set_power: state 0
+[   16.145680] wwan_on_off_set_power: regulator 0
+[   16.682219] asoc-simple-card sound_bluetooth: W2CBW003 <-> 40122000.mcbsp mapping ok
+[   16.700577] asoc-simple-card sound_fmradio: W2CBW003 <-> 40124000.mcbsp mapping ok
+[   16.706370] asoc-simple-card sound_telephony: gtm601 <-> 40126000.mcbsp mapping ok
+[   16.763097] snd_soc_omap_abe_twl6040: unknown parameter 'index' ignored
+[   16.853807] omap-abe-twl6040 sound: ASoC: unknown pin AFML
+[   16.873772] omap-abe-twl6040 sound: ASoC: unknown pin AFMR
+[   16.944962] omap-abe-twl6040 sound: twl6040-legacy <-> 40132000.mcpdm mapping ok
+[   17.009537] input: Letux Cortex 15 Headset Jack as /devices/platform/sound/sound/card4/input12
+[   18.820420] wl18xx_driver wl18xx.2.auto: Direct firmware load for ti-connectivity/wl18xx-conf.bin failed with error -2
+[   18.822403] wl18xx_driver wl18xx.2.auto: Falling back to sysfs fallback for: ti-connectivity/wl18xx-conf.bin
+[   18.838822] wlcore: ERROR could not get configuration binary ti-connectivity/wl18xx-conf.bin: -11
+[   18.840409] wlcore: WARNING falling back to default config
+[   19.224031] wwan_on_off_set_power: send impulse
+[   19.345200] wlcore: wl18xx HW: 183x or 180x, PG 2.2 (ROM 0x11)
+[   19.348068] wlcore: WARNING Detected unconfigured mac address in nvs, derive from fuse instead.
+[   19.349686] wlcore: WARNING This default nvs file can be removed from the file system
+[   19.964386] wwan_on_off_is_powered_on: gpio value = 0
+[   19.965317] wwan_on_off_is_powered_on: return 'false'
+[   19.966233] wwan_on_off_set_power: failed to change modem state
+[   19.967462] wwan_on_off_set_power: done
+[   19.992997] wlcore: loaded
+[   20.344938] wwan_on_off_rfkill_set_block: blocked: 0
+[   20.345900] wwan_on_off_set_power:on = 1
+[   20.346657] wwan_on_off_is_powered_on: gpio value = 0
+[   20.347611] wwan_on_off_is_powered_on: return 'false'
+[   20.352727] wwan_on_off_set_power: state 0
+[   20.353469] wwan_on_off_set_power: regulator 0
+[   20.702988] Bluetooth: BNEP (Ethernet Emulation) ver 1.3
+[   20.703934] Bluetooth: BNEP socket layer initialized
+[   20.903153] wlcore: PHY firmware version: Rev 8.2.0.0.243
+[   20.990433] wlcore: firmware booted (Rev 8.9.0.0.83)
+[   21.025045] wlcore: down
+[   21.485433] wlcore: PHY firmware version: Rev 8.2.0.0.243
+[   21.597574] wlcore: firmware booted (Rev 8.9.0.0.83)
+[   22.923172] wwan_on_off_set_power: send impulse
+[   23.654379] wwan_on_off_is_powered_on: gpio value = 0
+[   23.655312] wwan_on_off_is_powered_on: return 'false'
+[   23.656222] wwan_on_off_set_power: failed to change modem state
+[   23.657456] wwan_on_off_set_power: done
+[   23.731186] Bluetooth: RFCOMM socket layer initialized
+[   23.732132] Bluetooth: RFCOMM ver 1.11
+[   28.263260] wlcore: down
+[   28.412522] wlan0: authenticate with <mac-address>
+[   28.422731] wlan0: send auth to <mac-address> (try 1/3)
+[   28.452133] wlan0: authenticated
+[   28.464378] wlan0: associate with <mac-address> (try 1/3)
+[   28.491004] wlan0: RX AssocResp from <mac-address> (capab=0x431 status=0 aid=2)
+[   28.517916] wlan0: associated
+[   28.599381] IPv6: ADDRCONF(NETDEV_CHANGE): wlan0: link becomes ready
+[   28.606669] wlcore: Association completed.
+[   33.764451] host1_vbus_power: supplied by modem_vbus_hdmi_power
+[   33.765584] host2_vbus_power: supplied by modem_vbus_hdmi_power
+[   33.768234] ldo3: disabling
+[   33.769913] ldo8: disabling
+[   33.770676] modem_vbus_power: disabling
+[   33.771361] otg_path: disabling
+[   69.444770] r8152 1-2.1:1.0: unable to load firmware patch rtl_nic/rtl8153a-4.fw (-11)
+[   69.497363] r8152 1-2.1:1.0 eth0: v1.11.11
+[   69.498636] usbcore: registered new interface driver r8152
+[   69.714371] usb 1-2.1: reset high-speed USB device number 3 using ehci-omap
+[   69.886742] r8152 1-2.1:1.0: Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2
+[   69.888337] r8152 1-2.1:1.0: Falling back to sysfs fallback for: rtl_nic/rtl8153a-4.fw
+[  130.853928] r8152 1-2.1:1.0: unable to load firmware patch rtl_nic/rtl8153a-4.fw (-11)
+[  130.917862] r8152 1-2.1:1.0 eth0: v1.11.11
+[  131.249863] r8152 1-2.1:1.0 enx9405bb110c94: renamed from eth0
+[  134.449733] IPv6: ADDRCONF(NETDEV_CHANGE): enx9405bb110c94: link becomes ready
+[  134.451772] r8152 1-2.1:1.0 enx9405bb110c94: carrier on
+[  430.174824] dmtimer posted=0
+[  430.524042] dmtimer posted=0
+[  433.096073] dmtimer posted=0
+[  433.396963] dmtimer posted=0
+[  434.390213] dmtimer posted=0
+[  434.648910] dmtimer posted=0
+[  434.871048] dmtimer posted=0
+[  435.042686] dmtimer posted=0

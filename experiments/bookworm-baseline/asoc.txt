@@ -1,0 +1,27 @@
+ts3a227e.4-003b
+spdif-dit
+dmic-codec
+401f1000.aess
+401f1000.aess
+twl6040-codec
+radio_codec
+bluetooth_codec
+40132000.mcpdm
+40132000.mcpdm
+58040000.encoder
+58040000.encoder
+40126000.mcbsp
+40126000.mcbsp
+40124000.mcbsp
+40124000.mcbsp
+40122000.mcbsp
+40122000.mcbsp
+gsm_codec
+snd-soc-dummy
+snd-soc-dummy
+
+00-00: HDMI 58040000.encoder snd-soc-dummy-dai-0 : HDMI 58040000.encoder snd-soc-dummy-dai-0 : playback 1
+01-00: 40122000.mcbsp-W2CBW003 W2CBW003-0 : 40122000.mcbsp-W2CBW003 W2CBW003-0 : playback 1 : capture 1
+02-00: 40124000.mcbsp-W2CBW003 W2CBW003-0 : 40124000.mcbsp-W2CBW003 W2CBW003-0 : playback 1 : capture 1
+03-00: 40126000.mcbsp-gtm601 gtm601-0 : 40126000.mcbsp-gtm601 gtm601-0 : playback 1 : capture 1
+04-00: TWL6040 twl6040-legacy-0 : TWL6040 twl6040-legacy-0 : playback 1 : capture 1

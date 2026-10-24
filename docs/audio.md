@@ -97,7 +97,7 @@ The choice is remembered. The switching was not done with the DSP mixers
 because turning those off, even briefly during a port change, can leave the
 front end with no back end, and then the PCM will not open (below). There
 is no automatic switching on plug-in: the jack switch is stuck (*Open*,
-below). The speakers are the default.
+below, and `experiments/jack-detect/`). The speakers are the default.
 
 **The speakers need the DSP at OPP100, and only kernels with
 `experiments/aess/0036` keep it there.** The firmware has three task
@@ -162,6 +162,9 @@ fast.** `legacy_link=1` keeps it as a reference for debugging (development log
 ## The direct McPDM path
 
 This is what the machine uses on the stock kernel and on `-fix` and `-freq`.
+Stock bookworm-7 confirms it: its kernel has the AESS driver built in, but the
+card exposes only `twl6040-legacy-0` and never loads the AESS firmware
+(`experiments/bookworm-baseline/`).
 
     app  ->  PulseAudio  ->  remap sink  ->  ALSA sink  ->  McPDM  ->  TWL6040  ->  amp
                              speakers/        4ch                      routing
@@ -480,10 +483,15 @@ These all look like faults and are not. Each has been chased at least once.
   and switch by hand. Switching on plug-in needs the jack switch, and it is
   stuck: `Headset Stereophone Jack` and `Headset Mic Jack` both read `on`,
   and the input device reports `SW_HEADPHONE_INSERT 1`, with the jack empty
-  and with headphones in. Not traced. The plug interrupt `twl6040_irq_plug`
-  had counted 44598 after two hours of uptime, so it is firing, or
-  bouncing. Once the switch works, add a `[Jack Headset Stereophone]`
-  section to `pyra-headphones.conf`.
+  and with headphones in. **Traced 2026-10-23, and stock does it too.** The
+  card takes the jack from the TWL6040, which always says "inserted", while
+  the Pyra's real detector, a TS3A227E, never probes because its interrupt
+  pin on the GPIO expander is left as an output. With the pin set to input
+  by hand the TS3A227E follows every plug and unplug. Diagnosis and the
+  three-step fix plan (a DT hog, the machine driver, then these path files)
+  are in `experiments/jack-detect/`. The plug interrupt `twl6040_irq_plug`
+  had counted 44598 after two hours of uptime on the AESS kernel, and 0 on
+  stock; why is not known.
 * **The power cost of the five-minute idle timeout.** One word to revert.
 * **The High-Performance PLL mode (96000), direct link.** Would make 48 kHz
   content an exact 2:1 instead of ragged, which is a **quality** lever, not a
