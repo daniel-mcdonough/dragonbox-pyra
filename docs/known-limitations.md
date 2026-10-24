@@ -198,13 +198,16 @@ amplifier is powered (during playback, and for PulseAudio's five-minute idle
 timeout after it), nothing registers on unplug. Turning the amplifier off
 makes the pending removal register within 190 ms. The likely reason is that
 the pin sees the jack's tip, and the amplifier's ground-centred,
-low-impedance output holds it near 0 V; not yet confirmed against the
-schematic.
+low-impedance output holds it near 0 V. The mainboard schematic (rev 5.1.3,
+sheet 18) confirms it: the pin is wired to the jack's tip switch contact,
+which rests on the headphone left output whenever nothing is plugged in.
 
 So plugging in switches PulseAudio to the headphones, and unplugging leaves
 it on them, silent, until Speakers is picked by hand or the amplifier powers
-down. Not absolute: another removal signal may exist on the board, such as
-the TWL6040's own plug comparator. `experiments/jack-detect/README.md`, step 3.
+down. The board has no other removal signal: the TWL6040's own `PLUGDET`
+input is driven by a FET from the same contact. Fixing it would take a board
+change, such as using the jack's switch without sharing the tip.
+`experiments/jack-detect/README.md`, step 3.
 
 ---
 

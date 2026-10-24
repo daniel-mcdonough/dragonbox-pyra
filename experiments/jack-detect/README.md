@@ -10,8 +10,10 @@ warm and five cold boots. Step 2 (0038) follows the plug on both cards.
 Suspend found a third fault, fixed by 0039, which passes on the trixie card.
 All three are in `kernel-m4-kbdled`, the kernel the trixie card runs, since
 2026-10-24. 4-pole headsets and the buttons are untested. Step 3 switches to
-the headphones on plug-in but not back on unplug: the TS3A227E cannot see a
-removal while the headset amplifier is on. Step 4 not done.**
+the headphones on plug-in but not back on unplug: the jack's only plug signal
+is shorted to the headphone output when nothing is plugged in, so no removal
+is visible while the headset amplifier is on (confirmed on the schematic).
+Step 4 not done.**
 
 ## The fault
 
@@ -361,15 +363,43 @@ the user picks Speakers or five idle minutes pass. Before step 3 the switch
 was manual both ways, so this is no worse for unplugging and better for
 plugging in. It is not what the step promised.
 
-Options (2026-10-24: option 1 is what ships, and option 3 is being looked
-into):
+**Confirmed against the schematic, 2026-10-24.** The Pyra mainboard
+schematics, revision 5.1.3 (posted by the project on its forum, 2016-11-20,
+`Pyra-Schematics.Rev5.1.3.zip`, CC-BY-NC-SA, not copied into this
+repository), sheet 18 "Audio Headset":
+
+- The jack is an SJ-43516 with a switch contact on the tip, `1S` (pin 5).
+  With no plug it rests on the tip spring, which is `HS-L`, the headphone
+  left output (through R1701, 0 Ohm). A plug pushes the tip spring away and
+  opens it.
+- TS3A227E (U1702) DET_TRIGGER, pin 15, is wired to that switch contact, with
+  R1706 270k to ground. Plug in: the switch opens, DET goes low. No plug: DET
+  is tied to `HS-L`, high only while nothing drives it (the chip's pull-up,
+  and R1707 100k from VSYS on the tip). The amplifier drives it to 0 V.
+- `PLUGDET` is the drain of T1701 (FDV301N), whose gate is the same DET line.
+  On the CPU board it goes to the TWL6040's own `PLUGDET` input (U3301, ball
+  G5), the codec's plug comparator.
+- The ring's switch contact, `2S` (pin 6), goes only to the unpopulated
+  "alternate amplifier option" (`AHS-R`, C1712 not fitted), and would rest on
+  `HS-R`, also driven, if it were used.
+
+So every plug signal on the board comes from the tip contact, and while the
+headset amplifier is on, an empty jack and a plugged one look the same to
+all of them. **Option 3 is not available on this hardware.** The unit tested
+is a V5.3, newer than the schematic, but it behaves exactly as this wiring
+predicts. The only software lever left is to have the amplifier off, which
+is option 2 and does not help mid-playback; an unplug during playback can be
+detected only by stopping the output, which cannot be done unnoticed.
+
+Options (2026-10-24: option 1 is what ships; option 3 is ruled out):
 
 1. Ship as is, and document the unplug half as manual. **Done:**
    `docs/audio.md`, `docs/known-limitations.md` 2.9.
 2. A shorter idle timeout, so the amplifier goes off sooner after playback
   stops. Brings the codec's power-up pop back (`docs/audio.md`), and does
   nothing for an unplug during playback.
-3. Find another removal signal on the board. The TWL6040 has its own plug
+3. ~~Find another removal signal on the board.~~ Ruled out by the
+   schematic, above. The TWL6040 has its own plug
   comparator, which reads "inserted" on stock and bounced on the old AESS
   kernel; what its input is wired to is unknown. Needs the schematic.
 4. Drop the speaker side (`state.plugged = no`), so plugging in switches but

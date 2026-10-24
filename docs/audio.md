@@ -107,7 +107,7 @@ is plugged in, the speakers port only while nothing is, and
 fraction of a second. Unplugging is not seen while the headset amplifier is
 powered, which is during playback and for the five idle minutes after it
 (`timeout=300`, below): the jack chip's detect pin is held low by the
-amplifier (`known-limitations.md` 2.9). So after unplugging, pick Speakers
+amplifier (`known-limitations.md` 2.9; confirmed on the board schematic). So after unplugging, pick Speakers
 under *Connector*, or wait out the idle timeout. On `5.6.19-m4` the jack
 always reads plugged in, the headphones port is the only available one, and
 the speakers could not play through the DSP on that kernel anyway (it
@@ -494,9 +494,10 @@ These all look like faults and are not. Each has been chased at least once.
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
   figure predates it.
 * **Switching back to the speakers on unplug.** Plug-in switches since
-  2026-10-24 (above). Unplug is invisible while the headset amplifier is on;
-  the only fix would be another removal signal on the board, which needs the
-  schematic (`experiments/jack-detect/`, option 3). History: the jack used to
+  2026-10-24 (above). Unplug is invisible while the headset amplifier is on,
+  and the schematic shows no other plug signal: the TS3A227E and the TWL6040
+  both sense the jack's tip switch, which rests on the headphone output when
+  empty (`experiments/jack-detect/`). Not fixable in software. History: the jack used to
   be stuck: `Headset Stereophone Jack` and `Headset Mic Jack` both read `on`,
   and the input device reports `SW_HEADPHONE_INSERT 1`, with the jack empty
   and with headphones in. **Traced 2026-10-23, and stock does it too.** The
@@ -509,8 +510,9 @@ These all look like faults and are not. Each has been chased at least once.
   three-step fix plan (a DT hog, the machine driver, then these path files)
   are in `experiments/jack-detect/`. The plug interrupt `twl6040_irq_plug`
   had counted 44598 after two hours of uptime on the old AESS kernel, and 0
-  on stock and on the current one; why is not known, and it matters for
-  option 3.
+  on stock and on the current one. Its input is a FET-inverted copy of the
+  TS3A227E's detect line (schematic sheet 18), so it shares the same blind
+  spot; why it bounced is not known.
 * **The power cost of the five-minute idle timeout.** One word to revert.
 * **The High-Performance PLL mode (96000), direct link.** Would make 48 kHz
   content an exact 2:1 instead of ragged, which is a **quality** lever, not a
