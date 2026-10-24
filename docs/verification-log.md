@@ -793,3 +793,10 @@ input, no `gpiochip_lock_as_irq` error, `ts3a227e` bound with IRQ 197, bank 1
 config `0x48`, banks 0 and 2 unchanged. Cold boots not yet done. The
 `auto_null`-only PulseAudio seen on some of those boots also happens on stock;
 it is the greeter's PulseAudio holding the card, not the kernel.
+
+**Then 0038.** `kernel-jack` rebuilt with 0038. With the jack empty the card's
+`Headset Stereophone Jack` reads `off` for the first time; three plug/unplug
+cycles each moved the control and `SW_HEADPHONE_INSERT` once, matching the
+TS3A227E. Only 3-pole plugs were tried, so the mic detection and the buttons are
+unverified. Suspend was not tried: `kernel-jack` has no `patches/0003`.
+

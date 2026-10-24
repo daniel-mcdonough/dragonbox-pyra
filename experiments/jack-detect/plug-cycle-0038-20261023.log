@@ -1,0 +1,16 @@
+# kernel-jack (stock + 0037 + 0038) on the stock bookworm-7 card, 2026-10-23.
+# acc = TS3A227E accessory status (0x0b), irq = TS3A227E interrupt count,
+# hp/mic = the card's Headset Stereophone Jack / Headset Mic Jack controls.
+# Polled every 200 ms, printed on change. The 23:22:34.972 line is the poll
+# catching the control a moment before it re-read the chip, not a glitch.
+23:21:58.106 acc=00 irq=0 hp=off mic=off
+23:22:25.746 acc=09 irq=1 hp=on mic=off
+23:22:30.506 acc=00 irq=2 hp=off mic=off
+23:22:34.972 acc=00 irq=2 hp=on mic=off
+23:22:35.256 acc=09 irq=3 hp=on mic=off
+23:22:40.256 acc=00 irq=4 hp=off mic=off
+23:22:47.803 acc=09 irq=5 hp=on mic=off
+23:22:52.825 acc=00 irq=6 hp=off mic=off
+
+# evtest on "Letux Cortex 15 Headset Jack" over the same window:
+SW_HEADPHONE_INSERT 1, 0, 1, 0, 1, 0 (one per plug and unplug, no key events)

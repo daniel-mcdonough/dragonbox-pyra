@@ -187,7 +187,14 @@ The TS3A227E headset detector's interrupt, line 14 of the PCAL6524 expander, rea
 kernel configured as an output, so its IRQ request fails with `-EIO` and the detector never
 probes. A `gpio-hog` makes it an input before anything asks. On its own this changes
 nothing audible: the sound card still takes its jack from the TWL6040, which is 0038's job
-(planned, `experiments/jack-detect/README.md`). *Only in `kernel-jack` so far.*
+(`experiments/jack-detect/README.md`). *Only in `kernel-jack` so far.*
+
+**0038 (`jack-detect/`) — ASoC: ti: omap-abe-twl6040: take the jack from the TS3A227E.**
+An optional `ti,jack-detect` phandle on the card makes the TS3A227E an auxiliary
+device; it creates the headset jack (with the four headset buttons) and reports into
+it, and the TWL6040's always-"inserted" comparator is no longer asked. The V5.2 and
+V5.3 board files set it. Boards without it are unchanged. Selects
+`SND_SOC_TS3A227E`. *Only in `kernel-jack` so far*; the jack follows the plug there.
 
 **0034 (`gpu-power/`) — pvrsgx: let the SGX power domain go off at idle.** The GPU driver
 takes a runtime-PM reference at probe and only gives it back at remove, so the GPU never

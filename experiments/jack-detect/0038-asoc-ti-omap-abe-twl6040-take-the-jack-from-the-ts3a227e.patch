@@ -1,0 +1,148 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ti: omap-abe-twl6040: take the jack from the TS3A227E
+
+The card registers its headset jack and hands it to
+twl6040_hs_jack_detect(), so jack state comes from the TWL6040's own plug
+comparator. On the Pyra that comparator reads "inserted" whatever is in
+the jack: Headset Stereophone Jack and Headset Mic Jack are always on, and
+PulseAudio can never switch between speakers and headphones by itself.
+
+The Pyra detects the headset with a TS3A227E on i2c5 (0x3b). Once its
+interrupt line is an input (the previous patch) it probes and tracks the
+jack correctly, accessory status 0x00 empty and 0x09 with 3-pole
+headphones, one interrupt per plug and unplug. Nothing consumes it.
+
+Add an optional "ti,jack-detect" phandle to the card node. When present,
+the detector becomes an auxiliary device of the card; its init callback
+creates the headset jack, with the four headset buttons, and passes it to
+ts3a227e_enable_jack_detect(). The codec path is then skipped. ASoC probes
+auxiliary devices before it runs the DAI links' init, so the jack exists
+by the time omap_abe_twl6040_init() would otherwise have made it, and a
+card whose detector has not probed yet defers until it has.
+
+Boards without the property keep the TWL6040 path unchanged. The Pyra
+V5.2 and V5.3 board files, the two that wire the TS3A227E's interrupt,
+set it.
+
+---
+--- a/arch/arm/boot/dts/pyra-mainboard-common.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-common.dtsi
+@@ -637,7 +637,7 @@
+ 
+ /* register devices connected to System-I2C */
+ &i2c5 {
+-	ts3a227@3b {
++	ts3a227: ts3a227@3b {
+ 		compatible = "ti,ts3a227e";
+ 		reg = <0x3b>;
+ 		/* interrupts are broken */
+--- a/arch/arm/boot/dts/pyra-mainboard-v5.2.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-v5.2.dtsi
+@@ -89,3 +89,8 @@
+ 	/* use otg_path regulator */
+ 	vbus-supply = <&otg_path>;
+ };
++
++&sound {
++	/* the TS3A227E reports the jack, not the TWL6040 */
++	ti,jack-detect = <&ts3a227>;
++};
+--- a/arch/arm/boot/dts/pyra-mainboard-v5.3.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-v5.3.dtsi
+@@ -90,3 +90,8 @@
+ 	/* use otg_path regulator */
+ 	vbus-supply = <&otg_path>;
+ };
++
++&sound {
++	/* the TS3A227E reports the jack, not the TWL6040 */
++	ti,jack-detect = <&ts3a227>;
++};
+--- a/sound/soc/ti/Kconfig
++++ b/sound/soc/ti/Kconfig
+@@ -134,6 +134,7 @@
+ 	select SND_SOC_OMAP_MCASP
+ 	select SND_SOC_OMAP_MCBSP
+ 	select SND_SOC_OMAP_AESS
++	select SND_SOC_TS3A227E
+ 	select SND_DYNAMIC_MINORS
+ 	select FW_LOADER
+ 	help
+--- a/sound/soc/ti/omap-abe-twl6040.c
++++ b/sound/soc/ti/omap-abe-twl6040.c
+@@ -33,6 +33,7 @@
+ #include <sound/soc-dapm.h>
+ 
+ #include "aess/omap-aess.h"
++#include "../codecs/ts3a227e.h"
+ #include "../codecs/twl6040.h"
+ #include "omap-dmic.h"
+ #include "omap-mcpdm.h"
+@@ -100,6 +101,8 @@
+ 	int	mclk_freq;	/* MCLK frequency speed for twl6040 */
+ 	int twl6040_power_mode;
+ 	struct omap_aess	*aess;
++	/* a separate headset detector, from "ti,jack-detect" */
++	struct snd_soc_aux_dev jack_detector;
+ };
+ 
+ static struct platform_device *dmic_codec_dev;
+@@ -219,6 +222,30 @@
+ 	},
+ };
+ 
++/*
++ * The Pyra detects the headset with a TS3A227E, not with the TWL6040's own
++ * plug comparator, which reads "inserted" whatever is in the jack. When the
++ * device tree names a detector with "ti,jack-detect" it becomes an auxiliary
++ * device of the card and reports into hs_jack, buttons included, and the
++ * TWL6040 is not asked. ASoC probes auxiliary devices before it runs the DAI
++ * links' init, so the jack exists by then.
++ */
++static int omap_abe_jack_detector_init(struct snd_soc_component *component)
++{
++	int ret;
++
++	ret = snd_soc_card_jack_new(component->card, "Headset Jack",
++				    SND_JACK_HEADSET |
++				    SND_JACK_BTN_0 | SND_JACK_BTN_1 |
++				    SND_JACK_BTN_2 | SND_JACK_BTN_3,
++				    &hs_jack, hs_jack_pins,
++				    ARRAY_SIZE(hs_jack_pins));
++	if (ret)
++		return ret;
++
++	return ts3a227e_enable_jack_detect(component, &hs_jack);
++}
++
+ static int omap_abe_get_power_mode(struct snd_kcontrol *kcontrol,
+ 				   struct snd_ctl_elem_value *ucontrol)
+ {
+@@ -368,8 +395,11 @@
+ 			return ret;
+ 	}
+ 
+-	/* Headset jack detection only if it is supported */
+-	if (priv->jack_detection) {
++	/*
++	 * Headset jack detection only if it is supported, and by the codec
++	 * only if there is no separate detector doing it.
++	 */
++	if (priv->jack_detection && !priv->jack_detector.dlc.of_node) {
+ 		ret = snd_soc_card_jack_new(rtd->card, "Headset Jack",
+ 					    SND_JACK_HEADSET, &hs_jack,
+ 					    hs_jack_pins,
+@@ -602,6 +632,13 @@
+ 		ADD_DAILINK(card, link1, "TWL6040", "DMIC Capture", dai_node, omap_abe_dmic_init, omap_abe_dmic_ops);
+ 
+ 	priv->jack_detection = of_property_read_bool(node, "ti,jack-detection");
++	priv->jack_detector.dlc.of_node = of_parse_phandle(node,
++							   "ti,jack-detect", 0);
++	if (priv->jack_detector.dlc.of_node) {
++		priv->jack_detector.init = omap_abe_jack_detector_init;
++		card->aux_dev = &priv->jack_detector;
++		card->num_aux_devs = 1;
++	}
+ 	of_property_read_u32(node, "ti,mclk-freq", &priv->mclk_freq);
+ 	if (!priv->mclk_freq) {
+ 		dev_err(&pdev->dev, "MCLK frequency not provided\n");

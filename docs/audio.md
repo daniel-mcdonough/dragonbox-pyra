@@ -486,8 +486,8 @@ These all look like faults and are not. Each has been chased at least once.
   and with headphones in. **Traced 2026-10-23, and stock does it too.** The
   card takes the jack from the TWL6040, which always says "inserted", while
   the Pyra's real detector, a TS3A227E, never probes because its interrupt
-  pin on the GPIO expander is left as an output. With the pin set to input
-  by hand the TS3A227E follows every plug and unplug. Diagnosis and the
+  pin on the GPIO expander is left as an output. 0037 and 0038 fix both;
+  on a test kernel the card's jack now follows the plug. Diagnosis and the
   three-step fix plan (a DT hog, the machine driver, then these path files)
   are in `experiments/jack-detect/`. The plug interrupt `twl6040_irq_plug`
   had counted 44598 after two hours of uptime on the AESS kernel, and 0 on

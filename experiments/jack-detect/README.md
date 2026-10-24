@@ -6,7 +6,9 @@ to fix it. Nothing here is built yet.
 
 **Status: diagnosed on hardware 2026-10-23, on the stock bookworm-7 card
 (`experiments/bookworm-baseline/`). Step 1 (0037) built and passing on five
-warm and five cold boots. Steps 2-4 not written.**
+warm and five cold boots. Step 2 (0038) built, and the card's jack follows
+the plug on the bookworm card; 4-pole headsets, buttons and suspend not yet
+tested. Steps 3-4 not written.**
 
 ## The fault
 
@@ -229,6 +231,33 @@ link deliberately runs no init, see the comment at `ADD_DAILINK(...
   find something.
 - `twl6040_irq_plug` count after an hour of uptime on the AESS kernel, to
   see whether the 44598-count bouncing still happens and needs masking.
+
+**Result, 2026-10-23.** Built into `kernel-jack` (stock + 0037 + 0038) and
+booted on the bookworm card. It applies cleanly on stock + 0037, and on the
+AESS tree (`src-m4-kbdled` + 0037) with one hunk at fuzz 1, the struct, whose
+trailing context the AESS series changed.
+
+- With the jack empty at boot, `Headset Stereophone Jack` and `Headset Mic
+  Jack` read `off` and `SW_HEADPHONE_INSERT` is 0. The first time either has
+  said so on this hardware.
+- The input device now advertises `SW_HEADPHONE_INSERT`,
+  `SW_MICROPHONE_INSERT` and the four button keys.
+- Three plug/unplug cycles (`plug-cycle-0038-20261023.log`): the control and
+  the input switch follow the chip every time, one interrupt and one event
+  per change.
+- The third plug was a Bluetooth headset's 3.5 mm cable. The chip read
+  `0x09`, 3-pole, so its cable carries no mic contact (or the chip did not
+  find one) and `Headset Mic Jack` stayed `off`. That is the right answer for
+  what was plugged in, but it means the mic and the buttons are untested.
+- PulseAudio loaded its sinks; the card registered once, with no deferral
+  noise in `dmesg`.
+
+**Not yet tested:**
+- A wired 4-pole headset: `Headset Mic Jack` and the buttons.
+- Suspend and resume with the jack changing while asleep. Not possible on
+  `kernel-jack`: it lacks `patches/0003`, and without it suspend hangs on the
+  phantom SD hosts. This needs 0037 and 0038 on a fix-set kernel.
+- The AESS path, and the TWL6040 plug interrupt count there.
 
 ### Step 3: PulseAudio switches on plug
 
