@@ -156,9 +156,13 @@ most self-contained first:
 
 Not AESS, but due on the same tree: the headphone jack. `letux-7.3` (and master) still
 takes it from `twl6040_hs_jack_detect()`, so the Pyra's TS3A227E is never
-used, and its interrupt pin needs the same DT hog. Both changes are planned
-as 0037 and 0038 in `experiments/jack-detect/` and should port almost
-unchanged.
+used, and its interrupt pin needs the same DT hog. The fix is 0037-0039 in
+`experiments/jack-detect/`. Against 7.3 (`patch --dry-run`, 2026-10-24): 0037
+and 0039 apply with offsets, and 0038's device-tree hunks do too. Its C and
+Kconfig hunks need rewriting: 7.3 uses `snd_soc_card_jack_new_pins()`, and
+7.3's TS3A227E has `.set_jack`, so the aux init can call
+`snd_soc_component_set_jack()` and drop the Kconfig `select`. Reports:
+`reports/letux-pyra-jack-detect.md`, `reports/kernel-asoc-ts3a227e-pending-event.md`.
 
 Not to port, because 7.3 already covers them: 0013, 0015-0025, 0027 and 0030
 (classes a and b in the INDEX). The PulseAudio side (`device/pulse/pyra-aess.pa`

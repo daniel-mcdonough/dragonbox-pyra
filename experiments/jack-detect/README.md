@@ -13,7 +13,8 @@ All three are in `kernel-m4-kbdled`, the kernel the trixie card runs, since
 the headphones on plug-in but not back on unplug: the jack's only plug signal
 is shorted to the headphone output when nothing is plugged in, so no removal
 is visible while the headset amplifier is on (confirmed on the schematic).
-Step 4 not done.**
+Step 4 done: the kernel tree has `pyra/jack`, and the reports are drafted,
+not sent.**
 
 ## The fault
 
@@ -408,14 +409,13 @@ Options (2026-10-24: option 1 is what ships; option 3 is ruled out):
 ### Step 4: carry it forward
 
 - Done: 0037-0039 are in `docs/kernel-changes.md`, `kernel-jack` and
-  `kernel-m4-kbdled`. Still to do: regenerate `linux-pyra-5.6.19`
-  (`pc/pyra-kernel-tree.sh`), probably as a new `pyra/jack` branch on
-  `pyra/device`.
-- The same three changes apply to letux 7.3 almost unchanged. Add them to the
-  porting list in `docs/aess-letux-7.3.md`.
-- Draft `reports/letux-pyra-jack-detect.md`, and a separate one for 0039,
-  which is a generic TS3A227E driver bug and belongs upstream in ASoC. Not to
-  be sent without asking.
+  `kernel-m4-kbdled`. `linux-pyra-5.6.19` regenerated 2026-10-24: the three
+  are on `pyra/device`, and alone on `pyra/jack` (on `pyra/fixes`).
+- On letux 7.3, 0037 and 0039 apply with offsets; 0038's C and Kconfig hunks
+  need rewriting. Details in `docs/aess-letux-7.3.md`.
+- Drafted 2026-10-24: `reports/letux-pyra-jack-detect.md` (0037, 0038, and
+  the board's unplug blind spot) and `reports/kernel-asoc-ts3a227e-pending-event.md`
+  (0039, a generic driver bug, for mainline ASoC). Not sent.
 
 ## Open
 
