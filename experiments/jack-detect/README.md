@@ -6,7 +6,7 @@ to fix it. Nothing here is built yet.
 
 **Status: diagnosed on hardware 2026-10-23, on the stock bookworm-7 card
 (`experiments/bookworm-baseline/`). Step 1 (0037) built and passing on five
-warm boots; cold boots not yet done. Steps 2-4 not written.**
+warm and five cold boots. Steps 2-4 not written.**
 
 ## The fault
 
@@ -159,9 +159,27 @@ Five warm boots, every one identical:
   from stock (`0xfc`, `0xf2`). Nothing else on the expander moved.
 - Accessory status `0x09`, with 3-pole headphones in throughout.
 
-**Not yet:** the five cold boots (they need someone at the power button), and
-plug/unplug on this kernel. The sysfs test before it already showed the chip
-follows the plug once it has probed.
+**Cold boots, 2026-10-23, five from power off.** Boots 1-3 empty at boot,
+headphones in for a few seconds after login, then out; boot 4 plugged in
+through boot and poweroff; boot 5 empty throughout. From the journal, all
+five: the line hogged as an input, no `gpiochip_lock_as_irq`, no `ts3a227e`
+probe failure. With or without a plug at boot makes no difference to the
+probe.
+
+The plugging itself left no record and could not: until 0038 nothing listens
+to the chip, and its state is not logged. The sysfs test before this one is
+still the evidence that the chip follows the plug once probed. The first plug
+test with a record is step 2's, where the card's own jack control should
+change.
+
+**Hung-task warnings on every `5.6.19-jack` boot, and at poweroff.** Not 0037.
+They are `mmc_rescan` -> `sdio_reset` workers on `mmc1` and `mmc2`, the two
+phantom `txs02612` hosts that `patches/0003` removes. `kernel-jack` leaves
+`patches/` out on purpose, so it has them, as stock does; stock just has no
+hung-task detector to say so, and every `build_kernel_variant` build turns
+one on. Poweroff waits on the same stuck `udev-worker`. A
+`driver_set_config_work` worker (USB configuration) is also reported blocked;
+not looked at.
 
 PulseAudio came up with only `auto_null` on four of the six jack boots. That
 is not 0037: a stock boot did the same, and the cause is the lightdm
