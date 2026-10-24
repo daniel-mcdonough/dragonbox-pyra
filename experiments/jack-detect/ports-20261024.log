@@ -1,0 +1,12 @@
+# PulseAudio aess sink ports over the same test (portlog.sh, 0.3 s poll).
+07:17:07.706 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=RUNNING
+07:17:23.875 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=IDLE
+07:18:18.059 jack=on active=pyra-speaker speaker=[not available] headphones=[available] sink=IDLE
+07:18:33.639 jack=off active=pyra-speaker speaker=[not available] headphones=[available] sink=IDLE
+07:18:34.007 jack=off active=pyra-speaker speaker=[availability unknown] headphones=[not available] sink=IDLE
+07:19:57.294 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=IDLE
+07:20:11.351 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=RUNNING
+07:20:40.162 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=IDLE
+07:21:18.772 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=RUNNING
+07:21:22.670 jack=on active=pyra-headphones speaker=[not available] headphones=[available] sink=IDLE
+07:21:39.021 jack=off active=pyra-speaker speaker=[availability unknown] headphones=[not available] sink=IDLE

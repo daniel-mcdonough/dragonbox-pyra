@@ -1,0 +1,8 @@
+# Step 3 test, trixie card, 5.6.19-m4-kbdled + 0037-0039, jack sections in the paths.
+# 07:19:57 plug-in: headphones port active, headset amp On (held by suspend-on-idle).
+# Then play, unplug while playing, stop, plug + unplug idle: nothing registers while the
+# amp is On. 07:21:38.796 the port is set to speakers by hand (amp Off); the pending
+# removal is detected 190 ms later.
+07:19:29.538 acc=0x00 ts_irq=10 exp_irq=22 intb=hi hs_amp=Off hp=off mic=off
+07:19:57.439 acc=0x09 ts_irq=11 exp_irq=24 intb=hi hs_amp=On hp=on mic=off
+07:21:38.983 acc=0x00 ts_irq=12 exp_irq=26 intb=hi hs_amp=Off hp=off mic=off

@@ -9,8 +9,9 @@ to fix it.
 warm and five cold boots. Step 2 (0038) follows the plug on both cards.
 Suspend found a third fault, fixed by 0039, which passes on the trixie card.
 All three are in `kernel-m4-kbdled`, the kernel the trixie card runs, since
-2026-10-24. 4-pole headsets and the buttons are untested. Steps 3-4 not
-written.**
+2026-10-24. 4-pole headsets and the buttons are untested. Step 3 switches to
+the headphones on plug-in but not back on unplug: the TS3A227E cannot see a
+removal while the headset amplifier is on. Step 4 not done.**
 
 ## The fault
 
@@ -328,6 +329,49 @@ This covers the AESS path only, which is the one with ports. The direct-link
 setup uses two remap sinks instead of ports, so on that path the switch would
 need a small udev or `module-switch-on-connect` arrangement. Not planned
 unless the direct link is still in use when steps 1 and 2 land.
+
+**Result, 2026-10-24, trixie card: plug-in switches, unplug does not.**
+Installed on the card with the old files kept as `*.before-jack`.
+Plug-in moves the sink to the headphones within a poll (0.3 s), and the
+Connector choice in MATE's sound preferences still works both ways. Unplug
+never switches back, because the jack itself never reports the removal
+(`amp-blinds-removal-20261024.log`, `ports-20261024.log`):
+
+    07:19:57.439 acc=0x09 ts_irq=11 hs_amp=On  hp=on     plug-in, headphones active
+       ... play, unplug while playing, stop, plug and unplug idle: nothing ...
+    07:21:38.983 acc=0x00 ts_irq=12 hs_amp=Off hp=off    190 ms after the port
+                                                         was set to speakers by hand
+
+**The TS3A227E cannot see a removal while the headset amplifier is
+powered.** It detects both insertion and removal on one pin, DET_TRIGGER:
+internal pull-up of about 1 MOhm to VDD, high above 0.65 x VDD, a high-to-low
+edge starts detection (90 ms debounce), a low-to-high one is a removal (50-65
+ms). If the Pyra wires DET_TRIGGER to the jack's tip, or to a switch onto it,
+the TWL6040's headset amplifier, which is ground-centred with a low output
+impedance, holds that line near 0 V whenever it is on, and a 1 MOhm pull-up
+cannot lift it. That fits everything seen: insertions always detected,
+removals detected with the amplifier off, never with it on, and caught up
+within the removal wait once it powers down. Not confirmed against the board
+schematic, which is not in the repository.
+
+With `module-suspend-on-idle timeout=300` the amplifier stays on for five
+minutes after the last sound, so in practice an unplug during or shortly
+after playback leaves the sink on the unplugged headphones, silent, until
+the user picks Speakers or five idle minutes pass. Before step 3 the switch
+was manual both ways, so this is no worse for unplugging and better for
+plugging in. It is not what the step promised.
+
+Options, none chosen yet:
+
+- Ship as is, and document the unplug half as manual.
+- A shorter idle timeout, so the amplifier goes off sooner after playback
+  stops. Brings the codec's power-up pop back (`docs/audio.md`), and does
+  nothing for an unplug during playback.
+- Find another removal signal on the board. The TWL6040 has its own plug
+  comparator, which reads "inserted" on stock and bounced on the old AESS
+  kernel; what its input is wired to is unknown. Needs the schematic.
+- Drop the speaker side (`state.plugged = no`), so plugging in switches but
+  the speakers stay selectable as "available". Does not fix unplug either.
 
 ### Step 4: carry it forward
 
