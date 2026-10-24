@@ -817,3 +817,11 @@ suspends `RESULT mem: ok`.
 
 **Not established.** 4-pole headsets and buttons; cold boot with 0039.
 
+**Step 3, PulseAudio, same day.** Jack sections in the two path files. Plug-in
+switches the `aess` sink to the headphones; manual port choice still works.
+Unplug does not switch back: with the headset amplifier on, the TS3A227E
+registered no removal through an unplug during playback and a plug/unplug at
+idle, then registered it 190 ms after the amplifier was turned off by hand
+(`experiments/jack-detect/amp-blinds-removal-20261024.log`). Shipped with the
+unplug half manual; documented in `audio.md` and `known-limitations.md` 2.9.
+

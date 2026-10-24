@@ -361,17 +361,19 @@ the user picks Speakers or five idle minutes pass. Before step 3 the switch
 was manual both ways, so this is no worse for unplugging and better for
 plugging in. It is not what the step promised.
 
-Options, none chosen yet:
+Options (2026-10-24: option 1 is what ships, and option 3 is being looked
+into):
 
-- Ship as is, and document the unplug half as manual.
-- A shorter idle timeout, so the amplifier goes off sooner after playback
+1. Ship as is, and document the unplug half as manual. **Done:**
+   `docs/audio.md`, `docs/known-limitations.md` 2.9.
+2. A shorter idle timeout, so the amplifier goes off sooner after playback
   stops. Brings the codec's power-up pop back (`docs/audio.md`), and does
   nothing for an unplug during playback.
-- Find another removal signal on the board. The TWL6040 has its own plug
+3. Find another removal signal on the board. The TWL6040 has its own plug
   comparator, which reads "inserted" on stock and bounced on the old AESS
   kernel; what its input is wired to is unknown. Needs the schematic.
-- Drop the speaker side (`state.plugged = no`), so plugging in switches but
-  the speakers stay selectable as "available". Does not fix unplug either.
+4. Drop the speaker side (`state.plugged = no`), so plugging in switches but
+   the speakers stay selectable as "available". Does not fix unplug either.
 
 ### Step 4: carry it forward
 

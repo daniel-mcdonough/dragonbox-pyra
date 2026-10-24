@@ -189,6 +189,23 @@ Not much of a limitation in practice — box86's whole design depends on the
 binary resolving its libraries at runtime so that native ARM libraries can be
 substituted.
 
+### 2.9 Unplugging headphones is not detected while the headset amplifier is on
+
+The TS3A227E jack chip detects insertion and removal on one pin,
+DET_TRIGGER, with an internal pull-up of about 1 MΩ. Plug-in pulls it low;
+removal is the line rising back above 0.65 × VDD. While the TWL6040's headset
+amplifier is powered (during playback, and for PulseAudio's five-minute idle
+timeout after it), nothing registers on unplug. Turning the amplifier off
+makes the pending removal register within 190 ms. The likely reason is that
+the pin sees the jack's tip, and the amplifier's ground-centred,
+low-impedance output holds it near 0 V; not yet confirmed against the
+schematic.
+
+So plugging in switches PulseAudio to the headphones, and unplugging leaves
+it on them, silent, until Speakers is picked by hand or the amplifier powers
+down. Not absolute: another removal signal may exist on the board, such as
+the TWL6040's own plug comparator. `experiments/jack-detect/README.md`, step 3.
+
 ---
 
 ## 3. Tried, measured, does not work

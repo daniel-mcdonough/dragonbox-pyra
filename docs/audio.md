@@ -95,9 +95,23 @@ on. The ports switch the four codec routes instead: `pyra-speaker` sets
 Output tab, *Connector*, or with `pactl set-sink-port aess pyra-headphones`.
 The choice is remembered. The switching was not done with the DSP mixers
 because turning those off, even briefly during a port change, can leave the
-front end with no back end, and then the PCM will not open (below). There
-is no automatic switching on plug-in: the jack switch is stuck (*Open*,
-below, and `experiments/jack-detect/`). The speakers are the default.
+front end with no back end, and then the PCM will not open (below). The
+speakers are the default.
+
+**Plugging in switches to the headphones; unplugging does not switch back.**
+On `5.6.19-m4-kbdled`, which reports the jack correctly (0037-0039,
+`experiments/jack-detect/`), both path files carry a `[Jack Headset
+Stereophone]` section: the headphones port is available only while something
+is plugged in, the speakers port only while nothing is, and
+`module-switch-on-port-available` follows. Plug-in moves the sound within a
+fraction of a second. Unplugging is not seen while the headset amplifier is
+powered, which is during playback and for the five idle minutes after it
+(`timeout=300`, below): the jack chip's detect pin is held low by the
+amplifier (`known-limitations.md` 2.9). So after unplugging, pick Speakers
+under *Connector*, or wait out the idle timeout. On `5.6.19-m4` the jack
+always reads plugged in, the headphones port is the only available one, and
+the speakers could not play through the DSP on that kernel anyway (it
+predates `experiments/aess/0036`).
 
 **The speakers need the DSP at OPP100, and only kernels with
 `experiments/aess/0036` keep it there.** The firmware has three task
@@ -479,9 +493,11 @@ These all look like faults and are not. Each has been chased at least once.
   mismatch; nothing does it yet.
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
   figure predates it.
-* **Automatic headphone/speaker switching on the AESS path.** The ports exist
-  and switch by hand. Switching on plug-in needs the jack switch, and it is
-  stuck: `Headset Stereophone Jack` and `Headset Mic Jack` both read `on`,
+* **Switching back to the speakers on unplug.** Plug-in switches since
+  2026-10-24 (above). Unplug is invisible while the headset amplifier is on;
+  the only fix would be another removal signal on the board, which needs the
+  schematic (`experiments/jack-detect/`, option 3). History: the jack used to
+  be stuck: `Headset Stereophone Jack` and `Headset Mic Jack` both read `on`,
   and the input device reports `SW_HEADPHONE_INSERT 1`, with the jack empty
   and with headphones in. **Traced 2026-10-23, and stock does it too.** The
   card takes the jack from the TWL6040, which always says "inserted", while
@@ -492,8 +508,9 @@ These all look like faults and are not. Each has been chased at least once.
   card's jack follows the plug, through suspend too. Diagnosis and the
   three-step fix plan (a DT hog, the machine driver, then these path files)
   are in `experiments/jack-detect/`. The plug interrupt `twl6040_irq_plug`
-  had counted 44598 after two hours of uptime on the AESS kernel, and 0 on
-  stock; why is not known.
+  had counted 44598 after two hours of uptime on the old AESS kernel, and 0
+  on stock and on the current one; why is not known, and it matters for
+  option 3.
 * **The power cost of the five-minute idle timeout.** One word to revert.
 * **The High-Performance PLL mode (96000), direct link.** Would make 48 kHz
   content an exact 2:1 instead of ragged, which is a **quality** lever, not a
