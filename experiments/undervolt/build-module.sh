@@ -8,7 +8,8 @@
 #   PYRA_KERNEL_SUFFIX=m4 ./build-module.sh           the same, for 5.6.19-m4
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/dragonbox-pyra-build}
 SUFFIX=${PYRA_KERNEL_SUFFIX:-m4-kbdled}
 SRC=src-$SUFFIX
 

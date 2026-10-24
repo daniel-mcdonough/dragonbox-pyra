@@ -51,7 +51,7 @@ password and no login prompt. Do it while the card is still in the reader.
 Roughly ten minutes on a modern machine, most of it the first container pull.
 It cross-compiles in a throwaway Debian container, so nothing is installed on
 your host beyond the image, and the Pyra is not involved. The output is
-`~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz`.
+`../dragonbox-pyra-build/kernel/fix-kernel.tar.gz`.
 
 The build prints each patch as it applies it. All six must say `applied` or
 `already`; a patch that will not apply stops the build rather than producing a
@@ -69,7 +69,7 @@ the installer over ssh, reboots, waits, and checks the machine came back on the
 kernel you just sent. The three steps by hand, if you would rather watch each
 one:
 
-    scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
+    scp ../dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
     rsync -a device patches pyra@<address>:dragonbox-pyra/
 
     ssh pyra@<address>

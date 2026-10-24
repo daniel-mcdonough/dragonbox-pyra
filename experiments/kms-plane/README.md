@@ -26,9 +26,9 @@ in its header) runs on the device as root.
 (`ARMSOCSetDRMMaster`/`ARMSOCDropDRMMaster`), takes it in ScreenInit and again in the first EnterVT (count 2),
 and LeaveVT only calls `drmDropMaster` at count 1: it never dropped, and `drmSetMaster` elsewhere failed with
 EINVAL for as long as another VT was in front. `armsoc-0001-leavevt-drop-drm-master.patch` (a copy of
-`~/git/dragonbox-pyra-build/ddx/patches/0001-...`, which `build-ddx.sh` applies) drops it on LeaveVT and
+`../dragonbox-pyra-build/ddx/patches/0001-...`, which `build-ddx.sh` applies) drops it on LeaveVT and
 re-takes it on EnterVT. Installed on the device as **0.6+dropmaster1** since 2026-09-30; the stock .deb is in
-`~/git/dragonbox-pyra-build/ddx/stock/` and `~/kmsprobe/` on the device (`sudo dpkg -i` it and restart
+`../dragonbox-pyra-build/ddx/stock/` and `~/kmsprobe/` on the device (`sudo dpkg -i` it and restart
 lightdm to go back). X came back and re-took master after every switch. Caveat: a program still holding master
 when X's VT returns makes X's EnterVT fail; release the display before `chvt 7`.
 

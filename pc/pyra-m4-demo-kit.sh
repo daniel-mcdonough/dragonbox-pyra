@@ -23,7 +23,8 @@ set -euo pipefail
 
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$SELF_DIR/.." && pwd)
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 KDIR=$BUILD_DIR/kernel
 OUT=$BUILD_DIR/m4-demo-kit
 NAME=pyra-m4-demo-$(date +%Y%m%d)

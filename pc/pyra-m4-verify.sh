@@ -38,7 +38,8 @@ set -euo pipefail
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO=$(cd "$SELF_DIR/.." && pwd)
 PATCHES=$REPO/experiments/m4-ipu
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 SRC=$BUILD_DIR/kernel/src-m4
 DTB_NAME=omap5-letux-cortex15-v5.3+pyra-v5.3.dtb
 

@@ -31,7 +31,8 @@ set -euo pipefail
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 TOP=$(cd "$SELF_DIR/.." && pwd)
 OUT=${1:-$(cd "$TOP/.." && pwd)/linux-pyra-5.6.19}
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 KDIR=$BUILD_DIR/kernel
 KERNEL_DSC=linux-5.6.19-pyradef_5.6.19-pyradef-10.dsc
 EXP=$TOP/experiments

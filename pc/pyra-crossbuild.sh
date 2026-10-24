@@ -27,9 +27,12 @@
 # build natively on the Pyra's two Cortex-A15s. Nothing is installed on the
 # host beyond the container image, and the Pyra's rootfs is never touched.
 #
-# The work tree defaults to ~/git/dragonbox-pyra-build and is deliberately
-# outside this repository: the kernel source alone unpacks to about 1.5 GB.
-# Override it with PYRA_BUILD_DIR.
+# The work tree defaults to dragonbox-pyra-build beside this repository
+# (../dragonbox-pyra-build from its top), deliberately outside it: the kernel
+# source alone unpacks to about 1.5 GB. Override it with PYRA_BUILD_DIR. It
+# used to default to ~/git/dragonbox-pyra-build, which went stale when the
+# repositories moved and silently started a second tree with its own signing
+# key.
 #
 # The container for the driver is trixie, matching the X server ABI on the
 # card. The container for the kernel is bookworm, because 5.6 does not build
@@ -42,7 +45,8 @@ set -euo pipefail
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 
 REPO=https://packages.pyra-handheld.com/trixie
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 
 # Only the .dsc hashes are pinned here. dpkg-source verifies the tarballs
 # against the .dsc when it unpacks, so pinning the .dsc pins everything.

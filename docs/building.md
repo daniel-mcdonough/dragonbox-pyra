@@ -139,7 +139,7 @@ its tarballs directly instead.
 
 About two minutes, most of it `apt`. Output is
 `xserver-xorg-video-armsoc-omap5_0.6_armhf.deb` plus a `-dbgsym` package, in
-`~/git/dragonbox-pyra-build/ddx/`.
+`../dragonbox-pyra-build/ddx/`.
 
 It is a genuine compile from the nine `.c` files under `src/`, not a repack of
 a prebuilt object. The resulting `omap5_drv.so` is the same size as the
@@ -178,7 +178,7 @@ Install and roll back, with the X server stopped:
 
 About five minutes for a full build on sixteen cores, and seconds for an
 incremental one after an edit. The tree is unpacked once into
-`~/git/dragonbox-pyra-build/kernel/src/` and built in place afterwards.
+`../dragonbox-pyra-build/kernel/src/` and built in place afterwards.
 
 Three things about this tree are worth knowing before editing it:
 
@@ -426,7 +426,7 @@ Install it the same way as the lockup-detector kernel, with
 so name the tarball you mean — with both of them sitting in `/home/pyra` it
 refuses to guess:
 
-    scp ~/git/dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
+    scp ../dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
     sudo ./device/pyra-install-debug-kernel.sh fix-kernel.tar.gz
     sudo pyra-boot-kernel.sh debug --once
 
@@ -649,7 +649,7 @@ installing this takes the slot the fix kernel is using. Install it, then arm a
 single boot rather than making it the default:
 
     ./pc/pyra-push-kernel.sh \
-        --tarball ~/git/dragonbox-pyra-build/kernel/c2-kernel.tar.gz \
+        --tarball ../dragonbox-pyra-build/kernel/c2-kernel.tar.gz \
         --install pyra@<address>
     ssh pyra@<address> 'sudo pyra-boot-kernel.sh stock'
     ssh pyra@<address> 'sudo pyra-boot-kernel.sh debug --once'
@@ -786,7 +786,7 @@ stops finding the keyboard when it looks for the screen. The why, the
 measurements and what it breaks are in `reports/pyra-kernel-kbd-backlight.md`.
 
     ./pc/pyra-crossbuild.sh kernel-m4-kbdled
-    ./pc/pyra-push-kernel.sh --install --tarball ~/git/dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz
+    ./pc/pyra-push-kernel.sh --install --tarball ../dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz
 
 It changes only the V5.3 board file,
 `omap5-letux-cortex15-v5.3+pyra-v5.3.dts`, so the other board revisions'
@@ -823,7 +823,7 @@ What to expect on it:
 
 To make room for it in `/boot`, the files of `5.6.19-m4-uprobe` were removed
 there. No boot entry used them any more, and
-`~/git/dragonbox-pyra-build/kernel/m4-uprobe-kernel.tar.gz` reinstalls them.
+`../dragonbox-pyra-build/kernel/m4-uprobe-kernel.tar.gz` reinstalls them.
 Its modules are still in `/usr/lib/modules`.
 
 ## Backups
@@ -834,7 +834,7 @@ that will not boot cannot be fixed over SSH:
 | Where | What |
 | --- | --- |
 | `/pyra-stock-backup/` on the card | `boot-5.6.19-pyradef.tar.gz`, `modules-5.6.19-pyradef.tar.gz`, `xorg-drivers.tar.gz`, the full `dpkg -l`, and SHA-256 of the stock kernel and driver |
-| `~/git/dragonbox-pyra-build/stock-backup/` on the PC | the same files |
+| `../dragonbox-pyra-build/stock-backup/` on the PC | the same files |
 
 Each tarball restores from `/` with paths intact:
 

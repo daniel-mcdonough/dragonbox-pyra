@@ -8,7 +8,8 @@
 #   PYRA_KERNEL_SUFFIX=m4-kbdled ./build-module.sh   the same, for 5.6.19-m4-kbdled
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$(dirname "$0")/../../.." && pwd)/dragonbox-pyra-build}
 SUFFIX=${PYRA_KERNEL_SUFFIX:-m4-uprobe-kprobe}
 SRC=src-$SUFFIX
 PATCH=0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch

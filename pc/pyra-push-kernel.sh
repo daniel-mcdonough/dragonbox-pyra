@@ -27,7 +27,8 @@ set -eu
 
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO_DIR=$(cd "$SELF_DIR/.." && pwd)
-BUILD_DIR=${PYRA_BUILD_DIR:-$HOME/git/dragonbox-pyra-build}
+# Default: dragonbox-pyra-build beside this repository.
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 
 TARBALL=$BUILD_DIR/kernel/fix-kernel.tar.gz
 # PYRA_HOST is the default, not the answer: an argument on the command line

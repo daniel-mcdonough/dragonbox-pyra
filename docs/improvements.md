@@ -1907,7 +1907,7 @@ the same list as tuning a governor.
 to gain.
 
 **Trading the rest of the kernel's security options for speed.** Surveyed
-2026-09-20 against `~/git/dragonbox-pyra-build/kernel/src/.config`, the config
+2026-09-20 against `../dragonbox-pyra-build/kernel/src/.config`, the config
 that built the running kernel. The conclusion is that there is almost nothing
 here, and the reason is worth recording so it is not re-derived: **this is not
 a distribution kernel.** `pyra_defconfig` has already been trimmed by somebody

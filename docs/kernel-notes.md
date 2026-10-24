@@ -6,7 +6,7 @@ affects performance, what is worth changing, and — more importantly — what i
 not and why.
 
 Kernel source used for every claim here:
-`~/git/dragonbox-pyra-build/kernel/src`, and the `.config` that built the
+`../dragonbox-pyra-build/kernel/src`, and the `.config` that built the
 running kernel is in the same directory. Device tree claims come from
 `arch/arm/boot/dts/omap5*.dtsi` and `omap5-letux-cortex15-v5.3+pyra-v5.3.dts`.
 
