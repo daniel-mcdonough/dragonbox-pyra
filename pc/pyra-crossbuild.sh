@@ -17,6 +17,7 @@
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks-pyra, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
+#   ./pyra-crossbuild.sh kernel-jack         stock source plus the jack-detect work and nothing else
 #
 # PYRA_KERNELRELEASE=5.6.19-test builds a kernel that installs beside the stock
 # one instead of over it. Set CONFIG_LOCALVERSION in the tree to match.
@@ -170,6 +171,9 @@ build_kernel() {
 #   kernel-m4demo  5.6.19-m4demo       the fix set plus remoteproc for the M4s,
 #                                      and nothing else: the kernel the M4 demo
 #                                      kit ships (docs/m4-demo.md)
+#   kernel-jack    5.6.19-jack         stock source plus experiments/jack-detect
+#                                      and nothing else, so the stock bookworm
+#                                      card can test it as a clean A/B
 #   kernel-m4-uprobe  5.6.19-m4-uprobe     kernel-m4 plus UPROBE_EVENTS, so that
 #                                      `perf probe -x <lib> <fn>` can count calls
 #                                      into user-space code. The m4 config has
@@ -407,6 +411,11 @@ build_kernel_m4()    { build_kernel_variant m4 "$M4_PATCHES" src-m4 \
 build_kernel_m4demo() { build_kernel_variant m4demo \
 	"$SELF_DIR/../patches $SELF_DIR/../experiments/m4-ipu" src-m4demo \
 	"$M4_CONFIG"; }
+# The jack-detect work on the stock source alone (experiments/jack-detect).
+# Not on the fix set: the first test is on the stock bookworm card, where the
+# only difference from what it boots every day should be the patch under test.
+build_kernel_jack() { build_kernel_variant jack \
+	"$SELF_DIR/../experiments/jack-detect" src-jack; }
 # The m4 kernel with user-space probes, for profiling a game: glibc malloc and
 # similar hot library calls cannot be counted without them, and user-space
 # unwinding does not work on this stack. Nothing else differs from kernel-m4.
@@ -454,5 +463,6 @@ case "${1:-}" in
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
 	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
 	kernel-m4demo) shift; build_kernel_m4demo ;;
-	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo" ;;
+	kernel-jack)  shift; build_kernel_jack ;;
+	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo | kernel-jack" ;;
 esac

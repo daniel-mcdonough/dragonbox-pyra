@@ -46,6 +46,7 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
 | `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` |
+| `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
 (`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
@@ -180,6 +181,13 @@ keyboard instead of the panel. This declares it as `pyra::kbd_backlight`, which 
 systemd look for. *In `kernel-m4-kbdled`, the running kernel.* It moves the sysfs path,
 so anything hard-coding `/sys/class/backlight/keyboard-backlight` breaks.
 Report: `reports/pyra-kernel-kbd-backlight.md`.
+
+**0037 (`jack-detect/`) — ARM: dts: pyra v5.2/v5.3: make the jack-detect line an input.**
+The TS3A227E headset detector's interrupt, line 14 of the PCAL6524 expander, reaches the
+kernel configured as an output, so its IRQ request fails with `-EIO` and the detector never
+probes. A `gpio-hog` makes it an input before anything asks. On its own this changes
+nothing audible: the sound card still takes its jack from the TWL6040, which is 0038's job
+(planned, `experiments/jack-detect/README.md`). *Only in `kernel-jack` so far.*
 
 **0034 (`gpu-power/`) — pvrsgx: let the SGX power domain go off at idle.** The GPU driver
 takes a runtime-PM reference at probe and only gives it back at remove, so the GPU never

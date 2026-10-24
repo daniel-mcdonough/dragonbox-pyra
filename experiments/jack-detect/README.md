@@ -5,7 +5,8 @@ between speakers and headphones on its own. This is the diagnosis and the plan
 to fix it. Nothing here is built yet.
 
 **Status: diagnosed on hardware 2026-10-23, on the stock bookworm-7 card
-(`experiments/bookworm-baseline/`). Fix planned, not written.**
+(`experiments/bookworm-baseline/`). Step 1 (0037) built and passing on five
+warm boots; cold boots not yet done. Steps 2-4 not written.**
 
 ## The fault
 
@@ -144,6 +145,29 @@ flagged as outputs. A hogged input can still be used as an IRQ.
 no `gpiochip_lock_as_irq` line in `dmesg`, register `0x0b` follows the plug.
 Confirm in `/sys/kernel/debug/gpio` that the line shows as an input hog and
 nothing else on the expander changed direction.
+
+**Result, 2026-10-23.** Built as `kernel-jack` (stock source + 0037 only,
+`5.6.19-jack`) and booted on the stock bookworm card through the l1 slot.
+Five warm boots, every one identical:
+
+    boot N: 5.6.19-jack hog=1 lockerr=0 drv=ts3a227e irq=1 cfg=0xfc,0x48,0xf2 acc=09
+
+- `GPIO line 490 (mic-int) hogged as input`, and no `gpiochip_lock_as_irq`
+  error.
+- `ts3a227e` bound, IRQ 197 registered, the line shown as `in ... IRQ`.
+- Bank 1's config is `0x48` instead of `0x08`; banks 0 and 2 are unchanged
+  from stock (`0xfc`, `0xf2`). Nothing else on the expander moved.
+- Accessory status `0x09`, with 3-pole headphones in throughout.
+
+**Not yet:** the five cold boots (they need someone at the power button), and
+plug/unplug on this kernel. The sysfs test before it already showed the chip
+follows the plug once it has probed.
+
+PulseAudio came up with only `auto_null` on four of the six jack boots. That
+is not 0037: a stock boot did the same, and the cause is the lightdm
+greeter's own PulseAudio still holding `hw:L15` when the user's starts. A
+restart loads all three sinks. Trixie cards get `device/pyra-greeter-audio.sh`
+for it; stock bookworm does not have it.
 
 ### Step 2: `0038` ASoC: ti: omap-abe-twl6040: use the TS3A227E for the jack
 

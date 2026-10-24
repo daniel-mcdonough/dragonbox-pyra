@@ -786,3 +786,10 @@ TS3A227E bound.
 **Corrected in place:** `audio.md` (the jack entry under *Open*, and the
 stock path), `reports/xorg-aiglx-dri2-null-deref.md`,
 `reports/mesa-dril-omapdrm-no-fallback.md`.
+
+**Later the same night: 0037 on hardware.** `kernel-jack` (stock source + 0037)
+booted five times warm on the bookworm card. Each boot: the line hogged as an
+input, no `gpiochip_lock_as_irq` error, `ts3a227e` bound with IRQ 197, bank 1
+config `0x48`, banks 0 and 2 unchanged. Cold boots not yet done. The
+`auto_null`-only PulseAudio seen on some of those boots also happens on stock;
+it is the greeter's PulseAudio holding the card, not the kernel.

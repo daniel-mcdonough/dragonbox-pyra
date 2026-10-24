@@ -1,0 +1,71 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ARM: dts: pyra v5.2/v5.3: make the jack-detect line an input
+
+The TS3A227E headset detector signals on line 14 of the PCAL6524
+expander (P16, "mic-int"). On a V5.3 unit that line reaches the kernel
+configured as an output: bank 1's configuration register reads 0x08
+straight after boot. gpiolib caches that direction when the expander is
+added, and because the expander sleeps it never re-reads it, so the
+TS3A227E's interrupt request fails on every boot:
+
+  gpio gpiochip10: (4-0022): gpiochip_lock_as_irq: tried to flag a GPIO set as output for IRQ
+  ts3a227e 4-003b: Cannot request irq 197 (-5)
+  ts3a227e: probe of 4-003b failed with error -5
+
+Hog the line as an input. Hogs are applied in of_gpiochip_add(), before
+gpiochip_add_data() reads back each line's direction, so the register
+and the cached flag both say input by the time the TS3A227E probes.
+
+Set to input by hand on a running system, the TS3A227E binds and tracks
+the jack: accessory status 0x00 empty, 0x09 with 3-pole headphones, one
+interrupt per plug and unplug.
+
+Only the two board files that give the TS3A227E an interrupt change.
+The sound card still takes its jack state from the TWL6040; this only
+lets the detector probe.
+
+---
+--- a/arch/arm/boot/dts/pyra-mainboard-v5.2.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-v5.2.dtsi
+@@ -54,6 +54,19 @@
+ 	compatible = "nxp,pcal6524";
+ 	interrupt-parent = <&gpio6>;
+ 	interrupts = <1 IRQ_TYPE_EDGE_FALLING>;	/* gpio6_161 */
++
++	/*
++	 * The TS3A227E's interrupt (P16). It reaches the kernel configured
++	 * as an output, so gpiolib refuses it as an IRQ and the jack
++	 * detector fails to probe with -EIO. Make it an input before
++	 * anything asks for it.
++	 */
++	mic-int-hog {
++		gpio-hog;
++		gpios = <14 GPIO_ACTIVE_HIGH>;
++		input;
++		line-name = "mic-int";
++	};
+ };
+ 
+ &i2c2 {
+--- a/arch/arm/boot/dts/pyra-mainboard-v5.3.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-v5.3.dtsi
+@@ -55,6 +55,19 @@
+ 	compatible = "nxp,pcal6524";
+ 	interrupt-parent = <&gpio6>;
+ 	interrupts = <1 IRQ_TYPE_EDGE_FALLING>;	/* gpio6_161 */
++
++	/*
++	 * The TS3A227E's interrupt (P16). It reaches the kernel configured
++	 * as an output, so gpiolib refuses it as an IRQ and the jack
++	 * detector fails to probe with -EIO. Make it an input before
++	 * anything asks for it.
++	 */
++	mic-int-hog {
++		gpio-hog;
++		gpios = <14 GPIO_ACTIVE_HIGH>;
++		input;
++		line-name = "mic-int";
++	};
+ };
+ 
+ &i2c2 {

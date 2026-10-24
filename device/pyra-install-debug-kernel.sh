@@ -190,10 +190,12 @@ tmp=$(mktemp)
 if [ -s "$CFG" ]; then
         awk '/^label l1$/{skip=1} /^label /&&!/^label l1$/{skip=0} !skip' "$CFG" > "$tmp"
 fi
+# The card's own release name, so a bookworm card does not say trixie.
+CODENAME=$( . /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-debian}")
 {
         cat <<EOF
 label l1
-	menu label trixie, kernel $REL
+	menu label $CODENAME, kernel $REL
 	linux /vmlinuz-$REL
 	append $APPEND
 	fdtdir /dtb/linux-image-$REL
