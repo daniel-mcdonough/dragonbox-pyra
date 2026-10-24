@@ -14,9 +14,12 @@
 #   pyra/m4-ipu     + m4-ipu/                         the Cortex-M4s and the DSP
 #   pyra/aess       + aess/                           the audio DSP
 #   pyra/device     + gpu-power/0034 + kbd-led/       what 5.6.19-m4-kbdled carries
+#                   + jack-detect/
 #
 #   pyra/overclock  pyra/opp + thermals-and-frequency/0008
 #   pyra/c2-idle    pyra/fixes + c2-idle/0007
+#   pyra/jack       pyra/fixes + jack-detect/         the headphone jack alone,
+#                                                     without the AESS series
 #
 # so "git log main..pyra/fixes" is the fix series, "git log pyra/m4-ipu..pyra/aess"
 # is the audio series, and "git format-patch -s A..B" makes sendable patches of
@@ -39,7 +42,7 @@ EXP=$TOP/experiments
 
 die() { echo "pyra-kernel-tree: $*" >&2; exit 1; }
 
-[ -f "$KDIR/$KERNEL_DSC" ] || die "no $KDIR/$KERNEL_DSC; run pc/pyra-crossbuild.sh kernel once (and set PYRA_BUILD_DIR)"
+[ -f "$KDIR/$KERNEL_DSC" ] || die "no $KDIR/$KERNEL_DSC; run pc/pyra-crossbuild.sh kernel once, or set PYRA_BUILD_DIR"
 command -v docker >/dev/null || die "docker is not installed"
 
 # Commits are made with fixed identities and dates so that the same patches
@@ -140,9 +143,11 @@ branch pyra/fixes     main          "$TOP"/patches/*.patch
 branch pyra/opp       pyra/fixes    "$EXP"/thermals-and-frequency/0007-*.patch
 branch pyra/m4-ipu    pyra/opp      "$EXP"/m4-ipu/*.patch
 branch pyra/aess      pyra/m4-ipu   "$EXP"/aess/*.patch
-branch pyra/device    pyra/aess     "$EXP"/gpu-power/0034-*.patch "$EXP"/kbd-led/*.patch
+branch pyra/device    pyra/aess     "$EXP"/gpu-power/0034-*.patch "$EXP"/kbd-led/*.patch \
+                                    "$EXP"/jack-detect/*.patch
 branch pyra/overclock pyra/opp      "$EXP"/thermals-and-frequency/0008-*.patch
 branch pyra/c2-idle   pyra/fixes    "$EXP"/c2-idle/*.patch
+branch pyra/jack      pyra/fixes    "$EXP"/jack-detect/*.patch
 g checkout -q pyra/device
 
 echo
