@@ -45,13 +45,14 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4demo` | `5.6.19-m4demo` | `patches/` + `experiments/m4-ipu` only. This is what the demo kit ships |
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
-| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` |
+| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
 (`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
 only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads from
-the separately built copy in `updates/` until that kernel is reinstalled.
+the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled
+2026-10-24 from the real build tree with 0037-0039; no `updates/` copy was left on the card.
 
 ---
 
@@ -187,14 +188,21 @@ The TS3A227E headset detector's interrupt, line 14 of the PCAL6524 expander, rea
 kernel configured as an output, so its IRQ request fails with `-EIO` and the detector never
 probes. A `gpio-hog` makes it an input before anything asks. On its own this changes
 nothing audible: the sound card still takes its jack from the TWL6040, which is 0038's job
-(`experiments/jack-detect/README.md`). *Only in `kernel-jack` so far.*
+(`experiments/jack-detect/README.md`). *In `kernel-jack` and `kernel-m4-kbdled`.*
 
 **0038 (`jack-detect/`) — ASoC: ti: omap-abe-twl6040: take the jack from the TS3A227E.**
 An optional `ti,jack-detect` phandle on the card makes the TS3A227E an auxiliary
 device; it creates the headset jack (with the four headset buttons) and reports into
 it, and the TWL6040's always-"inserted" comparator is no longer asked. The V5.2 and
 V5.3 board files set it. Boards without it are unchanged. Selects
-`SND_SOC_TS3A227E`. *Only in `kernel-jack` so far*; the jack follows the plug there.
+`SND_SOC_TS3A227E`. *In `kernel-jack` and `kernel-m4-kbdled`.*
+
+**0039 (`jack-detect/`) — ASoC: ts3a227e: clear pending events at probe and resume.**
+A plug change during suspend raised the chip's interrupt line while its IRQ was off;
+behind the edge-only expander the event was lost, the line stayed asserted, and every
+later event was lost too, across warm reboots as well. Resume and probe now read the
+event registers to release the line and report the jack as it is. A generic driver
+bug, not Pyra-specific. *In `kernel-jack` and `kernel-m4-kbdled`.*
 
 **0034 (`gpu-power/`) — pvrsgx: let the SGX power domain go off at idle.** The GPU driver
 takes a runtime-PM reference at probe and only gives it back at remove, so the GPU never

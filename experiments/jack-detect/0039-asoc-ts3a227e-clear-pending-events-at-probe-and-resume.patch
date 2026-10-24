@@ -1,0 +1,76 @@
+From: Pyra kernel work <noreply@example.invalid>
+Subject: [PATCH] ASoC: ts3a227e: clear pending events at probe and resume
+
+ts3a227e_resume() only re-enables the interrupt. An insertion or removal
+while the system is suspended still raises INTB, and INTB stays asserted
+until the interrupt register is read. When the TS3A227E sits behind an
+edge-triggered interrupt parent, as on the Pyra where INTB goes to a
+PCAL6524 expander, the edge happened while the interrupt was disabled and
+is not seen again. With INTB held low no later edge can occur, so every
+following plug and unplug is lost too, until reboot.
+
+On a Pyra with the jack reported through the TS3A227E: plug headphones
+in, suspend to RAM, unplug while asleep, resume. The accessory status
+register reads 0x00, the expander's mic-int line reads low, the interrupt
+count does not move and Headset Stereophone Jack stays on. Two more
+plug/unplug cycles after that are not reported either: the expander's
+own interrupt fires on each change, but the TS3A227E's handler never
+runs, and mic-int stays low throughout.
+
+The same happens across a warm reboot. The chip is not reset, so an
+event still pending from the previous boot holds INTB low, and probe
+only reads the accessory status; no interrupt ever arrives on that boot.
+
+At resume, read both event registers to release INTB, then read the
+accessory status as it is now and report it, before enabling the
+interrupt again. Buttons pressed or released during sleep are dropped
+rather than reported held. At probe, read both event registers before
+the accessory status, for the same reason.
+
+---
+--- a/sound/soc/codecs/ts3a227e.c
++++ b/sound/soc/codecs/ts3a227e.c
+@@ -330,6 +330,15 @@
+ 		return ret;
+ 	}
+ 
++	/*
++	 * Clear any event left from before this probe. The chip keeps its
++	 * state across a warm reboot, and a pending event holds INTB
++	 * asserted, so behind an edge-triggered parent no interrupt would
++	 * ever arrive.
++	 */
++	regmap_read(ts3a227e->regmap, TS3A227E_REG_INTERRUPT, &acc_reg);
++	regmap_read(ts3a227e->regmap, TS3A227E_REG_KP_INTERRUPT, &acc_reg);
++
+ 	/* Read jack status because chip might not trigger interrupt at boot. */
+ 	regmap_read(ts3a227e->regmap, TS3A227E_REG_ACCESSORY_STATUS, &acc_reg);
+ 	ts3a227e_new_jack_state(ts3a227e, acc_reg);
+@@ -352,6 +361,27 @@
+ static int ts3a227e_resume(struct device *dev)
+ {
+ 	struct ts3a227e *ts3a227e = dev_get_drvdata(dev);
++	unsigned int reg;
++
++	/*
++	 * A plug or unplug while the system slept raises INTB, but the
++	 * interrupt is disabled and, behind an edge-triggered parent such as
++	 * a GPIO expander, the edge is gone by the time it is enabled again.
++	 * INTB then stays asserted until the interrupt register is read, so
++	 * no later edge can arrive either and the jack stops reporting until
++	 * reboot. Read both event registers to release INTB, take the
++	 * accessory state as it is now, and report it, before the interrupt
++	 * is enabled again. Buttons pressed or released while asleep are
++	 * dropped.
++	 */
++	regmap_read(ts3a227e->regmap, TS3A227E_REG_INTERRUPT, &reg);
++	regmap_read(ts3a227e->regmap, TS3A227E_REG_KP_INTERRUPT, &reg);
++	if (!regmap_read(ts3a227e->regmap, TS3A227E_REG_ACCESSORY_STATUS,
++			 &reg)) {
++		ts3a227e->buttons_held = 0;
++		ts3a227e_new_jack_state(ts3a227e, reg);
++		ts3a227e_jack_report(ts3a227e);
++	}
+ 
+ 	dev_dbg(ts3a227e->dev, "resume enable irq\n");
+ 	enable_irq(ts3a227e->irq);

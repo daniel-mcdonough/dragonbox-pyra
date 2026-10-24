@@ -1,0 +1,15 @@
+# 5.6.19-m4-kbdled with 0037 + 0038 + 0039, trixie card, 2026-10-24, logged by jacklog.sh.
+# 06:51 live plug/unplug/plug. Sleep A 06:55:20-06:56:21, headphones unplugged while asleep.
+# 06:56:27/46 an unplanned plug and unplug while awake. Sleep B 06:58:34-06:59:35,
+# headphones plugged in while asleep. 06:59:38 unplug. The 06:59:35.223 line is the
+# poll reading the chip a moment before the card control updated.
+06:51:09.198 acc=0x00 ts_irq=0 exp_irq=2 intb=hi hp=off mic=off
+06:51:37.737 acc=0x09 ts_irq=1 exp_irq=4 intb=hi hp=on mic=off
+06:51:44.574 acc=0x00 ts_irq=2 exp_irq=6 intb=hi hp=off mic=off
+06:51:47.739 acc=0x09 ts_irq=3 exp_irq=8 intb=hi hp=on mic=off
+06:56:21.375 acc=0x00 ts_irq=3 exp_irq=8 intb=hi hp=off mic=off
+06:56:27.969 acc=0x09 ts_irq=4 exp_irq=10 intb=hi hp=on mic=off
+06:56:46.436 acc=0x00 ts_irq=5 exp_irq=12 intb=hi hp=off mic=off
+06:59:35.223 acc=0x00 ts_irq=5 exp_irq=12 intb=hi hp=on mic=off
+06:59:35.506 acc=0x09 ts_irq=5 exp_irq=12 intb=hi hp=on mic=off
+06:59:38.678 acc=0x00 ts_irq=6 exp_irq=14 intb=hi hp=off mic=off

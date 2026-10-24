@@ -1,0 +1,13 @@
+# 5.6.19-m4-kbdled with 0037 + 0038 only (no 0039), trixie card, 2026-10-24.
+# Warm reboot after a suspend that lost an unplug: the TS3A227E kept the event
+# pending, so INTB (mic-int) is low from boot. Two plug/unplug cycles: the chip
+# follows (acc), the expander interrupts, the TS3A227E handler never runs (ts_irq 0)
+# and the card stays off.
+06:46:03.650 acc=0x00 ts_irq=0 exp_irq=1 intb=lo hp=off mic=off
+06:48:00.286 acc=0x00 ts_irq=0 exp_irq=3 intb=lo hp=off mic=off
+06:48:00.574 acc=0x09 ts_irq=0 exp_irq=3 intb=lo hp=off mic=off
+06:48:02.848 acc=0x00 ts_irq=0 exp_irq=3 intb=lo hp=off mic=off
+06:48:04.293 acc=0x00 ts_irq=0 exp_irq=5 intb=lo hp=off mic=off
+06:48:04.580 acc=0x00 ts_irq=0 exp_irq=6 intb=lo hp=off mic=off
+06:48:05.160 acc=0x09 ts_irq=0 exp_irq=7 intb=lo hp=off mic=off
+06:48:08.882 acc=0x00 ts_irq=0 exp_irq=8 intb=lo hp=off mic=off

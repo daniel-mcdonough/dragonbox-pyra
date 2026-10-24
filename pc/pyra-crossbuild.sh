@@ -444,9 +444,13 @@ build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 # module in updates/ from 2026-09-26; building it in makes this kernel what
 # the device actually runs. 0034 alone, not the directory, which holds the
 # measurement scripts as well.
+#
+# And the headphone jack (experiments/jack-detect, 0037 and 0038): the
+# TS3A227E reports the jack instead of the TWL6040. They sort after the AESS
+# series and apply on top of it.
 build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
 	"$M4_PATCHES $SELF_DIR/../experiments/gpu-power/0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch \
-	 $SELF_DIR/../experiments/kbd-led" src-m4-kbdled \
+	 $SELF_DIR/../experiments/kbd-led $SELF_DIR/../experiments/jack-detect" src-m4-kbdled \
 	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"; }
 
 case "${1:-}" in

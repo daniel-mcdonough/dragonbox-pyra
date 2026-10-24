@@ -800,3 +800,20 @@ cycles each moved the control and `SW_HEADPHONE_INSERT` once, matching the
 TS3A227E. Only 3-pole plugs were tried, so the mic detection and the buttons are
 unverified. Suspend was not tried: `kernel-jack` has no `patches/0003`.
 
+## 2026-10-24 — the jack on the trixie card, through suspend
+
+`kernel-m4-kbdled` rebuilt in the real tree with 0037 and 0038 and installed
+over the running one (old build kept on the card). AESS path unchanged; five
+plug changes reported once each; `twl6040_irq_plug` 0.
+
+Suspend found a fault in the TS3A227E driver: a plug change while asleep left
+INTB asserted and the jack dead until reboot, and, because the chip is not
+reset, through a warm reboot too. Both were reproduced (the second as
+`experiments/jack-detect/dead-after-reboot-0038-20261024.log`). 0039 clears
+pending events at probe and resume. With it: INTB released after a warm
+reboot; unplug while asleep reads `off` at resume, plug-in while asleep reads
+`on`; six awake changes around the two suspends each reported once; both
+suspends `RESULT mem: ok`.
+
+**Not established.** 4-pole headsets and buttons; cold boot with 0039.
+

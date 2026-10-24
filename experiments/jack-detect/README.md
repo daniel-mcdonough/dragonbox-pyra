@@ -2,13 +2,15 @@
 
 The card always reports a headset plugged in, so PulseAudio cannot switch
 between speakers and headphones on its own. This is the diagnosis and the plan
-to fix it. Nothing here is built yet.
+to fix it.
 
 **Status: diagnosed on hardware 2026-10-23, on the stock bookworm-7 card
 (`experiments/bookworm-baseline/`). Step 1 (0037) built and passing on five
-warm and five cold boots. Step 2 (0038) built, and the card's jack follows
-the plug on the bookworm card; 4-pole headsets, buttons and suspend not yet
-tested. Steps 3-4 not written.**
+warm and five cold boots. Step 2 (0038) follows the plug on both cards.
+Suspend found a third fault, fixed by 0039, which passes on the trixie card.
+All three are in `kernel-m4-kbdled`, the kernel the trixie card runs, since
+2026-10-24. 4-pole headsets and the buttons are untested. Steps 3-4 not
+written.**
 
 ## The fault
 
@@ -252,12 +254,59 @@ trailing context the AESS series changed.
 - PulseAudio loaded its sinks; the card registered once, with no deferral
   noise in `dmesg`.
 
+**On the trixie card, 2026-10-24.** 0037 and 0038 added to
+`kernel-m4-kbdled` (the AESS kernel, with `patches/`), built in the real tree
+and installed over the running `5.6.19-m4-kbdled`; the previous build is kept
+on the card as `/home/pyra/m4-kbdled-before-0037-20261024.tar.gz`. The AESS
+path came up as before (10 DAI links, PulseAudio's `aess` sink), the card
+registered 6.6 s after the kernel started, as before, and five plug changes
+were each reported once. `twl6040_irq_plug` stays at 0; the 44598 count in
+`docs/audio.md` came from the TWL6040 jack path that 0038 no longer uses.
+
+### Step 2b: `0039` ASoC: ts3a227e: clear pending events at probe and resume
+
+Suspend found a third fault, in the TS3A227E driver itself.
+
+**Plugging or unplugging while asleep kills the jack until reboot.**
+Headphones in, suspend to RAM, unplug, resume: the chip reads `0x00` but the
+card still says `on`, and its interrupt count has not moved. The chip raised
+INTB for the unplug while its interrupt was disabled, and the expander only
+interrupts on a change of the line, which is now over. INTB stays low until
+the interrupt register is read, and nothing reads it: `ts3a227e_resume()`
+only calls `enable_irq()`. So no later edge can arrive either. Two more
+plug/unplug cycles: the chip follows, the expander's own interrupt fires,
+the TS3A227E handler never runs, `mic-int` stays `lo`.
+
+**And it survives a warm reboot.** The chip is not reset, the event is still
+pending, and probe reads only the accessory status, so the next boot comes
+up with INTB low and the jack dead for the whole boot
+(`dead-after-reboot-0038-20261024.log`). letux 7.3's driver has the same
+bare `enable_irq()` resume and the same probe.
+
+A logger trap, found on the way: dumping
+`/sys/kernel/debug/regmap/4-003b/registers` reads `0x01` and `0x02`, which
+clear on read, so a logger doing that steals the driver's events. It made the
+first suspend run look like a recovery. `jacklog.sh` reads only `0x0b`, with
+`i2ctransfer`.
+
+**The fix.** At resume, read both event registers to release INTB, read the
+accessory status as it is now, report it, then enable the interrupt. Buttons
+pressed during sleep are dropped. At probe, read both event registers before
+the accessory status.
+
+**Result, 2026-10-24, trixie card** (`suspend-0039-20261024.log`):
+
+- After a warm reboot following a lost event, INTB comes up `hi`; the boot
+  before it came up `lo`.
+- Unplugged while asleep: `off` at resume, without an interrupt.
+- Plugged in while asleep: `on` at resume, likewise.
+- Plug changes while awake are reported before, between and after the two
+  suspends: six, each once. Both suspends `RESULT mem: ok`.
+
 **Not yet tested:**
-- A wired 4-pole headset: `Headset Mic Jack` and the buttons.
-- Suspend and resume with the jack changing while asleep. Not possible on
-  `kernel-jack`: it lacks `patches/0003`, and without it suspend hangs on the
-  phantom SD hosts. This needs 0037 and 0038 on a fix-set kernel.
-- The AESS path, and the TWL6040 plug interrupt count there.
+- A wired 4-pole headset: `Headset Mic Jack` and the buttons, including a
+  button held across suspend.
+- Cold boot with 0039.
 
 ### Step 3: PulseAudio switches on plug
 
@@ -282,17 +331,19 @@ unless the direct link is still in use when steps 1 and 2 land.
 
 ### Step 4: carry it forward
 
-- Add 0037 and 0038 to `docs/kernel-changes.md` and the kernel targets in
-  `pc/pyra-crossbuild.sh`, and regenerate `linux-pyra-5.6.19`
+- Done: 0037-0039 are in `docs/kernel-changes.md`, `kernel-jack` and
+  `kernel-m4-kbdled`. Still to do: regenerate `linux-pyra-5.6.19`
   (`pc/pyra-kernel-tree.sh`), probably as a new `pyra/jack` branch on
   `pyra/device`.
-- The same two changes apply to letux 7.3 almost unchanged. Add them to the
+- The same three changes apply to letux 7.3 almost unchanged. Add them to the
   porting list in `docs/aess-letux-7.3.md`.
-- Draft `reports/letux-pyra-jack-detect.md`. Not to be sent without asking.
+- Draft `reports/letux-pyra-jack-detect.md`, and a separate one for 0039,
+  which is a generic TS3A227E driver bug and belongs upstream in ASoC. Not to
+  be sent without asking.
 
 ## Open
 
 - What leaves P16 as an output: U-Boot (which build), or something else
   before the kernel. Needs the serial console.
-- Why the TWL6040 plug interrupt bounces on the AESS kernel and is silent on
-  stock.
+- Why the TWL6040 plug interrupt bounced on the AESS kernel and was silent on
+  stock. Moot while 0038 is in: it reads 0 on the AESS kernel too.
