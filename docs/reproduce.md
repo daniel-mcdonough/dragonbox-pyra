@@ -130,7 +130,7 @@ kernel fix makes that unnecessary:
 
 ## Checking you got there
 
-Each of these covers one of the faults in the README, and each has a
+Each of these covers one of the faults in `troubleshooting.md`, and each has a
 specific thing to look at.
 
 **The kernel is the patched one.**

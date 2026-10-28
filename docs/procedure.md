@@ -94,7 +94,7 @@ Check the three assumptions by hand:
 
 Then run the script against the loop mount to confirm it completes cleanly:
 
-    sudo ~/git/dragonbox-pyra/pyra-trixie-prep.sh /mnt/pyra testuser
+    sudo ./pc/pyra-trixie-prep.sh /mnt/pyra testuser
 
 The script reports what it found for each fix. If anything surprises you, adjust
 before committing it to a card.
@@ -143,7 +143,7 @@ from a half-booted device is a chicken-and-egg fight worth skipping entirely.
     sudo blkid /dev/sdX1 /dev/sdX2        # p2 is the f2fs rootfs
     sudo modprobe f2fs
     sudo mount /dev/sdX2 /mnt/pyra
-    sudo ~/git/dragonbox-pyra/pyra-trixie-prep.sh /mnt/pyra yourusername
+    sudo ./pc/pyra-trixie-prep.sh /mnt/pyra yourusername
     sudo umount /mnt/pyra && sync
 
 The script prompts for a password (hidden, entered twice) and is idempotent —

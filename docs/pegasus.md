@@ -324,8 +324,8 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
 - [ ] **Decide whether `pyra-gles` becomes fix 13.** Every Qt5 GLES program on
       this image renders nothing until the shim exists, which is the same class
       of silent, total failure the twelve numbered fixes cover. Promoting it means
-      `pc/pyra-trixie-prep.sh`, the prep selftest, `procedure.md` and the "six
-      faults" framing in the README all change. Leaving it as a helper means
+      `pc/pyra-trixie-prep.sh`, the prep selftest, `procedure.md` and the
+      README's first-boot list all change. Leaving it as a helper means
       anyone hitting the bug has to find this document first. — *an open decision.*
 - [ ] **Add a `pegasus` target to `pc/pyra-crossbuild.sh`.** The build itself
       is proven (above), so this is packaging it the way the other targets are
