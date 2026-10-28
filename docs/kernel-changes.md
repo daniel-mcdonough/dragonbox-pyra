@@ -48,13 +48,13 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
-**The device runs `5.6.19-m4-kbdled`** (boot entry l5, the default; l1, the test slot, has
-held `5.6.19-fix` since 2026-10-28). The installed m4-kbdled predates 0040-0042; the build
-tree's copy has them, and they reach the card when that kernel is next reinstalled. l4
+**The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
 (`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
 only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads from
 the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled
 2026-10-24 from the real build tree with 0037-0039; no `updates/` copy was left on the card.
+Reinstalled 2026-10-28 with 0040-0042: booted clean, charger, display, undervolt, both
+remoteprocs and the keyboard LED all present.
 
 ---
 
