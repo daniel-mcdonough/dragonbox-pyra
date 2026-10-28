@@ -1,0 +1,16 @@
+[Unit]
+Description=Give PulseAudio the script that matches the kernel's audio path
+Documentation=file:/usr/local/sbin/pyra-audio-select.sh
+# The session's PulseAudio starts with the desktop and reads its configuration
+# once. Choosing after that would leave the first session on the wrong script.
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/pyra-audio-select.sh
+# The script waits up to 30 s for the card.
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

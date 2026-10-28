@@ -111,7 +111,9 @@ The undervolt (`device/pyra-undervolt`, 750 MHz at 870 mV from boot) needs its m
 built first, on the workstation: `experiments/undervolt/build-module.sh` leaves it in
 `device/lib/`. Without it the installer says so and installs the unit inert.
 
-It puts the scripts on `$PATH`, installs the sysrq settings, applies the undervolt, installs the two
+It puts the scripts on `$PATH`, installs the sysrq settings, applies the undervolt, installs the AESS
+PulseAudio files with the boot step that gives PulseAudio the script matching the kernel
+(`docs/audio.md`, *Two paths*), installs the two
 benchmark sources under `/usr/local/src/pyra`, and removes the idle dimmer copies
 earlier versions installed, which now come from the `pyra-backlight` package. `--dry-run` says what it would change and `--list`
 says where each file goes; both work through the pusher too. Run it again

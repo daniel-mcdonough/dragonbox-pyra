@@ -28,15 +28,27 @@ Only `-m4` carries the AESS patches. Tell which one is running with:
 
     grep -q 'MultiMedia1 LP' /proc/asound/pcm && echo AESS || echo direct
 
-**The PulseAudio script must match the kernel, and nothing makes it.**
-`/etc/pulse/daemon.conf.d/zz-pyra-aess.conf` selects the AESS script
-unconditionally. Boot a direct-link kernel with it installed and `hw:L15,5`
-does not exist; delete it and boot `-m4` and device 0 is a front end that does
-not serve audio. Either mismatch gives the same symptom — a single `auto_null`
-sink, the desktop's "dummy output" — and the journal line that tells them
-apart is under *Diagnosing silence* below. On the running unit the boot menu
-still offers all four kernels, so three of its entries are silent. This is the
-first thing to settle before handing the image to anyone else.
+**The PulseAudio script must match the kernel, and a boot step makes it.**
+Give a direct-link kernel the AESS script and `hw:L15,5` does not exist; give
+`-m4` the packaged one and device 0 is a front end that does not serve audio.
+Either mismatch gives the same symptom — a single `auto_null` sink, the
+desktop's "dummy output" — and the journal line that tells them apart is under
+*Diagnosing silence* below.
+
+`pyra-audio-select.service` (from `device/pyra-install-helpers.sh`) prevents it.
+`/etc/pulse/daemon.conf.d/zz-pyra-aess.conf` is a symlink to
+`/run/pyra-audio/zz-pyra-aess.conf`, and `/run` starts empty on every boot.
+Before the display manager starts, the service waits for `/proc/asound/L15`
+(up to 30 s; the card registers all its PCMs before that link appears) and
+runs the test above. On an AESS kernel it copies the daemon.conf there from
+`/usr/local/share/pyra-audio/`. On any other kernel it leaves the link
+dangling. PulseAudio 17 skips a dangling file in `daemon.conf.d` without
+complaint, so the packaged `pyra.conf` and `pyra.pa` apply. Check it with:
+
+    pyra-audio-select.sh --check     # path, script, and "ok" or MISMATCH
+
+A session whose PulseAudio started before the choice keeps the old script
+until `systemctl --user restart pulseaudio.service`.
 
 ## The AESS path
 
@@ -51,13 +63,14 @@ costs **1.1% of a core** in `aplay` against 14.4% on the direct link, and
 PulseAudio drops from 12% to 4% (development log §25, §26).
 
 **PulseAudio** is pointed at `pyra-aess.pa` by `zz-pyra-aess.conf`, which is
-read after the packaged `pyra.conf` so its assignments win; the packaged
-`pyra.pa` is left untouched and reverting is one file deletion. The repository
+read after the packaged `pyra.conf` so its assignments win, on AESS kernels only
+(above); the packaged `pyra.pa` is left untouched. To go back to it on every
+kernel, disable `pyra-audio-select.service`. The repository
 copies are in `device/pulse/`. Since 2026-10-20 the script loads
 `module-alsa-card` with a profile set of our own, on `hw:L15,5`, stereo,
 `tsched=0`, `mmap=no`, 4 x 2048-frame fragments. That gives the desktop a
 card and the `aess` sink two ports. It needs three files besides the script,
-none of them packaged, all installed by hand:
+none of them packaged. `pyra-install-helpers.sh` installs all five:
 
 | repository | device |
 | --- | --- |
@@ -333,7 +346,7 @@ Healthy is `aess` on the AESS path, or `alsa_output.hw_CARD_L15_DEV_0`,
 PulseAudio failed to open the card and fell back to a dummy; the session is
 silent for its whole life because PulseAudio never retries. Find out why:
 
-    journalctl --user -u pulseaudio.service -b | grep -i "module-alsa-sink"
+    journalctl --user -u pulseaudio.service -b | grep -iE "module-alsa-(sink|card)"
     sudo dmesg | grep -m1 'no backend DAIs'
 
 * `hw:L15,5` failed **and** dmesg has `no backend DAIs enabled`: the AESS
@@ -342,6 +355,10 @@ silent for its whole life because PulseAudio never retries. Find out why:
   PulseAudio script on a direct-link kernel. See *Two paths*.
 * `hw:CARD=L15,DEV=0` failed on `-m4`: the packaged script on the AESS kernel.
   Same section.
+* Either of the last two: `pyra-audio-select.sh --check` says which script the
+  kernel needed, and `systemctl status pyra-audio-select.service` says what
+  the boot step did. If it ran after the session's PulseAudio started, restart
+  PulseAudio.
 * Device busy: **fix 10**, the lightdm greeter took the card.
 
 `systemctl --user restart pulseaudio.service` recovers the running session once
@@ -488,9 +505,6 @@ These all look like faults and are not. Each has been chased at least once.
 
 ## Open, and untested
 
-* **Selecting the PulseAudio script from the kernel.** See *Two paths*. A boot
-  step that checks for `MultiMedia1 LP` and picks the script would remove the
-  mismatch; nothing does it yet.
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
   figure predates it.
 * **Switching back to the speakers on unplug.** Plug-in switches since

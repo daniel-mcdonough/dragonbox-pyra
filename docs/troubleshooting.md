@@ -80,7 +80,7 @@ detected at 2 s either way. In the journal of 27 boots from 2026-09-30 to
 2026-10-28 (measured from the kernel timestamps, `_SOURCE_MONOTONIC_TIMESTAMP`;
 journald's own receive times put all of early boot at the switch-root moment
 and hide the gap), 7 were slow. They happened on `5.6.19-fix` as well as
-`m4-kbdled`, so this is not a kernel patch. There are two shapes, and the wait
+`m4-kbdled` (and since on `5.6.19-pyradef`, below), so this is not a kernel patch. There are two shapes, and the wait
 is the same in both: `init-top/udev` in the initramfs runs `udevadm settle`, which
 gives up after 120 s, and root is mounted only after that.
 
@@ -167,6 +167,30 @@ the journal after a `pyra-settle-diag` line. Check after any slow boot:
 
     sudo cat /run/initramfs/settle-diag.txt
     sudo journalctl -k -b -g pyra-settle-diag
+
+**2026-10-28, two more shape A boots.** A warm reboot into the stock-config
+`5.6.19-pyradef` (l0, no fix and no diagnostic in its initramfs) showed the
+whole 120 s: root hub at 6.5 s, silence, root at 127.3 s. So the wait is not in
+any of our patches. The next warm reboot, into `m4-kbdled`, was caught by the
+diagnostic's 15 s sample and **never finished booting**: the console froze at
+20.9 s at the end of the SysRq-T dump. Nothing answered on the network after
+7 minutes, and it took a power cycle. Its log was lost with it, because no
+journald runs in the initramfs, so the only record is a photo of the panel. That
+shows the root mount itself still running and waiting, not finished:
+
+    (rcu_barrier) from (kmem_cache_destroy+0x3c/0x1f8)
+    (kmem_cache_destroy) from (f2fs_recover_fsync_data+0x530/0x2794)
+    (f2fs_recover_fsync_data) from (f2fs_fill_super+0x1540/0x1c14)
+    ... (mount_bdev) (f2fs_mount) (vfs_get_tree) (do_mount) (sys_mount)
+    workqueue events: in-flight dbs_work_handler, pending drm_fb_helper_dirty_work
+
+The task's name and state line scrolled off the top. So F2FS's fsync-data
+recovery, which runs on every boot, can sit in `rcu_barrier()`. That is a
+lead for shape A, not yet the cause: one sample, 5 s after the wait began.
+The hang may be the diagnostic's own doing, a full SysRq-T dump onto the
+framebuffer console. The console redraw (`drm_fb_helper_dirty_work`) was
+queued behind the cpufreq governor's work on CPU0. Until that is settled, a
+SysRq-T sample can cost a power cycle.
 
 ---
 
@@ -1097,6 +1121,22 @@ reads and writes:
     eMMC
 
 No task is left in `D` state, which also settles the load average above.
+
+## No sound: the desktop offers only a "Dummy Output"
+
+PulseAudio could not open the card, fell back to `auto_null`, and will not
+retry for the rest of the session. The usual cause is a script that does not
+match the booted kernel: AESS kernels (`-m4`, `-m4-kbdled`) need
+`pyra-aess.pa`, and every other kernel needs the packaged `pyra.pa`. Since
+2026-10-28, `pyra-audio-select.service` chooses at each boot. Check:
+
+    pyra-audio-select.sh --check                  # "ok", or which MISMATCH
+    systemctl status pyra-audio-select.service    # what the boot step chose
+
+Recovery, once `--check` says `ok`: `systemctl --user restart pulseaudio.service`.
+If the service is not installed, run `device/pyra-install-helpers.sh`. Every
+other cause (routes off, the greeter holding the card) is in `audio.md`,
+*Diagnosing silence*.
 
 ## The screen never dims, and MATE's setting for it does nothing
 

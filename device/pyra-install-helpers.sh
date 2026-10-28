@@ -8,16 +8,18 @@
 #   sudo ./pyra-install-helpers.sh --list     say where each thing goes
 #
 # Copy the repository onto the device and run this from inside its `device`
-# directory. Everything it touches lives under /usr/local, /etc/sysctl.d or
-# the calling user's own systemd directory, so nothing here fights a Debian
-# package or survives a reinstall of one.
+# directory. Everything it touches lives under /usr/local, /etc or the calling
+# user's own systemd directory, except the two PulseAudio mixer paths, which
+# can only live in /usr/share/pulseaudio (docs/audio.md). Every file it
+# installs has a pyra- name no Debian package uses, so nothing here fights a
+# package.
 #
 # The idle dimmer and the brightness applet are no longer here. They are the
 # pyra-backlight package, in its own repository. This removes any copies an
 # earlier run of it left behind, since those would shadow the package's.
 #
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
-# this script puts on the path for you. It does not apply the six card fixes
+# this script puts on the path for you. It does not apply the twelve card fixes
 # either: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
 #
 # Every step is idempotent. Run it again after a `git pull`.
@@ -68,6 +70,13 @@ pyra-cpu-pin                        /usr/local/sbin                    0755
 etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440
 etc/sysctl.d/90-pyra-lockup-capture.conf  /etc/sysctl.d                0644
 pyra-exa-fallback-bench.c           /usr/local/src/pyra                0644
+pyra-audio-select.sh                /usr/local/sbin                    0755
+pyra-audio-select.service           /etc/systemd/system                0644
+pulse/zz-pyra-aess.conf             /usr/local/share/pyra-audio        0644
+pulse/pyra-aess.pa                  /etc/pulse                         0644
+pulse/alsa-mixer/profile-sets/pyra-aess.conf /etc/pulse/pyra-alsa-mixer/profile-sets 0644
+pulse/alsa-mixer/paths/pyra-speaker.conf     /usr/share/pulseaudio/alsa-mixer/paths  0644
+pulse/alsa-mixer/paths/pyra-headphones.conf  /usr/share/pulseaudio/alsa-mixer/paths  0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
 "
 
@@ -160,6 +169,44 @@ else
 		note "$(/usr/local/sbin/pyra-governor-tune.sh --check | head -1)"
 	else
 		note "could not enable it; check: systemctl status pyra-governor-tune.service"
+	fi
+fi
+
+# ------------------------------------------------------- the audio script
+# Which PulseAudio script is right depends on the kernel that booted, so the
+# daemon.conf that picks the AESS one is a link into /run, filled in at each
+# boot by pyra-audio-select.service (its header says how). A regular file
+# here, from an install by hand, would pick the AESS script for every kernel;
+# it is moved aside if its settings differ from the repository's, so nothing
+# is lost.
+say "the PulseAudio script, chosen per boot"
+LINK=/etc/pulse/daemon.conf.d/zz-pyra-aess.conf
+RUNFILE=/run/pyra-audio/zz-pyra-aess.conf
+if [ "$(readlink "$LINK" 2>/dev/null)" = "$RUNFILE" ]; then
+	note "same      $LINK -> $RUNFILE"
+elif [ "$DRYRUN" = 1 ]; then
+	note "would link $LINK -> $RUNFILE"
+else
+	if [ -f "$LINK" ] && [ ! -L "$LINK" ] &&
+	   ! cmp -s <(grep -v '^#' "$LINK") <(grep -v '^#' "$HERE/pulse/zz-pyra-aess.conf"); then
+		mv "$LINK" "$LINK.before-select"
+		note "kept the old file as $LINK.before-select"
+	fi
+	install -d -m 0755 "$(dirname "$LINK")"
+	ln -sfn "$RUNFILE" "$LINK"
+	note "linked $LINK -> $RUNFILE"
+fi
+if [ "$DRYRUN" = 1 ]; then
+	note "would enable and restart pyra-audio-select.service"
+else
+	systemctl daemon-reload
+	if systemctl enable pyra-audio-select.service >/dev/null 2>&1 &&
+	   systemctl restart pyra-audio-select.service >/dev/null 2>&1; then
+		/usr/local/sbin/pyra-audio-select.sh --check | sed 's/^/  /' || true
+		note "a PulseAudio already running keeps its script until it restarts:"
+		note "systemctl --user restart pulseaudio.service"
+	else
+		note "could not enable it; check: systemctl status pyra-audio-select.service"
 	fi
 fi
 
@@ -280,6 +327,7 @@ Done. What is now on the path:
     pyra-gles PROGRAM                 run a GLES2 program on the SGX, not on glvnd
     pyra-soh [--check]                Ship of Harkinian, pinned at 750 MHz while it runs
     pyra-cpu-pin status               is a game holding the CPU clock (sudo)
+    pyra-audio-select.sh --check      does PulseAudio's script match the kernel
     pyra-undervolt status             the CPU's voltages, and the 750 MHz undervolt (sudo)
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because

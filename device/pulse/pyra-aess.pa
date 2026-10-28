@@ -1,9 +1,10 @@
 # pyra-aess.pa -- PulseAudio through the OMAP5 audio DSP.
 #
 # Selected by /etc/pulse/daemon.conf.d/zz-pyra-aess.conf, which overrides the
-# default-script-file set by the pyra-config-pulseaudio package. That package's
-# own /etc/pulse/pyra.pa is left untouched, so an upgrade cannot fight this and
-# reverting is one file deletion.
+# default-script-file set by the pyra-config-pulseaudio package, and only on a
+# kernel that has the AESS front end: pyra-audio-select.service decides at
+# each boot. That package's own /etc/pulse/pyra.pa is left untouched, so an
+# upgrade cannot fight this, and it is what a direct-link kernel gets.
 #
 # Why this file exists: the packaged script loads hw:CARD=L15,DEV=0 with a
 # four-channel map and splits it into "speakers" (rear pair) and "headphones"

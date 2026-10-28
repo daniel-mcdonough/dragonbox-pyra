@@ -867,3 +867,25 @@ Method: `pyra-fw-nofallback` and `pyra-settle-diag` installed in the
   probed inside the initramfs (7.2 s and 8.1 s) and failed the load within 10 ms.
 - `F2FS-fs ... recover fsync data on readonly fs` precedes the root mount on all
   32 journaled boots, so it does not distinguish slow boots.
+
+## 2026-10-28 — the PulseAudio script chosen per boot
+
+Method: `device/pyra-install-helpers.sh` run through `pc/pyra-push-helpers.sh`
+on the trixie card, then `pyra-audio-select.sh --check` and `pactl list sinks
+short` over ssh after each boot. The two reboots were owner-approved.
+
+- Live on `5.6.19-m4-kbdled`, before any reboot: `--check` gave `path aess` and
+  `ok`, and the sink was `aess`. With the `/run` file moved away and PulseAudio
+  restarted, PulseAudio skipped the dangling link with no error and loaded the
+  packaged `pyra.pa`, which fails on this kernel (`hw:CARD=L15,DEV=0`) and
+  leaves `auto_null`. With the file back, the sink was `aess` again.
+- Warm reboot into l0, `5.6.19-pyradef`: `path direct`, packaged script, `ok`.
+  Sinks were `alsa_output.hw_CARD_L15_DEV_0`, `speakers` and `headphones`. The
+  service finished at 139.8 s and the display manager started at 142.9 s. That
+  boot was a shape A late root mount (127.3 s), see
+  `troubleshooting.md`.
+- Warm reboot into l5, `m4-kbdled`: hung in the initramfs (`troubleshooting.md`,
+  shape A) and was power-cycled. The boot after that mounted root at 7.6 s and
+  gave `path aess`, the AESS script and `ok`, with sink `aess` on port
+  `pyra-speaker`. The service finished at 22.8 s and the display manager
+  started at 24.0 s.

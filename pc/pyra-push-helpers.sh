@@ -21,9 +21,9 @@
 #   --list      ask the installer where each file goes, and copy nothing
 #   --no-install  copy device/, but stop before running the installer
 #
-# Everything it touches on the device is under /usr/local, /etc/sysctl.d or the
-# calling user's own systemd directory. It installs no kernel and applies none
-# of the six card fixes; those are pyra-push-kernel.sh and pc/pyra-trixie-prep.sh.
+# What it touches on the device is listed by --list; the installer's header
+# says where and why. It installs no kernel and applies none of the twelve
+# card fixes; those are pyra-push-kernel.sh and pc/pyra-trixie-prep.sh.
 
 set -eu
 
