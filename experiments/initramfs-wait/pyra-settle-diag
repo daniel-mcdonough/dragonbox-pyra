@@ -11,7 +11,8 @@
 # as /run/initramfs/settle-diag.txt (root-only). Each snapshot also triggers
 # SysRq-T, so every task's kernel stack lands in the kernel log (and the journal)
 # after a "pyra-settle-diag" marker line: /proc/<pid>/stack is empty for other
-# tasks on this SMP ARM kernel.
+# tasks on this SMP ARM kernel. The dump is kept off the consoles (see
+# quiet_console below).
 #
 # Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
 # update-initramfs -u -k <release>.
@@ -50,8 +51,29 @@ snapshot() {
 		echo "$pid $ppid $state $comm wchan=$wchan cmd=[$cmd]"
 	done
 	echo
+	quiet_console
 	echo "pyra-settle-diag: SysRq-T at uptime $(cat /proc/uptime)" > /dev/kmsg
 	echo t > /proc/sysrq-trigger
+	restore_console
+}
+
+# Keep the SysRq-T dump off the consoles. Printing every task's stack onto
+# fbcon once froze a boot for good (2026-10-28). The cmdline carries
+# ignore_loglevel, which sends everything to the console whatever its level,
+# so turn that off as well as dropping the console loglevel to 1 (emergencies
+# only). The dump still goes to the ring buffer, and journald reads it from
+# there after switch_root. Only the one-line SysRq header still reaches the
+# console: the kernel raises the level for that line itself.
+IGN=/sys/module/printk/parameters/ignore_loglevel
+quiet_console() {
+	saved_ign=$(cat "$IGN" 2>/dev/null)
+	read -r saved_lvl _ < /proc/sys/kernel/printk
+	echo N > "$IGN" 2>/dev/null
+	echo 1 > /proc/sys/kernel/printk
+}
+restore_console() {
+	echo "$saved_lvl" > /proc/sys/kernel/printk
+	[ -n "$saved_ign" ] && echo "$saved_ign" > "$IGN" 2>/dev/null
 }
 
 mkdir -p /run/initramfs
