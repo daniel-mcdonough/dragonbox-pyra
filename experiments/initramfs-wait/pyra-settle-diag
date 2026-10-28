@@ -1,9 +1,10 @@
 #!/bin/sh
 # initramfs-tools init-top hook: record what the initramfs is waiting on when it
-# is still running 40 s after boot (a healthy boot mounts root by about 15 s).
+# is still running 15 s after boot (a healthy boot mounts root by about 10 s;
+# 14 s has been seen).
 #
 # It runs before init-top/udev, starts a background watcher and returns at once.
-# The watcher takes a snapshot at 40 s and again at 90 s, but only while the
+# The watcher takes a snapshot at 15, 30, 60 and 100 s, but only while the
 # initramfs is still in charge: the marker lives on the initramfs's /run, which
 # init moves onto the real root at switch_root, so once root is up the marker is
 # gone from the watcher's view and it exits. The snapshots survive to userspace
@@ -58,7 +59,7 @@ mkdir -p /run/initramfs
 echo "armed at uptime $(cat /proc/uptime)" > "$OUT"
 
 (
-	for at in 40 90; do
+	for at in 15 30 60 100; do
 		while [ "$(uptime_s)" -lt "$at" ]; do
 			[ -e "$MARK" ] || exit 0
 			sleep 1 || exit 0

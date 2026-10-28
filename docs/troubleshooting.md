@@ -112,13 +112,32 @@ waiter, which looks like shape A below.
 The same 60 s wait happens on **every** boot, but normally the adapter
 enumerates only after `pyra-usb3503-rescue` runs in the real root, so the wait
 only delays the wired network: on a fast boot the adapter gets carrier around
-85 s. The firmware fallback also costs the remoteprocs and the wifi config file
-their own waits. The fix is
-`device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback`, which sets
-`/proc/sys/kernel/firmware_config/ignore_sysfs_fallback` to 1 before udev
-starts. The setting survives switch_root. Install it as its header says.
-*Written 2026-10-28, not yet installed or measured.* Without it, the
-workaround is to unplug the adapter for a cold boot.
+88 s (`carrier on` at 88.5 s on 2026-10-28, `unable to load firmware patch ... (-11)`
+at 85.0 s). Other firmware fallbacks (remoteprocs, wifi config, `regulatory.db`)
+are cancelled by udev within a second, because nothing is queued ahead of them.
+A live rebind of `r8152` shows the same thing: udev cancels its fallback in 6 ms.
+The 60 s wait needs a blocked udev queue, and a boot-time probe supplies one.
+
+The fix is `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback`,
+which sets `/proc/sys/kernel/firmware_config/ignore_sysfs_fallback` to 1 before
+udev starts. The knob overrides `force_sysfs_fallback`, which is 1 on these
+kernels. The setting survives switch_root. Install it as its header says. With it
+installed (2026-10-28, warm reboot), the knob reads 1 after boot, the log says
+`Ignoring firmware sysfs fallback due to sysctl knob`, `r8152` fails the load
+with -2 at once, and the adapter has carrier at 41 s instead of 88 s. Five cold
+boots with the adapter plugged in then mounted root at 9.5, 6.5, 7.6, 6.1 and
+8.2 s, with carrier at 22-25 s. On two of them `r8152` probed inside the
+initramfs, which is the shape B trigger, and gave up on the firmware within
+10 ms:
+
+    7.177 r8152 1-2.1:1.0: Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2
+    7.185 Ignoring firmware sysfs fallback due to sysctl knob
+    7.192 r8152 1-2.1:1.0: unable to load firmware patch rtl_nic/rtl8153a-4.fw (-2)
+    9.467 F2FS-fs (mmcblk1p2): Mounted with checkpoint version = 435fe8d2
+
+The hook is installed on the trixie card for `5.6.19-m4-kbdled` only; prep does
+not install it yet. Without it, the workaround is to unplug the adapter for a
+cold boot.
 
 **Shape A, not explained: 120 s of silence after a warm reboot.** 5 of 12 warm
 reboots (boots on 2026-10-19, 20, 24 and two on 2026-10-28), root at 126-128 s.
@@ -135,9 +154,14 @@ fallback and no USB error. The on-board hub is absent from the initramfs, but it
 is absent on every warm reboot, fast or slow (fix 5 re-resets it later), so that
 is not the difference. The waiter is something that sleeps interruptibly, which
 the hung-task detector does not report. Four warm reboots on 2026-10-28 with a
-diagnostic in place were all fast (6.3-9.5 s). The diagnostic is
+diagnostic in place were all fast (6.3-9.5 s). The fifth, with the shape B fix
+also in place, showed the same silence at a smaller size: the root hub at
+6.75 s, then nothing until the root mount at 23.4 s. The SD card had been there
+since 2.2 s, so those 16.6 s were spent in initramfs userspace. The F2FS `recover fsync data on readonly fs` line before each root mount is on
+all 32 journaled boots, fast and slow, so it is not a clue. The diagnostic,
+which then sampled only at 40 and 90 s, missed it. The diagnostic is
 `experiments/initramfs-wait/pyra-settle-diag`. If the initramfs is still running
-at 40 s and at 90 s, it writes every process's state and wchan to
+at 15, 30, 60 or 100 s, it writes every process's state and wchan to
 `/run/initramfs/settle-diag.txt` and triggers SysRq-T, so every task's stack is in
 the journal after a `pyra-settle-diag` line. Check after any slow boot:
 

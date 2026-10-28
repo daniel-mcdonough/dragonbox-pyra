@@ -844,3 +844,26 @@ how each previous boot ended (`systemd-reboot` or `systemd-poweroff`).
 - With `pyra-settle-diag` installed, 4 warm reboots mounted root at 7.6, 9.5,
   6.5 and 6.3 s. The on-board hub was absent in the initramfs on all four, just
   as on the slow ones.
+
+### Same day: the firmware-fallback fix, measured
+
+Method: `pyra-fw-nofallback` and `pyra-settle-diag` installed in the
+`5.6.19-m4-kbdled` initramfs; kernel log read over wifi after each boot.
+
+- Live, before any reboot: `r8152` unbound and rebound through sysfs. With
+  `ignore_sysfs_fallback` at 0, udev cancelled the fallback in 6 ms (`-11`). At
+  1, the kernel logged `Ignoring firmware sysfs fallback due to sysctl knob` and
+  the load failed with `-2`. The 60 s wait needs the udev queue to be blocked
+  behind the device, which happens at boot and not on a rebind.
+  `force_sysfs_fallback` reads 1 on this kernel; the ignore knob overrides it.
+- Before the fix, on the boot just before: the fallback started at 21.2 s and
+  timed out at 85.0 s, and the adapter had carrier at 88.5 s.
+- 1 warm reboot with the fix: knob 1 after boot, carrier at 41 s. Root mounted
+  at 23.4 s, after 16.6 s of silence in the initramfs (root hub at 6.75 s, SD
+  card present since 2.2 s). This is shape A at a smaller size. The diagnostic
+  then sampled only from 40 s, so it now samples at 15, 30, 60 and 100 s.
+- 5 cold boots with the adapter plugged in: root at 9.5, 6.5, 7.6, 6.1 and 8.2 s,
+  carrier at 25, 23, 24, 22 and 23 s, knob 1 on all. On boots 1 and 5 `r8152`
+  probed inside the initramfs (7.2 s and 8.1 s) and failed the load within 10 ms.
+- `F2FS-fs ... recover fsync data on readonly fs` precedes the root mount on all
+  32 journaled boots, so it does not distinguish slow boots.
