@@ -51,9 +51,15 @@ does not give any single process more.
 Not two plus four. Two, shared with the X server, the audio daemon and the
 kernel's i2c interrupt threads.
 
-### 1.7 The audio codec takes only 88200 or 96000 Hz, `S32_LE`
+### 1.7 The direct codec link takes only 88200 or 96000 Hz, `S32_LE`
 
-`aplay --dump-hw-params` on the TWL6040:
+This is the kernel's direct McPDM link to the TWL6040, which stock
+`5.6.19-pyradef` and every kernel without the AESS patches use. On an AESS
+kernel (`5.6.19-m4-kbdled` and the other `-m4` kernels except `m4demo`;
+`kernel-changes.md` has the list) the sink runs at 48 kHz `S16_LE`, and only
+44.1 kHz material is still resampled. See the end of this section.
+
+`aplay --dump-hw-params` on the direct link:
 
     FORMAT:  S32_LE
     CHANNELS: [1 5]
@@ -66,10 +72,13 @@ ruled out — `resample-method` is already `trivial`, the daemon already uses
 NEON, the remap sinks are free, and moving the resample into the application is
 worse.
 
-The hardware *does* have an answer: the AESS audio DSP accepts 44.1 and 48 kHz
+The hardware *does* have an answer: the AESS audio DSP takes 48 kHz `S16_LE`
 natively. It is live silicon and the reason the codec has an 88200 mode and a
-96000 mode at all. It is driven only by this repository's patches. See
-`docs/audio.md`.
+96000 mode at all. Its 44.1 kHz mode did not play and is no longer advertised
+(`experiments/aess`, 0029), so 44.1 kHz material is still resampled, to 48 kHz.
+It is driven only by this repository's patches. With them PulseAudio's own CPU
+on a 48 kHz file fell from 12% of a core to 4% (measured; the header of
+`device/pulse/pyra-aess.pa`). See `docs/audio.md`.
 
 ### 1.8 The display controller reads the framebuffer continuously
 

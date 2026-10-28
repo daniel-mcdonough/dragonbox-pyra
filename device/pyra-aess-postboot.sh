@@ -15,7 +15,9 @@
 #      the PCM says RUNNING means the DSP is transmitting silence, which is
 #      where this stood before 0022
 #
-# Reads only. The one thing it does is play six seconds of test tone.
+# Reads only, except that it turns the playback path's switches and gains on
+# (they are normally on already; fix 9 sets them) and plays six seconds of test
+# tone.
 #
 # ALL ABE memory access must be 32-bit and aligned -- byte reads raise
 # asynchronous external aborts that surface at whatever access happens next
@@ -66,17 +68,21 @@ port_states() {
 }
 
 hr "the playback path"
-# None of these survive a reboot, and without them dpcm_path_get() finds no
-# back end and the PCM will not even open ("no backend DAIs enabled").
 # The graph runs MMLP Playback -> MM VMixer -> MM_DL -> DL1 Mixer[Multimedia]
 # -> Sidetone Mixer[Playback] -> DL1 PDM[Switch] -> PDM_DL1 -> BE_OUT, so the
-# Sidetone Mixer sits in the path whether or not sidetone is wanted.
-for c in 'DL1 Mixer Multimedia' 'Sidetone Mixer Playback' 'DL1 PDM Switch'; do
-	amixer -c L15 sset "$c" on >/dev/null 2>&1 &&
+# Sidetone Mixer sits in the path whether or not sidetone is wanted; DL2 needs
+# only its mixer. With both paths broken dpcm_path_get() finds no back end and
+# the PCM will not open ("no backend DAIs enabled"); one broken path silences
+# only its output. Fix 9 sets these at boot; docs/audio.md, "The controls".
+# cset name=, not sset: sset wants the simple name and fails on these.
+for c in 'DL1 Mixer Multimedia' 'Sidetone Mixer Playback' 'DL1 PDM Switch' \
+	'DL2 Mixer Multimedia'; do
+	amixer -c L15 cset name="$c" on >/dev/null 2>&1 &&
 		echo "  on   $c" || echo "  MISSING  $c"
 done
-for c in 'DL1 Media Playback Volume' 'DL1 Playback Volume'; do
-	amixer -c L15 sset "$c" 120 >/dev/null 2>&1 &&
+for c in 'DL1 Media Playback Volume' 'DL1 Playback Volume' \
+	'DL2 Media Playback Volume' 'DL2 Playback Volume'; do
+	amixer -c L15 cset name="$c" 120 >/dev/null 2>&1 &&
 		echo "  120  $c" || echo "  MISSING  $c"
 done
 

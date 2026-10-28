@@ -65,6 +65,15 @@ the reasons under fix 1. `/var/log/lightdm/lightdm.log` and
 failed to start, confirm `/usr/sbin/funkeymonkey`,
 `/usr/lib/funkeymonkey/libpyrainput.so` and `/etc/pyrainput.cfg` all exist.
 
+**The screen freezes, every window stops responding, and the case gets hot.**
+Probably the display wedge: the X server stuck in a modeset with one core at
+100%, which `kill -9` does not stop. The kernel is fine, so ssh still works:
+save the evidence and then `sudo systemctl reboot`, as in "The X server can
+hang in a modeset" below. Without ssh or another way in, hold the power button
+for a hard power-off; avoid that while the card might be writing. Don't leave
+it spinning: one pinned core took the SoC past its 100°C passive trip. Seen
+twice, on 2026-09-10; `patches/0001` targets it but is not yet confirmed.
+
 **General principle:** the device powers itself off faster than you can debug on
 it. Pull the card, mount it on the PC, read the logs there
 (`/var/log/Xorg.0.log`, `journalctl --directory=/mnt/pyra/var/log/journal`).
@@ -369,7 +378,11 @@ the modeset, and a modeset can still wedge.
 ### Recovery
 
 **A reboot is the only recovery found.** `sudo systemctl reboot` works normally;
-it is only the X server that is stuck, not the kernel.
+it is only the X server that is stuck, not the kernel. Without ssh or a second
+way in, holding the power button is
+the hard power-off that is left. It skips the clean shutdown, so do it while
+nothing is writing to the card; the tested card backup is the fallback
+(`card-backup-restore.md`).
 
 Keep the evidence first, because it is gone afterwards:
 

@@ -15,7 +15,7 @@ This document is the hardware model. `rendering-guidelines.md` is the practical
 | | |
 | --- | --- |
 | Part | PowerVR SGX544MP2 — Series5XT, **2 shader cores** |
-| Clock | 425 MHz, the **NOM** operating point of the VDD_MM rail |
+| Clock | 425 MHz, the **NOM** operating point of the VDD_MM rail. Tool-reported (`omapconf`), not measured directly; consistent with the measured fill rate. See `hardware-overview.md` |
 | Architecture | Tile-Based Deferred Rendering (TBDR) |
 | Shader core | USSE2, unified vertex/fragment, scalar-ish, weak flow control |
 | API | OpenGL ES 2.0, GLSL ES 1.00, EGL 1.4. **OpenCL not exposed here** |

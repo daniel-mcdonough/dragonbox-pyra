@@ -1,5 +1,12 @@
 # Pegasus on the Pyra, and custom menus for the hardware
 
+> **Superseded, 2026-09-19.** Pegasus is dropped as the launcher: it costs 9-30%
+> of a core sitting on a static menu, where a plain `qmlscene` control costs
+> 0.0% (measured, `experiments/pegasus-idle/RESULT.md`). A separate launcher,
+> `pyra-gamemode`, is being written instead. Nothing below is a plan any more.
+> The page stays for the scoping and the measurements, and because `pyra-gles`
+> (`docs/qt-gles.md`) is needed by any Qt program, not only Pegasus.
+
 Scoped 2026-09-18 against the running unit and against Pegasus at commit
 `83fd27f` (2026-09-15). Nothing here is installed on the device yet. The one
 thing that could have made the whole idea impossible has been tested and does

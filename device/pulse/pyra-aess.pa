@@ -24,19 +24,20 @@
 # the one sink, chosen in the desktop's sound settings or with
 # `pactl set-sink-port aess pyra-speaker` / `pyra-headphones`; the port's
 # mixer path then switches the codec routes. Underneath, the DSP feeds the two
-# outputs through the DL1 (headset) and DL2 (handsfree) mixers, which must
-# both stay on:
+# outputs through two paths, which should both stay on:
 #
-#     amixer -c L15 cset name='DL1 Mixer Multimedia' on    # headset
-#     amixer -c L15 cset name='DL2 Mixer Multimedia' on    # speakers
+#     DL1 (headphones): 'DL1 Mixer Multimedia', 'Sidetone Mixer Playback',
+#                       'DL1 PDM Switch' -- the graph routes DL1 through the
+#                       sidetone mixer, so all three are needed
+#     DL2 (speakers):   'DL2 Mixer Multimedia'
 #
-# Use cset name=, never sset: sset takes the *simple* control name and silently
-# does nothing for these.
+#     amixer -c L15 cset name='DL1 PDM Switch' on    # and so on
 #
-# 'DL1 PDM Switch' and 'Sidetone Mixer Playback' must also be on or the PCM will
-# not open at all -- the graph routes DL1 through the sidetone mixer, so without
-# them dpcm_path_get() finds no back end. They live in /var/lib/alsa/asound.state
-# and alsa-restore brings them back at boot.
+# Use cset name=, never sset: sset takes the *simple* control name and fails
+# for these. Any one DL1 switch off silences the headphones only; the PCM fails
+# to open (dpcm_path_get() finds no back end) only when both paths are broken.
+# Fix 9's pyra-audio-route-apply sets all four at boot. docs/audio.md, "The
+# controls", has the tests.
 
 .fail
 

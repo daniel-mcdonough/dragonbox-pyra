@@ -1,14 +1,15 @@
 # Waking up the AESS, the OMAP5's audio DSP
 
 The SoC has a dedicated audio DSP that would take PulseAudio's resampling off
-the A15s. Its front ends accept 44100 and 48000 S16_LE stereo — what
-applications actually produce — where the TWL6040 behind it accepts only
-88200/96000 S32_LE, which is why every stream on this machine is resampled and
+the A15s. Its front ends accept 48000 S16_LE stereo — what most
+applications actually produce; 44100 was advertised too until 0029 found the
+engine has one timebase — where the TWL6040 behind it accepts only
+88200/96000 S32_LE, which is why on the direct link every stream is resampled and
 widened in software at a cost of 15–18% of a core. The numbers are
 `docs/improvements.md` item 10.
 
 **Status, 2026-09-24: it plays, and it is the audio path of the `-m4`
-kernel.** 0013-0032 below are what it took; `docs/audio.md` is how it is used
+kernels, `5.6.19-m4-kbdled` included.** 0013-0032 below are what it took; `docs/audio.md` is how it is used
 and diagnosed. The rest of this section is where the work started, on
 2026-09-20.
 
