@@ -1,0 +1,36 @@
+From 7d3934884babcfb1252c4296e0060c7a0749a429 Mon Sep 17 00:00:00 2001
+From: Rob Herring (Arm) <robh@kernel.org>
+Subject: [PATCH] usb: dwc3: omap: Fix devm_regulator_get_optional() error
+ handling
+
+Commit 533561a8aad5 ("usb: dwc3: omap: Use
+devm_regulator_get_optional()") assumed NULL was returned, but
+devm_regulator_get_optional() returns -ENODEV rather than NULL like
+other *_get_optional() functions.
+
+Fixes: 533561a8aad5 ("usb: dwc3: omap: Use devm_regulator_get_optional()")
+Signed-off-by: Rob Herring (Arm) <robh@kernel.org>
+Acked-by: Thinh Nguyen <Thinh.Nguyen@synopsys.com>
+Link: https://lore.kernel.org/r/20250109170748.3852439-1-robh@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+[Pyra 5.6.19 backport: applied to the open-coded dev_err_probe() from
+ the previous patch.]
+---
+--- a/drivers/usb/dwc3/dwc3-omap.c
++++ b/drivers/usb/dwc3/dwc3-omap.c
+@@ -487,9 +487,12 @@ static int dwc3_omap_probe(struct platform_device *pdev)
+ 
+ 	vbus_reg = devm_regulator_get_optional(dev, "vbus");
+ 	if (IS_ERR(vbus_reg)) {
+-		if (PTR_ERR(vbus_reg) != -EPROBE_DEFER)
+-			dev_err(dev, "vbus init failed\n");
+-		return PTR_ERR(vbus_reg);
++		if (PTR_ERR(vbus_reg) != -ENODEV) {
++			if (PTR_ERR(vbus_reg) != -EPROBE_DEFER)
++				dev_err(dev, "vbus init failed\n");
++			return PTR_ERR(vbus_reg);
++		}
++		vbus_reg = NULL;
+ 	}
+ 
+ 	omap->dev	= dev;

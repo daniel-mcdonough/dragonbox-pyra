@@ -616,7 +616,7 @@ from. Most of it is now gone.
 | --- | --- | --- | --- |
 | `dummy 0-0049: Failed to read IRQ status: -13` | 231 to 6500 | 0 | the PMIC's interrupt handler retrying over an i2c bus that has not resumed yet |
 | `Unbalanced enable for IRQ 144` | 1 | 1 | IRQ 144 is `SGX ISR`, so this is the PowerVR graphics driver |
-| `unbalanced disables for otg_path` | 1 | 1 | a regulator reference count in the USB OTG path |
+| `unbalanced disables for otg_path` | 1 | 1 (0 with `0044`) | a regulator reference count in the USB OTG path |
 | `DSI error: VC(n) busy when trying to configure it!` | 4 | 4 | the display link is re-initialised with all four channels still marked busy |
 
 **The first one is fixed by `patches/0004`.** The device at i2c address `0x49`
@@ -660,12 +660,17 @@ the noirq resume phase does. A quiet machine gave 231 messages in 23
 milliseconds; one with the USB ethernet adapter and more modules loaded gave
 6500 over seven seconds.
 
-**The other three are not fixed.** `Unbalanced enable for IRQ 144` comes from
+**The SGX and DSI warnings are not fixed.** `Unbalanced enable for IRQ 144` comes from
 `resume_irqs()` finding the SGX interrupt already enabled. The PowerVR driver
 in `drivers/staging/pvr` requests that interrupt and never disables it, so
-where the extra enable comes from was not determined. The `otg_path` warning
-is a regulator reference count in the USB OTG path. Both are one line per
-resume and neither has a visible effect.
+where the extra enable comes from was not determined. It is one line per
+resume and has no visible effect.
+
+**The `otg_path` warning is fixed by `patches/0044`**, a backport of mainline
+`ac01df343e5a`. On every resume `dwc3_omap_complete()` sets the OTG port's ID to
+floating, and the driver disabled the VBUS regulator, `otg_path`, without
+having enabled it. 0044 skips the disable when the regulator is off. It is in
+every kernel built from `patches/` after 2026-10-28; see `kernel-changes.md`.
 
 The DSI one is worth a second look for a different reason. It comes from
 `dsi_vc_initial_config()`, which reads `DSI_VC_CTRL`, finds `VC_BUSY` set, says

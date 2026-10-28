@@ -54,7 +54,9 @@ only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads
 the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled
 2026-10-24 from the real build tree with 0037-0039; no `updates/` copy was left on the card.
 Reinstalled 2026-10-28 with 0040-0042: booted clean, charger, display, undervolt, both
-remoteprocs and the keyboard LED all present.
+remoteprocs and the keyboard LED all present. The installed m4-kbdled predates 0043-0047;
+l1 holds `5.6.19-fix` with them since 2026-10-28 (the previous `user.cfg` is saved as
+`user.cfg.before-fix-dwc3`).
 
 ---
 
@@ -138,6 +140,36 @@ probed, REG03 read `00` (128 mA / 128 mA) and the battery reported Full. A kprob
 code, `set_data_timeout()` now reads the timeout's high word, and the charger probe
 branches on the property read instead of ignoring it. Not exercised: a busy timeout above
 4294 ms (none occurs on this card), and the TILER allocation failure.
+
+**0043–0047 — usb: dwc3: omap: five mainline fixes to the OTG port's glue driver.**
+Backports of upstream `e17b02d49709`, `ac01df343e5a`, `2aa765a43817`, `533561a8aad5` and
+`7d3934884bab`, in that order. jedi23's M4 kernel carries equivalents, which is how they
+were found (see `m4-ipu.md`); these are the upstream commits, not his diff.
+
+- **0043** sets the controller's VBUS-off and ID-float states at probe when no cable
+  is present. Before, only the asserted states were ever written, so the controller
+  started out with whatever state the bootloader left.
+- **0044** only disables the VBUS regulator if it is on. On the Pyra that regulator is
+  `otg_path`. `dwc3_omap_complete()` sets ID-float on every resume and disabled a
+  regulator nobody had enabled, which is the `unbalanced disables for otg_path`
+  warning in `troubleshooting.md`. 0043 adds the same disable at probe, so the two
+  go together.
+- **0045** removes the child devices when requesting the IRQ fails, instead of
+  leaking them.
+- **0046** and **0047** fetch the VBUS regulator as optional and return
+  `-EPROBE_DEFER` without printing it. `otg_path` only exists from about 3 s into
+  boot, so the driver defers twice and stock printed `vbus init failed` each time.
+  `dev_err_probe()` is v5.9, so 0046 open-codes it (noted in the header).
+
+**0043–0047 tested 2026-10-28** on the V5.3 unit, as `5.6.19-fix` booted once from l1,
+against a baseline on `5.6.19-m4-kbdled` the same evening. At boot the two
+`vbus init failed` lines are gone, `omap-dwc3` and `dwc3` still bind, and there is no new
+warning (only `omap_l3_noc`). Two suspend-to-RAM cycles resumed with no
+`unbalanced disables for otg_path`; the baseline printed it on its one cycle, from
+`dwc3_omap_complete()`. The SGX IRQ 144 and DSI busy warnings are unchanged.
+`g_serial` binds to and unbinds from the UDC cleanly. Not exercised: a USB host
+enumerating the Pyra (the OTG port had only a charger on it), host mode through an OTG
+adapter, which is the one path where `otg_path` is turned on, and the IRQ failure path.
 
 ---
 

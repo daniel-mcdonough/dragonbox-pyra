@@ -591,8 +591,8 @@ the 64 KB L2 SRAM. To do that it rewrites AMMU small page 0 to point at
 boots both cores from a 56 MB DDR carveout and needs no AMMU write. His also
 sets `auto_boot = false` and allows one start per boot.
 
-Comparing the two on 2026-10-27 is where these came from. They are the only
-changes in this project that come from his work:
+Comparing the two on 2026-10-27 and 2026-10-28 is where these came from. They
+are the only changes in this project that come from his work:
 
 - **`0040`, the hsmmc busy-timeout overflow,** and **`0041`, the dmm_tiler probe
   error code.** He backported both from upstream, and his 2026-10-21 change
@@ -609,9 +609,16 @@ changes in this project that come from his work:
   header still called it a live mainline bug. Seeing his fix is what got them
   corrected.
 
-His kernel also changes `dwc3-omap.c` (VBUS and extcon state), the
-`-msoft-float` ordering in `arch/arm/Makefile`, and a `PF_MAX` check in
-SELinux's `classmap.h`. None of those are in this project's kernels.
+- **`0043`–`0047`, the dwc3-omap fixes.** His kernel changes `dwc3-omap.c`'s
+  VBUS and extcon handling. All of it turned out to be in mainline after 5.6,
+  as five commits, and those are what `patches/` carries, not his diff. One of
+  them removes the `unbalanced disables for otg_path` warning the Pyra prints
+  on every resume.
+
+His kernel also changes the `-msoft-float` ordering in `arch/arm/Makefile` and
+a `PF_MAX` check in SELinux's `classmap.h`. Neither is in mainline (checked
+2026-10-28), and neither fixes anything this project's builds hit, so neither
+is in its kernels.
 
 ---
 
@@ -1192,7 +1199,7 @@ Other Pyra M4 work:
 - [`micha2358/Pyra-Kernel`](https://github.com/micha2358/Pyra-Kernel) — jedi23's
   M4 kernel, with a full change list against stock pyradef, and its
   [forum thread](https://pyra-handheld.com/boards/threads/new-5-6-19-pyradef-based-kernel-with-cortex-m4-support.100246/).
-  `0040`–`0042` and the 2026-10-27 omap-prm doc correction came from comparing
+  `0040`–`0047` and the 2026-10-27 omap-prm doc correction came from comparing
   against it.
 
 Firmware:

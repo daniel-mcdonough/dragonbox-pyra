@@ -1,0 +1,45 @@
+From 533561a8aad566a5e2d50f9f069feadc682931f7 Mon Sep 17 00:00:00 2001
+From: Rob Herring (Arm) <robh@kernel.org>
+Subject: [PATCH] usb: dwc3: omap: Use devm_regulator_get_optional()
+
+The 'vbus-supply' regulator is optional, so use
+devm_regulator_get_optional() instead of checking for property presence
+first.
+
+While here, rework the error handling to use dev_err_probe() which
+handles deferred probe correctly without an error message.
+
+Signed-off-by: Rob Herring (Arm) <robh@kernel.org>
+Link: https://lore.kernel.org/r/20241231164456.262581-1-robh@kernel.org
+Signed-off-by: Greg Kroah-Hartman <gregkh@linuxfoundation.org>
+[Pyra 5.6.19 backport: dev_err_probe() arrived in v5.9, so open-code what
+ it does here: return the error, and print it unless it is -EPROBE_DEFER.]
+---
+--- a/drivers/usb/dwc3/dwc3-omap.c
++++ b/drivers/usb/dwc3/dwc3-omap.c
+@@ -457,7 +457,7 @@ static int dwc3_omap_probe(struct platform_device *pdev)
+ 
+ 	struct dwc3_omap	*omap;
+ 	struct device		*dev = &pdev->dev;
+-	struct regulator	*vbus_reg = NULL;
++	struct regulator	*vbus_reg;
+ 
+ 	int			ret;
+ 	int			irq;
+@@ -485,12 +485,11 @@ static int dwc3_omap_probe(struct platform_device *pdev)
+ 	if (IS_ERR(base))
+ 		return PTR_ERR(base);
+ 
+-	if (of_property_read_bool(node, "vbus-supply")) {
+-		vbus_reg = devm_regulator_get(dev, "vbus");
+-		if (IS_ERR(vbus_reg)) {
++	vbus_reg = devm_regulator_get_optional(dev, "vbus");
++	if (IS_ERR(vbus_reg)) {
++		if (PTR_ERR(vbus_reg) != -EPROBE_DEFER)
+ 			dev_err(dev, "vbus init failed\n");
+-			return PTR_ERR(vbus_reg);
+-		}
++		return PTR_ERR(vbus_reg);
+ 	}
+ 
+ 	omap->dev	= dev;

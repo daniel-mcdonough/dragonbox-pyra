@@ -208,7 +208,7 @@ Suspend works. What the kernel did is in:
 
 Resume should be quiet. A burst of "Failed to read IRQ status" means the
 kernel is missing patches/0004. Three smaller warnings per wake are expected
-and harmless; docs/troubleshooting.md lists them.
+and harmless (two with patches/0044); docs/troubleshooting.md lists them.
 EOF
 	exit 0
 fi
