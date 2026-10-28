@@ -349,3 +349,136 @@ backlights. Build and install it:
 The service takes its timing from `idle-delay` and has no timer of its own, so
 that one setting controls it. Leave `org.mate.power-manager backlight-enable`
 false.
+
+---
+
+## 9. After the repository changes: updating a prepared card
+
+Once the card has booted, `pyra-trixie-prep.sh` is no longer the way to bring
+it up to date. That script works on a mounted rootfs, offline, with the card
+in a reader, and it is written for a card that has never booted. On a running
+card, the device scripts do the same work: prep calls each of them (fixes 6 to
+12) to generate its files, so there is one implementation, and on the device
+they apply it directly.
+
+Start by seeing what changed since your card was prepared or last updated:
+
+    git log --oneline OLD..HEAD -- device/ pc/pyra-trixie-prep.sh patches/
+    git diff --stat OLD..HEAD -- device/ pc/pyra-trixie-prep.sh
+
+`OLD` is the commit you last installed from. Then work down this list in
+order, and skip any step whose files did not change.
+
+**1. Get the new `device/` onto the Pyra.** Either `git pull` in a checkout on
+the device, or from the workstation:
+
+    ./pc/pyra-push-helpers.sh --dry-run pyra@<address>   # what would change
+    ./pc/pyra-push-helpers.sh pyra@<address>
+
+The second form copies `device/` to `~/dragonbox-pyra/device` on the Pyra
+(`--no-install` stops there) and runs step 2 for you.
+
+**2. The helpers: `sudo ./pyra-install-helpers.sh`, from `device/`.** Always
+safe to re-run. It compares each file with what is installed, reports `same`
+for the ones that match and replaces the rest, then re-enables and restarts
+its three units (governor, AESS script choice, undervolt) and re-applies the
+sysctl settings. `--dry-run` says what it would change first. It installs no
+kernel and applies none of the twelve fixes. It does put the fix 6, 7 and 8
+scripts on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
+place, because the two share a path.
+
+**3. A fix whose script changed: re-run that script on the device.** Run it
+from `device/`, with `--check` first if you want to see the state:
+
+| Fix | Changed file | Re-run with | Re-running it |
+|---|---|---|---|
+| 5 | `pyra-usb3503-rescue` | step 2 | updated by step 2 |
+| 5 | `pyra-usb3503-rescue.service` | `sudo install -m 0644 pyra-usb3503-rescue.service /etc/systemd/system/ && sudo systemctl daemon-reload` | nothing else installs the unit on a running card |
+| 6 | `pyra-thermal-fix.sh` | `sudo ./pyra-thermal-fix.sh` | does nothing once applied; see below |
+| 7 | `pyra-thermal-ladder.sh` | `sudo ./pyra-thermal-ladder.sh` | does nothing once applied; see below |
+| 8 | `pyra-charge-current.sh` | `sudo ./pyra-charge-current.sh` | rewrites its four files, sets the input limit |
+| 9 | `pyra-audio-route.sh` | `sudo ./pyra-audio-route.sh` | rewrites its rule and helper, sets the routes |
+| 10 | `pyra-greeter-audio.sh` | `sudo ./pyra-greeter-audio.sh` | rewrites its two files |
+| 11 | `pyra-sgx-init.sh` | `sudo ./pyra-sgx-init.sh` | rewrites the rule; takes effect when the GPU driver next loads, so at the next boot |
+| 12 | `pyra-volumed/` | `sudo ./pyra-volumed/install.sh` | rewrites its three files, rebuilds and restarts the daemon |
+
+Fixes 8 to 12 write their files through the same function that prep's
+`--emit-into` uses. Re-running one replaces its files with the current
+version, so a change in the repository reaches the card.
+
+**Fixes 6 and 7 are the exception.** They edit the vendor's
+`/usr/share/pyra/scripts/pyra-thermal.sh` in place and decide "already
+applied" by a marker line, not by comparing with the current version. A newer
+version of either change in the repository therefore reports `already
+applied, nothing to do` and leaves the old one in place. Prep behaves the same
+way offline. To take a new version, undo in the reverse order and apply again:
+
+    sudo ./pyra-thermal-ladder.sh --undo     # back to the file as fix 6 left it
+    sudo ./pyra-thermal-fix.sh --undo        # only if fix 6 itself changed
+    sudo ./pyra-thermal-fix.sh
+    sudo ./pyra-thermal-ladder.sh
+
+`--undo` needs the `.before-pyra-thermal-*` backup beside the vendor file.
+Prep and the device scripts both write one the first time they apply.
+
+**Fixes 1 to 4 have no device-side script.** If prep's fixes 1 to 4 change,
+put the card in a reader and re-run prep on it, as in section 4. Prep is
+idempotent. It finds the user already there and does not ask for a password
+again, and it reports what is already in place. Two things to know first.
+It re-applies every fix, including fix 12's override. And it does not know
+about the `0.38+pyra1` `pyra-hacks` package (`fixes.md`, "Fixes 6, 7 and 12
+as a package"), so on a card with that package installed, undo the override
+again afterwards with `pyra-volumed/install.sh --undo`.
+
+**4. A kernel change: rebuild and install it.** If `patches/` changed, the
+kernel is the only thing that picks it up. Build it on the workstation
+(`building.md`), then install it with
+`sudo pyra-install-debug-kernel.sh <tarball>` (step 2 put it on `$PATH`), or
+in one go with `./pc/pyra-push-kernel.sh --install --reboot`. Re-running the
+installer is safe. Its rules, from its header and code:
+
+- It only writes the `l1` entry in `/boot/extlinux/user.cfg`. Other entries
+  in that file are kept. The kernel `l1` pointed at before keeps its files in
+  `/boot` but no longer has a boot entry.
+- It refuses unless `default` in `extlinux.conf` is `l1` or the base kernel
+  (`pyra-boot-kernel.sh base`). Run `pyra-boot-kernel.sh stock` first if it
+  is neither.
+- It will not install over the release that is running unless you pass
+  `--replace-running`. A rebuild keeps the same release name, so that is the
+  normal case when you update the kernel you boot. The live module tree is
+  replaced, so reboot straight afterwards. `pyra-push-kernel.sh` passes the
+  flag for you when the names match.
+- It builds the initrd for the kernel it installs, with whatever hooks are in
+  `/etc/initramfs-tools` at that moment.
+
+Then choose what boots with `pyra-boot-kernel.sh` (section 3 of
+`reproduce.md`).
+
+**5. An initramfs hook change: install it and rebuild the initrd for each
+kernel.** `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback` is
+not installed by anything yet: not by prep and not by step 2. Copying it into
+place does not change any existing initrd, so after a copy, rebuild the
+initrd of every kernel you boot:
+
+    sudo install -m 0755 pyra-fw-nofallback /etc/initramfs-tools/scripts/init-top/
+    sudo update-initramfs -u -k <release>      # once per kernel you boot
+
+`lsinitramfs /boot/initrd.img-<release> | grep nofallback` confirms it.
+
+### What can undo an update
+
+- **A `pyra-hacks` upgrade or reinstall** silently puts the vendor's thermal
+  script back, which reverts fixes 6 and 7. Fix 12 survives it, because it
+  is a drop-in beside the package rather than an edit to it. The exception is
+  a card where that drop-in was removed in favour of the `0.38+pyra1`
+  package: there, an archive upgrade also brings back the uncalibrated wheel,
+  so re-run `pyra-volumed/install.sh`. After any upgrade that touches
+  `pyra-hacks`, run:
+
+      sudo pyra-thermal-fix.sh --check
+      sudo pyra-thermal-ladder.sh --check
+
+  If either one reports not applied, run it without `--check`. Nothing does
+  this for you yet.
+- **A new kernel whose initrd was built before the hook was installed** boots
+  without the hook. Check with `lsinitramfs`, as above.
