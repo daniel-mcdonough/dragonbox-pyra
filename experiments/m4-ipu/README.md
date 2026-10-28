@@ -10,10 +10,11 @@ of whether this is worth finishing are all in **`docs/m4-ipu.md`**. Read that
 first. This file is about the four patches; `firmware/README.md` is about the
 test program.
 
-**Two of the four are only needed because this kernel is 5.6.19.** The letux
+**Three of the four are only needed because this kernel is 5.6.19.** The letux
 kernel is at 7.3 and already carries the device tree driver and the SoC-level
-nodes, so on that tree `0009` and `0010` are dead weight and `0011` — and the
-timer finding behind it — and `0012` still apply. Whether to move is a real
+nodes, so on that tree `0009` and `0010` are dead weight. It also has the
+atomic omap-prm reset poll that removes the sleep `0012` works around. Only
+`0011`, and the timer finding behind it, still applies. Whether to move is a real
 choice; `docs/m4-ipu.md` has the comparison.
 
     ./pc/pyra-crossbuild.sh kernel-m4
@@ -54,8 +55,9 @@ connect it to a backlight. See the patch header and `docs/m4-ipu.md`.
 because what works is noisy in a way that should not be shipped. Starting the
 IPU produces two `BUG: scheduling while atomic` splats every time, because
 `omap_iommu_attach_dev()` sleeps in `pm_runtime_get_sync()` while holding two
-spinlocks. That is an unfixed upstream bug — mainline today is identical — and
-`0010`/`0011` are simply what make it reachable on this board. The fix converts
+spinlocks. Mainline has the same locking but no longer sleeps there: v5.8 made
+the reset poll in `omap_prm.c` atomic. `0010`/`0011` are simply what make it
+reachable on this board. The fix converts
 both locks to mutexes, which is safe because every site that takes either one
 is already a sleeping path. **Built and booted on 2026-09-20: the splats are
 gone and `pyra-m4-run.sh` goes from 10 ok / 1 failed to 11 ok / 0 failed.**

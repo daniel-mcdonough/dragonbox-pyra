@@ -89,10 +89,11 @@ The two stacks are one array so their order is defined, which is what lets
 
 The firmware worked first time. The kernel did not, quite: starting the IPU
 produced two `BUG: scheduling while atomic` splats every time, because
-`omap-iommu` sleeps while holding two spinlocks. That is an unfixed upstream
-bug, not something 0009-0011 introduced — mainline today is identical — and
+`omap-iommu` sleeps while holding two spinlocks. That is not something
+0009-0011 introduced. Mainline has the same locking but no longer sleeps there,
+because v5.8 made the omap-prm reset poll atomic.
 `0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch` fixes
-it. **That patch is now built and booted**, and this test is clean on it:
+it on 5.6 by making the locks mutexes. **That patch is now built and booted**, and this test is clean on it:
 11 ok, 0 failed.
 
 The first version of `pyra-m4-run.sh` reported "10 ok, 0 failed" straight

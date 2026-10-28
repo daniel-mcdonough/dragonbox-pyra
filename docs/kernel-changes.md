@@ -48,7 +48,9 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
-**The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
+**The device runs `5.6.19-m4-kbdled`** (boot entry l5, the default; l1, the test slot, has
+held `5.6.19-fix` since 2026-10-28). The installed m4-kbdled predates 0040-0042; the build
+tree's copy has them, and they reach the card when that kernel is next reinstalled. l4
 (`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
 only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads from
 the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled
@@ -100,6 +102,39 @@ kprobe panics, because `memcpy` thinks the 96-byte assembly template is a 4-byte
 This makes kprobes usable for profiling. Not our bug, and the fix is upstream's. See
 `building.md`, patch 7.
 
+**0040 — mmc: omap_hsmmc: fix the busy-timeout overflow on 32-bit.** A backport of
+upstream `f64ea900e4bd`. `busy_timeout * NSEC_PER_MSEC` is worked out in 32 bits, so a
+busy timeout above 4294 ms wraps to a much smaller one. The controller then gives up on
+a long erase or SANITIZE early. Measured on the Pyra on 2026-10-27, the SD card's erase
+asks for 250 ms, so ordinary discards never reach the overflow. The eMMC's trim and
+sanitize timeouts weren't measured. One limit remains, in mainline too:
+`set_data_timeout()` only handles up to 2^32 controller cycles (about 86 s at 50 MHz).
+Every value from 2^27 cycles (2.7 s) upward should get the maximum hardware timeout,
+but past 2^32 its bit-31 loop picks the wrong one.
+
+**0041 — drm/omap: dmm_tiler: fix the error code when probe fails.** A backport of
+upstream `723ae803218d`. If the refill buffer can't be allocated, probe tears everything
+down and still returns 0, the result of the `dma_set_coherent_mask()` call before it. The
+TILER then looks bound while it is freed. This only matters when that allocation fails,
+which has never been seen here.
+
+**0042 — power: supply: bq2429x: only apply battery currents the device tree gives.**
+Our own; this charger driver is letux-only. Two `if (!of_property_read_u32(...));` tests
+end in a stray semicolon, so the pre-charge and termination setters always run, using an
+uninitialised local when the property is missing. The Pyra's battery node has neither
+property, so every probe writes stack garbage into REG03. `bq2429x_init_registers()`
+sets both fields to 128 mA later in the same probe, which hides the bug unless the probe
+defers or fails in between.
+
+**0040–0042 tested 2026-10-28** on the V5.3 unit, as `5.6.19-fix` booted once from l1. It
+booted in about 135 s to the desktop with the display, HDMI connector and TILER in use, no
+new `BUG:` or `WARNING:` (only the `omap_l3_noc` one every kernel prints). The charger
+probed, REG03 read `00` (128 mA / 128 mA) and the battery reported Full. A kprobe trace of
+`fstrim` showed the erase's 250 ms busy timeout passed through unchanged. In the built
+code, `set_data_timeout()` now reads the timeout's high word, and the charger probe
+branches on the property read instead of ignoring it. Not exercised: a busy timeout above
+4294 ms (none occurs on this card), and the TILER allocation failure.
+
 ---
 
 ## `experiments/m4-ipu/`: in all m4 kernels, and the demo kit
@@ -122,9 +157,11 @@ The pages go back to the allocator whenever the processor is stopped.
 
 **0012 — iommu/omap: do not sleep while holding the iommu spinlocks.** Starting the IPU
 produced two "scheduling while atomic" BUGs every time, because the attach path resumes a
-device that sleeps in its reset while two spinlocks are held. Mainline has the same
-code. This turns both locks into mutexes, since every path that takes them can already
-sleep. A real upstream bug. Report: `reports/kernel-iommu-omap-sleep-under-spinlock.md`.
+device that sleeps in its reset while two spinlocks are held. This turns both locks into
+mutexes, since every path that takes them can already sleep. Mainline has the same
+locking, but not the sleep: v5.8 made the reset poll in `omap_prm.c` atomic, which is the
+upstream fix for the same splat. So this is a 5.6 bug with a latent upstream remainder,
+not a live upstream bug. Report: `reports/kernel-iommu-omap-sleep-under-spinlock.md`.
 
 ---
 

@@ -31,11 +31,14 @@ spin_unlock()s that follow then take it 1 -> 0 -> -1, which is the
 that syscall -- in our case the CMA allocation in rproc_alloc_carveout()
 -- reports atomic too.
 
-None of this is specific to 5.6 or to the backport in 0009.  Mainline
-today is character-for-character identical here: omap_iommu_domain still
-declares spinlock_t lock, omap_iommu still declares spinlock_t
-iommu_lock, and iommu_enable() still calls pm_runtime_get_sync() between
-them.  What the Pyra's config changes is only whether anyone is told:
+None of this comes from the backport in 0009.  The locking is the same
+in mainline: omap_iommu_domain still declares spinlock_t lock, omap_iommu
+still declares spinlock_t iommu_lock, and iommu_enable() still calls
+pm_runtime_get_sync() between them.  The sleep is not: upstream commit
+"soc: ti: omap-prm: use atomic iopoll instead of sleeping one" (v5.8)
+made both polls in omap_reset_deassert() atomic, so mainline no longer
+reaches the usleep_range above.  Backporting that would be the other
+way to fix this on 5.6.  What the Pyra's config changes is only whether anyone is told:
 CONFIG_PREEMPT=y and CONFIG_SMP=y, so preempt_count is maintained and
 schedule_debug() notices.  A PREEMPT_NONE vendor kernel sleeps under the
 same held locks in the same place and says nothing, which is presumably

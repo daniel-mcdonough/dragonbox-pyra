@@ -1,0 +1,39 @@
+power: supply: bq2429x: only apply battery currents the device tree gives
+
+bq2429x_parse_dt() reads two optional properties from the monitored
+battery node, and each test ends in a stray semicolon:
+
+	if (!of_property_read_u32(battery_np,
+			"precharge-current-microamp",
+			&value));
+		bq2429x_set_precharge_current_uA(di, value);
+
+so the if has an empty body and both setters run unconditionally.  When a
+property is missing, of_property_read_u32() leaves value untouched, and
+value is an uninitialised local, so whatever was on the stack is
+converted and written into REG03 (pre-charge and termination current).
+
+The Pyra hits this on every probe: its battery node has neither
+property.  bq2429x_init_registers() later in the same probe writes
+128 mA into both fields, which hides it, but only if the probe gets that
+far; a failure or deferral in between leaves the charger running with
+the garbage settings until the next probe.
+
+Drop the semicolons so each setter runs only when its property was read.
+---
+--- a/drivers/power/supply/bq2429x_charger.c
++++ b/drivers/power/supply/bq2429x_charger.c
+@@ -1525,11 +1525,11 @@
+ 				&di->chg_current_uA);
+ 		if (!of_property_read_u32(battery_np,
+ 				"precharge-current-microamp",
+-				&value));
++				&value))
+ 			bq2429x_set_precharge_current_uA(di, value);
+ 		if (!of_property_read_u32(battery_np,
+ 				"charge-term-current-microamp",
+-				&value));
++				&value))
+ 			bq2429x_set_charge_term_current_uA(di, value);
+ 		of_node_put(battery_np);
+ 	}

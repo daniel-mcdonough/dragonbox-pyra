@@ -15,8 +15,10 @@ payoff for this project's actual goals is thin.
 
 **And read "The other route" before building anything.** The letux kernel is at
 7.3 and already carries `0009` and `0010`; whether to use it is a real choice
-and not a foregone one. It does not fix `0012` — nothing does, upstream
-included.
+and not a foregone one. It does not need `0012` either, though not because
+anyone fixed the locking: the sleep that `0012` works around was removed from
+under the locks in v5.8, by a change to `omap_prm.c` (see "What it found"
+below).
 
 ---
 
@@ -450,16 +452,33 @@ ti-sysc target module, deasserts its hardreset line, and polls RSTST with a
 `schedule_debug()` forces the count to 1, the two `spin_unlock()`s then take it
 to −1, and that is the `0xffffffff` in the second report.
 
-**This is not something `0009`–`0011` introduced.** Mainline today is
-character-for-character identical: both locks are still spinlocks and
-`iommu_enable()` still calls `pm_runtime_get_sync()` between them. What the
-Pyra's config changes is only whether anyone is told — `CONFIG_PREEMPT=y` and
-`CONFIG_SMP=y`, so `preempt_count` is maintained and `schedule_debug()`
-notices. A `PREEMPT_NONE` vendor kernel sleeps under the same held locks and
-says nothing. An OMAP5 or DRA7 that never attaches an IOMMU domain to the IPU
-or DSP never reaches the code; `0010` and `0011` are what make it reachable
-here.
+**This is not something `0009`–`0011` introduced, but it is a 5.6 bug, not
+a mainline one.** Corrected 2026-10-27; this paragraph used to say mainline
+was identical and still broken. The locking *is* identical: in mainline both
+locks are still spinlocks and `iommu_enable()` still calls
+`pm_runtime_get_sync()` between them. The sleep is not. It is the
+`usleep_range` inside `readl_relaxed_poll_timeout()` in
+`omap_reset_deassert()`, and upstream commit "soc: ti: omap-prm: use atomic
+iopoll instead of sleeping one" (first in v5.8) turned both of that function's
+polls into `readl_relaxed_poll_timeout_atomic()`. Its message describes this
+same splat under `CONFIG_PREEMPT`. Mainline's `drivers/pmdomain/ti/omap_prm.c`
+still has both polls atomic, checked 2026-10-27. So the trace above cannot
+happen on mainline as written. What is left upstream is latent: the IOMMU
+still calls `pm_runtime_get_sync()`, which may sleep, on a device not marked
+`pm_runtime_irq_safe()`, under two spinlocks. Nobody has shown that firing
+on a mainline kernel. `reports/kernel-iommu-omap-sleep-under-spinlock.md`
+has the detail.
 
+What the Pyra's config changes is only whether anyone is told:
+`CONFIG_PREEMPT=y` and `CONFIG_SMP=y`, so `preempt_count` is maintained and
+`schedule_debug()` notices. A `PREEMPT_NONE` vendor kernel sleeps under the
+same held locks and says nothing. An OMAP5 or DRA7 that never attaches an
+IOMMU domain to the IPU or DSP never reaches the code; `0010` and `0011` are
+what make it reachable here.
+
+There were two ways to fix it on 5.6: backport the v5.8 omap-prm change, or
+make the locks legal to sleep under. `0012` was written before the omap-prm
+change was found, and does the second.
 `0012-iommu-omap-do-not-sleep-while-holding-the-iommu-spinlocks.patch` converts
 both locks to mutexes, which is safe because every site that takes either one
 is already a sleeping path — `omap_iommu_attach()`, `omap_iommu_detach()`,
@@ -511,7 +530,9 @@ Read out of `letux-7.3-rc3`:
 | `drivers/gpu/drm/pvrsgx/` | present, including `1.14.3699939` — the version this card's DDK blob wants — and newer |
 
 So **patches `0009` and `0010` are unnecessary on letux 7.x.** They exist to
-put into 5.6.19 what that tree already has.
+put into 5.6.19 what that tree already has. `0012` is unnecessary there too,
+for a different reason: letux has the v5.8 omap-prm change, so the reset poll
+it works around no longer sleeps (see "What it found").
 
 Two things survive the move, and they are the two findings that were actually
 this project's own rather than upstream's:
@@ -845,7 +866,8 @@ wanted for.
 The kernel half is genuinely cheap — a small, low-risk patch, now proven on
 hardware end to end: both M4s run code, the IOMMU translates, and the carveouts
 cost nothing at rest. It does carry one debt that was invisible until something
-actually started the IPU, an upstream `omap-iommu` sleep-under-spinlock; `0012`
+actually started the IPU, an `omap-iommu` sleep-under-spinlock that upstream
+only escaped through a later omap-prm change; `0012`
 fixes it in twenty lines, and that fix is built and booted too.
 
 **Getting a bare-metal program running turned out to be much cheaper than this
@@ -988,6 +1010,9 @@ are neither:
   unknown is whether any *other* caller of `iommu_attach_device()` in the tree
   is in atomic context, which the mutex conversion would now catch. Nothing on
   this machine is — the only iommu domains here belong to the ipu and the dsp.
+- **Whether the v5.8 omap-prm backport alone would do instead of `0012`** has
+  not been tried. It is the upstream fix, but other sleepers under
+  `sysc_runtime_resume()` were never ruled out.
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
 - **`git.ti.com` still does not respond from here**, so nothing was checked
   against it directly. That gap is now mostly closed a different way: the
