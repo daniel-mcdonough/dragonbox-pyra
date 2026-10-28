@@ -175,8 +175,13 @@ regulator warning. The OTG port is the **wide** USB 3.0 micro-B socket; the narr
 micro-USB beside it is the FTDI serial console and never reaches dwc3, which is why
 the first attempt, through that port, saw nothing. A narrow plug in the wide socket is
 enough for USB 2.0. Not exercised: host mode (the one path where `otg_path` is turned
-on, which needs an adapter that grounds ID; the one tried did not), and the IRQ failure
-path.
+on). It needs an adapter that grounds ID; with the micro-to-A adapter tried, a phone
+took the host role itself, and a controller dongle got no power, extcon staying at
+`USB-HOST=0` both times. Also not exercised: the IRQ failure path. Unloading `g_serial`
+while the PC still had `ttyACM0` configured gave a `WARN_ON(cdev->config)` in
+`__composite_unbind()`. That is the gadget core removing a configured gadget without a
+disconnect first, which 0043-0047 do not touch; the same unload with nothing connected
+was silent. It was not checked on the unpatched kernel.
 
 ---
 
