@@ -15,7 +15,11 @@ boot, and again at 30, 60 and 100 s, the watcher records the following in
 - every process's state, parent, wchan and command line
 
 It also writes a `pyra-settle-diag` marker to the kernel log and triggers
-SysRq-T, so every task's kernel stack ends up in the journal. `/proc/<pid>/stack`
+SysRq-T, so every task's kernel stack ends up in the journal. Around the SysRq
+write it turns `printk.ignore_loglevel` off and sets the console loglevel to 1,
+then restores both, so the dump goes only to the ring buffer. A dump printed to
+the consoles once froze a boot. It also holds `rcu_read_lock()` for as long as it
+prints, which stalls the root mount's `rcu_barrier()`. `/proc/<pid>/stack`
 is empty for other tasks on this SMP ARM kernel, which is why the hook uses
 SysRq-T. On a normal boot the hook only writes its `armed at uptime` line.
 
@@ -38,3 +42,9 @@ has not been caught yet. Left installed so that daily use catches it.
 Later the same day, a warm reboot spent 16.6 s silent in the initramfs (root at
 23.4 s), below the 40 s first sample, so the samples moved to 15, 30, 60 and
 100 s and the card's initramfs was rebuilt with that version.
+
+Later still: a sample caught at 15 s froze the boot for good during its
+SysRq-T dump, which then went to fbcon and serial (`ignore_loglevel`). The
+hook now keeps the dump off the consoles. Live, one SysRq-T write took 5.28 s
+before that change and 0.03 s after it. The card's m4-kbdled initramfs was
+rebuilt with it. `.before-r16` is still the fallback.

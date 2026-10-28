@@ -163,7 +163,8 @@ which then sampled only at 40 and 90 s, missed it. The diagnostic is
 `experiments/initramfs-wait/pyra-settle-diag`. If the initramfs is still running
 at 15, 30, 60 or 100 s, it writes every process's state and wchan to
 `/run/initramfs/settle-diag.txt` and triggers SysRq-T, so every task's stack is in
-the journal after a `pyra-settle-diag` line. Check after any slow boot:
+the journal after a `pyra-settle-diag` line. The dump goes only to the ring
+buffer, not the screen. Check after any slow boot:
 
     sudo cat /run/initramfs/settle-diag.txt
     sudo journalctl -k -b -g pyra-settle-diag
@@ -184,13 +185,33 @@ shows the root mount itself still running and waiting, not finished:
     ... (mount_bdev) (f2fs_mount) (vfs_get_tree) (do_mount) (sys_mount)
     workqueue events: in-flight dbs_work_handler, pending drm_fb_helper_dirty_work
 
-The task's name and state line scrolled off the top. So F2FS's fsync-data
-recovery, which runs on every boot, can sit in `rcu_barrier()`. That is a
-lead for shape A, not yet the cause: one sample, 5 s after the wait began.
-The hang may be the diagnostic's own doing, a full SysRq-T dump onto the
-framebuffer console. The console redraw (`drm_fb_helper_dirty_work`) was
-queued behind the cpufreq governor's work on CPU0. Until that is settled, a
-SysRq-T sample can cost a power cycle.
+The task's name and state line scrolled off the top. The console redraw
+(`drm_fb_helper_dirty_work`) was queued behind the cpufreq governor's work on
+CPU0.
+
+**That `rcu_barrier` was the diagnostic's own doing, and F2FS is not the
+waiter.** The kernel runs the whole SysRq-T handler inside `rcu_read_lock()`
+(`__handle_sysrq` in `drivers/tty/sysrq.c`). Every root mount ends its fsync
+recovery with `kmem_cache_destroy()`, which calls `rcu_barrier()` because the
+kernels have `CONFIG_MEMCG_KMEM=y` (`flush_memcg_workqueue` in
+`mm/slab_common.c`). So a mount that starts while a dump is printing waits
+until the dump ends. The dump was printing to every console, because the
+cmdline carries `ignore_loglevel`: measured 2026-10-28 on the running system,
+with fbcon hidden behind X so only the serial console was printing, one
+SysRq-T write took 5.28 s. In the initramfs, fbcon also draws each of the
+~3900 lines. The journal (42 boots, 2026-10-02 to 2026-10-28,
+kernel timestamps) settles the F2FS question:
+
+- On every boot, slow or fast, `recover fsync data on readonly fs` (printed as
+  recovery starts) and `Mounted with checkpoint` are 36-77 ms apart. The 70 s
+  and 126-128 s waits all come before recovery starts.
+- Every slow boot followed a clean shutdown (`Journal stopped` in the previous
+  boot), so there was no fsync data left over from an unclean stop.
+
+Why the frozen boot never recovered is not known. The diagnostic now keeps the
+dump off the consoles (it turns `ignore_loglevel` off and sets the console
+loglevel to 1 around the SysRq write, then puts both back). On the running
+system the same write then took 0.03 s, and the full dump was in the journal.
 
 ---
 

@@ -889,3 +889,25 @@ short` over ssh after each boot. The two reboots were owner-approved.
   gave `path aess`, the AESS script and `ok`, with sink `aess` on port
   `pyra-speaker`. The service finished at 22.8 s and the display manager
   started at 24.0 s.
+
+## 2026-10-28 — `pyra-settle-diag` kept off the consoles; the F2FS lead tested
+
+Method: the hook's two console functions sourced in a root shell on the trixie
+card, running `5.6.19-m4-kbdled` with X up (fbcon hidden), around
+`echo t > /proc/sysrq-trigger`. Times are from `/proc/uptime` before and after
+the write.
+
+- Without the change (`ignore_loglevel` Y, console loglevel 7): the write took
+  5.28 s (408.15 to 413.43).
+- With it: `ignore_loglevel` N and `kernel.printk` `1 4 1 7` during the write,
+  which took 0.03 s (413.44 to 413.47). Afterwards they read Y and `7 4 1 7`
+  again. The ring buffer held both dumps in full (3906 and 3909 lines after
+  `sysrq: Show State`), and `journalctl -k` had both headers.
+- The card's m4-kbdled initrd was rebuilt with the new hook. `unmkinitramfs`
+  shows both `pyra-settle-diag` and `pyra-fw-nofallback` in it.
+- The F2FS lead, from the journal of 42 boots (2026-10-02 to 2026-10-28,
+  `_SOURCE_MONOTONIC_TIMESTAMP`): `recover fsync data on readonly fs` to
+  `Mounted with checkpoint` took 36-77 ms on every boot,
+  the nine slow ones included (70.6 s, 23.4 s and seven at 126.1-127.7 s). Every slow boot's previous boot
+  ended with `Journal stopped`. So F2FS recovery is not the waiter, and slow
+  boots don't follow unclean shutdowns.
