@@ -50,6 +50,17 @@ snapshot() {
 		wchan=$(cat "$p/wchan" 2>/dev/null)
 		echo "$pid $ppid $state $comm wchan=$wchan cmd=[$cmd]"
 	done
+	echo "--- fds of systemd-udevd and udevadm, then /proc/net/unix"
+	for p in /proc/[0-9]*; do
+		read -r comm < "$p/comm" 2>/dev/null || continue
+		case "$comm" in
+		systemd-udevd|udevadm) ;;
+		*) continue ;;
+		esac
+		echo "${p#/proc/} $comm:"
+		ls -l "$p/fd/" 2>&1
+	done
+	cat /proc/net/unix 2>&1
 	echo
 	quiet_console
 	echo "pyra-settle-diag: SysRq-T at uptime $(cat /proc/uptime)" > /dev/kmsg

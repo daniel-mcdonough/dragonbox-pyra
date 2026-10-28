@@ -13,6 +13,7 @@ boot, and again at 30, 60 and 100 s, the watcher records the following in
 - pending sysfs firmware fallbacks (`/sys/class/firmware`)
 - the udev run directory
 - every process's state, parent, wchan and command line
+- the open fds of `systemd-udevd` and `udevadm`, and `/proc/net/unix`
 
 It also writes a `pyra-settle-diag` marker to the kernel log and triggers
 SysRq-T, so every task's kernel stack ends up in the journal. Around the SysRq
@@ -48,3 +49,10 @@ SysRq-T dump, which then went to fbcon and serial (`ignore_loglevel`). The
 hook now keeps the dump off the consoles. Live, one SysRq-T write took 5.28 s
 before that change and 0.03 s after it. The card's m4-kbdled initramfs was
 rebuilt with it. `.before-r16` is still the fallback.
+
+Then a full shape A was caught (root at 126.2 s): all four samples ran, the boot
+finished, and the dumps were in the journal only. The samples are in
+`settle-diag-2026-10-28-shapeA.txt`. udev's queue was empty throughout, and
+`udevadm settle` was still waiting for udevd to answer its PING (see
+`docs/troubleshooting.md`). The fd and unix-socket capture was added after that
+and installed the same way.

@@ -911,3 +911,11 @@ the write.
   the nine slow ones included (70.6 s, 23.4 s and seven at 126.1-127.7 s). Every slow boot's previous boot
   ended with `Journal stopped`. So F2FS recovery is not the waiter, and slow
   boots don't follow unclean shutdowns.
+- Six owner-approved warm reboots into l5 with the new hook. Reboots 1-5 came
+  after about 1 min up each, and root mounted at 10.6, 6.5, 10.6, 7.6 and 7.6 s.
+  Reboot 6, after 10 min up, was shape A: root at 126.2 s. The `sysrq: Show
+  State` headers were at 16.2, 30.8, 60.7 and 100.8 s, the boot finished, and
+  the four dumps were in `dmesg`. After boot, `ignore_loglevel` read Y and
+  `kernel.printk` read `7 4 1 7`. `/run/initramfs/settle-diag.txt`: no
+  `/run/udev/queue` at any sample. `udevadm settle` and `systemd-udevd` were in
+  `do_epoll_wait`, with no D-state task (`troubleshooting.md`, shape A).

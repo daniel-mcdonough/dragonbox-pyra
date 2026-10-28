@@ -139,7 +139,7 @@ The hook is installed on the trixie card for `5.6.19-m4-kbdled` only; prep does
 not install it yet. Without it, the workaround is to unplug the adapter for a
 cold boot.
 
-**Shape A, not explained: 120 s of silence after a warm reboot.** 5 of 12 warm
+**Shape A, waiter named, cause open: 120 s of silence after a warm reboot.** 5 of 12 warm
 reboots (boots on 2026-10-19, 20, 24 and two on 2026-10-28), root at 126-128 s.
 The log stops after the EHCI root hub comes up and resumes with the root mount:
 
@@ -212,6 +212,34 @@ Why the frozen boot never recovered is not known. The diagnostic now keeps the
 dump off the consoles (it turns `ignore_loglevel` off and sets the console
 loglevel to 1 around the SysRq write, then puts both back). On the running
 system the same write then took 0.03 s, and the full dump was in the journal.
+
+**2026-10-28, shape A caught: `udevadm settle` waits for udevd to answer its
+PING, with the queue already empty.** The sixth of six owner-approved warm
+reboots into `m4-kbdled` (after 10 min up; the five after about 1 min up were
+fast, root at 6.5-10.6 s) mounted root at 126.2 s. All four samples ran, at 16,
+31, 61 and 101 s, and the boot finished normally, with the dumps only in the
+journal. The samples are kept in
+`experiments/initramfs-wait/settle-diag-2026-10-28-shapeA.txt`. At every sample:
+
+- `/run/udev/queue` does not exist, so udev's event queue is empty. Workers come
+  and go (one at 16 s, another at 31 s), so udevd is still handling events.
+- No task is in D state. No firmware fallback is pending.
+- `udevadm settle` (from `init-top/udev`) and `systemd-udevd` both sleep in
+  `do_epoll_wait`. SysRq-T shows nothing else holding up the boot.
+
+In systemd 257 (`src/udev/udevadm-settle.c`), settle runs as root, so it first
+connects to `/run/udev/control`, sends PING, and waits up to `MAX(5 s, timeout)`
+(120 s) for udevd to close the connection (`udev_ctrl_wait`). Only then does it
+watch `/run/udev` and check for the queue file. That check comes after the
+inotify watch is set up, so with the queue empty it would return at once. A
+settle that sleeps for 120 s with no queue file has to be the one still waiting
+on the PING. On the udevd side, the listening control socket runs at
+`SD_EVENT_PRIORITY_IDLE` and takes one connection at a time (`udev-manager.c`,
+`udev-ctrl.c`). Why udevd doesn't answer is not known. The 16.6 s case above
+fits a PING answered late. The diagnostic now also records the open fds of
+`systemd-udevd` and `udevadm` and `/proc/net/unix`, so the next catch shows
+whether udevd accepted the connection at all. Workaround while open: none
+needed beyond patience. The boot finishes at about 126 s on its own.
 
 ---
 
