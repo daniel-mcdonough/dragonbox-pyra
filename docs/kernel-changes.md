@@ -54,9 +54,13 @@ only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads
 the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled
 2026-10-24 from the real build tree with 0037-0039; no `updates/` copy was left on the card.
 Reinstalled 2026-10-28 with 0040-0042: booted clean, charger, display, undervolt, both
-remoteprocs and the keyboard LED all present. The installed m4-kbdled predates 0043-0047;
-l1 holds `5.6.19-fix` with them since 2026-10-28 (the previous `user.cfg` is saved as
-`user.cfg.before-fix-dwc3`).
+remoteprocs and the keyboard LED all present. Reinstalled again 2026-10-28 with 0043-0047
+(l1 points back at it; previous `user.cfg` saved as `user.cfg.before-kbdled-0043`): no
+`vbus init failed`, no new warning, and undervolt, lightdm, both remoteprocs, the keyboard
+LED and REG03 `00` all present. That first boot waited about 120 s in the initramfs before
+mounting root, with the SD card detected at 2 s. The old m4-kbdled did the same once
+earlier that day (74 s); other boots mount root in 9-17 s. Intermittent and not yet
+explained.
 
 ---
 
