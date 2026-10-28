@@ -454,7 +454,9 @@ to −1, and that is the `0xffffffff` in the second report.
 
 **This is not something `0009`–`0011` introduced, but it is a 5.6 bug, not
 a mainline one.** Corrected 2026-10-27; this paragraph used to say mainline
-was identical and still broken. The locking *is* identical: in mainline both
+was identical and still broken. jedi23's M4 kernel (below, under "The other
+route") makes the reset polls atomic on 5.6, and comparing against it is what
+got this paragraph fixed. The locking *is* identical: in mainline both
 locks are still spinlocks and `iommu_enable()` still calls
 `pm_runtime_get_sync()` between them. The sleep is not. It is the
 `usleep_range` inside `readl_relaxed_poll_timeout()` in
@@ -572,6 +574,44 @@ The honest ordering: if the goal is to try the M4s, build `kernel-m4` and keep
 every other variable fixed. If the goal is to modernise the Pyra's kernel, that
 is a separate piece of work with its own risks and its own payoff, and the M4
 support arriving free is a side effect of it rather than a reason for it.
+
+### jedi23's M4 kernel: the same goal, the other way round
+
+jedi23 published a separate 5.6.19-pyradef kernel with Cortex-M4 support on the
+Pyra forum ([thread](https://pyra-handheld.com/boards/threads/new-5-6-19-pyradef-based-kernel-with-cortex-m4-support.100246/),
+[source and change list](https://github.com/micha2358/Pyra-Kernel)): v4 on
+2026-10-20, v5 on 2026-10-21, v6 on 2026-10-26. The two projects were done
+independently. `0009`–`0012` here date from 2026-09-20, and this project didn't
+know about his until 2026-10-27. It is the same base and the same idea: a
+device-tree remoteproc driver (his is from v5.7, ours from v5.9) and an IPU node
+in `omap5.dtsi`. How it starts the core is
+different. His holds CPU1 in reset and releases CPU0 only, and runs it out of
+the 64 KB L2 SRAM. To do that it rewrites AMMU small page 0 to point at
+`0x55020000`, because his device tree has no carveout at device address 0. Ours
+boots both cores from a 56 MB DDR carveout and needs no AMMU write. His also
+sets `auto_boot = false` and allows one start per boot.
+
+Comparing the two on 2026-10-27 is where these came from. They are the only
+changes in this project that come from his work:
+
+- **`0040`, the hsmmc busy-timeout overflow,** and **`0041`, the dmm_tiler probe
+  error code.** He backported both from upstream, and his 2026-10-21 change
+  report lists them. Ours are the same upstream commits, taken after seeing them
+  in his kernel.
+- **`0042`, the bq2429x stray semicolons.** He found and fixed this one, and it
+  is in that same 2026-10-21 report. It is not upstream, because the driver is
+  letux-only. Our patch has the same two-character change. What we added is the
+  REG03 analysis and the boot test.
+- **The `0012` doc correction.** He fixes the same splat on 5.6 by making the
+  `omap_prm.c` reset polls atomic (v5, 2026-10-21). `0012` fixed it a month
+  earlier by turning the locks into mutexes. This project's report had cited
+  the v5.8 omap-prm commit since 2026-10-20, but this document and the patch
+  header still called it a live mainline bug. Seeing his fix is what got them
+  corrected.
+
+His kernel also changes `dwc3-omap.c` (VBUS and extcon state), the
+`-msoft-float` ordering in `arch/arm/Makefile`, and a `PF_MAX` check in
+SELinux's `classmap.h`. None of those are in this project's kernels.
 
 ---
 
@@ -1146,6 +1186,14 @@ The letux kernel:
 - Note that `work/hns/pyrav5` is a **4.4.0-rc6** work branch and carries the
   same dead stub 5.6.19 does; it is older than this machine's kernel, not
   newer. Branch names in that tree do not imply recency.
+
+Other Pyra M4 work:
+
+- [`micha2358/Pyra-Kernel`](https://github.com/micha2358/Pyra-Kernel) — jedi23's
+  M4 kernel, with a full change list against stock pyradef, and its
+  [forum thread](https://pyra-handheld.com/boards/threads/new-5-6-19-pyradef-based-kernel-with-cortex-m4-support.100246/).
+  `0040`–`0042` and the 2026-10-27 omap-prm doc correction came from comparing
+  against it.
 
 Firmware:
 

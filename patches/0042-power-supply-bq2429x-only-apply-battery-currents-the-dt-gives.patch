@@ -20,6 +20,10 @@ far; a failure or deferral in between leaves the charger running with
 the garbage settings until the next probe.
 
 Drop the semicolons so each setter runs only when its property was read.
+
+jedi23 found this and made the same change in his Pyra M4 kernel
+(https://github.com/micha2358/Pyra-Kernel, published by 2026-10-21).
+This patch is taken from there.
 ---
 --- a/drivers/power/supply/bq2429x_charger.c
 +++ b/drivers/power/supply/bq2429x_charger.c

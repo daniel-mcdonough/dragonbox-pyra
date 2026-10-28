@@ -103,7 +103,8 @@ This makes kprobes usable for profiling. Not our bug, and the fix is upstream's.
 `building.md`, patch 7.
 
 **0040 — mmc: omap_hsmmc: fix the busy-timeout overflow on 32-bit.** A backport of
-upstream `f64ea900e4bd`. `busy_timeout * NSEC_PER_MSEC` is worked out in 32 bits, so a
+upstream `f64ea900e4bd`, found in jedi23's M4 kernel (see `m4-ipu.md`), which carried
+it first. `busy_timeout * NSEC_PER_MSEC` is worked out in 32 bits, so a
 busy timeout above 4294 ms wraps to a much smaller one. The controller then gives up on
 a long erase or SANITIZE early. Measured on the Pyra on 2026-10-27, the SD card's erase
 asks for 250 ms, so ordinary discards never reach the overflow. The eMMC's trim and
@@ -113,13 +114,16 @@ Every value from 2^27 cycles (2.7 s) upward should get the maximum hardware time
 but past 2^32 its bit-31 loop picks the wrong one.
 
 **0041 — drm/omap: dmm_tiler: fix the error code when probe fails.** A backport of
-upstream `723ae803218d`. If the refill buffer can't be allocated, probe tears everything
+upstream `723ae803218d`, also found in jedi23's M4 kernel, which carried it first. If
+the refill buffer can't be allocated, probe tears everything
 down and still returns 0, the result of the `dma_set_coherent_mask()` call before it. The
 TILER then looks bound while it is freed. This only matters when that allocation fails,
 which has never been seen here.
 
 **0042 — power: supply: bq2429x: only apply battery currents the device tree gives.**
-Our own; this charger driver is letux-only. Two `if (!of_property_read_u32(...));` tests
+jedi23's fix, published in his M4 kernel by 2026-10-21 and taken from there; the
+REG03 analysis and testing are ours. This charger driver is letux-only. Two
+`if (!of_property_read_u32(...));` tests
 end in a stray semicolon, so the pre-charge and termination setters always run, using an
 uninitialised local when the property is missing. The Pyra's battery node has neither
 property, so every probe writes stack garbage into REG03. `bq2429x_init_registers()`
@@ -161,7 +165,10 @@ device that sleeps in its reset while two spinlocks are held. This turns both lo
 mutexes, since every path that takes them can already sleep. Mainline has the same
 locking, but not the sleep: v5.8 made the reset poll in `omap_prm.c` atomic, which is the
 upstream fix for the same splat. So this is a 5.6 bug with a latent upstream remainder,
-not a live upstream bug. Report: `reports/kernel-iommu-omap-sleep-under-spinlock.md`.
+not a live upstream bug. jedi23's M4 kernel fixes the same splat the other way, with
+atomic omap-prm polls, and comparing against it on 2026-10-27 is what corrected this
+paragraph. `0012` itself (2026-09-20) predates his work.
+Report: `reports/kernel-iommu-omap-sleep-under-spinlock.md`.
 
 ---
 
