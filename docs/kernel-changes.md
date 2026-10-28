@@ -167,9 +167,16 @@ against a baseline on `5.6.19-m4-kbdled` the same evening. At boot the two
 warning (only `omap_l3_noc`). Two suspend-to-RAM cycles resumed with no
 `unbalanced disables for otg_path`; the baseline printed it on its one cycle, from
 `dwc3_omap_complete()`. The SGX IRQ 144 and DSI busy warnings are unchanged.
-`g_serial` binds to and unbinds from the UDC cleanly. Not exercised: a USB host
-enumerating the Pyra (the OTG port had only a charger on it), host mode through an OTG
-adapter, which is the one path where `otg_path` is turned on, and the IRQ failure path.
+Device mode, on a second boot of the same kernel: with `g_serial` loaded, a phone and
+then the PC each enumerated and configured the Pyra at high speed through the OTG port.
+The PC bound it as `0525:a4a7` on `ttyACM0`, and text went both ways. Unplugging the
+phone took the ID-float path that 0044 guards; the whole boot logged no dwc3 or
+regulator warning. The OTG port is the **wide** USB 3.0 micro-B socket; the narrow
+micro-USB beside it is the FTDI serial console and never reaches dwc3, which is why
+the first attempt, through that port, saw nothing. A narrow plug in the wide socket is
+enough for USB 2.0. Not exercised: host mode (the one path where `otg_path` is turned
+on, which needs an adapter that grounds ID; the one tried did not), and the IRQ failure
+path.
 
 ---
 
