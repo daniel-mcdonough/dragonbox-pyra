@@ -57,6 +57,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `device/pyra-gles` | Runs a GLES2 program against the SGX driver instead of glvnd, which is otherwise what it gets and why it draws nothing. Needs no root and installs nothing. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
+| `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback` | Turns off the kernel's 60 s sysfs firmware fallback before the initramfs's udev starts. Without it a USB ethernet adapter that enumerates early can hold root back by a minute or two. See "Root mounts a minute or two late" in `troubleshooting.md`. Copy it in and run `update-initramfs`; not installed by any script yet. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |
 | `device/pyra-modem-power.sh` | Reads the board's one INA231, on the modem rail, or explains why it cannot be read. On a unit with no modem fitted it cannot: the rail is down and the sensor is powered from it. Read-only. |

@@ -72,6 +72,80 @@ That is the working debug loop for this image.
 
 ---
 
+## Root mounts a minute or two late, with nothing on screen
+
+A healthy boot mounts the root filesystem 6-17 s in. Some boots sit in the
+initramfs instead and mount it at about 70 s or about 126 s. The SD card is
+detected at 2 s either way. In the journal of 27 boots from 2026-09-30 to
+2026-10-28 (measured from the kernel timestamps, `_SOURCE_MONOTONIC_TIMESTAMP`;
+journald's own receive times put all of early boot at the switch-root moment
+and hide the gap), 7 were slow. They happened on `5.6.19-fix` as well as
+`m4-kbdled`, so this is not a kernel patch. There are two shapes, and the wait
+is the same in both: `init-top/udev` in the initramfs runs `udevadm settle`, which
+gives up after 120 s, and root is mounted only after that.
+
+**Shape B, explained: the USB ethernet adapter waits 60 s for firmware that is
+not there.** Only cold boots, 2 of 13 (boots on 2026-10-24 and 2026-10-28). When
+the RTL8153 adapter behind the on-board hub enumerates while the initramfs's udev
+is still running, `r8152` asks for `rtl_nic/rtl8153a-4.fw`. It is not in the
+initramfs or on the card. The kernels are built with
+`CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y`, so the failed direct load falls back to
+the sysfs interface and waits its 60 s timeout for a helper that systemd-udev
+does not provide. Meanwhile the probe holds the device lock, the udev worker
+loading `r8152` blocks behind it, and the firmware uevent that the initramfs's
+`50-firmware.rules` would cancel is queued behind that same device:
+
+    7.048 r8152 1-2.1:1.0: Direct firmware load for rtl_nic/rtl8153a-4.fw failed with error -2
+    7.054 r8152 1-2.1:1.0: Falling back to sysfs fallback for: rtl_nic/rtl8153a-4.fw
+   60.647 INFO: task kworker/0:1:12 blocked for more than 30 seconds.
+   60.809 (rtl8152_set_mac_address [r8152]) from (set_ethernet_addr [r8152]) ... (rtl8152_probe [r8152])
+   60.957 INFO: task (udev-worker):1715 blocked for more than 30 seconds.
+   61.069 (driver_register) from (usb_register_driver) ... (do_init_module)
+   69.607 r8152 1-2.1:1.0: unable to load firmware patch rtl_nic/rtl8153a-4.fw (-11)
+   69.728 usbcore: registered new interface driver r8152
+   70.650 F2FS-fs (mmcblk1p2): Mounted with checkpoint version = 435fe6e8
+
+On the other cold boot, `r8152` gave up at 69.7 s in the same way, but root still
+waited until 126.6 s with nothing logged. That boot also had a second, silent
+waiter, which looks like shape A below.
+
+The same 60 s wait happens on **every** boot, but normally the adapter
+enumerates only after `pyra-usb3503-rescue` runs in the real root, so the wait
+only delays the wired network: on a fast boot the adapter gets carrier around
+85 s. The firmware fallback also costs the remoteprocs and the wifi config file
+their own waits. The fix is
+`device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback`, which sets
+`/proc/sys/kernel/firmware_config/ignore_sysfs_fallback` to 1 before udev
+starts. The setting survives switch_root. Install it as its header says.
+*Written 2026-10-28, not yet installed or measured.* Without it, the
+workaround is to unplug the adapter for a cold boot.
+
+**Shape A, not explained: 120 s of silence after a warm reboot.** 5 of 12 warm
+reboots (boots on 2026-10-19, 20, 24 and two on 2026-10-28), root at 126-128 s.
+The log stops after the EHCI root hub comes up and resumes with the root mount:
+
+    6.567 hub 1-0:1.0: USB hub found
+    6.571 hub 1-0:1.0: 3 ports detected
+   35.048 host1_vbus_power: supplied by modem_vbus_hdmi_power      (regulator cleanup, every boot)
+   35.131 otg_path: disabling
+  127.046 F2FS-fs (mmcblk1p2): recover fsync data on readonly fs
+
+That is exactly `udevadm settle`'s 120 s, with no hung-task report, no firmware
+fallback and no USB error. The on-board hub is absent from the initramfs, but it
+is absent on every warm reboot, fast or slow (fix 5 re-resets it later), so that
+is not the difference. The waiter is something that sleeps interruptibly, which
+the hung-task detector does not report. Four warm reboots on 2026-10-28 with a
+diagnostic in place were all fast (6.3-9.5 s). The diagnostic is
+`experiments/initramfs-wait/pyra-settle-diag`. If the initramfs is still running
+at 40 s and at 90 s, it writes every process's state and wchan to
+`/run/initramfs/settle-diag.txt` and triggers SysRq-T, so every task's stack is in
+the journal after a `pyra-settle-diag` line. Check after any slow boot:
+
+    sudo cat /run/initramfs/settle-diag.txt
+    sudo journalctl -k -b -g pyra-settle-diag
+
+---
+
 ## Crashes, freezes or wrong results since 2026-09-29: suspect the undervolt first
 
 The CPU's 750 MHz point runs at 870 mV, not 950, from every boot on 5.6.19-m4-kbdled

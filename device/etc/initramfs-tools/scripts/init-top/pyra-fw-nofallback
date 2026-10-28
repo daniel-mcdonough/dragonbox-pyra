@@ -1,0 +1,28 @@
+#!/bin/sh
+# Turn off the kernel's sysfs firmware fallback before udev starts.
+#
+# The Pyra kernels are built with CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y, so
+# every request_firmware() for a file that is not on disk waits 60 s for a
+# userspace helper to write it into /sys/class/firmware. Nothing on a systemd
+# system does that. When the waiting driver is probed from an initramfs udev
+# worker (the RTL8153 USB ethernet adapter, asking for rtl_nic/rtl8153a-4.fw),
+# the worker holds the device lock for the whole 60 s, the firmware uevent that
+# could cancel it is queued behind that same device, and `udevadm settle` in
+# init-top/udev waits it out: root mounts a minute or two late.
+#
+# The setting survives switch_root, so it covers the rest of the boot too.
+# Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
+# update-initramfs -u -k <release>.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+KNOB=/proc/sys/kernel/firmware_config/ignore_sysfs_fallback
+[ -w "$KNOB" ] && echo 1 > "$KNOB"
+exit 0

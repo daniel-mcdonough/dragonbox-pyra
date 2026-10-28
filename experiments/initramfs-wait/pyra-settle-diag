@@ -1,0 +1,71 @@
+#!/bin/sh
+# initramfs-tools init-top hook: record what the initramfs is waiting on when it
+# is still running 40 s after boot (a healthy boot mounts root by about 15 s).
+#
+# It runs before init-top/udev, starts a background watcher and returns at once.
+# The watcher takes a snapshot at 40 s and again at 90 s, but only while the
+# initramfs is still in charge: the marker lives on the initramfs's /run, which
+# init moves onto the real root at switch_root, so once root is up the marker is
+# gone from the watcher's view and it exits. The snapshots survive to userspace
+# as /run/initramfs/settle-diag.txt (root-only). Each snapshot also triggers
+# SysRq-T, so every task's kernel stack lands in the kernel log (and the journal)
+# after a "pyra-settle-diag" marker line: /proc/<pid>/stack is empty for other
+# tasks on this SMP ARM kernel.
+#
+# Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
+# update-initramfs -u -k <release>.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+OUT=/run/initramfs/settle-diag.txt
+MARK=/run/initramfs/.settle-diag-armed
+
+uptime_s() { read -r up _ < /proc/uptime; echo "${up%.*}"; }
+
+snapshot() {
+	echo "=== snapshot at uptime $(cat /proc/uptime)"
+	echo "--- /sys/class/firmware (pending sysfs fallbacks)"
+	ls -l /sys/class/firmware/ 2>&1
+	echo "--- /run/udev"
+	ls -la /run/udev/ 2>&1
+	echo "--- processes: pid ppid state comm wchan cmdline"
+	for p in /proc/[0-9]*; do
+		[ -r "$p/stat" ] || continue
+		pid=${p#/proc/}
+		read -r stat < "$p/stat" || continue
+		comm=${stat#*(}; comm=${comm%%)*}
+		rest=${stat##*) }
+		set -- $rest
+		state=$1 ppid=$2
+		cmd=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null)
+		wchan=$(cat "$p/wchan" 2>/dev/null)
+		echo "$pid $ppid $state $comm wchan=$wchan cmd=[$cmd]"
+	done
+	echo
+	echo "pyra-settle-diag: SysRq-T at uptime $(cat /proc/uptime)" > /dev/kmsg
+	echo t > /proc/sysrq-trigger
+}
+
+mkdir -p /run/initramfs
+: > "$MARK"
+echo "armed at uptime $(cat /proc/uptime)" > "$OUT"
+
+(
+	for at in 40 90; do
+		while [ "$(uptime_s)" -lt "$at" ]; do
+			[ -e "$MARK" ] || exit 0
+			sleep 1 || exit 0
+		done
+		[ -e "$MARK" ] || exit 0
+		snapshot >> "$OUT" 2>&1
+	done
+) </dev/null >/dev/null 2>&1 &
+
+exit 0

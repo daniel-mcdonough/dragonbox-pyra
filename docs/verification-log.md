@@ -825,3 +825,22 @@ idle, then registered it 190 ms after the amplifier was turned off by hand
 (`experiments/jack-detect/amp-blinds-removal-20261024.log`). Shipped with the
 unplug half manual; documented in `audio.md` and `known-limitations.md` 2.9.
 
+
+## 2026-10-28 — the late root mount, read from the journal
+
+Method: the kernel timestamp of every message (`_SOURCE_MONOTONIC_TIMESTAMP`)
+from the trixie card's journal, 27 boots from 2026-09-30 to 2026-10-28, plus
+how each previous boot ended (`systemd-reboot` or `systemd-poweroff`).
+
+- Root (F2FS on `mmcblk1p2`) mounted at 6-17 s on 20 boots, and at 70-128 s on 7.
+- The 5 slow boots that followed a warm reboot (out of 12) all mounted at
+  126-128 s with nothing logged between the EHCI root hub (6.6 s) and the root
+  mount. Not explained.
+- The 2 slow boots that followed a power-off (out of 13) had `r8152` waiting on
+  the sysfs firmware fallback for `rtl_nic/rtl8153a-4.fw` inside the initramfs,
+  with hung-task reports for the probe and for the udev worker. Root mounted
+  about 1 s after `r8152` gave up (70.6 s), and on the other boot at 126.6 s.
+- One slow warm reboot was on `5.6.19-fix`, so 0043-0047 are not the cause.
+- With `pyra-settle-diag` installed, 4 warm reboots mounted root at 7.6, 9.5,
+  6.5 and 6.3 s. The on-board hub was absent in the initramfs on all four, just
+  as on the slow ones.

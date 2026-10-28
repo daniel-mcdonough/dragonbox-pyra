@@ -59,8 +59,9 @@ remoteprocs and the keyboard LED all present. Reinstalled again 2026-10-28 with 
 `vbus init failed`, no new warning, and undervolt, lightdm, both remoteprocs, the keyboard
 LED and REG03 `00` all present. That first boot waited about 120 s in the initramfs before
 mounting root, with the SD card detected at 2 s. The old m4-kbdled did the same once
-earlier that day (74 s); other boots mount root in 9-17 s. Intermittent and not yet
-explained.
+earlier that day (74 s); other boots mount root in 9-17 s. Not a kernel change: it
+happens on `5.6.19-fix` too. See "Root mounts a minute or two late" in
+`troubleshooting.md`.
 
 ---
 
