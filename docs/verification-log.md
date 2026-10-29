@@ -1078,3 +1078,31 @@ before).
   and base `l5`, revert disarmed.
 - Not rebooted: the entry text is the same as the `l1` entry the installer has
   always written, which boots.
+
+## 2026-10-29 — a one-boot try of any slot (`debug LABEL --once`)
+
+`pyra-boot-kernel.sh debug LABEL [--once]`, checked on the trixie card running
+`5.6.19-m4-kbdled`, base `l5`, without a reboot (arming and disarming is the
+state change; the revert unit's command is unchanged):
+
+- `debug l4 --once`: `default l4`, `pyra-boot-revert.service` enabled, and
+  `status` printed "next boot: l4 — trixie, kernel 5.6.19-m4", "base kernel:
+  l5", "one-shot revert: enabled", and that the boot after next is back on l5.
+  `stock` then put `default l5` back and the unit read `disabled`.
+- `debug l3 --once --quiet`, then the unit's own command,
+  `/usr/local/sbin/pyra-boot-kernel.sh stock --quiet`: `default` went from `l3`
+  to `l5`.
+- Plain `debug --once` still selects `l1`; plain `debug` sets `l1` for every
+  boot with the revert disarmed. `debug l0 --once` is accepted (the distro
+  kernel).
+- Refused, exit 1, nothing changed: `debug l5` (the base), `debug l0h` and
+  `debug l0r` (`linux.cfg` boot modes; `l0h` is `init=` a hardware-test script,
+  so the revert would never run), `debug nope`. `debug l4 l3` and
+  `debug --bogus` exit 2. `base l1` is still refused.
+- `pc/pyra-push-kernel.sh --install --slot l4`, against stub `ssh`/`scp`/`rsync`
+  on the PC, ran `pyra-install-debug-kernel.sh --slot l4 k.tar.gz` remotely;
+  without `--install` it printed the same command; without `--slot` the command
+  had none. `--slot 'l5;rm'` is refused before anything is copied.
+
+Left as found: `default l5`, revert disarmed, and the new script installed in
+`/usr/local/sbin` (sha256 matches the repository copy).

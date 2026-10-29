@@ -350,11 +350,13 @@ what does it:
     sudo pyra-boot-kernel.sh status
     sudo pyra-boot-kernel.sh debug --once    # next boot only
     sudo pyra-boot-kernel.sh debug           # every boot
-    sudo pyra-boot-kernel.sh stock           # back to the stock kernel
+    sudo pyra-boot-kernel.sh debug l4 --once # another slot, next boot only
+    sudo pyra-boot-kernel.sh stock           # back to the base kernel
 
 `--once` replaces the safety the menu was supposed to provide. It arms
 `pyra-boot-revert.service`, a one-shot ordered before `sysinit.target` that
-puts `default` back to `l0` early in the next boot. A test kernel that boots
+puts `default` back to the base kernel (`l0` until `base` names another; see
+"Boot slots" below) early in the next boot. A test kernel that boots
 gets exactly one boot; forgetting to change it back is not a way to end up
 stranded on a debug kernel.
 
@@ -370,11 +372,11 @@ To remove it later, delete the `user.cfg` entry, `/boot/*-5.6.19-softlockup`,
 
 ### Boot slots: a base kernel and a fallback
 
-`pyra-boot-kernel.sh` knows two entries: the test slot `l1`, which `debug`
-selects, and the base, which `stock` and the one-shot revert return to
-(`pyra-boot-kernel.sh base` names it, and it is stored in
-`/boot/extlinux/pyra-base-label`). Every other entry in `user.cfg` is a slot
-that is only booted by making it the base.
+`pyra-boot-kernel.sh` has two entries of its own: the test slot `l1`, which a
+plain `debug` selects, and the base, which `stock` and the one-shot revert
+return to (`pyra-boot-kernel.sh base` names it, and it is stored in
+`/boot/extlinux/pyra-base-label`). Any other slot can be booted once with
+`debug LABEL --once`, or every boot with `debug LABEL` or by making it the base.
 
 By default the installer writes `l1`. `--slot LABEL` writes that entry instead
 and leaves `l1` and every other entry alone, so the scripts alone can give a
@@ -384,8 +386,9 @@ card the kernel it runs every day plus one to fall back to:
     sudo pyra-install-debug-kernel.sh --slot l4 m4-kernel.tar.gz         # the fallback
     sudo pyra-boot-kernel.sh base l5 && sudo pyra-boot-kernel.sh stock
 
-and, when the base misbehaves, `sudo pyra-boot-kernel.sh base l4 && sudo
-pyra-boot-kernel.sh stock` moves the machine to the fallback. `l0`, the distro
+and `sudo pyra-boot-kernel.sh debug l4 --once` tries the fallback for one boot.
+When the base misbehaves, `sudo pyra-boot-kernel.sh base l4 && sudo
+pyra-boot-kernel.sh stock` moves the machine to the fallback for good. `l0`, the distro
 kernel in `linux.cfg`, stays a third choice either way. The labels above are
 the ones the trixie card uses; any lower-case letters and digits will do.
 
@@ -403,11 +406,16 @@ The rules:
   lost its last one, and the removal commands it prints leave the files alone
   while another entry boots the same release (on the trixie card `l1` and `l5`
   both boot `5.6.19-m4-kbdled`).
-- `--once` covers only `l1`. To try a kernel for one boot before making it a
-  base, install it into `l1` first.
-- `pc/pyra-push-kernel.sh --install` writes `l1` only.
+- `debug LABEL` takes any `user.cfg` slot, and `l0`, the first entry in
+  `linux.cfg`. It refuses the base (`stock` is what that means) and the other
+  `linux.cfg` entries, which are boot modes of the distro kernel rather than
+  kernels: `l0h` boots with `init=` a hardware-test script, so systemd never
+  runs, the revert never fires, and one boot would become every boot.
+- `pc/pyra-push-kernel.sh --slot LABEL` hands the label to the installer, with
+  or without `--install`; with no `--slot`, the installer writes `l1` as before.
 
-Checked on the trixie card on 2026-10-29 (`docs/verification-log.md`).
+Checked on the trixie card on 2026-10-29 (`docs/verification-log.md`, both
+"installer boot slots" and "a one-boot try of any slot").
 
 ### Install it beside the stock kernel, not over it
 

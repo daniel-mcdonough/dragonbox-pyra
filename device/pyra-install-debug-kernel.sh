@@ -317,13 +317,12 @@ df -h /boot | tail -1
 # reboot into the new one when it would not.
 if [ "$SLOT" != l1 ] && [ "$now" != "$SLOT" ]; then
         NEXT="$SLOT now boots $REL. The default is still $now, so rebooting gets you
-that kernel. pyra-boot-kernel.sh boots only l1 and the base, and '--once'
-covers only l1, so to boot $SLOT make it the base, which every boot then uses:
+that kernel. Try $SLOT for one boot, or make it the base every boot uses:
 
+    sudo pyra-boot-kernel.sh debug $SLOT --once  # one boot, then back to the base
     sudo pyra-boot-kernel.sh base $SLOT && sudo pyra-boot-kernel.sh stock
 
-Falling back is the same two commands with the other kernel's slot. To try
-$REL for one boot first, install it into l1 as well and use 'debug --once'."
+Falling back is the same two commands with the other kernel's slot."
 elif [ "$now" != "$SLOT" ]; then
         NEXT="The default is still $now, so rebooting now gets you that kernel.
 Choose the new one with

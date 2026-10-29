@@ -5,6 +5,7 @@
 #   sudo pyra-boot-kernel.sh status
 #   sudo pyra-boot-kernel.sh debug --once     # next boot only, then back to base
 #   sudo pyra-boot-kernel.sh debug            # every boot until told otherwise
+#   sudo pyra-boot-kernel.sh debug l4 --once  # the same for another slot
 #   sudo pyra-boot-kernel.sh stock            # back to the base kernel
 #   sudo pyra-boot-kernel.sh base             # which kernel is the base
 #   sudo pyra-boot-kernel.sh base l3          # make that one the base
@@ -47,6 +48,24 @@
 # system it will not be: `extlinux-update` is not installed and there is no
 # /etc/default/extlinux, so nothing regenerates it.
 #
+# WHICH ENTRIES `debug` WILL TAKE
+#
+# With no label, `debug` means l1, the test slot the installer writes by
+# default. Name a label and it means that entry instead, so a fallback slot can
+# be tried for one boot without first making it the base. Two kinds of label
+# are refused:
+#
+# - The base itself. `debug <base> --once` would arm a revert to the kernel it
+#   is already on, and say "test kernel" about the everyday one; `stock` is
+#   what that means.
+# - Every linux.cfg entry but its first. That file is the distro's, and its
+#   other entries are boot modes, not kernels: on the trixie image l0r is
+#   `single` and l0h is `init=` a hardware-test script. Under that init
+#   systemd never runs, so the revert never fires and a one-boot try of l0h
+#   would be every boot from then on, on a machine with no menu to escape
+#   it. The first entry, l0, is the distro kernel, and trying it for a boot
+#   against a base in user.cfg is a fair thing to want.
+#
 set -euo pipefail
 
 CONF=/boot/extlinux/extlinux.conf
@@ -69,12 +88,20 @@ STOCK_LABEL=$(read_base)
 QUIET=0
 ACTION=${1:-status}
 ONCE=0
+WANT=""
 for a in "${@:2}"; do
         case "$a" in
         --once)  ONCE=1 ;;
         --quiet) QUIET=1 ;;
-        # `base <label>` takes a positional argument; everything else does not.
-        *) [ "$ACTION" = base ] || { echo "unknown option: $a" >&2; exit 2; } ;;
+        -*) echo "unknown option: $a" >&2; exit 2 ;;
+        # `base` and `debug` take one label; nothing else takes any.
+        *)
+                case "$ACTION" in base|debug) ;; *)
+                        echo "unknown option: $a" >&2; exit 2 ;;
+                esac
+                [ -z "$WANT" ] || { echo "one label at a time" >&2; exit 2; }
+                WANT=$a
+                ;;
         esac
 done
 
@@ -89,6 +116,9 @@ current_label() { awk '/^default /{print $2; exit}' "$CONF"; }
 label_exists() {
         grep -qx "label $1" /boot/extlinux/linux.cfg /boot/extlinux/user.cfg 2>/dev/null
 }
+
+# The distro's own kernel: the first entry of linux.cfg. See "WHICH ENTRIES".
+distro_label() { awk '/^label /{print $2; exit}' /boot/extlinux/linux.cfg 2>/dev/null; }
 
 describe() {
         local l=$1
@@ -144,13 +174,14 @@ status() {
         echo "next boot        : $cur — $(describe "$cur")"
         echo "base kernel      : $STOCK_LABEL — $(describe "$STOCK_LABEL")"
         echo "one-shot revert  : $armed"
-        if [ "$cur" = "$DEBUG_LABEL" ] && [ "$armed" = enabled ]; then
+        # Any default other than the base is a test boot, whichever slot it is.
+        if [ "$cur" != "$STOCK_LABEL" ] && [ "$armed" = enabled ]; then
                 echo
-                echo "So the next boot uses the test kernel, and the boot after that"
+                echo "So the next boot uses $cur, and the boot after that"
                 echo "is back on $(describe "$STOCK_LABEL") without you doing anything."
-        elif [ "$cur" = "$DEBUG_LABEL" ]; then
+        elif [ "$cur" != "$STOCK_LABEL" ]; then
                 echo
-                echo "So every boot uses the test kernel until you run: $0 stock"
+                echo "So every boot uses $cur until you run: $0 stock"
         fi
 }
 
@@ -164,17 +195,24 @@ debug)
         if [ "$ONCE" = 1 ] && [ ! -x "$SELF" ]; then
                 die "--once needs this script installed where the revert service runs it:
     sudo install -m 0755 '$0' $SELF
-and then: sudo $SELF debug --once"
+and then: sudo $SELF debug ${WANT:+$WANT }--once"
         fi
-        set_default "$DEBUG_LABEL"
+        try=${WANT:-$DEBUG_LABEL}
+        label_exists "$try" || die "there is no 'label $try' in linux.cfg or user.cfg"
+        [ "$try" = "$STOCK_LABEL" ] && die "$try is the base kernel already; '$0 stock' boots it."
+        if grep -qx "label $try" /boot/extlinux/linux.cfg && [ "$try" != "$(distro_label)" ]; then
+                die "$try is a boot mode of the distro's kernel, not a kernel of its own.
+Only $(distro_label) from linux.cfg can be a test boot; see WHICH ENTRIES in $0."
+        fi
+        set_default "$try"
         if [ "$ONCE" = 1 ]; then
                 write_unit
                 systemctl enable pyra-boot-revert.service >/dev/null 2>&1
-                say "armed: the next boot uses $(describe "$DEBUG_LABEL")"
+                say "armed: the next boot uses $try — $(describe "$try")"
                 say "and the one after it is back on $(describe "$STOCK_LABEL") automatically."
         else
                 systemctl disable pyra-boot-revert.service >/dev/null 2>&1 || true
-                say "set: every boot uses $(describe "$DEBUG_LABEL") until you run '$0 stock'."
+                say "set: every boot uses $try — $(describe "$try") until you run '$0 stock'."
         fi
         ;;
 stock)
@@ -189,8 +227,7 @@ stock)
         ;;
 base)
         # `base` with no label reports; with one, sets it.
-        want=${2:-}
-        case "$want" in ""|--*) want="" ;; esac
+        want=$WANT
         if [ -z "$want" ]; then
                 echo "base kernel: $STOCK_LABEL — $(describe "$STOCK_LABEL")"
                 exit 0
@@ -209,7 +246,7 @@ status)
         status
         ;;
 *)
-        echo "usage: $0 {status|debug [--once]|stock|base [label]}" >&2
+        echo "usage: $0 {status|debug [label] [--once]|stock|base [label]}" >&2
         exit 2
         ;;
 esac

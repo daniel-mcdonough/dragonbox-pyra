@@ -20,6 +20,11 @@
 # The tarball defaults to the fix build. Name another with --tarball, or point
 # PYRA_BUILD_DIR somewhere else, exactly as the build script does.
 #
+# --slot LABEL is handed to the installer, which then writes that boot entry
+# instead of the test slot l1 (docs/building.md, "Boot slots"). The installer
+# decides what a slot may be; this only checks the label is a plain word,
+# because it goes into a command line run by the remote shell.
+#
 # It copies and it reboots. It writes nothing to the card directly and makes no
 # decision the installer would not make.
 
@@ -38,6 +43,7 @@ HOST_ENV=${PYRA_HOST:-}
 HOST=
 DO_INSTALL=no
 DO_REBOOT=no
+SLOT=
 REMOTE_DIR=dragonbox-pyra
 
 say()  { echo; echo "== $*"; }
@@ -50,7 +56,10 @@ while [ $# -gt 0 ]; do
 	--reboot)   DO_REBOOT=yes; shift ;;
 	--tarball)  [ $# -ge 2 ] || die "--tarball needs a path"
 	            TARBALL=$2; shift 2 ;;
-	-h|--help)  sed -n '2,25p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	--slot)     [ $# -ge 2 ] || die "--slot needs a label"
+	            SLOT=$2; shift 2 ;;
+	--slot=*)   SLOT=${1#--slot=}; shift ;;
+	-h|--help)  sed -n '2,30p' "$0" | sed 's/^# \?//'; exit 0 ;;
 	-*)         die "unknown option: $1" ;;
 	*)          [ -z "$HOST" ] || die "one host at a time"
 	            HOST=$1; shift ;;
@@ -65,6 +74,14 @@ done
 
 case $HOST in *@*) ;; *) die "give the user too, as pyra@<address>" ;; esac
 
+SLOT_ARG=
+if [ -n "$SLOT" ]; then
+	case $SLOT in
+	*[!a-z0-9]*) die "--slot '$SLOT': a label is lower-case letters and digits, like l5" ;;
+	esac
+	SLOT_ARG="--slot $SLOT "
+fi
+
 # The release name lives in the tarball, so the same rules apply here as in the
 # installer: it is the tarball that decides, never the file name.
 REL=$(tar tzf "$TARBALL" | sed -n 's|^\./boot/vmlinuz-||p' | head -1)
@@ -74,6 +91,7 @@ say "what is going where"
 note "tarball  $TARBALL"
 note "release  $REL"
 note "host     $HOST"
+note "slot     ${SLOT:-l1, the default}"
 
 # Fail here rather than three commands later, and say the thing that is almost
 # always wrong when it does fail.
@@ -99,12 +117,12 @@ if [ "$DO_INSTALL" = no ]; then
 	echo
 	if [ "$REL" = "$RUNNING" ]; then
 	echo "    sudo ./$REMOTE_DIR/device/pyra-install-debug-kernel.sh \\"
-	echo "         --replace-running $(basename "$TARBALL")"
+	echo "         $SLOT_ARG--replace-running $(basename "$TARBALL")"
 	echo
 	echo "  --replace-running because $REL is what it is running now, so this"
 	echo "  install replaces the module tree underneath it. Reboot straight after."
 	else
-	echo "    sudo ./$REMOTE_DIR/device/pyra-install-debug-kernel.sh $(basename "$TARBALL")"
+	echo "    sudo ./$REMOTE_DIR/device/pyra-install-debug-kernel.sh $SLOT_ARG$(basename "$TARBALL")"
 	fi
 	exit 0
 fi
@@ -120,7 +138,7 @@ else
 fi
 
 ssh -o ConnectTimeout=10 "$HOST" \
-	"sudo ./$REMOTE_DIR/device/pyra-install-debug-kernel.sh $REPLACE $(basename "$TARBALL")"
+	"sudo ./$REMOTE_DIR/device/pyra-install-debug-kernel.sh $SLOT_ARG$REPLACE $(basename "$TARBALL")"
 
 if [ "$DO_REBOOT" = no ]; then
 	say "installed, not rebooted"
