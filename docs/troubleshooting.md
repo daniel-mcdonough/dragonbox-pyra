@@ -178,7 +178,9 @@ which then sampled only at 40 and 90 s, missed it. The diagnostic is
 at 15, 30, 60 or 100 s, it writes every process's state and wchan to
 `/run/initramfs/settle-diag.txt` and triggers SysRq-T, so every task's stack is in
 the journal after a `pyra-settle-diag` line. The dump goes only to the ring
-buffer, not the screen. Check after any slow boot:
+buffer, not the screen. It is not installed anywhere now (removed from the trixie
+card 2026-10-29); to chase a new slow boot, install it as its README says and
+check after the slow boot:
 
     sudo cat /run/initramfs/settle-diag.txt
     sudo journalctl -k -b -g pyra-settle-diag

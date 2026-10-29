@@ -1131,7 +1131,15 @@ one. Checked on the trixie card running `5.6.19-m4-kbdled`, through
   six initrds lists `scripts/init-top/pyra-fw-nofallback` and
   `scripts/init-top/pyra-settle-nudge`.
 
-A rebuilt initrd takes every hook in that directory, so on this card the four
-rebuilt initrds also gained the diagnostic `pyra-settle-diag`, which only the
-trixie card has. The stock initrd as it was is kept on the card's root filesystem.
-Not boot-tested: `lsinitramfs` shows that the hooks are in each initrd.
+A rebuilt initrd takes every hook in that directory, so the four rebuilt initrds
+also gained the diagnostic `pyra-settle-diag`, which only the trixie card had
+(the `fix` and `m4-kbdled` initrds already carried it). It triggers SysRq-T on a
+boot still in the initramfs at 15 s, and one such dump froze a boot on
+2026-10-28, so it was then removed from `init-top/` and all six initrds were
+rebuilt with `update-initramfs -u -k`. Removing a hook does not make the helper
+rebuild, because it only looks for missing or newer hooks. Afterwards
+`lsinitramfs` of each of the six lists `pyra-fw-nofallback` and
+`pyra-settle-nudge` and nothing else of ours in `init-top/` but the vendor's
+`pyra-emmc-switch`. The diagnostic and the original stock initrd are kept on the
+card's root filesystem. Not boot-tested: `lsinitramfs` shows what is in each
+initrd.
