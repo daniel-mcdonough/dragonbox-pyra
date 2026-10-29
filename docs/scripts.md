@@ -52,7 +52,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings and the two `init-top` hooks below; rebuilds the initrd of any kernel that lacks the hooks. Also removes the idle dimmer copies that earlier versions installed, which now come from the `pyra-backlight` package. |
+| `device/pyra-install-helpers.sh` | Puts every script below onto the device in one step, plus the sysrq settings and the two `init-top` hooks below; rebuilds the initrd of any kernel that lacks the hooks. Also removes the idle dimmer copies that earlier versions installed, which now come from the `pyra-backlight` package. Which of its files a prepared card already has, and which are for developers only: "What the release card carries" below. |
 | `device/pyra-install-debug-kernel.sh` | Installs a built kernel beside the stock one and gives it a boot entry, without making it the default. For a kernel with `omap_remoteproc.ko` it also writes `/etc/modprobe.d/pyra-m4-noautoboot.conf`, so the M4s cannot start at boot. |
 | `device/pyra-boot-kernel.sh` | Chooses which kernel boots next, since U-Boot's menu only exists on the serial console. `debug --once` gives a test kernel exactly one boot, `debug LABEL --once` the same for any other slot. `base <label>` sets which kernel the machine returns to, which is no longer always the distro one — its thermal behaviour stops the battery charging. |
 | `device/pyra-sleep-test.sh` | Suspends the machine with the clock armed to wake it, says whether it really came back, and names which sleep state the kernel used. |
@@ -88,6 +88,39 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-m4-demo.sh` | The M4 demo for an audience: both cores' heartbeats live, their clock measured from each core's own cycle counter, a stop and restart that shows the count begin again from zero, and the firmware removed on exit. Needs `5.6.19-m4demo` or `5.6.19-m4`. |
 | `device/pyra-gles2-smoke.c` | Minimal X11, EGL and GLES2 client, to prove the SGX path works. |
 | `device/pyra-exa-fallback-bench.c` | Isolates the cost of the driver's software fallbacks against its hardware paths. |
+
+## What the release card carries
+
+`pc/pyra-trixie-prep.sh` is what ships: a prepared card needs no run of
+`pyra-install-helpers.sh`. Every row of that script's map has one of these
+marks (decided 2026-10-29):
+
+- **prep**: prep installs it, as a numbered fix.
+- **prep, planned**: release-ready, not yet in prep; it will become its own fix.
+- **developer-only**: stays a helper, for measuring, debugging or tuning one
+  machine. Install it with `pyra-install-helpers.sh` if you want it.
+- **own package**: belongs in a package of its own, not in prep or this repo's
+  helpers.
+
+| Map rows | Mark |
+| --- | --- |
+| `pyra-thermal-fix.sh`, `pyra-thermal-ladder.sh`, `pyra-thermal-guard`, `etc/dpkg/dpkg.cfg.d/pyra-thermal-guard` | prep (fixes 6, 7 and the guard that keeps them across a package run) |
+| `pyra-charge-current.sh` | prep (fix 8, through `--emit-into`; prep installs what it writes, not the script) |
+| `pyra-usb3503-rescue` | prep (fix 5) |
+| `pyra-gles` | prep (fix 13) |
+| `pyra-fw-nofallback`, `pyra-settle-nudge` (the `init-top` hooks) | prep (fix 14) |
+| `pyra-governor-tune.sh`, `pyra-governor-tune.service` | prep, planned |
+| `pyra-audio-select.sh`, `pyra-audio-select.service`, `pulse/zz-pyra-aess.conf`, `pulse/pyra-aess.pa`, `pulse/alsa-mixer/profile-sets/pyra-aess.conf`, `pyra-speaker.conf`, `pyra-headphones.conf`, plus the `daemon.conf.d` link the script makes | prep, planned (one fix: the per-boot choice of the AESS PulseAudio script) |
+| `pyra-keypad-rescue` | prep, planned (a manual rescue for a kernel without `patches/0006`, which the stock one is; no overlap with fix 5, which is the USB hub) |
+| `pyra-install-debug-kernel.sh`, `pyra-boot-kernel.sh` | developer-only for now; how a prepared card gets the shipped kernel is still open, and may use them |
+| `pyra-undervolt`, `pyra-undervolt.service` | developer-only: 870 mV was found to hold on one unit's silicon, and another chip may not; it also needs a module built for the running kernel |
+| `pyra-soh` | developer-only: it launches Ship of Harkinian, which is not part of this release |
+| `pyra-cpu-pin`, `etc/sudoers.d/pyra-cpu-pin` | own package, released with its first caller, so the passwordless root rule is only on machines that use it |
+| `pyra-sleep-test.sh`, `pyra-modeset-hang-trap.sh`, `etc/sysctl.d/90-pyra-lockup-capture.conf` | developer-only (debugging) |
+| `pyra-cpu-attribution.sh`, `pyra-x-load-profile.sh`, `pyra-idle-profile.sh`, `pyra-freq-profile.sh`, `pyra-governor-sweep.sh` | developer-only (profiling) |
+| `pyra-thermal-probe.sh`, `pyra-ceiling-cost.sh`, `pyra-charge-probe.sh`, `pyra-chgwatch.sh`, `pyra-anno1602-test.sh` | developer-only (measurement) |
+| `pyra-m4-check.sh`, `pyra-m4-run.sh` | developer-only (M4 experiments) |
+| `pyra-exa-fallback-bench.c`, `pyra-gles2-smoke.c` | developer-only (sources) |
 
 Two systemd units sit beside the scripts they belong to. The rescue unit is a
 payload for fix 5 and the prep script copies it from `device/` rather than
