@@ -1,0 +1,37 @@
+# pyra-settle-trace, 5.6.19-m4-kbdled with patches/0048-0049, warm reboot 3 of 5 (R22), nudge out; timeline:
+#   5.06 queue=0 settle=none
+#   7.43 queue=1 settle=running
+#   8.46 queue=0 settle=gone
+# gap.py, all five R22 boots (one queue deletion each while settle waited):
+#   boot 1: 7.149751: settle lookup after udevd returned, settle exited
+#   boot 2: 6.895488: settle lookup after udevd returned, settle exited
+#   boot 3: 8.421041: settle lookup IN the gap, settle exited
+#   boot 4: 7.428588: settle lookup after udevd returned, settle exited
+#   boot 5: 7.354230: settle lookup after udevd returned, settle exited
+# gap.py on R21's stuck boot, unpatched (settle-trace-2026-10-29-stuck.txt):
+#   7.378975: settle lookup IN the gap, settle STAYED
+#   10.333287: settle lookup IN the gap, settle STAYED
+#   13.564976: settle lookup after udevd returned, settle exited
+# Boot 3 around the deletion: udevd is switched out for settle on CPU 0 inside
+# fsnotify_add_event; settle reads the event, looks the name up and drops its watch
+# (IN_IGNORED, mask 0x8000), i.e. exits, before udevd returns at 8.422417.
+ pyra-settle-tra-1719  [000] ....     5.527918: tracing_mark_write: pyra: queue=0
+ pyra-settle-tra-1719  [000] ....     7.579308: tracing_mark_write: pyra: queue=1
+ pyra-settle-tra-1719  [000] ....     7.723203: tracing_mark_write: pyra: settle pid 2029 seen
+ pyra-settle-tra-1719  [000] ....     8.473503: tracing_mark_write: pyra: settle 2029 gone
+# --
+   systemd-udevd-1727  [000] d...     8.421013: unlink: (do_unlinkat+0x0/0x2ac) name="/run/udev/queue"
+   systemd-udevd-1727  [000] d...     8.421041: fsn: (fsnotify+0x0/0x3fc) inode=0xe4a50798 mask=0x200 name="queue"
+   systemd-udevd-1727  [000] d...     8.421044: ihe: (inotify_handle_event+0x0/0x228) group=0xe3a99480 inode=0xe4a50798 mask=0x200 name="queue"
+   systemd-udevd-1727  [000] d...     8.421044: addev: (fsnotify_add_event+0x0/0x144) group=0xe3a99480 event=0xe3ee2cc0
+   systemd-udevd-1727  [000] dn.6     8.421054: sched_wakeup: comm=udevadm pid=2029 prio=120 target_cpu=000
+   systemd-udevd-1727  [000] d..2     8.421065: sched_switch: prev_comm=systemd-udevd prev_pid=1727 prev_prio=120 prev_state=R+ ==> next_comm=udevadm next_pid=2029 next_prio=120
+         udevadm-2029  [000] d...     8.421086: ird: (inotify_read+0x0/0x434) file=0xedf18b40 count=0x110
+         udevadm-2029  [000] d..1     8.421102: irdr: (vfs_read+0x94/0x110 <- inotify_read) ret=32
+         udevadm-2029  [000] d...     8.421122: look: (filename_lookup+0x0/0x194) name="/run/udev/queue"
+         udevadm-2029  [000] d...     8.422326: ihe: (inotify_handle_event+0x0/0x228) group=0xe3a99480 inode=0x0 mask=0x8000 name=(fault)
+         udevadm-2029  [000] d...     8.422329: addev: (fsnotify_add_event+0x0/0x144) group=0xe3a99480 event=0xe3ee2cc0
+         udevadm-2029  [000] d..1     8.422333: addevr: (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+         udevadm-2029  [000] d..2     8.422363: sched_switch: prev_comm=udevadm prev_pid=2029 prev_prio=120 prev_state=D ==> next_comm=kworker/u4:0 next_pid=7 next_prio=120
+   systemd-udevd-1727  [001] d..1     8.422417: addevr: (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+          <idle>-0     [000] dnh3     8.440551: sched_wakeup: comm=udevadm pid=2029 prio=120 target_cpu=000

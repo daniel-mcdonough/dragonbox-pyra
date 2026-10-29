@@ -1030,3 +1030,30 @@ out of the initrd and `experiments/initramfs-wait/pyra-settle-trace` put in
   0 in all three runs.
 - Restored: trace hook out, nudge back. Next boot: settle exited at 6.18 s
   (nudge log), `kprobe_events` empty.
+
+## 2026-10-29 — shape A fixed: `patches/0048`-`0049` in m4-kbdled
+
+Method: `patches/0048`-`0049` (the 5.4.y stable backports of a37d9a17f099 and
+29044dae2e74) cross-built into `5.6.19-m4-kbdled` and installed over it with
+`pc/pyra-push-kernel.sh`. `/boot` had 18 MB free, so the `.before-r16` and
+`.before-r21` initrds were first moved to `/var/backups/pyra-boot/`. Then
+`pyra-settle-nudge` was moved out and `pyra-settle-trace` put in, five warm reboots
+were run (`systemctl reboot`, 6 min apart), and `5.6.19-m4` (l4, no 0048) was
+booted once for the comparison.
+
+- `inotify-delete-race.c`, changed first so the deleter re-creates the file only
+  after the waiter's check. 2000 cycles each, tmpfs, waiter/deleter CPU 0/0, 1/1,
+  0/1, 1/0, unpinned. Patched: 0, 0, 0, 0, 0. Unpatched l4: 1956, 1986, 3, 12,
+  1137. Patched with the old test version: 0, 0, 2, 4, 0, the cross-CPU hits
+  being that version's artifact.
+- Reboots 1-5: settle dropped its watch (exiting) 1.2, 1.2, 1.3, 1.3 and 1.5 ms
+  after the queue file's one deletion during its wait. `gap.py`: on reboot 3 settle was
+  switched in for udevd on CPU 0 inside `fsnotify_add_event` and looked the name
+  up at 8.421122, before udevd returned at 8.422417. It exited (`IN_IGNORED` at
+  8.422326). On R21's stuck boot, the same sequence left settle asleep twice. On
+  the other four, the lookup came after udevd returned. Root at 8.26 s on
+  reboot 5. Boot warnings: only the usual `omap_l3_noc` and wlcore ones, also
+  after a pty was opened and closed.
+- Restored: base back to l5, trace hook out, nudge back (comment updated), initrd
+  file list equal to `.before-r22`. Next boot: settle exited at 6.03 s, no nudge,
+  root at 6.58 s, no kprobes.

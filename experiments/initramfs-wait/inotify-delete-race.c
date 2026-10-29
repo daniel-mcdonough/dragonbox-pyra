@@ -5,6 +5,8 @@
  * IN_DELETE through epoll, then access() the name. One process (the deleter)
  * creates and unlinks a file in a tmpfs directory N times. The other (the
  * waiter) counts how often access() on the deleted name still succeeds.
+ * The deleter re-creates the file only once the waiter has finished checking
+ * (or after 100 ms), so a late waiter never finds the next cycle's file.
  *
  *   gcc -O2 -o inotify-delete-race inotify-delete-race.c
  *   ./inotify-delete-race DIR N WAITER_CPU DELETER_CPU
@@ -17,6 +19,7 @@
 #define _GNU_SOURCE
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -43,7 +46,7 @@ static void pin(int cpu)
 int main(int argc, char **argv)
 {
 	char path[PATH_MAX], buf[4096];
-	int n, wcpu, dcpu, in, ep, fd, seen = 0, stale = 0;
+	int n, wcpu, dcpu, in, ep, fd, ack[2], seen = 0, stale = 0;
 	struct epoll_event ev = { .events = EPOLLIN };
 	pid_t pid;
 
@@ -59,7 +62,7 @@ int main(int argc, char **argv)
 	in = inotify_init1(IN_CLOEXEC | IN_NONBLOCK);
 	ep = epoll_create1(EPOLL_CLOEXEC);
 	if (in < 0 || ep < 0 || inotify_add_watch(in, argv[1], IN_DELETE) < 0 ||
-	    epoll_ctl(ep, EPOLL_CTL_ADD, in, &ev) < 0) {
+	    epoll_ctl(ep, EPOLL_CTL_ADD, in, &ev) < 0 || pipe(ack) < 0) {
 		perror("setup");
 		return 1;
 	}
@@ -73,6 +76,10 @@ int main(int argc, char **argv)
 				close(fd);
 			usleep(2000);	/* let the waiter go back to sleep */
 			unlink(path);
+			/* Wait until the waiter has checked this deletion. */
+			struct pollfd pf = { .fd = ack[0], .events = POLLIN };
+			if (poll(&pf, 1, 100) > 0)
+				read(ack[0], buf, sizeof(buf));
 			usleep(2000);
 		}
 		_exit(0);
@@ -93,6 +100,7 @@ int main(int argc, char **argv)
 				seen++;
 				if (access(path, F_OK) == 0)
 					stale++;
+				write(ack[1], "", 1);
 			}
 			p += sizeof(*e) + e->len;
 		}

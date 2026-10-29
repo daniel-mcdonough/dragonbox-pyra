@@ -1,8 +1,10 @@
 # Why root sometimes mounts a minute or two late
 
 The findings live in `docs/troubleshooting.md`, "Root mounts a minute or two
-late". This directory holds the tool used to chase them. The shape A
-workaround it led to is `device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge`.
+late". This directory holds the tools used to chase them. Shape A's cause is a
+5.6 kernel bug, fixed in m4-kbdled by `patches/0048` (see "The fix" below). The
+workaround for the other kernels is
+`device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge`.
 
 ## `pyra-settle-diag`
 
@@ -102,7 +104,9 @@ The kernel's ring buffer outlives switch_root, and a watcher stops tracing 3 s
 after settle exits. Read it after boot with
 `sudo cat /sys/kernel/tracing/trace`. `chain.py` pulls settle's events out of
 it, and `stall.py` lists each queue deletion during settle's wait, whether
-settle's inotify group got it, and whether settle woke. The header of the hook
+settle's inotify group got it, and whether settle woke. `gap.py` says whether
+settle's lookup fell in the old notify-before-`d_delete()` window and whether
+settle then exited (see "The fix" below). The header of the hook
 lists what each probe shows.
 
 Probe notes for this ARM kernel: arguments 5 and up are `$stack0` onwards.
@@ -135,6 +139,44 @@ and `docs/verification-log.md`.
 After the runs the trace hook was removed and the nudge put back. The
 initrd's file list matched `initrd.img-5.6.19-m4-kbdled.before-r21`, kept
 beside it. One boot after that: nudge log `settle exited`, no kprobes left.
+
+## The fix (R22, 2026-10-29)
+
+`patches/0048` and `0049` backport the mainline fix (`docs/kernel-changes.md`).
+Tested on m4-kbdled with them, against the unpatched `5.6.19-m4` (l4) booted the
+same morning.
+
+`inotify-delete-race.c` changed first. Its deleter used to re-create the file
+2 ms after each unlink, so a waiter on the other CPU that ran late found the
+next cycle's file. That counted as stale, and the merged events made the "seen"
+count fall short. That is where the earlier cross-CPU counts came from, or some of
+them. The deleter now waits for the waiter's check (up to 100 ms) before
+re-creating the file. Measured, 2000 deletions per case:
+
+| Kernel | 0/0 | 1/1 | 0/1 | 1/0 | unpinned |
+| --- | --- | --- | --- | --- | --- |
+| `5.6.19-m4`, unpatched | 1956 | 1986 | 3 | 12 | 1137 |
+| `5.6.19-m4-kbdled` + 0048-0049 | 0 | 0 | 0 | 0 | 0 |
+
+Five traced warm reboots with the nudge moved out and `pyra-settle-trace` in.
+Each boot had one queue deletion while settle waited, and settle exited within
+2 ms of it every time. `gap.py` scores each deletion by whether settle's lookup
+ran before udevd got back from `fsnotify_add_event` (where the old kernel had not
+yet run `d_delete()`), and whether settle then exited. Results:
+
+- R21's unpatched stuck boot: 2 lookups in that window, settle stayed both times.
+- This set: 1 lookup in that window (boot 3), and settle exited.
+
+Settle's wake target CPU is not enough to classify a boot. On boot 5 the wakeup
+targeted udevd's CPU, but settle ran on the other one after udevd had
+returned. Extract and per-boot scores: `settle-trace-2026-10-29-fixed.txt`.
+
+Afterwards the trace hook was removed and the nudge put back. Unpatched kernels
+(l2, l3, l4) still need it, and on m4-kbdled it never fires. The initrd's file
+list matched the one saved before the test. One boot after that: settle exited
+at 6.03 s, no nudge, no kprobes left. `/boot` (238 MB) was too full for the
+kernel install, so the `.before-r16` and `.before-r21` initrds were moved off it,
+with `.before-r22`, to `/var/backups/pyra-boot/` on the root filesystem.
 
 The Pyra's serial console (its micro-USB FTDI port, 1500000 baud) was logged on
 the PC for these boots. The cmdline already sends the console there, cable or

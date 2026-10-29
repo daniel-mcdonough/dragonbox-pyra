@@ -63,7 +63,8 @@ LED and REG03 `00` all present. That first boot waited about 120 s in the initra
 mounting root, with the SD card detected at 2 s. The old m4-kbdled did the same once
 earlier that day (74 s); other boots mount root in 9-17 s. Not a kernel change: it
 happens on `5.6.19-fix` too. See "Root mounts a minute or two late" in
-`troubleshooting.md`.
+`troubleshooting.md`. Reinstalled 2026-10-29 with 0048-0049, which fix that cause (shape
+A): booted clean, settle no longer waits past the end of udev's queue.
 
 ---
 
@@ -189,6 +190,38 @@ while the PC still had `ttyACM0` configured gave a `WARN_ON(cdev->config)` in
 `__composite_unbind()`. That is the gadget core removing a configured gadget without a
 disconnect first, which 0043-0047 do not touch; the same unload with nothing connected
 was silent. It was not checked on the unpatched kernel.
+
+**0048–0049 — fsnotify: send `IN_DELETE` after `d_delete()`.** Backports of mainline
+`a37d9a17f099` ("fsnotify: invalidate dcache before IN_DELETE event") and its follow-up
+`29044dae2e74` ("fsnotify: fix fsnotify hooks in pseudo filesystems"), both v5.17 and
+`Cc: stable # v5.3+`. They are taken from the 5.4.y stable backports (`33a9ba52d5ea`,
+`5463cfd83397`): 5.4's `fsnotify_link()` makes the same `fsnotify()` call as 5.6.19's,
+which is what the upstream backporting note says the new `fsnotify_delete()` must match.
+
+- **0048** sends the delete event from `d_delete_notify()`, after `d_delete()`, in
+  `vfs_unlink()`, `vfs_rmdir()` and btrfs's subvolume delete. Before, a process woken by
+  `IN_DELETE` on the unlinking task's CPU ran before `d_delete()` and still found the
+  name. That is why `udevadm settle` sometimes slept through the end of udev's queue
+  at boot (shape A in `troubleshooting.md`). Applies with line offsets only.
+- **0049** does the same for the pseudo filesystems that delete their own dentries
+  (configfs, devpts, nfsd's nfsdfs, sunrpc's rpc_pipefs): `d_drop()` first, then the
+  hook. It also adds a missing `fsnotify_unlink()` to nfsdfs. 5.6.19's
+  `nfsd_client_rmdir()` has no `dput()` there yet, so that hunk's context is adjusted
+  (noted in the header). `simple_recursive_removal()` already notifies after
+  `d_invalidate()` and needs nothing.
+
+**0048–0049 tested 2026-10-29** on the V5.3 unit, built into `5.6.19-m4-kbdled` and
+installed over it (the other targets get them at their next build). With
+`experiments/initramfs-wait/inotify-delete-race.c`, 2000 deletions per case, every case
+read 0 with the file still there, against 1956 and 1986 same-CPU, 3 and 12 cross-CPU
+and 1137 unpinned on the unpatched `5.6.19-m4` the same morning. Five warm reboots with
+`pyra-settle-nudge` moved out and `pyra-settle-trace` in: settle exited 1-2 ms after
+the queue file's one deletion every time (root at 8.26 s on the one boot where it was
+read, 6.58 s on the boot after the card was restored). On one of them (boot 3)
+settle was woken on udevd's CPU and preempted it inside `fsnotify_add_event()`, the
+sequence that left settle asleep twice on R21's stuck boot. This time its lookup found
+no file and it exited. No new warning at boot, nor after a pty was opened and closed (devpts, 0049). Not
+exercised: the configfs, nfsd and rpc_pipefs paths that 0049 changes.
 
 ---
 

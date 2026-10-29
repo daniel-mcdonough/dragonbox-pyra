@@ -292,12 +292,20 @@ The delete that freed settle, and the one on a fast traced boot, woke it on
 the other CPU. A userspace test reproduces it outside boot
 (`experiments/initramfs-wait/inotify-delete-race.c`): on the Pyra, 1964 of
 2000 `IN_DELETE`s with both processes on one CPU still found the file, against
-4 and 83 of 2000 across CPUs. On a 7.2 kernel it was 0 of 6000. Mainline
+4 and 83 of 2000 across CPUs. On a 7.2 kernel it was 0 of 6000. (Those cross-CPU
+counts include a test artifact, fixed in R22: with it fixed, 3 and 12.) Mainline
 introduced this in v5.3 (49246466a989) and fixed it in v5.17 (a37d9a17f099,
 "fsnotify: invalidate dcache before IN_DELETE event"). systemd is not at
-fault. The fix for our kernels is a backport. Until then, `pyra-settle-nudge`
-works because its extra delete wakes settle again after `d_delete()` has
-run. A backport request is drafted in
+fault. `pyra-settle-nudge` works because its extra delete wakes settle again
+after `d_delete()` has run.
+
+**Fixed in `5.6.19-m4-kbdled` by `patches/0048`-`0049` (2026-10-29),** backports
+of a37d9a17f099 and its follow-up (`kernel-changes.md`). The race test reads 0 of
+2000 in every case (1956-1986 same-CPU on the unpatched kernel). On five
+nudge-less warm reboots settle left on the queue file's first deletion, including
+one where it preempted udevd in the old window. The other installed kernels (l2
+`fix`, l3 `freq`, l4 `m4`) and the stock cards predate it, so the nudge stays in
+the initramfs config; on m4-kbdled it never fires. A backport request is drafted in
 `reports/kernel-fsnotify-delete-before-d-delete.md`. Any other program that
 reads `IN_DELETE` as "the name is gone" can trip on the same bug on these
 kernels.

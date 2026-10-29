@@ -11,7 +11,9 @@
 # Deleting any other file in /run/udev wakes it again, and this time its check
 # sees the queue gone (measured 2026-10-29: settle gone 0.05 s after such a
 # delete, 9 s after the queue had emptied). Mainline fixed the kernel side in
-# v5.17 (a37d9a17f099); see docs/troubleshooting.md shape A.
+# v5.17 (a37d9a17f099); patches/0048 backports it, so on a kernel built with
+# that this hook never has to act. It stays for the kernels without it (the
+# stock ones, and any built before 0048). See docs/troubleshooting.md shape A.
 #
 # This hook starts a background watcher and returns at once. While settle runs,
 # the watcher checks every 0.5 s; when the queue file has been absent for two
