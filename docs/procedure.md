@@ -114,16 +114,20 @@ image so the image itself is untouched, and checks the result properly:
 
     sudo ./pc/pyra-prep-selftest.sh                 # or: ... /path/to/other.img
 
-It snapshots the whole rootfs before and after — type, mode, uid, gid, size and
-symlink target for every one of ~148,000 entries — so a stray write anywhere
-shows up, not only at the paths someone thought to assert on. It then runs the
-prep script a second time and requires the filesystem to be bit-identical, and
+It mounts p1 at the rootfs's `/boot`, as prep needs, and snapshots both
+partitions before and after — type, mode, uid, gid, size and symlink target for
+every one of ~148,000 entries — so a stray write anywhere shows up, not only at
+the paths someone thought to assert on. It reads each rebuilt initrd with the
+image's own `lsinitramfs` for fix 14. It then runs the prep script a second
+time and requires every entry to be unchanged, with no initrd rebuilt, and
 finally removes a fix 5 payload to confirm the script aborts *before* fix 1
 writes anything. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
-Note: the modified loop image is now already fixed. You can `dd` *that* to the
-card and skip step 4 entirely — but re-running the script on the card is
-harmless (it's idempotent) and confirms it applied.
+Note: if you ran the prep script by hand above, the image file itself is now
+prepared, with the user you named and the initrds rebuilt. You can `dd` *that*
+to the card and skip step 4 entirely — but re-running the script on the card is
+harmless (it's idempotent) and confirms it applied. The self-test only ever
+changes its copy, `pyra-trixie-t1-preptest.img`.
 
 ---
 
