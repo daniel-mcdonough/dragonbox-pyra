@@ -38,7 +38,7 @@ drafts are in `reports/letux-aess-*.md`, starting with `reports/letux-aess-INDEX
 | AESS-only merge branch | `origin/omap-aess-7.3` = `letux/aess-v19` + `aess-asoc-fw-v6` + `aess-audio-test-v3` + `aess-abefw-v5` |
 | previous one, what our reports checked | `origin/omap-aess-7.2` (`aess-v17`, `asoc-fw-v5`, `abefw-v4`) |
 | `master` | `letux-6.18.y`, 6.18.56. Its merge commit names `aess-v17`, but that is an older, pre-rebase version of that branch. Not the code to test. |
-| `omap-aess` clone | `../dragonbox-pyra-supporing-repos/omap-aess`. **Only fetched up to 7.2.** Use the letux-kernel clone for 7.3, or fetch first. |
+| `omap-aess` clone | `../dragonbox-pyra-supporing-repos/omap-aess`, fetched to 7.3 on 2026-10-29. Its `omap-aess-7.3` is the same commit as letux-kernel's, `ccf9ed1222bd2`. |
 | our patches | `experiments/aess/0013`-`0032`, applied by `pc/pyra-crossbuild.sh kernel-m4` on 5.6.19 |
 | driver | `sound/soc/ti/aess/`, `sound/soc/ti/omap-mcpdm.c`, `sound/soc/ti/omap-abe-twl6040.c` |
 | device tree | `arch/arm/boot/dts/ti/omap/omap5-l4-abe.dtsi` (AESS node), `omap5-board-common.dtsi` (sound card, `&aess { status = "okay"; }`) |
@@ -263,5 +263,3 @@ is expected not to appear at all (see above).
 - Whether 7.3's `build-aess-fw` firmware plays correctly on the Pyra, and
   whether our 5.6 measurements (ping-pong overrun, pointer race) reproduce
   with it.
-- The reports still say "checked against omap-aess-7.2". Their findings all
-  hold on 7.3; the header lines need updating before anything is sent.
