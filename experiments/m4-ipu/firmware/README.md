@@ -131,6 +131,7 @@ then saw a whole beat's worth of cycles or none, and it reported 293 MHz.
 | `main.c` | The trace buffer and the heartbeat |
 | `resource_table.c` | The `TYPE_CARVEOUT` + `TYPE_TRACE` contract with remoteproc |
 | `m4.ld` | Everything inside the 1 MiB carveout at device address 0 |
+| `LICENSE` | BSD-3-Clause, which covers the four files above and the `Makefile`; the rest of the repository is GPL-2.0-only |
 
 `make info` prints the ELF header, the segment, the reset vector and a hex
 dump of the resource table, which is the quickest way to check a change did

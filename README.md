@@ -181,9 +181,17 @@ and reproducible from the sources below.
 
 ## Licence
 
-GPL-2.0-only, in `LICENSE`. The patches in `patches/` are changes to Linux
-kernel source and carry its licence; the rest is licensed the same way so that
-the whole repository has one answer.
+GPL-2.0-only, in `LICENSE`, with one exception. The patches in `patches/` and
+`experiments/` are changes to Linux kernel source and carry its licence, including
+the BSD-3-Clause header that `experiments/m4-ipu/0009-*.patch` adds, since the
+kernel file it touches is BSD-3-Clause upstream.
+
+The exception is the Cortex-M4 test firmware in `experiments/m4-ipu/firmware/`
+(`Makefile`, `m4.ld`, `main.c`, `resource_table.c`, `start.S`): BSD-3-Clause,
+with the text in that directory's `LICENSE`. Its resource table follows the
+layout of the kernel's BSD-licensed `include/linux/remoteproc.h`, and firmware
+for a remote processor is normally BSD-licensed so it can be built into
+anything. Every other file is GPL-2.0-only.
 
 ## Sources
 
