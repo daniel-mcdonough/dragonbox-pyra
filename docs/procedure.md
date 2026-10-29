@@ -457,15 +457,17 @@ Then choose what boots with `pyra-boot-kernel.sh` (section 3 of
 `reproduce.md`).
 
 **5. An initramfs hook change: install it and rebuild the initrd for each
-kernel.** `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback` is
-not installed by anything yet: not by prep and not by step 2. Copying it into
-place does not change any existing initrd, so after a copy, rebuild the
-initrd of every kernel you boot:
+kernel.** The two hooks in `device/etc/initramfs-tools/scripts/init-top/`,
+`pyra-fw-nofallback` and `pyra-settle-nudge` (`troubleshooting.md`, "Root
+mounts a minute or two late", shapes B and A), are not installed by anything
+yet: not by prep and not by step 2. Copying them into place does not change
+any existing initrd, so after a copy, rebuild the initrd of every kernel you
+boot:
 
-    sudo install -m 0755 pyra-fw-nofallback /etc/initramfs-tools/scripts/init-top/
+    sudo install -m 0755 pyra-fw-nofallback pyra-settle-nudge /etc/initramfs-tools/scripts/init-top/
     sudo update-initramfs -u -k <release>      # once per kernel you boot
 
-`lsinitramfs /boot/initrd.img-<release> | grep nofallback` confirms it.
+`lsinitramfs /boot/initrd.img-<release> | grep -e nofallback -e nudge` confirms it.
 
 ### What can undo an update
 

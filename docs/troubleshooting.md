@@ -150,7 +150,9 @@ The hook is installed on the trixie card for `5.6.19-m4-kbdled` only; prep does
 not install it yet. Without it, the workaround is to unplug the adapter for a
 cold boot.
 
-**Shape A, waiter named, cause open: 120 s of silence after a warm reboot.** 5 of 12 warm
+**Shape A, worked around: `udevadm settle` sleeps through the end of the
+queue.** The cause and the fix are under "2026-10-29" at the end of this
+section; the paragraphs before it are how it was narrowed down. 120 s of silence after a warm reboot. 5 of 12 warm
 reboots (boots on 2026-10-19, 20, 24 and two on 2026-10-28), root at 126-128 s.
 The log stops after the EHCI root hub comes up and resumes with the root mount:
 
@@ -246,11 +248,61 @@ inotify watch is set up, so with the queue empty it would return at once. A
 settle that sleeps for 120 s with no queue file has to be the one still waiting
 on the PING. On the udevd side, the listening control socket runs at
 `SD_EVENT_PRIORITY_IDLE` and takes one connection at a time (`udev-manager.c`,
-`udev-ctrl.c`). Why udevd doesn't answer is not known. The 16.6 s case above
-fits a PING answered late. The diagnostic now also records the open fds of
-`systemd-udevd` and `udevadm` and `/proc/net/unix`, so the next catch shows
-whether udevd accepted the connection at all. Workaround while open: none
-needed beyond patience. The boot finishes at about 126 s on its own.
+`udev-ctrl.c`). **The PING conclusion was wrong; see 2026-10-29 below.** The
+reasoning missed that settle's second phase also waits up to 120 s.
+
+**2026-10-29: settle got its PING answer and then missed the queue file's
+deletion.** The diagnostic now records the fds and their `fdinfo`, and a
+0.2 s timeline of `/run/udev/queue` and the settle process
+(`/run/initramfs/settle-timeline.txt`). Two catches on `m4-kbdled`, both warm
+reboots after about 11 min up:
+
+- Root at 26.6 s (kernel timestamp). At the 15 s sample, `udevadm settle` had
+  no socket open at all: its fds were an epoll, an inotify and a timerfd. So
+  it was past the PING and in its second phase, waiting for an `IN_DELETE` in
+  `/run/udev`, with `/run/udev/queue` already gone. udevd's control listener
+  was still in its epoll set (`tfd: 3 events: 19`), idle. Samples are in
+  `experiments/initramfs-wait/settle-diag-2026-10-29-30s.txt`.
+- Root at 16.7 s. Timeline: the queue file appeared at 6.23 s and was gone by
+  6.86 s, while settle stayed. settle's inotify watch was on the right inode
+  (`/run/udev`, mask `0x200`, `IN_DELETE`). After the 15 s sample the diagnostic
+  created and deleted a dummy file in `/run/udev` at 15.79 s. settle was gone
+  by 15.84 s. Samples and timeline are in
+  `experiments/initramfs-wait/settle-diag-2026-10-29-poke.txt`.
+
+settle re-checks the queue file on every `IN_DELETE` in the directory. So
+its own inotify path works. What fails is its wakeup for the deletion of
+the queue file itself. The kernel does send that event: `vfs_unlink` calls
+`fsnotify_unlink` in this 5.6.19, and udevd removes the file with a plain
+`unlink`. Any later `IN_DELETE` in `/run/udev` frees settle. That can be a
+later uevent that makes udevd create and delete the file again, which is
+probably what ended the 26.6 s boot, or it can be the timeout. With neither,
+settle sleeps the full 120 s, and that is the whole of shape A. The sd-event
+side looked right on reading (systemd 257: the watch is armed before the
+first check, and buffered events stop the loop from sleeping). Why the first
+wakeup is lost, kernel or userspace, is still open.
+
+**Workaround, on the trixie card for `m4-kbdled`:**
+`device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge`. It starts a
+background watcher before `init-top/udev`. While settle runs, the watcher checks
+every 0.5 s. When the queue file has been absent for two checks in a row, it
+creates and deletes `/run/udev/.pyra-settle-nudge`, at most once every 2 s. It
+logs to `/run/initramfs/settle-nudge.log`. Install it like
+`pyra-fw-nofallback` (`procedure.md` section 9, step 5). It does not weaken
+settle's guarantee: settle still leaves only when its own check finds no queue
+file, so a busy queue is waited out as before. A shorter `udevadm settle
+--timeout` was the other option. It would also let root mount while events are
+still queued, and it would still lose the time up to the timeout. The first
+reboot with the nudge installed was a stuck one: the queue was gone at 7.13 s,
+the watcher nudged at 7.83 s, settle was gone by 7.97 s, and root mounted at
+8.7 s.
+
+Check after a slow boot:
+
+    sudo cat /run/initramfs/settle-nudge.log
+
+`nudged` lines mean the wait was this shape and the watcher cut it short. A
+slow boot with no `nudged` line and no `settle exited` line is something else.
 
 ---
 

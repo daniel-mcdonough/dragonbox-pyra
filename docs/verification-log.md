@@ -974,3 +974,35 @@ card has no fix 12 drop-in; it gets fix 12 from the `+pyra1` deb.
 Offline, against the card's 0.38 vendor file: an undone fix (backup deleted)
 is left alone, and a vendor file the transforms refuse is left unchanged with
 the warning banner. The guard exits 0 in every case.
+
+## 2026-10-29 — shape A: settle misses the queue file's deletion; `pyra-settle-nudge`
+
+Method: the trixie card on l5 (`5.6.19-m4-kbdled`), warm reboots with
+`systemctl reboot`, each after at least 660 s up. Root-mount times are the
+kernel's `Mounted with checkpoint` stamp unless marked "column" (the journal's
+monotonic column, which runs slightly later). `pyra-settle-diag` was extended
+first: epoll and inotify `fdinfo` of `systemd-udevd` and `udevadm`, a 0.2 s
+timeline of `/run/udev/queue` and settle, and a one-time poke after the 15 s
+sample (`experiments/initramfs-wait/README.md`).
+
+- Before the nudge, 7 reboots: root at 9.3, 10.9, 9.6, 9.7 and 9.4 s (column),
+  then 26.6 s, then 16.7 s.
+- 26.6 s boot, 15 s sample: settle's fds were epoll, inotify and timerfd, with no
+  socket, so it was past the PING. `/run/udev/queue` was absent. udevd's epoll
+  still held its control listener (`tfd: 3 events: 19`, `/run/udev/control`,
+  inode 1526).
+- 16.7 s boot, timeline: `6.23 queue=1 settle=running`, `6.86 queue=0
+  settle=running`, `15.79 poke`, `15.84 queue=0 settle=gone`. settle's inotify
+  watch: `wd:1 ino:4dd mask:200`, and `ls -id /run/udev` gave 1245 (0x4dd).
+- `pyra-settle-nudge` was then installed in the m4-kbdled initrd beside the
+  diagnostic, after a live test with a stand-in `udevadm settle` (nudged at
+  +1.0 s and +3.1 s, then logged `settle exited`).
+- After the nudge, 4 reboots:
+  - 8.7 s, nudged. The timeline had `7.13 queue=0 settle=running` and
+    `7.97 settle=gone`. The nudge log had `7.83 ... nudged` and
+    `8.35 settle exited`.
+  - 6.7, 6.5 and 7.8 s, no nudge: settle left with the queue (5.93, 5.70
+    and 7.09 s).
+- Not shown: a full 126 s boot rescued by the nudge. The nudged boot was
+  stuck the same way (settle still there 0.7 s after the queue went) but
+  was cut short at once, so how long it would have waited is unknown.

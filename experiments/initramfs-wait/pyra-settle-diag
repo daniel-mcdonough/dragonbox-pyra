@@ -14,6 +14,14 @@
 # tasks on this SMP ARM kernel. The dump is kept off the consoles (see
 # quiet_console below).
 #
+# A second watcher writes /run/initramfs/settle-timeline.txt: one line, with the
+# uptime, each time /run/udev/queue appears or goes, or `udevadm settle` exits
+# (polled every 0.2 s). After the 15 s snapshot, if settle is still running and
+# the queue file is absent, the watcher creates and deletes
+# /run/udev/.pyra-settle-poke once. settle re-checks the queue on every IN_DELETE
+# in /run/udev, so if settle exits within a poll or two of the poke, its own
+# inotify path works.
+#
 # Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
 # update-initramfs -u -k <release>.
 
@@ -27,7 +35,9 @@ prereqs)
 esac
 
 OUT=/run/initramfs/settle-diag.txt
+TL=/run/initramfs/settle-timeline.txt
 MARK=/run/initramfs/.settle-diag-armed
+POKE=/run/udev/.pyra-settle-poke
 
 uptime_s() { read -r up _ < /proc/uptime; echo "${up%.*}"; }
 
@@ -59,13 +69,55 @@ snapshot() {
 		esac
 		echo "${p#/proc/} $comm:"
 		ls -l "$p/fd/" 2>&1
+		# An epoll fd's fdinfo lists every fd it watches ("tfd:") and the
+		# events asked for, so it shows whether udevd's control listener is
+		# still armed.
+		for fd in "$p"/fd/*; do
+			case "$(readlink "$fd" 2>/dev/null)" in
+			*eventpoll*|*inotify*)
+				echo "fdinfo ${fd##*/}:"
+				cat "$p/fdinfo/${fd##*/}" 2>&1
+				;;
+			esac
+		done
 	done
 	cat /proc/net/unix 2>&1
+	echo "--- inode of /run/udev (fdinfo ino: is hex)"
+	ls -id /run/udev 2>&1
 	echo
 	quiet_console
 	echo "pyra-settle-diag: SysRq-T at uptime $(cat /proc/uptime)" > /dev/kmsg
 	echo t > /proc/sysrq-trigger
 	restore_console
+}
+
+# The pid of `udevadm settle`, or nothing if it isn't running.
+settle_pid() {
+	for p in $(pidof udevadm); do
+		case "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)" in
+		*settle*) echo "$p"; return ;;
+		esac
+	done
+}
+
+# Log each change of "is there a queue file" and "is settle running".
+timeline() {
+	spid='' last=''
+	while [ -e "$MARK" ]; do
+		[ -n "$spid" ] || spid=$(settle_pid)
+		q=0; [ -e /run/udev/queue ] && q=1
+		st=none
+		if [ -n "$spid" ]; then
+			st=gone; [ -d "/proc/$spid" ] && st=running
+		fi
+		now="queue=$q settle=$st"
+		if [ "$now" != "$last" ]; then
+			read -r up _ < /proc/uptime
+			echo "$up $now" >> "$TL"
+			last=$now
+		fi
+		sleep 0.2 || return
+	done
 }
 
 # Keep the SysRq-T dump off the consoles. Printing every task's stack onto
@@ -99,7 +151,14 @@ echo "armed at uptime $(cat /proc/uptime)" > "$OUT"
 		done
 		[ -e "$MARK" ] || exit 0
 		snapshot >> "$OUT" 2>&1
+		if [ "$at" = 15 ] && [ -n "$(settle_pid)" ] && [ ! -e /run/udev/queue ]; then
+			echo "poke at uptime $(cat /proc/uptime)" >> "$OUT"
+			echo "$(cut -d' ' -f1 /proc/uptime) poke" >> "$TL"
+			: > "$POKE" && rm -f "$POKE"
+		fi
 	done
 ) </dev/null >/dev/null 2>&1 &
+
+timeline </dev/null >/dev/null 2>&1 &
 
 exit 0

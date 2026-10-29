@@ -1,0 +1,175 @@
+armed at uptime 5.04 5.86
+=== snapshot at uptime 15.19 22.53
+--- /sys/class/firmware (pending sysfs fallbacks)
+total 0
+-rw-r--r--    1 0        0             4096 Oct 29 01:51 timeout
+--- /run/udev
+total 0
+drwxr-xr-x    7 0        0              160 Oct 29 01:51 .
+drwxr-xr-x    4 0        0               80 Oct 29 01:51 ..
+srwxr-xr-x    1 0        0                0 Oct 29 01:51 control
+drwxr-xr-x    2 0        0             9040 Oct 29 01:51 data
+drwxr-xr-x   43 0        0              860 Oct 29 01:51 links
+drwxr-xr-x    2 0        0               40 Oct 29 01:51 links.lock
+drwxr-xr-x    4 0        0               80 Oct 29 01:51 tags
+drwxr-xr-x    2 0        0              680 Oct 29 01:51 watch
+--- processes: pid ppid state comm wchan cmdline
+1 0 S init wchan=do_wait cmd=[/bin/sh /init earlyprintk fastboot ]
+10 2 I rcu_preempt wchan=rcu_gp_kthread cmd=[]
+11 2 S migration/0 wchan=smpboot_thread_fn cmd=[]
+1151 2 S hwrng wchan=add_hwgenerator_randomness cmd=[]
+12 2 I kworker/0:1-pm wchan=worker_thread cmd=[]
+1232 2 S scsi_eh_0 wchan=scsi_error_handler cmd=[]
+1233 2 I scsi_tmf_0 wchan=rescuer_thread cmd=[]
+1237 2 I kworker/u4:2-events_unbound wchan=worker_thread cmd=[]
+1238 2 S spi0 wchan=kthread_worker_fn cmd=[]
+1278 2 I kworker/u4:3-events_unbound wchan=worker_thread cmd=[]
+13 2 S cpuhp/0 wchan=smpboot_thread_fn cmd=[]
+1300 2 S irq/30-talert wchan=irq_thread cmd=[]
+1320 2 I kworker/0:2-events_freezable_power_ wchan=worker_thread cmd=[]
+1389 2 I ipv6_addrconf wchan=rescuer_thread cmd=[]
+14 2 S cpuhp/1 wchan=smpboot_thread_fn cmd=[]
+1401 2 I kworker/u5:0 wchan=worker_thread cmd=[]
+1413 2 S irq/120-4806000 wchan=irq_thread cmd=[]
+1423 2 S irq/124-4807000 wchan=irq_thread cmd=[]
+1431 2 S irq/152-palmas wchan=irq_thread cmd=[]
+1483 2 S irq/162-twl6040 wchan=irq_thread cmd=[]
+1493 2 S irq/125-4807200 wchan=irq_thread cmd=[]
+15 2 S migration/1 wchan=smpboot_thread_fn cmd=[]
+1507 2 S irq/169-tca8418 wchan=irq_thread cmd=[]
+1519 2 S irq/126-4807a00 wchan=irq_thread cmd=[]
+1520 2 I kworker/0:3-pm wchan=worker_thread cmd=[]
+1524 2 S irq/170-tsc2007 wchan=irq_thread cmd=[]
+1525 2 I kworker/0:4-events wchan=worker_thread cmd=[]
+1545 2 S irq/127-4807c00 wchan=irq_thread cmd=[]
+1552 2 S irq/171-4-0022 wchan=irq_thread cmd=[]
+1570 2 I kworker/0:5 wchan=worker_thread cmd=[]
+1585 2 S irq/173-tpd12s0 wchan=irq_thread cmd=[]
+1592 2 S irq/174-4809c00 wchan=irq_thread cmd=[]
+1595 2 S irq/175-480ad00 wchan=irq_thread cmd=[]
+1598 2 I mmc_complete wchan=rescuer_thread cmd=[]
+16 2 S ksoftirqd/1 wchan=smpboot_thread_fn cmd=[]
+1600 2 I kworker/0:1H-kblockd wchan=worker_thread cmd=[]
+1612 2 S irq/176-480d100 wchan=irq_thread cmd=[]
+1624 2 I bq2429x_irq wchan=rescuer_thread cmd=[]
+1632 2 S irq/148-OMAP HD wchan=irq_thread cmd=[]
+1655 2 S irq/99-dwc3-oma wchan=irq_thread cmd=[]
+1667 2 I kworker/1:2-mm_percpu_wq wchan=worker_thread cmd=[]
+17 2 I kworker/1:0-events wchan=worker_thread cmd=[]
+1704 1 R pyra-settle-dia wchan=pipe_read cmd=[/bin/sh /scripts/init-top/pyra-settle-diag ]
+1705 1 S pyra-settle-dia wchan=do_wait cmd=[/bin/sh /scripts/init-top/pyra-settle-diag ]
+1709 1 S udev wchan=do_wait cmd=[/bin/sh -e /scripts/init-top/udev ]
+1714 1 S systemd-udevd wchan=do_epoll_wait cmd=[/usr/lib/systemd/systemd-udevd --daemon --resolve-names=never ]
+1787 2 I mmc_complete wchan=rescuer_thread cmd=[]
+1788 2 I kworker/0:2H-kblockd wchan=worker_thread cmd=[]
+18 2 I kworker/1:0H-kblockd wchan=worker_thread cmd=[]
+1816 1709 S udevadm wchan=do_epoll_wait cmd=[udevadm settle ]
+1822 2 I kworker/1:1H-kblockd wchan=worker_thread cmd=[]
+1823 2 I kworker/1:2H-kblockd wchan=worker_thread cmd=[]
+1868 1714 S (udev-worker wchan=do_epoll_wait cmd=[(udev-worker) ]
+19 2 S kdevtmpfs wchan=devtmpfsd cmd=[]
+2 0 S kthreadd wchan=kthreadd cmd=[]
+20 2 I netns wchan=rescuer_thread cmd=[]
+21 2 I kworker/u4:1-events_unbound wchan=worker_thread cmd=[]
+23 2 S rcu_tasks_kthre wchan=rcu_tasks_kthread cmd=[]
+3 2 I rcu_gp wchan=rescuer_thread cmd=[]
+38 2 I kworker/1:1-events wchan=worker_thread cmd=[]
+39 2 S kauditd wchan=kauditd_thread cmd=[]
+4 2 I rcu_par_gp wchan=rescuer_thread cmd=[]
+434 2 S khungtaskd wchan=watchdog cmd=[]
+435 2 S oom_reaper wchan=oom_reaper cmd=[]
+436 2 I writeback wchan=rescuer_thread cmd=[]
+438 2 S kcompactd0 wchan=kcompactd cmd=[]
+475 2 I kblockd wchan=rescuer_thread cmd=[]
+476 2 I blkcg_punt_bio wchan=rescuer_thread cmd=[]
+5 2 I kworker/0:0-events wchan=worker_thread cmd=[]
+511 2 I ata_sff wchan=rescuer_thread cmd=[]
+552 2 S watchdogd wchan=kthread_worker_fn cmd=[]
+6 2 I kworker/0:0H-mmc_complete wchan=worker_thread cmd=[]
+641 2 I cfg80211 wchan=rescuer_thread cmd=[]
+659 2 S kswapd0 wchan=kswapd cmd=[]
+7 2 I kworker/u4:0-events_unbound wchan=worker_thread cmd=[]
+8 2 I mm_percpu_wq wchan=rescuer_thread cmd=[]
+9 2 S ksoftirqd/0 wchan=smpboot_thread_fn cmd=[]
+--- fds of systemd-udevd and udevadm, then /proc/net/unix
+1714 systemd-udevd:
+total 0
+lrwx------    1 0        0               64 Oct 29 01:51 0 -> /dev/null
+lrwx------    1 0        0               64 Oct 29 01:51 1 -> /dev/null
+lr-x------    1 0        0               64 Oct 29 01:51 10 -> /usr/lib/udev/hwdb.bin
+lrwx------    1 0        0               64 Oct 29 01:51 12 -> anon_inode:[pidfd]
+lrwx------    1 0        0               64 Oct 29 01:51 13 -> anon_inode:[timerfd]
+lrwx------    1 0        0               64 Oct 29 01:51 2 -> /dev/null
+lrwx------    1 0        0               64 Oct 29 01:51 3 -> socket:[1246]
+lrwx------    1 0        0               64 Oct 29 01:51 4 -> socket:[1248]
+lrwx------    1 0        0               64 Oct 29 01:51 5 -> socket:[12674]
+lrwx------    1 0        0               64 Oct 29 01:51 6 -> socket:[12675]
+lr-x------    1 0        0               64 Oct 29 01:51 7 -> anon_inode:inotify
+lrwx------    1 0        0               64 Oct 29 01:51 8 -> anon_inode:[eventpoll]
+lrwx------    1 0        0               64 Oct 29 01:51 9 -> anon_inode:[signalfd]
+fdinfo 7:
+pos:	0
+flags:	02000000
+mnt_id:	14
+inotify wd:15 ino:47e sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:1d0bd3b47e04000000000000
+inotify wd:14 ino:47b sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:e52b03f17b04000000000000
+inotify wd:13 ino:47d sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:989a75927d04000000000000
+inotify wd:12 ino:47c sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:3bec88987c04000000000000
+inotify wd:11 ino:478 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:db4d8e7f7804000000000000
+inotify wd:10 ino:47a sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:03b387ef7a04000000000000
+inotify wd:f ino:479 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:9666ef517904000000000000
+inotify wd:e ino:477 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:a56516557704000000000000
+inotify wd:d ino:3217 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:7cc73d061732000000000000
+inotify wd:c ino:3224 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:abcba1d62432000000000000
+inotify wd:b ino:49d sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:562b02299d04000000000000
+inotify wd:a ino:3221 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:1c5533502132000000000000
+inotify wd:9 ino:3218 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:8aa78ef71832000000000000
+inotify wd:8 ino:3216 sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:da416a5f1632000000000000
+inotify wd:7 ino:49e sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:e0c756f89e04000000000000
+inotify wd:6 ino:49c sdev:6 mask:8 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:978f2d5d9c04000000000000
+fdinfo 8:
+pos:	0
+flags:	02000002
+mnt_id:	14
+tfd:       12 events: 40000019 data:           538bf0  pos:0 ino:1dde sdev:d
+tfd:       13 events:       19 data:           522430  pos:0 ino:1dde sdev:d
+tfd:        4 events:       19 data:           521c38  pos:0 ino:4e0 sdev:9
+tfd:        3 events:       19 data:           521b18  pos:0 ino:4de sdev:9
+tfd:        7 events:       19 data:           521bb0  pos:0 ino:1dde sdev:d
+tfd:        9 events:       19 data:           522748  pos:0 ino:1dde sdev:d
+tfd:        5 events:       19 data:           521cd0  pos:0 ino:3182 sdev:9
+1816 udevadm:
+total 0
+lrwx------    1 0        0               64 Oct 29 01:51 0 -> /dev/console
+lrwx------    1 0        0               64 Oct 29 01:51 1 -> /dev/console
+lrwx------    1 0        0               64 Oct 29 01:51 2 -> /dev/console
+lrwx------    1 0        0               64 Oct 29 01:51 3 -> anon_inode:[eventpoll]
+lr-x------    1 0        0               64 Oct 29 01:51 5 -> anon_inode:inotify
+lrwx------    1 0        0               64 Oct 29 01:51 6 -> anon_inode:[timerfd]
+fdinfo 3:
+pos:	0
+flags:	02000002
+mnt_id:	14
+tfd:        5 events:       19 data:           482e58  pos:0 ino:1dde sdev:d
+tfd:        6 events:       19 data:           482878  pos:0 ino:1dde sdev:d
+fdinfo 5:
+pos:	0
+flags:	02004000
+mnt_id:	14
+inotify wd:1 ino:4dd sdev:17 mask:200 ignored_mask:0 fhandle-bytes:c fhandle-type:1 f_handle:72d58de3dd04000000000000
+Num       RefCount Protocol Flags    Type St Inode Path
+5956ccad: 00000002 00000000 00010000 0005 01  1246 /run/udev/control
+5336bb4f: 00000003 00000000 00000000 0002 01 12675
+c0fe27af: 00000003 00000000 00000000 0002 01 12674
+--- inode of /run/udev (fdinfo ino: is hex)
+   1245 /run/udev
+
+poke at uptime 15.79 23.10
+===TL
+5.06 queue=0 settle=none
+6.23 queue=1 settle=running
+6.86 queue=0 settle=running
+15.79 poke
+15.84 queue=0 settle=gone
+16.25 queue=1 settle=gone
+16.45 queue=0 settle=gone

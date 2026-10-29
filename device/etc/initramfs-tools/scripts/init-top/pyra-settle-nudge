@@ -1,0 +1,79 @@
+#!/bin/sh
+# Wake `udevadm settle` when it sleeps through the end of udev's event queue.
+#
+# init-top/udev runs `udevadm settle`, which waits for /run/udev/queue to go
+# away: it watches /run/udev for IN_DELETE and re-checks the file on each one.
+# On some warm reboots it misses the queue file's deletion and sleeps on with
+# the queue already empty, until its 120 s timeout (or until some later uevent
+# makes udevd create and delete the file again), so root mounts at about 126 s
+# instead of 6-10 s. Deleting any other file in /run/udev wakes it at once,
+# and it then exits through its own check (measured 2026-10-29: settle gone
+# 0.05 s after such a delete, 9 s after the queue had emptied). Why the first
+# IN_DELETE goes unnoticed is not known; see docs/troubleshooting.md shape A.
+#
+# This hook starts a background watcher and returns at once. While settle runs,
+# the watcher checks every 0.5 s; when the queue file has been absent for two
+# checks in a row and settle is still there, it creates and deletes
+# /run/udev/.pyra-settle-nudge, at most once every 2 s. That does not loosen
+# settle's guarantee: settle still exits only when it finds no queue file. The
+# watcher stops when settle has exited, at switch_root (its marker lives on the
+# initramfs's /run, which init moves onto the real root), or at 150 s uptime.
+# What it did is logged to /run/initramfs/settle-nudge.log, which survives
+# switch_root.
+#
+# Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
+# update-initramfs -u -k <release>.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+LOG=/run/initramfs/settle-nudge.log
+MARK=/run/initramfs/.settle-nudge-armed
+POKE=/run/udev/.pyra-settle-nudge
+
+up() { read -r u _ < /proc/uptime; echo "$u"; }
+
+settle_pid() {
+	for p in $(pidof udevadm); do
+		case "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)" in
+		*settle*) echo "$p"; return ;;
+		esac
+	done
+}
+
+watch_settle() {
+	spid='' empty=0 last=0
+	while [ -e "$MARK" ]; do
+		u=$(up)
+		[ "${u%.*}" -lt 150 ] || { echo "$u stopped at the time limit" >> "$LOG"; return; }
+		if [ -z "$spid" ]; then
+			spid=$(settle_pid)
+		elif [ ! -d "/proc/$spid" ]; then
+			echo "$u settle exited" >> "$LOG"
+			return
+		elif [ -e /run/udev/queue ]; then
+			empty=0
+		else
+			empty=$((empty + 1))
+			if [ "$empty" -ge 2 ] && [ $((${u%.*} - last)) -ge 2 ]; then
+				: > "$POKE" && rm -f "$POKE"
+				echo "$u queue empty but settle still waiting: nudged" >> "$LOG"
+				last=${u%.*}
+			fi
+		fi
+		sleep 0.5 || return
+	done
+}
+
+mkdir -p /run/initramfs
+: > "$MARK"
+echo "$(up) armed" > "$LOG"
+watch_settle </dev/null >/dev/null 2>&1 &
+
+exit 0
