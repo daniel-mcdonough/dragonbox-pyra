@@ -189,6 +189,15 @@ removed afterwards, and it can be stopped from loading at all with a
 command line. **If you want the cores genuinely untouched during boot, that
 blacklist is the thing to use — not `=m`.**
 
+`device/pyra-install-debug-kernel.sh` now writes it: installing any kernel
+whose module tree has `omap_remoteproc.ko` puts `blacklist omap_remoteproc` in
+`/etc/modprobe.d/pyra-m4-noautoboot.conf`, before the initrd is built. A
+`blacklist` line only stops alias loading, the udev modalias path here; an
+explicit `modprobe omap_remoteproc` still loads it, and `pyra-m4-run.sh` and
+`pyra-m4-demo.sh` now do that themselves. The module stays loaded until the
+next boot: unloading it has never been tried on this hardware. Checked on
+`5.6.19-m4-kbdled` on 2026-10-29 (`verification-log.md`).
+
 | patch | what |
 | --- | --- |
 | `0009-remoteproc-omap-backport-the-device-tree-driver.patch` | replaces the 235-line stub with v5.9's driver, plus three compat fixes |
@@ -1142,8 +1151,9 @@ reporting and the assertion that there are two remoteproc devices.
 installs the firmware, starts the IPU, samples the trace buffer twice, stops
 the processor and **removes the firmware again** — not tidiness: `auto_boot` is
 true, so a file left in `/lib/firmware` starts both M4s during every boot with
-nothing typed. `--keep` opts into that, and
-`modprobe.blacklist=omap_remoteproc` is how to take it back.
+nothing typed, on a card without the `modprobe.d` blacklist the kernel
+install now writes. `--keep` opts into that; the blacklist is how to take it
+back.
 
 It was negative-tested against a firmware built to write the banner and then
 stop, which passes every text check and fails the counter check, and it is

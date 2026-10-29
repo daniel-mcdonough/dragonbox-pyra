@@ -115,11 +115,12 @@ Read this part even if you skip everything else.
   it. Put the SD card in a PC and change the `default l1` line in
   `/boot/extlinux/extlinux.conf` back to what it was (`default l0` on a
   stock image).
-- **Never leave the firmware in `/lib/firmware`.** The kernel starts the M4s
-  automatically whenever `omap5-ipu-fw.xem4` is there, at every boot. Both
-  scripts remove it on exit, however they exit. If you ever need to stop that
-  happening, add `modprobe.blacklist=omap_remoteproc` to the kernel command
-  line.
+- **Never leave the firmware in `/lib/firmware`.** Without a blacklist the
+  kernel starts the M4s automatically whenever `omap5-ipu-fw.xem4` is there,
+  at every boot. Both scripts remove it on exit, however they exit. The
+  install script also writes `/etc/modprobe.d/pyra-m4-noautoboot.conf`, which
+  keeps `omap_remoteproc` from loading at boot; the demo loads it itself when
+  you run it, and it stays loaded until the next boot.
 - The kernel carries **only** this repository's general fixes (`patches/`) and
   the four M4 patches. It does not carry the AESS audio work or the
   frequency-table changes that this project's everyday `5.6.19-m4` kernel
@@ -172,7 +173,7 @@ clock measurement is worth more than the first.
 
 | what you see | what it means |
 | --- | --- |
-| `no ipu remoteproc device` | Not running `5.6.19-m4demo` (check `uname -r`), or `omap_remoteproc` is blacklisted. |
+| `no ipu remoteproc device` | Not running `5.6.19-m4demo` (check `uname -r`), or the `modprobe omap_remoteproc` the demo runs failed (its error is printed above). The blacklist does not cause this: it stops only the load at boot. |
 | `writing 'start' failed`, `-EBUSY` in dmesg | Something asked for a hardware timer the backlight owns. The kit's device tree deliberately gives the IPU none. If you edited it, see "The one Pyra-specific trap" in `docs/m4-ipu.md`. |
 | `core1 never ran` / `did not advance` | Only one M4 left reset. Please post the log; this has not been seen. |
 | `state=FAULT` | The firmware took a fault. Please post the log and `dmesg`. |

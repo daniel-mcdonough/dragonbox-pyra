@@ -736,8 +736,9 @@ building it:
 **`OMAP_REMOTEPROC=m` does not keep the cores untouched at boot.** udev loads
 the module from the device tree modalias, the driver probes, and `auto_boot` is
 true — so once `omap5-ipu-fw.xem4` exists in `/lib/firmware`, both M4s start
-during every boot with nothing typed. `modprobe.blacklist=omap_remoteproc` on
-the kernel command line is the control.
+during every boot with nothing typed. `pyra-install-debug-kernel.sh` writes a
+`modprobe.d` blacklist for it when the kernel has the module, and the M4
+scripts load it on request.
 
 **Do not give the IPU a timer.** The obvious template, `omap5-uevm.dts`, gives
 it `ti,watchdog-timers = <&timer9>`, and timer9 on a Pyra is the display

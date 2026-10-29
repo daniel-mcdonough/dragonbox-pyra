@@ -921,3 +921,27 @@ the write.
   `kernel.printk` read `7 4 1 7`. `/run/initramfs/settle-diag.txt`: no
   `/run/udev/queue` at any sample. `udevadm settle` and `systemd-udevd` were in
   `do_epoll_wait`, with no D-state task (`troubleshooting.md`, shape A).
+
+## 2026-10-29 — the M4 `auto_boot` guard ships with the kernel install
+
+`pyra-install-debug-kernel.sh` now writes `/etc/modprobe.d/pyra-m4-noautoboot.conf`
+(`blacklist omap_remoteproc`) for any kernel whose module tree has
+`omap_remoteproc.ko`, before it builds the initrd. `pyra-m4-run.sh` and
+`pyra-m4-demo.sh` load the module themselves. Checked on the trixie card,
+running `5.6.19-m4-kbdled`:
+
+- `omap_remoteproc` is a module there: before the change `lsmod` listed it,
+  loaded by udev at boot from the `ipu` modalias.
+- The tarball on the card matched the installed kernel (same sha256 for
+  `vmlinuz` and `omap_remoteproc.ko`), so `sudo ./pyra-install-debug-kernel.sh
+  --replace-running ~/m4-kbdled-kernel.tar.gz` rewrote no kernel files and
+  kept `default l5`. It wrote the conf file, and `lsinitramfs` shows
+  `etc/modprobe.d/pyra-m4-noautoboot.conf` in the new initrd.
+- After a reboot, `lsmod | grep omap_remoteproc` printed nothing,
+  `/sys/class/remoteproc` was empty, and the kernel log had nothing from
+  remoteproc. `systemd-analyze` gave 7.0 s (kernel) + 23.4 s (userspace).
+- `sudo ./pyra-m4-demo.sh ~/pyra-m4-demo-20261018/pyra-m4-demo.xem4` (the
+  2026-10-18 kit's firmware) printed `loading omap_remoteproc (blacklisted at
+  boot, loaded on request)`, found `remoteproc1 55020000.ipu`, and passed: 13 ok,
+  0 failed. Both cores measured at 212.8 and 212.9 MHz (SysTick, ten 1 s samples).
+  Afterwards the firmware was gone and the module was still loaded.

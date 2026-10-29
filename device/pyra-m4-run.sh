@@ -28,9 +28,10 @@
 # BY DEFAULT IT REMOVES THE FIRMWARE AGAIN, and that is not tidiness. The
 # remoteproc core sets auto_boot = true and the omap driver never clears it,
 # so a firmware file sitting in /lib/firmware means the IPU starts during
-# every boot, with nothing typed and nothing watching. Use --keep only if
-# that is what you want; `modprobe.blacklist=omap_remoteproc` on the kernel
-# command line is the way to take it back.
+# every boot, with nothing typed and nothing watching -- unless the module
+# is blacklisted, which pyra-install-debug-kernel.sh does for an M4 kernel
+# (/etc/modprobe.d/pyra-m4-noautoboot.conf). The blacklist only stops the
+# autoload at boot, so this script loads the module itself.
 #
 set -uo pipefail
 
@@ -45,7 +46,7 @@ while [ $# -gt 0 ]; do
 	--keep)    KEEP=1 ;;
 	--stop)    STOP_ONLY=1 ;;
 	--seconds) SECONDS_RUN=${2:?}; shift ;;
-	-h|--help) sed -n '3,33p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	-h|--help) sed -n '3,34p' "$0" | sed 's/^# \?//'; exit 0 ;;
 	-*)        echo "unknown argument: $1" >&2; exit 2 ;;
 	*)         SRC=$1 ;;
 	esac
@@ -60,6 +61,15 @@ bad()  { echo "  FAIL  $*"; fail=$((fail+1)); }
 note() { echo "        $*"; }
 
 # ---- find the IPU, by name rather than by index ----------------------------
+# Blacklisted at boot, loaded on request; it stays loaded afterwards.
+if [ "$STOP_ONLY" = 0 ] && ! grep -q '^omap_remoteproc ' /proc/modules; then
+	note "loading omap_remoteproc (blacklisted at boot, loaded on request)"
+	modprobe omap_remoteproc 2>&1 | sed 's/^/        /'
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		ls /sys/class/remoteproc/remoteproc* >/dev/null 2>&1 && break
+		sleep 0.2
+	done
+fi
 RP=""
 for d in /sys/class/remoteproc/remoteproc*; do
 	[ -d "$d" ] || continue
@@ -101,7 +111,12 @@ cleanup() {
 		rm -f "$FW_DEST"
 		note "removed $FW_DEST (auto_boot would otherwise start the IPU at every boot)"
 	else
-		note "LEFT $FW_DEST in place — the IPU will start during every boot from now on"
+		if grep -qsx 'blacklist omap_remoteproc' /etc/modprobe.d/*.conf; then
+			note "LEFT $FW_DEST in place — omap_remoteproc is blacklisted, so the"
+			note "IPU starts only when something loads the module"
+		else
+			note "LEFT $FW_DEST in place — the IPU will start during every boot from now on"
+		fi
 	fi
 }
 trap cleanup EXIT

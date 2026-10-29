@@ -168,6 +168,26 @@ echo "  /lib is still a symlink to $(readlink /lib)"
 say "building the module dependency tables"
 depmod -a "$REL"
 
+# A kernel with the M4 work carries omap_remoteproc as a module, and udev loads
+# it at boot from the device tree modalias. remoteproc sets auto_boot and the
+# omap driver never clears it, so the day omap5-ipu-fw.xem4 is in /lib/firmware
+# both M4s start on every boot with nothing typed. The blacklist stops only that
+# autoload; an explicit `modprobe omap_remoteproc`, which the M4 scripts do,
+# still works. Written before the initrd so the initrd's copy of modprobe.d
+# agrees. Kernels without the module need nothing, so nothing is written.
+M4_CONF=/etc/modprobe.d/pyra-m4-noautoboot.conf
+if find "/usr/lib/modules/$REL" -name 'omap_remoteproc.ko*' | grep -q .; then
+	say "keeping the M4s from starting at boot"
+	cat > "$M4_CONF" <<'EOF'
+# Written by pyra-install-debug-kernel.sh. Stops udev loading omap_remoteproc
+# at boot, which with auto_boot would start both Cortex-M4s whenever
+# /lib/firmware/omap5-ipu-fw.xem4 exists. `modprobe omap_remoteproc` still
+# loads it on request; the M4 scripts do that themselves.
+blacklist omap_remoteproc
+EOF
+	echo "  wrote $M4_CONF"
+fi
+
 say "building the initrd against this machine's userspace"
 update-initramfs -c -k "$REL"
 [ -f "/boot/initrd.img-$REL" ] || die "no initrd was produced"
@@ -223,6 +243,10 @@ l1)      echo "  ok   default is l1, the test slot, which now points at $REL" ;;
 *)       echo "  BAD  default is now '$now'"; fail=1 ;;
 esac
 [ -L /lib ] && echo "  ok   /lib -> $(readlink /lib)" || fail=1
+if [ -f "$M4_CONF" ]; then
+	grep -qx 'blacklist omap_remoteproc' "$M4_CONF" &&
+		echo "  ok   $M4_CONF: omap_remoteproc loads only on request" || fail=1
+fi
 
 echo
 echo "--- $CFG now reads ---"

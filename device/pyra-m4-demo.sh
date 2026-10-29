@@ -62,6 +62,26 @@ soc=/sys/bus/soc/devices/soc0
 note "kernel   $(uname -r)"
 note "soc      $(cat $soc/machine 2>/dev/null) $(cat $soc/revision 2>/dev/null) $(cat $soc/type 2>/dev/null)"
 
+if [ -e "$FW_DEST" ]; then
+	echo "$FW_DEST already exists. Not overwriting someone else's firmware;" >&2
+	echo "move it aside (or: sudo ./pyra-m4-run.sh --stop) and run again." >&2
+	exit 1
+fi
+
+# The kernel install blacklists omap_remoteproc so that it does not load at
+# boot (auto_boot again); the blacklist only stops the autoload, so load it
+# here. Checked after the firmware, because a module loaded with the file in
+# place starts the M4s at once. It stays loaded afterwards, as it would be
+# on a card without the blacklist.
+if ! grep -q '^omap_remoteproc ' /proc/modules; then
+	note "loading omap_remoteproc (blacklisted at boot, loaded on request)"
+	modprobe omap_remoteproc 2>&1 | sed 's/^/        /'
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		ls /sys/class/remoteproc/remoteproc* >/dev/null 2>&1 && break
+		sleep 0.2
+	done
+fi
+
 RP=""
 for d in /sys/class/remoteproc/remoteproc*; do
 	[ -d "$d" ] || continue
@@ -71,13 +91,8 @@ for d in /sys/class/remoteproc/remoteproc*; do
 	esac
 done
 if [ -z "$RP" ]; then
-	echo "no ipu remoteproc device: this needs the 5.6.19-m4 kernel with" >&2
-	echo "omap_remoteproc loaded (is it blacklisted on the command line?)" >&2
-	exit 1
-fi
-if [ -e "$FW_DEST" ]; then
-	echo "$FW_DEST already exists. Not overwriting someone else's firmware;" >&2
-	echo "move it aside (or: sudo ./pyra-m4-run.sh --stop) and run again." >&2
+	echo "no ipu remoteproc device: this needs the 5.6.19-m4 kernel, whose" >&2
+	echo "omap_remoteproc module the line above should have loaded" >&2
 	exit 1
 fi
 if [ "$(cat "$RP/state")" = running ]; then
