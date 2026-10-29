@@ -383,10 +383,11 @@ The second form copies `device/` to `~/dragonbox-pyra/device` on the Pyra
 **2. The helpers: `sudo ./pyra-install-helpers.sh`, from `device/`.** Always
 safe to re-run. It compares each file with what is installed, reports `same`
 for the ones that match and replaces the rest, then re-enables and restarts
-its three units (governor, AESS script choice, undervolt) and re-applies the
-sysctl settings. `--dry-run` says what it would change first. It installs no
-kernel and applies none of the twelve fixes. It does put the fix 6, 7 and 8
-scripts on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
+its three units (governor, AESS script choice, undervolt), re-applies the
+sysctl settings, and rebuilds any initrd that lacks the initramfs hooks
+(step 5). `--dry-run` says what it would change first. It installs no kernel
+and applies none of the twelve fixes. It does put the fix 6, 7 and 8 scripts
+on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
 
 **3. A fix whose script changed: re-run that script on the device.** Run it
@@ -457,18 +458,20 @@ installer is safe. Its rules, from its header and code:
 Then choose what boots with `pyra-boot-kernel.sh` (section 3 of
 `reproduce.md`).
 
-**5. An initramfs hook change: install it and rebuild the initrd for each
-kernel.** The two hooks in `device/etc/initramfs-tools/scripts/init-top/`,
-`pyra-fw-nofallback` and `pyra-settle-nudge` (`troubleshooting.md`, "Root
-mounts a minute or two late", shapes B and A), are not installed by anything
-yet: not by prep and not by step 2. Copying them into place does not change
-any existing initrd, so after a copy, rebuild the initrd of every kernel you
-boot:
+**5. An initramfs hook change: step 2 does it.** The two hooks in
+`device/etc/initramfs-tools/scripts/init-top/`, `pyra-fw-nofallback` and
+`pyra-settle-nudge` (`troubleshooting.md`, "Root mounts a minute or two late",
+shapes B and A), are in `pyra-install-helpers.sh`'s map. Copying a hook changes
+no existing initrd, so the helper then rebuilds, with `update-initramfs -u -k`,
+every `/boot/initrd.img-<release>` that does not list both hooks or is older
+than either installed one. It reports `same` for the rest, so a second run
+rebuilds nothing. Each rebuild took about 20 s on the trixie card (measured
+2026-10-29, four rebuilds in one 84 s run), and the helper checks `/boot` has
+room for it first. A kernel installed later gets the hooks from `pyra-install-debug-kernel.sh`, which builds its initrd with
+whatever is in `/etc/initramfs-tools`. Prep does not install the hooks, so
+a newly prepared card has them only after step 2. To check one initrd by hand:
 
-    sudo install -m 0755 pyra-fw-nofallback pyra-settle-nudge /etc/initramfs-tools/scripts/init-top/
-    sudo update-initramfs -u -k <release>      # once per kernel you boot
-
-`lsinitramfs /boot/initrd.img-<release> | grep -e nofallback -e nudge` confirms it.
+    lsinitramfs /boot/initrd.img-<release> | grep -e nofallback -e nudge
 
 ### What can undo an update
 
@@ -488,4 +491,4 @@ boot:
   brings back the uncalibrated wheel, so re-run `pyra-volumed/install.sh`.
   The hook does not watch fix 12.
 - **A new kernel whose initrd was built before the hook was installed** boots
-  without the hook. Check with `lsinitramfs`, as above.
+  without the hook. Check with `lsinitramfs`, as above; step 2 rebuilds it.

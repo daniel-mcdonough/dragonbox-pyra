@@ -146,8 +146,9 @@ initramfs, which is the shape B trigger, and gave up on the firmware within
     7.192 r8152 1-2.1:1.0: unable to load firmware patch rtl_nic/rtl8153a-4.fw (-2)
     9.467 F2FS-fs (mmcblk1p2): Mounted with checkpoint version = 435fe8d2
 
-The hook is installed on the trixie card for `5.6.19-m4-kbdled` only; prep does
-not install it yet. Without it, the workaround is to unplug the adapter for a
+`pyra-install-helpers.sh` installs the hook and rebuilds the initrd of every
+kernel in `/boot` (`procedure.md` section 9, step 5); prep does not install it
+yet. Without it, the workaround is to unplug the adapter for a
 cold boot.
 
 **Shape A, worked around: `udevadm settle` sleeps through the end of the
@@ -310,13 +311,13 @@ the initramfs config; on m4-kbdled it never fires. A backport request is drafted
 reads `IN_DELETE` as "the name is gone" can trip on the same bug on these
 kernels.
 
-**Workaround, on the trixie card for `m4-kbdled`:**
+**Workaround, for the kernels without 0048:**
 `device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge`. It starts a
 background watcher before `init-top/udev`. While settle runs, the watcher checks
 every 0.5 s. When the queue file has been absent for two checks in a row, it
 creates and deletes `/run/udev/.pyra-settle-nudge`, at most once every 2 s. It
-logs to `/run/initramfs/settle-nudge.log`. Install it like
-`pyra-fw-nofallback` (`procedure.md` section 9, step 5). It does not weaken
+logs to `/run/initramfs/settle-nudge.log`. `pyra-install-helpers.sh` installs
+it with `pyra-fw-nofallback` (`procedure.md` section 9, step 5). It does not weaken
 settle's guarantee: settle still leaves only when its own check finds no queue
 file, so a busy queue is waited out as before. A shorter `udevadm settle
 --timeout` was the other option. It would also let root mount while events are

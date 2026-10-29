@@ -1106,3 +1106,32 @@ state change; the revert unit's command is unchanged):
 
 Left as found: `default l5`, revert disarmed, and the new script installed in
 `/usr/local/sbin` (sha256 matches the repository copy).
+
+## 2026-10-29 — `pyra-install-helpers.sh` installs the `init-top` hooks
+
+`pyra-fw-nofallback` and `pyra-settle-nudge` are now in the helper's map, and the
+helper rebuilds every `/boot/initrd.img-*` that lacks either hook or is older than
+one. Checked on the trixie card running `5.6.19-m4-kbdled`, through
+`pc/pyra-push-helpers.sh`, with no reboot:
+
+- Before: both hooks already in `/etc/initramfs-tools/scripts/init-top/` from the
+  manual install, byte-identical to the repository. The `fix` and `m4-kbdled`
+  initrds listed them. `freq`, `m4`, `m4demo` and the stock `pyradef` did not.
+  `/boot` had 44 MB free, against initrds of about 13 MB each.
+- `--dry-run`: `same` for both hooks and for the `fix` and `m4-kbdled` initrds,
+  `would rebuild` for the other four.
+- First run: exit 0, the four rebuilt, `/boot` at 43 MB free. The whole run took
+  84 s, so about 20 s per rebuild. Verify printed `ok ... has both init-top hooks`
+  for all six. The two `m4-uprobe` module trees have no initrd and were not
+  touched.
+- Second run: exit 0, `same` for every file and all six initrds, and no initrd
+  mtime changed.
+- After: the hooks' sha256 (`fb2a2068...` and `e32f61e3...`) match the repository
+  and their mtimes are those of the manual install. `lsinitramfs` of each of the
+  six initrds lists `scripts/init-top/pyra-fw-nofallback` and
+  `scripts/init-top/pyra-settle-nudge`.
+
+A rebuilt initrd takes every hook in that directory, so on this card the four
+rebuilt initrds also gained the diagnostic `pyra-settle-diag`, which only the
+trixie card has. The stock initrd as it was is kept on the card's root filesystem.
+Not boot-tested: `lsinitramfs` shows that the hooks are in each initrd.

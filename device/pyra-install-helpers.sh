@@ -19,8 +19,10 @@
 # earlier run of it left behind, since those would shadow the package's.
 #
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
-# this script puts on the path for you. It does not apply the twelve card fixes
-# either: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
+# this script puts on the path for you. It does install the two init-top hooks
+# that keep root from mounting late, and rebuilds the initrd of every kernel in
+# /boot whose initrd lacks them or predates them. It does not apply the twelve
+# card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #
@@ -30,7 +32,7 @@ DRYRUN=0
 case "${1:-}" in
 --dry-run) DRYRUN=1 ;;
 --list)    DRYRUN=2 ;;
--h|--help) sed -n '3,19p' "$0" | sed 's/^# \?//'; exit 0 ;;
+-h|--help) sed -n '3,/^# Every step/p' "$0" | sed 's/^# \?//'; exit 0 ;;
 "")        ;;
 *)         echo "unknown argument: $1" >&2; exit 2 ;;
 esac
@@ -80,7 +82,14 @@ pulse/alsa-mixer/profile-sets/pyra-aess.conf /etc/pulse/pyra-alsa-mixer/profile-
 pulse/alsa-mixer/paths/pyra-speaker.conf     /usr/share/pulseaudio/alsa-mixer/paths  0644
 pulse/alsa-mixer/paths/pyra-headphones.conf  /usr/share/pulseaudio/alsa-mixer/paths  0644
 pyra-gles2-smoke.c                  /usr/local/src/pyra                0644
+etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback /etc/initramfs-tools/scripts/init-top 0755
+etc/initramfs-tools/scripts/init-top/pyra-settle-nudge  /etc/initramfs-tools/scripts/init-top 0755
 "
+
+# The init-top hooks in the map above. Copying one changes no initrd, so each
+# kernel's initrd is rebuilt below when it needs them.
+HOOKDIR=/etc/initramfs-tools/scripts/init-top
+HOOKS="pyra-fw-nofallback pyra-settle-nudge"
 
 if [ "$DRYRUN" = 2 ]; then
 	printf '%-42s %s\n' "FILE" "INSTALLED AS"
@@ -243,6 +252,63 @@ else
 	fi
 fi
 
+# ----------------------------------------------------------- the initramfs
+# pyra-fw-nofallback and pyra-settle-nudge run inside the initramfs
+# (docs/troubleshooting.md, "Root mounts a minute or two late"), so a kernel
+# only gets them when its initrd is rebuilt. An initrd is rebuilt when it does
+# not list both hooks, or is older than either installed hook (one this run, or
+# a run that stopped before its rebuild, just changed). Otherwise it is left
+# alone, so a second run rebuilds nothing. Only initrds that already exist are
+# touched: a kernel without one is not booted through an initramfs here.
+# update-initramfs takes about 20 s per kernel on the Pyra, writes the new initrd
+# beside the old one before replacing it, and /boot is small, so free space is
+# checked before each.
+say "the initramfs hooks, in each kernel's initrd"
+initrd_needs() {	# initrd -> true when it must be rebuilt
+	local h t
+	for h in $HOOKS; do
+		t=$HOOKDIR/$h
+		# dry run: a hook that would be installed or updated above
+		cmp -s "$HERE/etc/initramfs-tools/scripts/init-top/$h" "$t" 2>/dev/null || return 0
+		[ "$t" -nt "$1" ] && return 0
+		lsinitramfs "$1" 2>/dev/null | grep -x "scripts/init-top/$h" >/dev/null || return 0
+	done
+	return 1
+}
+rebuild_fail=""
+for initrd in /boot/initrd.img-*; do
+	[ -f "$initrd" ] || continue
+	rel=${initrd#/boot/initrd.img-}
+	if [ ! -d "/lib/modules/$rel" ]; then
+		note "skipped   $initrd (no /lib/modules/$rel to build it from)"
+		continue
+	fi
+	if ! initrd_needs "$initrd"; then
+		note "same      $initrd"
+		continue
+	fi
+	if [ "$DRYRUN" = 1 ]; then
+		note "would rebuild $initrd"
+		continue
+	fi
+	need=$(( $(stat -c %s "$initrd") / 1024 + 2048 ))
+	free=$(df -Pk /boot | awk 'NR==2{print $4}')
+	if [ "$free" -lt "$need" ]; then
+		note "NOT rebuilt $initrd: /boot has ${free} KB free, needs about ${need} KB"
+		rebuild_fail="$rebuild_fail $rel"
+		continue
+	fi
+	note "rebuilding $initrd (about 20 s)"
+	if update-initramfs -u -k "$rel" >/dev/null 2>&1; then
+		note "rebuilt   $initrd"
+	else
+		rm -f -- "$initrd.new"
+		note "FAILED    update-initramfs -u -k $rel; run it by hand to see why"
+		rebuild_fail="$rebuild_fail $rel"
+	fi
+done
+note "/boot: $(df -Ph /boot | awk 'NR==2{print $4}') free"
+
 # -------------------------------------------------- moved to pyra-backlight
 # Earlier versions of this script installed the idle dimmer and the
 # brightness applet by hand. Left in place, /usr/local/bin/pyra-idle-dim
@@ -306,6 +372,15 @@ while read -r src dst mode; do
 	fi
 done <<<"$MAP"
 [ "$fail" = 0 ] || die "one of the files above did not install"
+for initrd in /boot/initrd.img-*; do
+	[ -f "$initrd" ] && [ -d "/lib/modules/${initrd#/boot/initrd.img-}" ] || continue
+	if initrd_needs "$initrd"; then
+		note "BAD  $initrd lacks a hook, or predates one"; fail=1
+	else
+		note "ok   $initrd has both init-top hooks"
+	fi
+done
+[ "$fail" = 0 ] || die "rebuild the initrds above:${rebuild_fail:- see above}"
 
 cat <<'EOF'
 
@@ -333,6 +408,11 @@ Done. What is now on the path:
     pyra-cpu-pin status               is a game holding the CPU clock (sudo)
     pyra-audio-select.sh --check      does PulseAudio's script match the kernel
     pyra-undervolt status             the CPU's voltages, and the 750 MHz undervolt (sudo)
+
+In every kernel's initrd, two init-top hooks against a late root mount:
+
+    pyra-fw-nofallback                no 60 s wait for absent firmware
+    pyra-settle-nudge                 wakes udevadm settle if it sleeps on
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:
