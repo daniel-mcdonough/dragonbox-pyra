@@ -469,18 +469,20 @@ initrd of every kernel you boot:
 
 ### What can undo an update
 
-- **A `pyra-hacks` upgrade or reinstall** silently puts the vendor's thermal
-  script back, which reverts fixes 6 and 7. Fix 12 survives it, because it
-  is a drop-in beside the package rather than an edit to it. The exception is
-  a card where that drop-in was removed in favour of the `0.38+pyra1`
-  package: there, an archive upgrade also brings back the uncalibrated wheel,
-  so re-run `pyra-volumed/install.sh`. After any upgrade that touches
-  `pyra-hacks`, run:
-
-      sudo pyra-thermal-fix.sh --check
-      sudo pyra-thermal-ladder.sh --check
-
-  If either one reports not applied, run it without `--check`. Nothing does
-  this for you yet.
+- **A `pyra-hacks` upgrade, downgrade or reinstall** puts the vendor's
+  thermal script back, which reverts fixes 6 and 7. A prepared card carries a
+  dpkg hook for this (`/etc/dpkg/dpkg.cfg.d/pyra-thermal-guard`): after every
+  package run it re-applies both and prints
+  `pyra-thermal-guard: ... re-applied fixes 6 and 7`, or, if the new vendor
+  file is one the fixes don't recognise, changes nothing and prints a
+  `THE THERMAL FIXES ARE NOT APPLIED` banner on every package run until it is
+  dealt with. A card prepared before the hook existed gets it from step 2
+  (`pyra-install-helpers.sh`). The hook leaves alone a fix you undid with
+  `--undo`, because the undo deletes the backup it keys on. Fix 12 survives
+  an upgrade by itself, because it is a drop-in beside the package rather
+  than an edit to it. The exception is a card where that drop-in was removed
+  in favour of the `0.38+pyra1` package: there, an archive upgrade also
+  brings back the uncalibrated wheel, so re-run `pyra-volumed/install.sh`.
+  The hook does not watch fix 12.
 - **A new kernel whose initrd was built before the hook was installed** boots
   without the hook. Check with `lsinitramfs`, as above.

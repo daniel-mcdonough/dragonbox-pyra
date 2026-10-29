@@ -1,0 +1,117 @@
+#!/bin/bash
+#
+# pyra-thermal-guard — put fixes 6 and 7 back after a package run reverts them.
+#
+# Run by dpkg after every package operation, from
+# /etc/dpkg/dpkg.cfg.d/pyra-thermal-guard. That covers `apt upgrade`,
+# `apt install --reinstall pyra-hacks` and a plain `dpkg -i` of any
+# pyra-hacks deb, newer or older. It can also be run by hand, as root.
+#
+# WHY
+#
+# Fixes 6 and 7 edit /usr/share/pyra/scripts/pyra-thermal.sh, which pyra-hacks
+# owns and which is not a conffile. Any reinstall, upgrade or downgrade of that
+# package writes the vendor's file back without a word, and the machine stops
+# throttling: two cores then cross the 100 C passive trip in 16 seconds.
+#
+# WHAT IT DOES
+#
+# When both fixes are in the file, nothing, silently. That is every run but the
+# one after pyra-hacks was replaced.
+#
+# When a fix is missing but its backup (.before-pyra-thermal-fix or
+# .before-pyra-thermal-ladder) is still there, the fix was applied on this
+# machine and not undone, so the package took it away. The guard derives the
+# fixed file from the vendor file now installed, through the same
+# --emit-patched doors prep uses, checks it parses, installs it, refreshes the
+# backups to the new vendor file so --undo still restores what the package
+# shipped, restarts the daemon and says so.
+#
+# When the transforms do not recognise the new vendor file, it changes nothing
+# and prints a warning on every package run until someone looks, and logs it to
+# the journal. A newer pyra-thermal.sh may have fixed this upstream, or moved
+# the lines the fixes edit; either way it is a person's call.
+#
+# `--undo` of either fix deletes that fix's backup, so after an undo the guard
+# leaves the file alone. It never fails the package run: it always exits 0.
+#
+# Why not an apt pin: it would block every upstream change to pyra-hacks, and it
+# does nothing for --reinstall or for a card that has the stock package. Why not
+# dpkg-divert: it would keep the old fixed file over any newer vendor one,
+# silently, which is the same fault the other way round.
+#
+set -uo pipefail
+
+# Both overrides are for testing on a copy (pc/pyra-prep-selftest.sh). With a
+# copy, the guard neither restarts the daemon nor writes to the journal.
+VENDOR=${PYRA_THERMAL_SCRIPT:-/usr/share/pyra/scripts/pyra-thermal.sh}
+LIVE=1; [ -n "${PYRA_THERMAL_SCRIPT:-}" ] && LIVE=0
+HELPERS=${PYRA_THERMAL_HELPERS:-/usr/local/sbin}
+FIX6=$HELPERS/pyra-thermal-fix.sh
+FIX7=$HELPERS/pyra-thermal-ladder.sh
+B6=$VENDOR.before-pyra-thermal-fix
+B7=$VENDOR.before-pyra-thermal-ladder
+SERVICE=pyra-thermal.service
+
+warn() {
+	{
+		echo
+		echo "*****************************************************************"
+		echo "pyra-thermal-guard: THE THERMAL FIXES ARE NOT APPLIED"
+		printf '  %s\n' "$@"
+		echo "  The CPU may not throttle for heat. Check with:"
+		echo "    sudo pyra-thermal-fix.sh --check"
+		echo "    sudo pyra-thermal-ladder.sh --check"
+		echo "*****************************************************************"
+		echo
+	} >&2
+	[ "$LIVE" = 1 ] && logger -t pyra-thermal-guard -p user.warning "thermal fixes 6/7 not applied: $*" 2>/dev/null
+	exit 0
+}
+
+# Package removed, or not a Pyra: nothing to guard.
+[ -f "$VENDOR" ] || exit 0
+
+need6=0; need7=0
+grep -q pyra-thermal-fix "$VENDOR" || { [ -f "$B6" ] && need6=1; }
+grep -q pyra-thermal-ladder "$VENDOR" || { [ -f "$B7" ] && need7=1; }
+[ "$need6$need7" = 00 ] && exit 0
+
+[ -x "$FIX6" ] && [ -x "$FIX7" ] \
+	|| warn "$VENDOR was replaced by a package and $HELPERS has no" \
+		"pyra-thermal-fix.sh / pyra-thermal-ladder.sh to re-apply them."
+
+T6=$(mktemp) && T7=$(mktemp) || warn "mktemp failed"
+trap 'rm -f "$T6" "$T7"' EXIT
+
+# Each emit passes an already-fixed input through unchanged, so running both is
+# right whichever of the two is missing.
+if [ "$need6" = 1 ]; then
+	"$FIX6" --emit-patched "$VENDOR" > "$T6" 2>/dev/null \
+		|| warn "$VENDOR was replaced by a package, and fix 6 does not recognise" \
+			"the new file (no 'cpufreq-set -u' line). Nothing was changed."
+else
+	cat "$VENDOR" > "$T6"
+fi
+if [ "$need7" = 1 ]; then
+	"$FIX7" --emit-patched "$T6" > "$T7" 2>/dev/null \
+		|| warn "$VENDOR was replaced by a package, and fix 7 does not recognise" \
+			"the new ladder. Nothing was changed."
+else
+	cat "$T6" > "$T7"
+fi
+sh -n "$T7" 2>/dev/null || warn "the re-patched $VENDOR does not parse. Nothing was changed."
+
+# The backups follow the vendor file the package just installed, so that
+# --undo (ladder first, then fix 6) gets back to what the package shipped.
+[ "$need6" = 1 ] && cp -p "$VENDOR" "$B6"
+[ "$need7" = 1 ] && cat "$T6" > "$B7"
+cat "$T7" > "$VENDOR"    # keep the packaged file's mode and owner
+
+[ "$LIVE" = 1 ] && systemctl --no-ask-password try-restart "$SERVICE" 2>/dev/null
+
+msg="a package run replaced $VENDOR; re-applied fix"
+[ "$need6$need7" = 11 ] && msg="${msg}es 6 and 7" || { [ "$need6" = 1 ] && msg="$msg 6" || msg="$msg 7"; }
+echo "pyra-thermal-guard: $msg and restarted $SERVICE."
+[ "$LIVE" = 1 ] && logger -t pyra-thermal-guard -p user.notice "$msg" 2>/dev/null
+exit 0

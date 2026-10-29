@@ -353,8 +353,8 @@ fi
 # was broken.
 #
 # This edits a file shipped by a package, in a location that is not a conffile,
-# so a later upgrade of the Pyra scripts will silently revert it. On the device
-# `pyra-thermal-fix.sh --check` says whether that has happened.
+# so a reinstall or upgrade of pyra-hacks reverts it. The dpkg hook installed
+# after fix 7 puts it back, or says loudly that it cannot.
 
 THERMAL_DST=$ROOT/usr/share/pyra/scripts/pyra-thermal.sh
 [[ -f $THERMAL_DST ]] || die "fix6: no ${THERMAL_DST#$ROOT} on this card — is this a Pyra image?"
@@ -454,6 +454,29 @@ else
     ok "fix7: ${THERMAL_DST#$ROOT} no longer throttles on the fuel gauge, and takes the lower of its two ladders"
 fi
 rm -f "$THERMAL_TMP"
+
+# Fixes 6 and 7 edit a file pyra-hacks owns, so any reinstall, upgrade or
+# downgrade of that package puts the vendor's back. A dpkg post-invoke hook
+# runs pyra-thermal-guard after every package run: it re-applies both fixes
+# through the same two scripts, or warns on every run if they no longer
+# recognise the new file. The two scripts go onto the card for it, which also
+# gives the card the --check and --undo the docs point at.
+for spec in pyra-thermal-fix.sh:/usr/local/sbin:0755 \
+            pyra-thermal-ladder.sh:/usr/local/sbin:0755 \
+            pyra-thermal-guard:/usr/local/sbin:0755 \
+            etc/dpkg/dpkg.cfg.d/pyra-thermal-guard:/etc/dpkg/dpkg.cfg.d:0644; do
+    IFS=: read -r src dir mode <<<"$spec"
+    [[ -r $PAYLOADS/$src ]] || die "fix6/7: $src not found (looked in $PAYLOADS)"
+    dst=$ROOT$dir/$(basename "$src")
+    if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+        ok "fix6/7: ${dst#$ROOT} already up to date"
+    else
+        VERB=$([[ -e $dst ]] && echo updated || echo installed)
+        [[ -d $ROOT$dir ]] || install -d -m 0755 "$ROOT$dir"
+        install -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+        ok "fix6/7: $VERB ${dst#$ROOT}"
+    fi
+done
 
 ########################################################################
 # Fix 8 — the machine cannot charge while it runs

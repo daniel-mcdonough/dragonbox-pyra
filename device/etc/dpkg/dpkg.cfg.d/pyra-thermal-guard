@@ -1,0 +1,5 @@
+# Re-apply the thermal fixes (6 and 7) after any package run that reverts them.
+# pyra-hacks owns the file they edit; see /usr/local/sbin/pyra-thermal-guard.
+# The test keeps dpkg working if the guard has been deleted: a failing
+# post-invoke hook fails every package operation.
+post-invoke="if [ -x /usr/local/sbin/pyra-thermal-guard ]; then /usr/local/sbin/pyra-thermal-guard; fi"

@@ -242,10 +242,11 @@ original is kept alongside as `pyra-thermal.sh.before-pyra-thermal-fix`, so the
 card carries its own undo.
 
 **A caveat that the others do not have.** This one edits a file shipped by a
-package, in a location that is not a conffile, so a later upgrade of the Pyra
-scripts will silently put the broken version back.
-`pyra-thermal-fix.sh --check` says whether that has happened. The proper home
-for this is upstream, and it is on the report list.
+package, in a location that is not a conffile, so a reinstall, upgrade or
+downgrade of `pyra-hacks` puts the broken version back. Prep therefore also
+installs a dpkg hook that puts it back again; see "Fixes 6, 7 and 12 as a
+package" below. `pyra-thermal-fix.sh --check` says what state the file is in.
+The proper home for this is upstream, and it is on the report list.
 
 **One thing it exposes rather than fixes.** With the daemon capping, the
 frequency now oscillates between 1500 and 1250 MHz on a roughly 20-second
@@ -430,8 +431,8 @@ in the order they were applied:
     pyra-thermal.sh                              vendor + fix 6 + fix 7
 
 **Same caveat as fix 6:** it edits a packaged file in a location that is not a
-conffile, so an upgrade silently reverts it.
-`pyra-thermal-ladder.sh --check` says whether that has happened.
+conffile, so a package run reverts it, and the same dpkg hook re-applies it.
+`pyra-thermal-ladder.sh --check` says what state the file is in.
 
 ---
 
@@ -914,4 +915,44 @@ thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
 package.
+
+### Surviving a package run: `pyra-thermal-guard`
+
+Fixes 6 and 7 edit `pyra-thermal.sh`, which is not a conffile, so
+`apt install --reinstall pyra-hacks`, an upgrade or a downgrade writes the
+vendor's file back, and nothing said so. Prep (as part of fixes 6 and 7) and
+`pyra-install-helpers.sh` install:
+
+    /usr/local/sbin/pyra-thermal-fix.sh       the fix 6 transformation
+    /usr/local/sbin/pyra-thermal-ladder.sh    the fix 7 transformation
+    /usr/local/sbin/pyra-thermal-guard        the guard
+    /etc/dpkg/dpkg.cfg.d/pyra-thermal-guard   post-invoke=... runs the guard
+
+dpkg runs a `post-invoke` hook after every unpack, configure, install or
+remove, so it fires under apt and under a plain `dpkg -i` alike. The guard:
+
+- does nothing, silently, when both markers are in the file;
+- when a marker is missing but that fix's `.before-*` backup is there,
+  derives the fixed file from the vendor file just installed through the two
+  `--emit-patched` doors, checks it parses, installs it, refreshes the
+  backups to the new vendor file (so `--undo` still gets back to what the
+  package shipped), restarts `pyra-thermal.service` and prints one line;
+- when the transforms refuse the new file (upstream fixed it, or moved the
+  lines), changes nothing and prints a banner and logs a journal warning on
+  every package run until someone looks;
+- always exits 0, because a failing `post-invoke` hook fails every dpkg
+  operation; the config line also skips it if the guard has been deleted.
+
+`--undo` deletes the backup, so the guard leaves an undone fix alone.
+
+Rejected: an apt pin holds back every upstream change to the package and does
+nothing about `--reinstall` or the stock package. `dpkg-divert` would keep
+the old fixed file over any newer vendor one, silently, which is the same
+fault the other way round.
+
+With the `0.38+pyra1` package the file already carries both markers, so the
+guard is silent; it only acts if an archive version replaces that package.
+Fix 12 is not watched. Its drop-in survives package runs by itself, but on a
+card where it was removed for the `0.38+pyra1` package, an archive upgrade
+brings back the stock wheel mapping without a word.
 

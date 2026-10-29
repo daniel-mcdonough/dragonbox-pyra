@@ -54,6 +54,8 @@ pyra-undervolt                      /usr/local/sbin                    0755
 pyra-undervolt.service              /etc/systemd/system                0644
 pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-thermal-ladder.sh              /usr/local/sbin                    0755
+pyra-thermal-guard                  /usr/local/sbin                    0755
+etc/dpkg/dpkg.cfg.d/pyra-thermal-guard /etc/dpkg/dpkg.cfg.d          0644
 pyra-thermal-probe.sh               /usr/local/sbin                    0755
 pyra-ceiling-cost.sh                /usr/local/sbin                    0755
 pyra-charge-probe.sh                /usr/local/sbin                    0755
@@ -321,6 +323,8 @@ Done. What is now on the path:
     pyra-governor-tune.sh --check     is the governor setting applied (--undo to revert)
     pyra-thermal-fix.sh --check       is the thermal daemon's fix still applied
     pyra-thermal-ladder.sh --check    is its corrected ladder still applied
+    pyra-thermal-guard                run by dpkg after every package run: puts
+                                      both back if a pyra-hacks reinstall reverts them
     pyra-charge-current.sh --check    can the machine charge while it runs
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload

@@ -945,3 +945,32 @@ running `5.6.19-m4-kbdled`:
   boot, loaded on request)`, found `remoteproc1 55020000.ipu`, and passed: 13 ok,
   0 failed. Both cores measured at 212.8 and 212.9 MHz (SysTick, ten 1 s samples).
   Afterwards the firmware was gone and the module was still loaded.
+
+## 2026-10-29 — the thermal fixes survive a `pyra-hacks` package run
+
+`pyra-thermal-guard` and its dpkg hook (`fixes.md`, "Surviving a package run")
+installed on the trixie card, running `5.6.19-m4-kbdled` with
+`pyra-hacks 0.38+pyra1`. Run by hand first, the guard printed nothing. Then:
+
+- `apt-get install --allow-downgrades pyra-hacks=0.38` (the archive's deb,
+  the stock-package path): between `Unpacking pyra-hacks (0.38) over
+  (0.38+pyra1)` and `Setting up`, dpkg printed `pyra-thermal-guard: a package
+  run replaced /usr/share/pyra/scripts/pyra-thermal.sh; re-applied fixes 6
+  and 7 and restarted pyra-thermal.service.` `dpkg --verify` then flagged the
+  file (`??5??????`), as expected for the stock package with the fixes
+  applied. Both `--check`s reported `Nothing to do`. The file was
+  byte-identical to the one in the `0.38+pyra1` deb.
+- `apt-get install --reinstall pyra-hacks` on that 0.38: the same line again,
+  both `--check`s clean, the file byte-identical again. The journal had one
+  `pyra-thermal-guard` notice per run.
+- `apt-get install ./pyra-hacks_0.38+pyra1_armhf.deb`: the guard said
+  nothing, because the packaged file already has both fixes. `dpkg --verify
+  pyra-hacks` was clean, both `--check`s reported `Nothing to do`, and
+  `pyra-thermal` and `pyra_volumed` were active.
+
+Between the first and last step the wheel ran the stock `pyra_volumed`. This
+card has no fix 12 drop-in; it gets fix 12 from the `+pyra1` deb.
+
+Offline, against the card's 0.38 vendor file: an undone fix (backup deleted)
+is left alone, and a vendor file the transforms refuse is left unchanged with
+the warning banner. The guard exits 0 in every case.

@@ -326,6 +326,44 @@ else
     i "fix6/7: $(stat -c '%a %u:%g' "$TH") $(basename "$TH")"
 fi
 
+# fix 6/7 — the guard that re-applies both after a pyra-hacks package run, and
+# the two scripts it re-applies them with, byte for byte with the repository.
+for spec in pyra-thermal-fix.sh:/usr/local/sbin:755 \
+            pyra-thermal-ladder.sh:/usr/local/sbin:755 \
+            pyra-thermal-guard:/usr/local/sbin:755 \
+            etc/dpkg/dpkg.cfg.d/pyra-thermal-guard:/etc/dpkg/dpkg.cfg.d:644; do
+    IFS=: read -r src dir mode <<<"$spec"
+    D=$MNT$dir/$(basename "$src")
+    if [[ -e $D ]] && cmp -s "$PAYLOADS/$src" "$D"; then
+        p "fix6/7: ${D#$MNT} matches repo"
+    else
+        f "fix6/7: ${D#$MNT} missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "$mode 0:0" ]] \
+        || f "fix6/7: ${D#$MNT} mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null), want $mode 0:0"
+done
+# Run the guard on a copy (it writes when it acts, and this test must not):
+# as prep leaves the card it has nothing to do, and after a reinstall of the
+# vendor file it must restore exactly what prep wrote.
+if [[ -f $TH ]]; then
+    GT=$(mktemp -d)
+    cp -p "$TH" "$TH".before-pyra-thermal-* "$GT/" 2>/dev/null
+    GUARD=(env PYRA_THERMAL_SCRIPT="$GT/pyra-thermal.sh" PYRA_THERMAL_HELPERS="$PAYLOADS" "$PAYLOADS/pyra-thermal-guard")
+    if "${GUARD[@]}" 2>&1 | grep -q .; then
+        f "fix6/7: pyra-thermal-guard would change or warn about the prepared card"
+    else
+        p "fix6/7: pyra-thermal-guard is silent on the prepared card"
+    fi
+    cp "$GT/pyra-thermal.sh.before-pyra-thermal-fix" "$GT/pyra-thermal.sh" 2>/dev/null
+    "${GUARD[@]}" >/dev/null 2>&1
+    if cmp -s "$GT/pyra-thermal.sh" "$TH"; then
+        p "fix6/7: after a simulated pyra-hacks reinstall, the guard restores the prepared file byte for byte"
+    else
+        f "fix6/7: after a simulated pyra-hacks reinstall, the guard does not restore the prepared file"
+    fi
+    rm -rf "$GT"
+fi
+
 ########################################################################
 i "assert fix 8 — the card can charge while it runs"
 ########################################################################
