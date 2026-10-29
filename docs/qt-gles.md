@@ -10,7 +10,9 @@ distribution's `libGLESv2`**, which is every Qt5 toolkit program. As shipped,
 none of them render. The cause is not the driver and not the X server, and the
 cure is one symlink.
 
-`device/pyra-gles` is the wrapper that applies it.
+`device/pyra-gles` is the wrapper that applies it. The prep script installs it
+as `/usr/local/bin/pyra-gles` (fix 13 in `fixes.md`), and
+`pyra-install-helpers.sh` does the same on a running card.
 
 ## The symptom: a context that works and a GL that does not
 

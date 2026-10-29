@@ -21,8 +21,10 @@
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does install the two init-top hooks
 # that keep root from mounting late, and rebuilds the initrd of every kernel in
-# /boot whose initrd lacks them or predates them. It does not apply the twelve
+# /boot whose initrd lacks them or predates them. It does not apply the fourteen
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
+# Fixes 13 and 14 are the exception, since their files (pyra-gles and the two
+# hooks) are in the map below and land on the same paths prep uses.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #

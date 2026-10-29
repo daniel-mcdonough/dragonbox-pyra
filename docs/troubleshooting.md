@@ -147,9 +147,9 @@ initramfs, which is the shape B trigger, and gave up on the firmware within
     9.467 F2FS-fs (mmcblk1p2): Mounted with checkpoint version = 435fe8d2
 
 `pyra-install-helpers.sh` installs the hook and rebuilds the initrd of every
-kernel in `/boot` (`procedure.md` section 9, step 5); prep does not install it
-yet. Without it, the workaround is to unplug the adapter for a
-cold boot.
+kernel in `/boot` (`procedure.md` section 9, step 5), and prep does the same
+offline as fix 14 (`fixes.md`), together with `pyra-settle-nudge`. Without it,
+the workaround is to unplug the adapter for a cold boot.
 
 **Shape A, worked around: `udevadm settle` sleeps through the end of the
 queue.** The cause and the fix are under "2026-10-29" at the end of this

@@ -1143,3 +1143,29 @@ rebuild, because it only looks for missing or newer hooks. Afterwards
 `pyra-emmc-switch`. The diagnostic and the original stock initrd are kept on the
 card's root filesystem. Not boot-tested: `lsinitramfs` shows what is in each
 initrd.
+
+## 2026-10-29 — prep fixes 13 and 14, on the stock image
+
+`sudo pc/pyra-prep-selftest.sh` against a copy of `pyra-trixie-t1.img`, on an
+x86 Arch PC with `qemu-user-static` and `qemu-user-static-binfmt` (the `qemu-arm`
+binfmt entry has flags `PF`). The selftest now mounts p1 at the rootfs's `/boot`.
+
+- First attempt failed in fix 14 before any initrd changed:
+  `chroot: failed to run command 'update-initramfs': No such file or directory`.
+  sudo's `PATH` on that PC has no `/usr/sbin`, and the chroot inherited it. Prep
+  now runs every chroot command under `env -i` with Debian's `PATH`, and checks
+  for `update-initramfs` and `lsinitramfs` before writing anything.
+- Second attempt: `74 passed, 0 failed`, `TEST COMPLETE: PASS`. Run 1 wrote
+  `/usr/local/bin/pyra-gles` (0755 root:root, identical to `device/pyra-gles`) and
+  both hooks, and rebuilt `/boot/initrd.img-5.6.19-pyradef` in the chroot: 13,011,480
+  bytes before, 13,184,671 after. The image's `lsinitramfs` lists both hooks, and the
+  initrd's `scripts/init-top/ORDER` runs both before `udev`. Run 1 as a whole took
+  43 s (the selftest's snapshot timestamps), rebuild included.
+- Run 2: every fix reported already in place, `/boot/initrd.img-5.6.19-pyradef
+  already has both hooks`, no rebuild, and the snapshots of both partitions
+  (type, mode, owner, size of every entry) are identical to run 1's.
+  `fsck.f2fs` was clean afterwards.
+
+Not boot-tested: no card was written from the prepared image. What the initrd
+contains is checked; that it boots and mounts root early is what the device run
+in the `troubleshooting.md` section showed for the same hooks.

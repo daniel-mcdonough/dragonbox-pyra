@@ -1,4 +1,4 @@
-# The twelve fixes, and what they actually do
+# The fourteen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -897,6 +897,66 @@ device/pyra-volumed/install.sh` does the same and `--undo` reverts it.
 Checked on hardware: a bottom-to-top sweep gave steps 0, 8, 10, 13, 15, 16, 18,
 19, 22, 24, 27, 29, and it sounds even by ear. The calibration comes from one
 unit, and another unit's pot may differ. The table is at the top of the source.
+
+## Fix 13 — no Qt5 program draws anything
+
+Found 2026-09-18 with Pegasus; the diagnosis is `qt-gles.md`. Every program
+that links the distribution's GLES2, which is every Qt5 toolkit program, gets
+a real EGL context from the SGX blob and then sends its GL calls to glvnd's
+`libGLESv2.so.2`. The blob ships its library as `libGLESv2.so.1`, and glvnd
+has no vendor for the blob's context, so every GL call is a stub: empty
+`GL_VENDOR`, a maximum texture size of zero, no shader that compiles, and no
+error anywhere.
+
+`device/pyra-gles` runs a program with one symlink in front of glvnd,
+`libGLESv2.so.2` pointing at the blob's `libGLESv2.so.1`, through
+`LD_LIBRARY_PATH`. Prep installs it as `/usr/local/bin/pyra-gles`:
+
+    pyra-gles qmlscene scene.qml
+    pyra-gles --check
+
+It is per program on purpose. Putting the link in `ld.so.conf` would hand the
+blob every GLES2 program, including ones that need glvnd's software fallback.
+Nothing in the image's menus links Qt (checked 2026-10-29 by running `ldd` on
+every `Exec=` in `/usr/share/applications`, on the running unit), so prep
+wraps no launcher. A Qt program you add gets `pyra-gles` in front of its
+command, in its `.desktop` file or its own launcher.
+
+## Fix 14 — root mounts a minute or two late, with nothing on screen
+
+Some boots sit in the initramfs for 70-126 s before mounting root
+(`troubleshooting.md`, "Root mounts a minute or two late", which has the
+measurements). There are two causes, and an `init-top` hook for each:
+
+- `pyra-fw-nofallback` sets `/proc/sys/kernel/firmware_config/ignore_sysfs_fallback`
+  before udev starts. Without it, a USB ethernet adapter that probes inside the
+  initramfs waits 60 s for firmware that is not on the card, and
+  `udevadm settle` waits behind it. Every kernel here is built with
+  `CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y`, the shipped one included.
+- `pyra-settle-nudge` wakes a `udevadm settle` that slept through the end of
+  the event queue. `patches/0048` fixes that cause in our kernels, but a card
+  also boots the stock `5.6.19-pyradef`, which does not have it. On a kernel
+  with 0048 the hook never has to act.
+
+A hook only runs once it is inside the initrd. Prep copies both into
+`/etc/initramfs-tools/scripts/init-top/` and then rebuilds each kernel's initrd
+by running the image's own `update-initramfs -u -k <release>` in a chroot.
+That is the same command `pyra-install-helpers.sh` runs on the device, so the
+card gets the initrd it would have built itself. Two things follow:
+
+- The card's boot partition (p1) has to be mounted at the rootfs's `/boot`
+  when prep runs. Prep stops before writing anything if it is not.
+- A PC that is not armhf needs qemu-user with binfmt registered, so that
+  `chroot` can run the image's binaries: `qemu-user-static` and
+  `binfmt-support` on Debian or Ubuntu, `qemu-user-static` and
+  `qemu-user-static-binfmt` on Arch. Prep checks with `chroot <root> /bin/true`
+  before writing anything. Under qemu the stock image's one rebuild took
+  under 43 s on an x86 PC (measured 2026-10-29: that was all of prep's first
+  run, by the selftest's timestamps); on the Pyra a rebuild takes about 20 s.
+
+An initrd that already lists both hooks and is newer than both is left alone,
+so a second run rebuilds nothing. Once a hook is in `/etc/initramfs-tools`, a
+later kernel install or `update-initramfs` on the device keeps it in.
 
 ## Fixes 6, 7 and 12 as a package
 

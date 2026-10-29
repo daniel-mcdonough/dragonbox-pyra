@@ -16,7 +16,10 @@ stays as it is and takes over again when you pull the card.
 - A V5.x Pyra.
 - A full-size SDXC card, 16 GB or larger, Class 10 / U1 or better. A microSD in
   an adapter is fine. It goes in the **left** full-size slot.
-- A Linux PC with a card reader, `7z`, and root.
+- A Linux PC with a card reader, `7z`, and root. Unless the PC is itself armhf,
+  it also needs qemu-user with binfmt (`qemu-user-static` and `binfmt-support`
+  on Debian or Ubuntu; `qemu-user-static` and `qemu-user-static-binfmt` on
+  Arch), because the prep script rebuilds the card's initrds in a chroot.
 - A checkout of this repository on that PC. Run the scripts from inside it;
   some of them use files that sit beside them.
 
@@ -33,8 +36,9 @@ On the PC:
 
     sudo partprobe /dev/sdX
     sudo mount /dev/sdX2 /mnt
+    sudo mount /dev/sdX1 /mnt/boot
     sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # applies the fixes; asks for a password
-    sudo umount /mnt && sync
+    sudo umount /mnt/boot /mnt && sync
 
 Put the card in the left slot and **hold the power button until both LEDs go
 green**. A short tap looks exactly like a dead card. It isn't: this image's
@@ -124,7 +128,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card, which must be done on a PC. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card in ten minutes, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twelve fixes the prep script applies, what each is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The fourteen fixes the prep script applies, what each is for, and the diagnosis behind it. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

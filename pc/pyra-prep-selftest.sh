@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of all eight fixes, runs it a second time and requires the
+# the end state of fixes 1 to 8, 13 and 14, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -48,6 +48,7 @@ LOOP=""
 finish() {
     local rc=$?
     set +e; disarm
+    for d in dev sys proc boot; do mountpoint -q "$MNT/$d" && umount "$MNT/$d"; done
     mountpoint -q "$MNT" && umount "$MNT"
     [[ -n $LOOP ]] && losetup -d "$LOOP"
     rmdir "$MNT" 2>/dev/null
@@ -97,12 +98,17 @@ i "loop device $LOOP"
 blkid "${LOOP}p1" "${LOOP}p2" || true
 mount -t f2fs "${LOOP}p2" "$MNT"
 i "mounted ${LOOP}p2 at $MNT"
+# Fix 14 rebuilds the initrds, which live on p1, so prep needs it at /boot.
+mount "${LOOP}p1" "$MNT/boot"
+i "mounted ${LOOP}p1 at $MNT/boot"
 
 snapshot() {
     # No pipeline: find's exit status must not decide the harness's fate, and
     # a downstream reader exiting early would SIGPIPE it under pipefail.
     local raw=$OUT/.snap.$$
+    # -xdev keeps each walk on its own partition, so /boot is walked apart.
     find "$MNT" -xdev -printf '%y %m %U %G %s %P -> %l\n' > "$raw" 2>/dev/null || true
+    find "$MNT/boot" -xdev -printf '%y %m %U %G %s boot/%P -> %l\n' >> "$raw" 2>/dev/null || true
     LC_ALL=C sort "$raw"
     rm -f "$raw"
 }
@@ -136,7 +142,7 @@ fi
 rm -f "$OUT/.d1"
 
 ########################################################################
-i "assert the eight fixes"
+i "assert fixes 1 to 8"
 ########################################################################
 # fix 1 — the ineffective symlink must be gone
 if [[ -e $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so || -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]]; then
@@ -457,6 +463,63 @@ else
 fi
 
 ########################################################################
+i "assert fixes 13 and 14 — pyra-gles, and the init-top hooks in every initrd"
+########################################################################
+G=$MNT/usr/local/bin/pyra-gles
+if [[ -e $G ]] && cmp -s "$PAYLOADS/pyra-gles" "$G"; then
+    p "fix13: /usr/local/bin/pyra-gles matches repo"
+else
+    f "fix13: /usr/local/bin/pyra-gles missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$G" 2>/dev/null) == "755 0:0" ]] && p "fix13: pyra-gles is 0755 root:root" || f "fix13: pyra-gles mode is $(stat -c '%a %u:%g' "$G" 2>/dev/null)"
+sh -n "$G" 2>/dev/null && p "fix13: pyra-gles parses as /bin/sh" || f "fix13: pyra-gles is not valid /bin/sh"
+
+for h in pyra-fw-nofallback pyra-settle-nudge; do
+    H=$MNT/etc/initramfs-tools/scripts/init-top/$h
+    if [[ -e $H ]] && cmp -s "$PAYLOADS/etc/initramfs-tools/scripts/init-top/$h" "$H"; then
+        p "fix14: ${H#$MNT} matches repo"
+    else
+        f "fix14: ${H#$MNT} missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$H" 2>/dev/null) == "755 0:0" ]] || f "fix14: ${H#$MNT} mode is $(stat -c '%a %u:%g' "$H" 2>/dev/null)"
+done
+# Read each initrd with the image's own lsinitramfs, as prep does, and require
+# both hooks in the archive and in init-top/ORDER before udev, which is what
+# makes them run before `udevadm settle`.
+for d in proc sys dev; do mount --bind "/$d" "$MNT/$d"; done
+# Clean environment and Debian's PATH, as prep uses.
+in_chroot() {
+    chroot "$MNT" /usr/bin/env -i HOME=/root LC_ALL=C \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin "$@"
+}
+NINITRD=0
+for initrd in "$MNT"/boot/initrd.img-*; do
+    rel=${initrd#$MNT/boot/initrd.img-}
+    [[ -d $MNT/lib/modules/$rel ]] || { i "fix14: initrd.img-$rel has no modules, prep skips it"; continue; }
+    NINITRD=$((NINITRD+1))
+    LIST=$(in_chroot lsinitramfs "/boot/initrd.img-$rel" 2>/dev/null || true)
+    ORDER=$(in_chroot sh -c "unmkinitramfs /boot/initrd.img-$rel /tmp/pyra-selftest-x >/dev/null 2>&1 &&
+        cat /tmp/pyra-selftest-x/main/scripts/init-top/ORDER 2>/dev/null ||
+        cat /tmp/pyra-selftest-x/scripts/init-top/ORDER; rm -rf /tmp/pyra-selftest-x" 2>/dev/null || true)
+    for h in pyra-fw-nofallback pyra-settle-nudge; do
+        if grep -qx "scripts/init-top/$h" <<<"$LIST"; then
+            p "fix14: initrd.img-$rel contains $h"
+        else
+            f "fix14: initrd.img-$rel lacks $h"
+        fi
+        hl=$(grep -n "init-top/$h " <<<"$ORDER" | cut -d: -f1 | head -1 || true)
+        ul=$(grep -n 'init-top/udev ' <<<"$ORDER" | cut -d: -f1 | head -1 || true)
+        if [[ -n $hl && -n $ul && $hl -lt $ul ]]; then
+            p "fix14: initrd.img-$rel runs $h before udev"
+        else
+            f "fix14: initrd.img-$rel does not run $h before udev (ORDER line ${hl:-none}, udev ${ul:-none})"
+        fi
+    done
+done
+for d in dev sys proc; do umount "$MNT/$d"; done
+[[ $NINITRD -gt 0 ]] && p "fix14: checked $NINITRD initrd(s)" || f "fix14: no initrd with modules on the image"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -480,6 +543,9 @@ grep -qE 'fix5: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix5 
 grep -qE 'fix6: .*already applies' "$OUT/prep-run2.log" && p "run 2 reported fix6 already applied" || f "run 2 did not report fix6 already applied"
 grep -qE 'fix7: .*already has the corrected ladder' "$OUT/prep-run2.log" && p "run 2 reported fix7 already applied" || f "run 2 did not report fix7 already applied"
 grep -qE 'fix8: .*already in place' "$OUT/prep-run2.log" && p "run 2 reported fix8 already applied" || f "run 2 did not report fix8 already in place"
+grep -qE 'fix13: .*already in place' "$OUT/prep-run2.log" && p "run 2 reported fix13 already applied" || f "run 2 did not report fix13 already in place"
+grep -qE 'fix14: .*already has both hooks' "$OUT/prep-run2.log" && p "run 2 reported fix14's initrds current" || f "run 2 did not report fix14's initrds current"
+! grep -qE 'fix14: rebuilt' "$OUT/prep-run2.log" && p "run 2 rebuilt no initrd" || f "run 2 rebuilt an initrd"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"
@@ -509,6 +575,7 @@ rm -rf "$STAGE"
 ########################################################################
 sync
 i "unmounting"
+umount "$MNT/boot"
 umount "$MNT"; mountpoint -q "$MNT" || i "clean unmount"
 fsck.f2fs -f --dry-run "${LOOP}p2" > "$OUT/fsck-after.log" 2>&1 && p "fsck.f2fs clean after prep" || f "fsck.f2fs reported problems (see $OUT/fsck-after.log)"
 tail -5 "$OUT/fsck-after.log" | sed 's/^/      /'

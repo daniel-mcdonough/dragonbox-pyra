@@ -11,19 +11,23 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Twelve fixes are needed, and `fixes.md` explains each one. Most of them are not
+Fourteen fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
 cap at all; fix 7 corrects the ladder it applies, which throttles on the
-fuel gauge's die temperature and can overwrite its own deeper cap; and fixes 8
+fuel gauge's die temperature and can overwrite its own deeper cap; fixes 8
 to 12 cover charging, sound, the greeter holding the sound card, GL on every
-boot, and the volume wheel.
+boot, and the volume wheel; fix 13 makes Qt5 programs draw, and fix 14 stops
+root mounting a minute or two late.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twelve fixes offline.
-Fix 5 installs two files that live beside it, so run it from a checkout of the
-repository rather than copying the script somewhere on its own.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 against a copy of the
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all fourteen fixes offline.
+Several fixes install files from `device/`, so run it from a checkout of the
+repository rather than copying the script somewhere on its own. It needs the
+card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
+armhf, qemu-user with binfmt: fix 14 rebuilds each initrd in a chroot
+(`fixes.md`, fix 14). It checks both before writing anything.
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8, 13 and 14 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -70,6 +74,7 @@ from the original forum post rest on assumptions it never verified.
     sudo modprobe f2fs                             # p2 is f2fs, not ext4
     sudo mkdir -p /mnt/pyra
     sudo mount /dev/loop0p2 /mnt/pyra
+    sudo mount /dev/loop0p1 /mnt/pyra/boot         # fix 14 rebuilds the initrds here
 
 The layout is p1 = 256 MB ext2 labelled `boot`, p2 = 5.7 GB **f2fs** labelled
 `rootfs`. `fstab` calls p1 ext4; the ext4 driver mounts ext2 fine, so that is
@@ -101,7 +106,7 @@ Then run the script against the loop mount to confirm it completes cleanly:
 The script reports what it found for each fix. If anything surprises you, adjust
 before committing it to a card.
 
-    sudo umount /mnt/pyra
+    sudo umount /mnt/pyra/boot /mnt/pyra
     sudo losetup -d /dev/loop0
 
 **Or let the self-test do all of the above.** `../pc/pyra-prep-selftest.sh` does the loop-mount, runs the prep script against a *copy* of the
@@ -145,11 +150,14 @@ from a half-booted device is a chicken-and-egg fight worth skipping entirely.
     sudo blkid /dev/sdX1 /dev/sdX2        # p2 is the f2fs rootfs
     sudo modprobe f2fs
     sudo mount /dev/sdX2 /mnt/pyra
+    sudo mount /dev/sdX1 /mnt/pyra/boot
     sudo ./pc/pyra-trixie-prep.sh /mnt/pyra yourusername
-    sudo umount /mnt/pyra && sync
+    sudo umount /mnt/pyra/boot /mnt/pyra && sync
 
 The script prompts for a password (hidden, entered twice) and is idempotent —
-re-running it is safe and just reports what is already in place.
+re-running it is safe and just reports what is already in place. Fix 14
+rebuilds each initrd under qemu the first time, which took under a minute on
+an x86 PC for the stock image's one kernel.
 
 ---
 
@@ -386,7 +394,7 @@ for the ones that match and replaces the rest, then re-enables and restarts
 its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel
-and applies none of the twelve fixes. It does put the fix 6, 7 and 8 scripts
+and applies none of the fourteen fixes. It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
 
@@ -404,6 +412,8 @@ from `device/`, with `--check` first if you want to see the state:
 | 10 | `pyra-greeter-audio.sh` | `sudo ./pyra-greeter-audio.sh` | rewrites its two files |
 | 11 | `pyra-sgx-init.sh` | `sudo ./pyra-sgx-init.sh` | rewrites the rule; takes effect when the GPU driver next loads, so at the next boot |
 | 12 | `pyra-volumed/` | `sudo ./pyra-volumed/install.sh` | rewrites its three files, rebuilds and restarts the daemon |
+| 13 | `pyra-gles` | step 2 | updated by step 2, which installs it at the same path |
+| 14 | an init-top hook | step 2 | updated by step 2, which rebuilds each initrd that needs it (step 5) |
 
 Fixes 8 to 12 write their files through the same function that prep's
 `--emit-into` uses. Re-running one replaces its files with the current
@@ -468,8 +478,9 @@ than either installed one. It reports `same` for the rest, so a second run
 rebuilds nothing. Each rebuild took about 20 s on the trixie card (measured
 2026-10-29, four rebuilds in one 84 s run), and the helper checks `/boot` has
 room for it first. A kernel installed later gets the hooks from `pyra-install-debug-kernel.sh`, which builds its initrd with
-whatever is in `/etc/initramfs-tools`. Prep does not install the hooks, so
-a newly prepared card has them only after step 2. To check one initrd by hand:
+whatever is in `/etc/initramfs-tools`. Prep installs the same hooks and
+rebuilds the same initrds as fix 14, so a newly prepared card already has
+them. To check one initrd by hand:
 
     lsinitramfs /boot/initrd.img-<release> | grep -e nofallback -e nudge
 

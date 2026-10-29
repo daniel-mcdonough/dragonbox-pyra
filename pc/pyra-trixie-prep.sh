@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
-# Apply the twelve known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
-# Run against the MOUNTED rootfs partition, before the card's first boot.
+# Apply the fourteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Run against the MOUNTED rootfs partition, with the boot partition mounted at
+# its /boot, before the card's first boot.
 #
+#   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
 #   sudo ./pyra-trixie-prep.sh /mnt [username]
+#
+# Fix 14 runs the image's own update-initramfs in a chroot, so a PC that is not
+# armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
@@ -76,6 +81,34 @@ SGX_FIX=$PAYLOADS/pyra-sgx-init.sh
 
 WHEEL_FIX=$PAYLOADS/pyra-volumed/install.sh
 [[ -x $WHEEL_FIX ]] || die "fix12: pyra-volumed/install.sh not found or not executable (looked in $PAYLOADS)"
+
+GLES_SRC=$PAYLOADS/pyra-gles
+[[ -r $GLES_SRC ]] || die "fix13: pyra-gles not found (looked in $PAYLOADS)"
+
+HOOK_SRC=$PAYLOADS/etc/initramfs-tools/scripts/init-top
+HOOKS="pyra-fw-nofallback pyra-settle-nudge"
+for h in $HOOKS; do
+    [[ -r $HOOK_SRC/$h ]] || die "fix14: $h not found (looked in $HOOK_SRC)"
+done
+
+# Fix 14 rebuilds each kernel's initrd with the image's own update-initramfs,
+# run in a chroot, so two more things must hold before anything is written:
+# the boot partition is mounted where the rootfs expects it, and this machine
+# can run the image's armhf binaries (natively, or through qemu-user binfmt).
+# Commands in the chroot get a clean environment with Debian's PATH: the
+# caller's PATH may lack /usr/sbin (Arch's sudo does), where update-initramfs,
+# depmod and ldconfig live, and its TMPDIR need not exist inside the image.
+in_chroot() {
+    chroot "$ROOT" /usr/bin/env -i HOME=/root LC_ALL=C \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin "$@"
+}
+compgen -G "$ROOT/boot/initrd.img-*" >/dev/null ||
+    die "fix14: no initrd in $ROOT/boot — mount the card's boot partition (p1) at $ROOT/boot"
+in_chroot /bin/true 2>/dev/null ||
+    die "fix14: cannot run the image's armhf binaries in a chroot. Install qemu-user with binfmt
+       (Debian/Ubuntu: qemu-user-static binfmt-support; Arch: qemu-user-static qemu-user-static-binfmt)"
+in_chroot sh -c 'command -v update-initramfs && command -v lsinitramfs' >/dev/null 2>&1 ||
+    die "fix14: the image has no update-initramfs or lsinitramfs (initramfs-tools)"
 
 
 echo
@@ -768,6 +801,107 @@ rm -rf "$WHEEL_STAGE"
 if [[ $WHEEL_CHANGED -eq 1 ]]; then
     ok "fix12: the volume wheel will be built on first boot and map evenly in dB"
 fi
+
+# ---------------------------------------------------------------------- fix 13
+#
+# Every Qt5 program renders nothing on this image. The SGX blob ships its GLES2
+# as libGLESv2.so.1; Qt links glvnd's libGLESv2.so.2, which has no vendor for
+# the blob's EGL context, so every GL call is a stub and nothing logs an error.
+# pyra-gles runs a program with a one-symlink shim in front of glvnd. It is per
+# program on purpose: a system-wide shim would hand the blob GLES2 programs
+# that need glvnd's fallback. Nothing in the image's menus links Qt, so there
+# is no launcher to wrap; this puts the wrapper on the path. docs/qt-gles.md.
+
+GLES_DST=$ROOT/usr/local/bin/pyra-gles
+if [[ -e $GLES_DST ]] && cmp -s "$GLES_SRC" "$GLES_DST"; then
+    ok "fix13: /usr/local/bin/pyra-gles already in place"
+else
+    mkdir -p "$ROOT/usr/local/bin"
+    cat "$GLES_SRC" > "$GLES_DST"
+    chmod 0755 "$GLES_DST"
+    chown 0:0 "$GLES_DST"
+    ok "fix13: wrote /usr/local/bin/pyra-gles"
+fi
+
+# ---------------------------------------------------------------------- fix 14
+#
+# Some boots sit in the initramfs for 70-126 s before mounting root, with
+# nothing on screen (docs/troubleshooting.md, "Root mounts a minute or two
+# late"). Two init-top hooks fix the two causes: pyra-fw-nofallback stops the
+# USB ethernet adapter's 60 s wait for firmware that is not there, and
+# pyra-settle-nudge wakes a `udevadm settle` that slept through the end of the
+# queue (the cause patches/0048 fixes in our kernels, but not in the stock one
+# this card boots). A hook only runs once it is in the initrd, so each kernel's
+# initrd is rebuilt in a chroot by the image's own update-initramfs, exactly as
+# pyra-install-helpers.sh does on the device. An initrd that already lists both
+# hooks and is newer than both is left alone, so a second run changes nothing.
+
+HOOK_DIR=$ROOT/etc/initramfs-tools/scripts/init-top
+mkdir -p "$HOOK_DIR"
+for h in $HOOKS; do
+    if [[ -e $HOOK_DIR/$h ]] && cmp -s "$HOOK_SRC/$h" "$HOOK_DIR/$h"; then
+        ok "fix14: /etc/initramfs-tools/scripts/init-top/$h already in place"
+    else
+        cat "$HOOK_SRC/$h" > "$HOOK_DIR/$h"
+        chmod 0755 "$HOOK_DIR/$h"
+        chown 0:0 "$HOOK_DIR/$h"
+        ok "fix14: wrote /etc/initramfs-tools/scripts/init-top/$h"
+    fi
+done
+
+initrd_has_hooks() {    # /boot/initrd.img-REL (chroot path) -> true when current
+    local h list
+    list=$(in_chroot lsinitramfs "$1" 2>/dev/null) || return 1
+    for h in $HOOKS; do
+        [[ $HOOK_DIR/$h -nt $ROOT$1 ]] && return 1
+        grep -qx "scripts/init-top/$h" <<<"$list" || return 1
+    done
+    return 0
+}
+
+CHROOT_MOUNTS=()
+chroot_unmount() {
+    local m
+    for m in "${CHROOT_MOUNTS[@]}"; do umount "$m" 2>/dev/null || umount -l "$m"; done
+    CHROOT_MOUNTS=()
+}
+trap chroot_unmount EXIT
+chroot_mount() {        # lsinitramfs and update-initramfs want /proc, /sys and /dev
+    local d
+    [[ ${#CHROOT_MOUNTS[@]} -eq 0 ]] || return 0
+    for d in proc sys dev; do
+        mountpoint -q "$ROOT/$d" && continue
+        mount --bind "/$d" "$ROOT/$d"
+        CHROOT_MOUNTS=("$ROOT/$d" "${CHROOT_MOUNTS[@]}")
+    done
+}
+
+chroot_mount
+for initrd in "$ROOT"/boot/initrd.img-*; do
+    rel=${initrd#$ROOT/boot/initrd.img-}
+    if [[ ! -d $ROOT/lib/modules/$rel ]]; then
+        warn "fix14: skipped /boot/initrd.img-$rel (no /lib/modules/$rel to build it from)"
+        continue
+    fi
+    if initrd_has_hooks "/boot/initrd.img-$rel"; then
+        ok "fix14: /boot/initrd.img-$rel already has both hooks"
+        continue
+    fi
+    need=$(( $(stat -c %s "$initrd") / 1024 + 2048 ))
+    free=$(df -Pk "$ROOT/boot" | awk 'NR==2{print $4}')
+    [[ $free -ge $need ]] ||
+        die "fix14: $ROOT/boot has ${free} KB free, rebuilding initrd.img-$rel needs about ${need} KB"
+    info "fix14: rebuilding /boot/initrd.img-$rel in the chroot (under qemu, most of a minute)"
+    if ! out=$(in_chroot update-initramfs -u -k "$rel" 2>&1); then
+        rm -f -- "$initrd.new"
+        die "fix14: update-initramfs -u -k $rel failed in the chroot:
+$out"
+    fi
+    initrd_has_hooks "/boot/initrd.img-$rel" ||
+        die "fix14: /boot/initrd.img-$rel was rebuilt but does not list both hooks"
+    ok "fix14: rebuilt /boot/initrd.img-$rel with both hooks"
+done
+chroot_unmount
 
 echo
 sync

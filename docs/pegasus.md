@@ -330,12 +330,9 @@ and hides what was changed.
 
 Ordered. Effort is one person's evenings, not ideal-world estimates.
 
-- [ ] **Decide whether `pyra-gles` becomes fix 13.** Every Qt5 GLES program on
-      this image renders nothing until the shim exists, which is the same class
-      of silent, total failure the twelve numbered fixes cover. Promoting it means
-      `pc/pyra-trixie-prep.sh`, the prep selftest, `procedure.md` and the
-      README's first-boot list all change. Leaving it as a helper means
-      anyone hitting the bug has to find this document first. — *an open decision.*
+- [x] **Decide whether `pyra-gles` becomes fix 13.** Decided 2026-10-29: it
+      is fix 13, so a prepared card has `/usr/local/bin/pyra-gles`
+      (`fixes.md`). Pegasus still has to be started through it.
 - [ ] **Add a `pegasus` target to `pc/pyra-crossbuild.sh`.** The build itself
       is proven (above), so this is packaging it the way the other targets are
       packaged: same container pattern as `ddx`, a pinned commit, the toolchain
