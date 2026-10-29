@@ -1057,3 +1057,24 @@ booted once for the comparison.
 - Restored: base back to l5, trace hook out, nudge back (comment updated), initrd
   file list equal to `.before-r22`. Next boot: settle exited at 6.03 s, no nudge,
   root at 6.58 s, no kprobes.
+
+## 2026-10-29 — installer boot slots (`--slot`)
+
+Method: the new `device/pyra-install-debug-kernel.sh` copied to the trixie card
+and run with sudo, booted on `5.6.19-m4-kbdled` (base and default `l5`). Kernel:
+`fix-kernel.tar.gz`, whose `vmlinuz` md5 equals the installed `5.6.19-fix`, so no
+kernel changed. `user.cfg` was saved first and put back afterwards (md5 equal to
+before).
+
+- `--slot l0`: refused, "l0 is an entry in /boot/extlinux/linux.cfg". `--slot L5`:
+  refused by the label check (exit 2). `--slot l1` with the running release:
+  refused as before.
+- `--slot l6`: added `l6` at the end, `l1`-`l5` unchanged, default `l5`. /boot
+  needed 29 MB of 44 MB free (the release's own 18 MB credited). The printed
+  removal commands said to keep the files, because `l2` boots `5.6.19-fix` too.
+- `--slot l6` again: `user.cfg` md5 unchanged.
+- No `--slot`: repointed only `l1` ("l1 booted /vmlinuz-5.6.19-m4-kbdled; l5 still
+  boots it"); `l5` (base) and `l6` kept. `pyra-boot-kernel.sh status`: next boot
+  and base `l5`, revert disarmed.
+- Not rebooted: the entry text is the same as the `l1` entry the installer has
+  always written, which boots.

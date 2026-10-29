@@ -439,9 +439,10 @@ kernel is the only thing that picks it up. Build it on the workstation
 in one go with `./pc/pyra-push-kernel.sh --install --reboot`. Re-running the
 installer is safe. Its rules, from its header and code:
 
-- It only writes the `l1` entry in `/boot/extlinux/user.cfg`. Other entries
-  in that file are kept. The kernel `l1` pointed at before keeps its files in
-  `/boot` but no longer has a boot entry.
+- It only writes the `l1` entry in `/boot/extlinux/user.cfg`, or the one
+  `--slot LABEL` names (`building.md`, "Boot slots"). Other entries in that
+  file are kept. The kernel the slot pointed at before keeps its files in
+  `/boot`, and loses its boot entry unless another entry also boots it.
 - It refuses unless `default` in `extlinux.conf` is `l1` or the base kernel
   (`pyra-boot-kernel.sh base`). Run `pyra-boot-kernel.sh stock` first if it
   is neither.

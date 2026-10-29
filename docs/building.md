@@ -368,6 +368,47 @@ To remove it later, delete the `user.cfg` entry, `/boot/*-5.6.19-softlockup`,
 `/boot/dtb/linux-image-5.6.19-softlockup/` and
 `/lib/modules/5.6.19-softlockup/`.
 
+### Boot slots: a base kernel and a fallback
+
+`pyra-boot-kernel.sh` knows two entries: the test slot `l1`, which `debug`
+selects, and the base, which `stock` and the one-shot revert return to
+(`pyra-boot-kernel.sh base` names it, and it is stored in
+`/boot/extlinux/pyra-base-label`). Every other entry in `user.cfg` is a slot
+that is only booted by making it the base.
+
+By default the installer writes `l1`. `--slot LABEL` writes that entry instead
+and leaves `l1` and every other entry alone, so the scripts alone can give a
+card the kernel it runs every day plus one to fall back to:
+
+    sudo pyra-install-debug-kernel.sh --slot l5 m4-kbdled-kernel.tar.gz  # the everyday kernel
+    sudo pyra-install-debug-kernel.sh --slot l4 m4-kernel.tar.gz         # the fallback
+    sudo pyra-boot-kernel.sh base l5 && sudo pyra-boot-kernel.sh stock
+
+and, when the base misbehaves, `sudo pyra-boot-kernel.sh base l4 && sudo
+pyra-boot-kernel.sh stock` moves the machine to the fallback. `l0`, the distro
+kernel in `linux.cfg`, stays a third choice either way. The labels above are
+the ones the trixie card uses; any lower-case letters and digits will do.
+
+The rules:
+
+- A slot that already exists is replaced where it stands, so the other
+  entries keep their order; a new slot goes at the end of `user.cfg`. With no
+  `--slot`, `l1` is replaced the same way, which is the old behaviour.
+- A label in `linux.cfg` (`l0`) is refused: that file is the distro's.
+- `default` in `extlinux.conf` has to be `l1`, the base, or the slot being
+  written, as before. Writing the slot the default points at changes what the
+  next boot runs, the same as writing `l1` while `l1` is the default.
+- The kernel a slot pointed at before keeps its files in `/boot`. The
+  installer says whether another entry still boots it, or whether it has just
+  lost its last one, and the removal commands it prints leave the files alone
+  while another entry boots the same release (on the trixie card `l1` and `l5`
+  both boot `5.6.19-m4-kbdled`).
+- `--once` covers only `l1`. To try a kernel for one boot before making it a
+  base, install it into `l1` first.
+- `pc/pyra-push-kernel.sh --install` writes `l1` only.
+
+Checked on the trixie card on 2026-10-29 (`docs/verification-log.md`).
+
 ### Install it beside the stock kernel, not over it
 
 The build produces `KERNELRELEASE=5.6.19-pyradef`, **the same string the
@@ -805,9 +846,9 @@ and the one-shot revert return to. `l4` (`m4`) is still there as the
 fallback: `sudo pyra-boot-kernel.sh base l4 && sudo pyra-boot-kernel.sh stock`.
 
 `l1` and `l5` boot the same files. The next test kernel installed into `l1`
-repoints `l1` and leaves `l5` alone. But the removal commands the installer
-prints for `l1` would delete `l5`'s kernel while it is still `5.6.19-m4-kbdled`,
-so don't run them for that release.
+repoints `l1` and leaves `l5` alone. The removal commands the installer prints
+check for that: while another entry boots the same release they say to keep
+the files.
 
 What to expect on it:
 

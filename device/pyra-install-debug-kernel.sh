@@ -4,6 +4,7 @@
 # on the Pyra, and give it a boot entry.
 #
 #   sudo ./pyra-install-debug-kernel.sh [/path/to/something-kernel.tar.gz]
+#   sudo ./pyra-install-debug-kernel.sh --slot l5 m4-kbdled-kernel.tar.gz
 #
 # Either of the tarballs `pyra-crossbuild.sh` produces will do:
 # `softlockup-kernel.tar.gz` or `fix-kernel.tar.gz`. The release name is read
@@ -15,9 +16,16 @@
 # driver, so the menu only exists over the serial console — which is why
 # `pyra-boot-kernel.sh` exists to choose between the two.
 #
-# There is one test slot, `l1`. Installing a second test kernel points that
-# slot at the new one; the older kernel's files stay in /boot but drop out of
-# the boot configuration.
+# By default it writes the test slot, `l1`. Installing a second test kernel
+# points that slot at the new one; the older kernel's files stay in /boot but
+# drop out of the boot configuration.
+#
+# `--slot LABEL` writes that entry of user.cfg instead, and leaves `l1` and
+# every other entry alone. That is how a card gets a base kernel and a
+# fallback from this script alone: install each into its own slot, then name
+# the base with `pyra-boot-kernel.sh base LABEL`. A slot that already exists
+# is replaced where it stands; a new one is added at the end. `l0` and any
+# other label in linux.cfg cannot be a slot: that file is the distro's.
 #
 # Run it again to reinstall; every step is idempotent. It will not install
 # over the kernel you are currently running, to avoid replacing a live module
@@ -36,11 +44,15 @@ set -euo pipefail
 
 TARBALL=
 REPLACE_RUNNING=no
+SLOT=l1
 
 while [ $# -gt 0 ]; do
 	case $1 in
 	--replace-running) REPLACE_RUNNING=yes; shift ;;
-	-h|--help)         sed -n '3,33p' "$0" | sed 's/^# \?//'; exit 0 ;;
+	--slot)            [ $# -ge 2 ] || { echo "--slot needs a label" >&2; exit 2; }
+	                   SLOT=$2; shift 2 ;;
+	--slot=*)          SLOT=${1#--slot=}; shift ;;
+	-h|--help)         sed -n '3,/^set -euo/p' "$0" | sed '$d; s/^# \?//'; exit 0 ;;
 	-*)                echo "unknown option: $1" >&2; exit 2 ;;
 	*)                 [ -z "$TARBALL" ] || { echo "one tarball at a time" >&2; exit 2; }
 	                   TARBALL=$1; shift ;;
@@ -50,6 +62,12 @@ CFG=/boot/extlinux/user.cfg
 STOCK=/boot/extlinux/linux.cfg
 
 [ "$(id -u)" = 0 ] || { echo "run this with sudo" >&2; exit 2; }
+# The same characters pyra-boot-kernel.sh keeps when it reads the base label,
+# so any slot written here can be named as the base.
+case $SLOT in
+''|*[!a-z0-9]*) echo "--slot '$SLOT': a label is lower-case letters and digits, like l5" >&2
+                exit 2 ;;
+esac
 
 say() { printf '\n== %s\n' "$*"; }
 die() { printf '\nFAILED: %s\n' "$*" >&2; exit 1; }
@@ -83,6 +101,8 @@ if [ "$REL" = "$(uname -r)" ]; then
 fi
 [ -f "$STOCK" ]    || die "no $STOCK — this is not an extlinux Pyra card"
 [ -L /lib ]        || die "/lib is not a symlink; this rootfs is already broken"
+grep -qx "label $SLOT" "$STOCK" && die "$SLOT is an entry in $STOCK, the distro's file.
+Pick a slot that is not there; 'grep ^label $STOCK $CFG' lists what is taken."
 # Two defaults are expected here and no others. l0 is the stock kernel, which
 # is how a machine that has never had a test kernel is set up. l1 is the test
 # slot, which is what pyra-boot-kernel.sh selects and which this script is
@@ -97,15 +117,20 @@ BASE=l0
         BASE=$(tr -dc 'a-z0-9' < /boot/extlinux/pyra-base-label)
 [ -n "$BASE" ] || BASE=l0
 
+# With --slot, the slot being written is acceptable too: replacing what the
+# default points at is the same thing the plain l1 case already does.
 DEFAULT=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
 case "$DEFAULT" in
-l1)     echo "  default is l1, the test slot, and this install repoints it." ;;
+"$SLOT") echo "  default is $SLOT, the slot this install repoints, so the next boot runs it" ;;
+l1)     echo "  default is l1, the test slot; this install writes $SLOT and leaves l1 alone" ;;
 "$BASE") echo "  default is $BASE, the base kernel; this install does not change what boots" ;;
 *)      die "extlinux.conf defaults to '${DEFAULT:-nothing}', which is neither the test
 slot l1 nor the base kernel $BASE. Refusing to guess. Put it back with
 'pyra-boot-kernel.sh stock' and try again." ;;
 esac
-echo "  running $(uname -r), installing $REL beside it, from $TARBALL"
+echo "  running $(uname -r), installing $REL beside it into slot $SLOT, from $TARBALL"
+[ "$SLOT" = "$BASE" ] && echo "  $SLOT is the base kernel: the one-shot revert and 'pyra-boot-kernel.sh stock'
+  will return to $REL from now on"
 
 # The tarball must not carry a ./lib/ entry. trixie is usr-merged, /lib is a
 # symlink to usr/lib, and GNU tar extracting a ./lib/ DIRECTORY entry deletes
@@ -200,30 +225,60 @@ say "adding the boot menu entry"
 APPEND=$(awk '/^label l0$/{f=1} f&&/^[[:space:]]*append /{sub(/^[[:space:]]*append /,""); print; exit}' "$STOCK")
 [ -n "$APPEND" ] || die "could not read the stock append line from $STOCK"
 
-if [ -s "$CFG" ] && ! grep -q "^label l1$" "$CFG"; then
+if [ -s "$CFG" ] && ! grep -qx "label $SLOT" "$CFG"; then
         cp -a "$CFG" "$CFG.before-$REL"
         echo "  kept your existing $CFG as $CFG.before-$REL"
 fi
 
-# Rewrite rather than append, so running this twice does not stack entries.
-tmp=$(mktemp)
-if [ -s "$CFG" ]; then
-        awk '/^label l1$/{skip=1} /^label /&&!/^label l1$/{skip=0} !skip' "$CFG" > "$tmp"
+# The kernel this slot booted until now. If no other entry boots it, it is
+# about to lose its last entry; say so, since its files stay in /boot.
+slot_kernel() {  # slot_kernel <label>: the linux line of that entry in $CFG
+	awk -v want="label $1" '$0 == want {f=1; next} /^label /{f=0}
+		f && /^[[:space:]]*linux /{print $2; exit}' "$CFG" 2>/dev/null
+}
+# other_entries <label> <kernel>: the entries other than <label>, in either
+# file, whose linux line is <kernel>, space-separated.
+other_entries() {
+	awk -v want="label $1" -v k="$2" 'FNR == 1 {l = ""} /^label /{l=$0}
+		l != want && /^[[:space:]]*linux / && $2 == k {print substr(l, 7)}' \
+		"$CFG" "$STOCK" 2>/dev/null | sort -u | tr '\n' ' '
+}
+OLD=$(slot_kernel "$SLOT")
+if [ -n "$OLD" ] && [ "$OLD" != "/vmlinuz-$REL" ]; then
+	others=$(other_entries "$SLOT" "$OLD")
+	if [ -n "$others" ]; then
+		echo "  $SLOT booted $OLD; ${others% } still boots it"
+	else
+		echo "  $SLOT booted $OLD, and no other entry does: its files stay in /boot"
+		echo "  without a boot entry"
+	fi
 fi
+
+# Rewrite rather than append, so running this twice does not stack entries.
+# The slot's old block is replaced where it stood, so the other entries keep
+# their order; a slot that was not there yet goes at the end.
 # The card's own release name, so a bookworm card does not say trixie.
 CODENAME=$( . /etc/os-release 2>/dev/null; echo "${VERSION_CODENAME:-debian}")
-{
-        cat <<EOF
-label l1
+entry=$(mktemp)
+cat > "$entry" <<EOF
+label $SLOT
 	menu label $CODENAME, kernel $REL
 	linux /vmlinuz-$REL
 	append $APPEND
 	fdtdir /dtb/linux-image-$REL
 	initrd /initrd.img-$REL
 EOF
-} >> "$tmp"
+tmp=$(mktemp)
+[ -e "$CFG" ] || : > "$CFG"
+awk -v want="label $SLOT" -v entry="$entry" '
+	function emit(  line) { while ((getline line < entry) > 0) print line; done = 1 }
+	$0 == want { skip = 1; emit(); next }
+	/^label / { skip = 0 }
+	!skip
+	END { if (!done) emit() }' "$CFG" > "$tmp"
+[ "$(grep -cx "label $SLOT" "$tmp")" = 1 ] || die "the rewritten $CFG does not have exactly one $SLOT entry; $CFG is unchanged"
 cat "$tmp" > "$CFG"
-rm -f "$tmp"
+rm -f "$tmp" "$entry"
 
 # ---------------------------------------------------------------- verify
 say "verifying"
@@ -238,7 +293,8 @@ echo "  ok   /boot/dtb/linux-image-$REL ($n dtbs)"
 echo "  ok   /usr/lib/modules/$REL ($(find "/usr/lib/modules/$REL" -name '*.ko' | wc -l) modules)"
 now=$(awk '/^[[:space:]]*default /{print $2; exit}' /boot/extlinux/extlinux.conf)
 case "$now" in
-l1)      echo "  ok   default is l1, the test slot, which now points at $REL" ;;
+"$SLOT") echo "  ok   default is $SLOT, which now points at $REL" ;;
+l1)      echo "  ok   default is l1, the test slot, which this install left alone" ;;
 "$BASE") echo "  ok   default is $BASE, the base kernel; nothing about the next boot changed" ;;
 *)       echo "  BAD  default is now '$now'"; fail=1 ;;
 esac
@@ -256,22 +312,35 @@ df -h /boot | tail -1
 
 [ "$fail" = 0 ] || die "one of the checks above did not pass"
 
-# Branch on l1, not on l0: the base is not always l0 any more, and treating
-# every other default as l1 told the user a base-kernel install would reboot
-# into the new one when it would not.
-if [ "$now" != l1 ]; then
+# Branch on the slot, not on l0: the base is not always l0 any more, and
+# treating every other default as l1 told the user a base-kernel install would
+# reboot into the new one when it would not.
+if [ "$SLOT" != l1 ] && [ "$now" != "$SLOT" ]; then
+        NEXT="$SLOT now boots $REL. The default is still $now, so rebooting gets you
+that kernel. pyra-boot-kernel.sh boots only l1 and the base, and '--once'
+covers only l1, so to boot $SLOT make it the base, which every boot then uses:
+
+    sudo pyra-boot-kernel.sh base $SLOT && sudo pyra-boot-kernel.sh stock
+
+Falling back is the same two commands with the other kernel's slot. To try
+$REL for one boot first, install it into l1 as well and use 'debug --once'."
+elif [ "$now" != "$SLOT" ]; then
         NEXT="The default is still $now, so rebooting now gets you that kernel.
 Choose the new one with
 
     sudo pyra-boot-kernel.sh debug --once        # one boot, then back to stock
     sudo pyra-boot-kernel.sh debug               # until you say otherwise"
 else
-        NEXT="The default is l1, the slot this install just repointed, so the next
+        NEXT="The default is $SLOT, the slot this install just repointed, so the next
 reboot runs $REL. Change your mind with
 
     sudo pyra-boot-kernel.sh stock               # back to the stock kernel
     sudo pyra-boot-kernel.sh status              # check before rebooting"
 fi
+
+UNBASE=
+[ "$SLOT" != "$BASE" ] || UNBASE="    sudo pyra-boot-kernel.sh base <another label>  # $SLOT is the base now
+"
 
 cat <<EOF
 
@@ -283,11 +352,23 @@ Once it is up, confirm with:
     cat /proc/sys/kernel/softlockup_panic        # expect 0
     cat /proc/sys/kernel/hung_task_timeout_secs  # expect 30
 
-To undo it entirely: boot away from l1, drop only the l1 entry (the other
+To undo it entirely: boot away from $SLOT, drop only the $SLOT entry (the other
 labels in $CFG, the default among them, stay), then remove the files:
 
-    sudo pyra-boot-kernel.sh stock
-    sudo sed -i '/^label l1\$/,/^label /{/^label l1\$/d;/^label /!d}' $CFG
+${UNBASE}    sudo pyra-boot-kernel.sh stock
+    sudo sed -i '/^label $SLOT\$/,/^label /{/^label $SLOT\$/d;/^label /!d}' $CFG
+EOF
+# Another entry booting the same release shares these files; removing them
+# would leave that entry pointing at nothing.
+shared=$(other_entries "$SLOT" "/vmlinuz-$REL")
+if [ -n "$shared" ]; then
+	cat <<EOF
+
+but do not remove the files while ${shared% } boots $REL too.
+EOF
+else
+	cat <<EOF
     sudo rm -rf /boot/{vmlinuz,initrd.img,System.map,config}-$REL \\
                 /boot/dtb/linux-image-$REL /usr/lib/modules/$REL
 EOF
+fi
