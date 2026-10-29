@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> **Type: instructions.** Steps to follow.
+
 **Quarter-second of LED, then nothing.** You tapped instead of holding. See
 step 5. This is by far the most likely "it doesn't boot".
 

@@ -1,5 +1,7 @@
 # Growing the rootfs
 
+> **Type: instructions.** Steps to follow.
+
 Commands here are run from the repository root, on a PC, with the card in a
 reader.
 

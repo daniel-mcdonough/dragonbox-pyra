@@ -1,5 +1,7 @@
 # Profiling on the Pyra
 
+> **Type: reference.** How things are and why; not a procedure.
+
 The hardest part of optimising this machine is not finding a change. It is
 measuring one. This project spent two phases acting on numbers that turned out
 to be artefacts of the thermostat, the governor, or a synthetic benchmark that

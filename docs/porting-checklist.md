@@ -1,5 +1,7 @@
 # Porting checklist
 
+> **Type: instructions.** Steps to follow.
+
 A practical sequence for bringing a game or graphical application to the Pyra.
 Written to be worked through in order; each phase has a decision at the end of
 it that is cheaper to take then than later.

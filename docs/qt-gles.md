@@ -1,5 +1,7 @@
 # GLES2 for toolkits: the SONAME gap between the blob and glvnd
 
+> **Type: instructions.** Steps to follow.
+
 Tested 2026-09-18 on the running unit, kernel `5.6.19-freq`. Works.
 
 `gl4es.md` covers desktop GL, which this image gets by translation. This

@@ -1,5 +1,7 @@
 # The scripts, and what each one does
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Every script in `pc/`, `device/` and `experiments/`, one line each. The README has
 the few you need to get a card running; this is the rest.
 

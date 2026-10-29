@@ -1,5 +1,7 @@
 # Compiler flags for the Pyra
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Short version, for anyone who wants the answer and not the reasoning:
 
 ```

@@ -1,5 +1,7 @@
 # The Pyra optimisation playbook
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Index and triage for the hardware knowledge base. Two things live here:
 
 1. **What the ten documents are**, and which to read for what.

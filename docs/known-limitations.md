@@ -1,5 +1,7 @@
 # Known limitations
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Hard walls, and things already tried that did not work. The purpose of this
 document is to stop the same afternoons being spent twice.
 

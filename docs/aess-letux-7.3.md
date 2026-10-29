@@ -1,5 +1,7 @@
 # AESS: our 5.6 patches against letux 7.3
 
+> **Type: log.** A dated record of what was done and found: history, not instructions.
+
 Written 2026-10-20 from reading the code. **Nothing here has been built or booted
 on 7.3.** Everything marked "on hardware" comes from the 5.6.19-m4 kernel; on 7.3
 it is a code-reading finding until it is run.

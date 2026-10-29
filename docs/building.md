@@ -1,5 +1,7 @@
 # Building the display stack from source
 
+> **Type: instructions.** Steps to follow.
+
 Written 2026-09-10, against the trixie card and a Linux PC. Both builds below
 were run end to end and both succeed.
 

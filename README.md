@@ -102,6 +102,10 @@ suspend back on and checking each fix took.
 
 Each document stands alone. Read the one that matches what you are doing.
 
+The line under each document's title says what kind it is: **instructions** (steps to
+follow), **reference** (how things are and why), or **log** (a dated record: history,
+not instructions). The logs are listed separately at the end.
+
 ### Setting up and using it
 
 | Document | What it covers |
@@ -131,7 +135,6 @@ Each document stands alone. Read the one that matches what you are doing.
 | [docs/rendering-guidelines.md](docs/rendering-guidelines.md) | The display pipeline, and how to adapt a desktop renderer to this part. |
 | [docs/compiler-flags.md](docs/compiler-flags.md) | What to build with, and what Debian's baseline silently costs you. |
 | [docs/profiling-guide.md](docs/profiling-guide.md) | The four traps that produce confident wrong numbers, and how to avoid them. |
-| [docs/improvements.md](docs/improvements.md) | System performance: what is done, what is worth measuring next, what is not. |
 | [docs/power-testing.md](docs/power-testing.md) | Measuring power on the battery gauge, what has been measured, and the pitfalls. |
 
 ### Kernel and development work
@@ -142,13 +145,19 @@ Each document stands alone. Read the one that matches what you are doing.
 | [docs/building.md](docs/building.md) | Compiling the X driver and the kernel on a PC, and installing a test build safely. |
 | [docs/kernel-changes.md](docs/kernel-changes.md) | Every kernel patch, what it does, and which builds carry it. |
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
+| [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, and how to undo it. |
+| [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
+| [reports/](reports/) | Findings written up for submission upstream. Drafts, not sent. |
+
+### Logs: history, not instructions
+
+| Document | What it covers |
+| --- | --- |
+| [docs/improvements.md](docs/improvements.md) | System performance: what is done, what is worth measuring next, what is not. |
 | [docs/pegasus.md](docs/pegasus.md) | Scoping the Pegasus launcher and hardware menus for it. |
 | [docs/m4-ipu.md](docs/m4-ipu.md) | The OMAP5's two idle Cortex-M4s and its DSP, and the kernel work to reach them. |
-| [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, and how to undo it. |
 | [docs/aess-letux-7.3.md](docs/aess-letux-7.3.md) | Porting the AESS (audio DSP) patches to letux 7.3. |
-| [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
-| [reports/](reports/) | Findings written up for submission upstream. Drafts, not sent. |
 
 Some documents cite "the development log §N". That is the dated working log kept
 with the private development notes; it is not published.

@@ -1,5 +1,7 @@
 # Memory: one pool, everyone drinking from it
 
+> **Type: reference.** How things are and why; not a procedure.
+
 There is no VRAM on this machine. The two CPU cores, the SGX, the display
 controller, the 2D engine and the audio DSP all reach the same 4 GB through the
 same L3 interconnect and the same two memory controllers.

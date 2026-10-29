@@ -1,5 +1,7 @@
 # CPU: Cortex-A15, and why it is usually not your problem
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Two Cortex-A15 cores at 1.5 GHz. This document covers what the
 microarchitecture rewards, where NEON pays and where it does not, and the two
 things that actually limit CPU throughput on this machine — neither of which is

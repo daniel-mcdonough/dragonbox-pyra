@@ -1,5 +1,7 @@
 # The twelve fixes, and what they actually do
 
+> **Type: reference.** How things are and why; not a procedure.
+
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
 

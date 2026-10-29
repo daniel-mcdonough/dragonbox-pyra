@@ -1,5 +1,7 @@
 # GPU: PowerVR SGX544MP2, and what a TBDR actually rewards
 
+> **Type: reference.** How things are and why; not a procedure.
+
 The GPU is the part of this machine most likely to decide whether a port works.
 It is a 2012 mobile part with a tile-based deferred architecture, a strict
 OpenGL ES 2.0 feature set, and a proprietary driver that is the only driver that

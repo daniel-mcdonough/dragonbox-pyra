@@ -1,5 +1,7 @@
 # Desktop GL through gl4es
 
+> **Type: instructions.** Steps to follow.
+
 Tested 2026-09-09 on the running unit. Works.
 
 Fix 4 turns off the X server's GLX extension, so `libGL` from mesa is dead on

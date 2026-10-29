@@ -1,5 +1,7 @@
 # Kernel changes
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Every change made to the Pyra's kernel, in one place: what each patch does, where it
 lives, and which kernels carry it. The diagnosis behind each one is in the patch's own
 commit message and in the document named against it. Config and runtime tunables are

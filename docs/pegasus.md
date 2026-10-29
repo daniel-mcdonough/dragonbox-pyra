@@ -1,5 +1,7 @@
 # Pegasus on the Pyra, and custom menus for the hardware
 
+> **Type: log.** A dated record of what was done and found: history, not instructions.
+
 > **Superseded, 2026-09-19.** Pegasus is dropped as the launcher: it costs 9-30%
 > of a core sitting on a static menu, where a plain `qmlscene` control costs
 > 0.0% (measured, `experiments/pegasus-idle/RESULT.md`). A separate launcher,

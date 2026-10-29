@@ -1,5 +1,7 @@
 # Decisions and rejected alternatives
 
+> **Type: reference.** How things are and why; not a procedure.
+
 ## Where this deviates from the forum post
 
 The original writeup works, but a few steps are fragile enough to be worth

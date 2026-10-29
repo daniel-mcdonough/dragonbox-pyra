@@ -1,5 +1,7 @@
 # Rendering guidelines, and adapting a desktop renderer
 
+> **Type: reference.** How things are and why; not a procedure.
+
 `gpu-optimization.md` is the hardware model. This document is the practical
 consequence: how to take a renderer written for desktop OpenGL and make it work
 here, and how the display pipeline underneath it behaves.

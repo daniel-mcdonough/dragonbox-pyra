@@ -1,5 +1,7 @@
 # Performance: what is already done, what is worth doing, what is not
 
+> **Type: log.** A dated record of what was done and found: history, not instructions.
+
 A survey of the proposed performance work, checked against the running unit on
 2026-09-09 rather than against expectations. The reference documents describe
 the machine as built; this one describes what is left.

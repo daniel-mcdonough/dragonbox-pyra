@@ -1,5 +1,7 @@
 # x86 software through box86
 
+> **Type: instructions.** Steps to follow.
+
 Status: **working**, with one significant limit. Tested 2026-09-09 on the trixie
 card built by `procedure.md`, against the running unit over SSH with a MATE session
 live on `:0`.

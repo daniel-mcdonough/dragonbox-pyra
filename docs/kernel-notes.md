@@ -1,5 +1,7 @@
 # Kernel notes
 
+> **Type: reference.** How things are and why; not a procedure.
+
 The Pyra runs an out-of-tree kernel: **5.6.19**, from the Letux/Pyra tree, not
 mainline and not a Debian kernel. This document records what is in it that
 affects performance, what is worth changing, and — more importantly — what is

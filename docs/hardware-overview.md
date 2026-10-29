@@ -1,5 +1,7 @@
 # The Pyra as a target: what this hardware is, and how it differs
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Entry point for the optimisation playbook. Read this before any of the other
 documents in the set; each of them assumes the model of the machine built here.
 

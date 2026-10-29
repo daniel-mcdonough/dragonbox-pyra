@@ -1,5 +1,7 @@
 # Verification log
 
+> **Type: log.** A dated record of what was done and found: history, not instructions.
+
 What was checked, when, and what it established. The procedure is `procedure.md`.
 
 ## Pre-flight results — pyra-trixie-t1.img, checked 2026-09-08

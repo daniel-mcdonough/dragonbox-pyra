@@ -1,5 +1,7 @@
 # Measuring power on the Pyra
 
+> **Type: instructions.** Steps to follow.
+
 How to measure what something costs in watts on this machine, what has been
 measured, what went wrong along the way, and the runs still to do. Written
 2026-09-26 for a later session to pick up and act on. Most of it came out of

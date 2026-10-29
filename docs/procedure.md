@@ -1,5 +1,7 @@
 # Writing a trixie card for the DragonBox Pyra
 
+> **Type: instructions.** Steps to follow.
+
 The procedure: buy a card, write the image, apply the fixes offline, boot it.
 Target is a V5.x Pyra booting live from the left full-size SD slot, with the
 eMMC untouched. The kernel is the same 5.6.19-pyradef that bookworm-7 uses.

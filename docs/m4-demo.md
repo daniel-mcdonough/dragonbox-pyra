@@ -1,5 +1,7 @@
 # Running the Pyra's two Cortex-M4s yourself
 
+> **Type: instructions.** Steps to follow.
+
 The OMAP5432 in the Pyra has two Cortex-M4 cores, called the IPU, that nothing
 on the shipped system ever starts. This kit starts them under Linux
 `remoteproc`, shows both of them running code, measures their clock speed, and

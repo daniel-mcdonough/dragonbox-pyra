@@ -1,5 +1,7 @@
 # Reproducing this exact machine
 
+> **Type: instructions.** Steps to follow.
+
 `procedure.md` gets you a booting trixie desktop. This document goes further:
 it gets you the state this repository actually describes, with the patched
 kernel and every helper in place, and says how to check that you got there.

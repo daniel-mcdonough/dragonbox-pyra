@@ -1,5 +1,7 @@
 # Backing up and restoring the Pyra's SD card
 
+> **Type: instructions.** Steps to follow.
+
 The Pyra boots and runs from a 128 GB SD card (`mmcblk1` on the Pyra). This is how
 to restore it from a file-level backup taken on the X220, and how to take a new one.
 

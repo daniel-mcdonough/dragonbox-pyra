@@ -1,5 +1,7 @@
 # Audio on the Pyra: the chain, the limits, and how to diagnose silence
 
+> **Type: reference.** How things are and why; not a procedure.
+
 Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
 (trixie); the speakers, the ports and the OPP section on 2026-10-20 on
 `5.6.19-m4-kbdled`. The direct-link sections were verified 2026-09-20 on

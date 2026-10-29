@@ -1,5 +1,7 @@
 # The two Cortex-M4s: what they are and what it costs to use them
 
+> **Type: log.** A dated record of what was done and found: history, not instructions.
+
 Written 2026-09-20, against the running unit over SSH and against the kernel
 source tree that `pyra-crossbuild.sh` unpacks.
 
