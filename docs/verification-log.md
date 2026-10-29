@@ -1006,3 +1006,27 @@ sample (`experiments/initramfs-wait/README.md`).
 - Not shown: a full 126 s boot rescued by the nudge. The nudged boot was
   stuck the same way (settle still there 0.7 s after the queue went) but
   was cut short at once, so how long it would have waited is unknown.
+
+## 2026-10-29 — shape A cause: `IN_DELETE` before `d_delete()` in 5.6.19
+
+Method: the trixie card on l5 (`5.6.19-m4-kbdled`), `pyra-settle-nudge` moved
+out of the initrd and `experiments/initramfs-wait/pyra-settle-trace` put in
+(kprobes, no ptrace). Warm reboots with `systemctl reboot`, the second after
+662 s up. The serial console was logged on the PC for both.
+
+- Reboot 1 (after 42 min up, path probes unfiltered): root at 11.8 s. settle
+  watched at 7.256 s, queue deleted at 7.482 s on CPU 1, settle woken on CPU
+  0, lookup at 7.482256, exited.
+- Reboot 2: root at 17.8 s. Timeline `7.41 queue=0 settle=running`,
+  `13.73 settle=gone`. Each of the three queue deletions (7.379, 10.333,
+  13.565 s) reached settle's inotify group (`inotify_handle_event`,
+  `fsnotify_add_event` returned 0) and woke settle, which read 32 bytes and
+  looked up `/run/udev/queue`. After the first two, both on CPU 1 with settle
+  running before udevd returned from `fsnotify_add_event`, it slept on. After
+  the third (udevd on CPU 0, settle on CPU 1) it exited. No settle warning on
+  the serial console.
+- `inotify-delete-race.c`, 2000 cycles each, tmpfs. Pyra 5.6.19: same CPU
+  1964 and 1970 stale, CPU 0/1 4, CPU 1/0 83, unpinned 1090. PC 7.2 kernel:
+  0 in all three runs.
+- Restored: trace hook out, nudge back. Next boot: settle exited at 6.18 s
+  (nudge log), `kprobe_events` empty.

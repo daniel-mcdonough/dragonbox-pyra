@@ -1,0 +1,162 @@
+# pyra-settle-trace, 5.6.19-m4-kbdled, warm reboot 1 of 2026-10-29 (fast); timeline:
+#   3.98 queue=0 settle=none
+#   6.50 queue=1 settle=none
+#   6.76 queue=1 settle=running
+#   7.59 queue=0 settle=gone
+# root: [   11.814185] pyra kernel: F2FS-fs (mmcblk1p2): Mounted with checkpoint version = 435fee19
+# stall.py:
+#   settle 2062: watch 7.255878, last own event 7.501605 (0.246 s)
+#      7.482120 delete queue: ihe=yes (inotify_handle_event+0x0/0x228) settle-woken<50ms=yes
+#   settle 2134: watch 7.677763, last own event 7.679217 (0.001 s)
+#   settle 2155: watch 8.394641, last own event 8.410968 (0.016 s)
+# chain.py (settle's events, /run/udev/queue unlinks and fsnotify, every inotify event):
+settle pids: {2134, 2155, 2062}
+  4.409452 [001] pyra-settle-tra-1710 tracing_mark_write pyra-settle-trace on at 4.40 5.51
+  4.429181 [000] pyra-settle-tra-1720 tracing_mark_write pyra: queue=0
+  4.496249 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  4.496264 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  4.852496 [001] (udev-worker)-1763 unlink name="/run/udev/data/+bus:workqueue"
+  4.852526 [001] (udev-worker)-1763 unlink name="/run/udev/data/+bus:workqueue"
+  4.883057 [001] (udev-worker)-1759 unlink name="/run/udev/data/+module:workqueue"
+  4.883075 [001] (udev-worker)-1759 unlink name="/run/udev/data/+module:workqueue"
+  4.883912 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  4.883929 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  5.030936 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  5.030963 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  5.062094 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  5.062119 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  5.068366 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  5.068378 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  5.198318 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  5.198321 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  6.340839 [000] pyra-settle-tra-1720 tracing_mark_write pyra: queue=1
+  6.386513 [000] udevadm-2062 open name="/etc/udev/udev.conf"
+  6.387017 [000] udevadm-2062 look name="/run/udev/control"
+  6.387233 [000] udevadm-2062 epw epfd=0x4 max=0x4 timeout=-1
+  6.387256 [000] udevadm-2062 sched_switch prev_comm=udevadm prev_pid=2062 prev_prio=120 prev_state=S ==> next_comm=pyra-settle-dia next_pid=2064 next_prio=120
+  6.476346 [000] pyra-settle-tra-1720 tracing_mark_write pyra: settle pid 2062 seen
+  6.885019 [001] (udev-worker)-1759 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  6.885028 [001] (udev-worker)-1759 addev group=0xe3a90d80 event=0xe3ad0900
+  6.885028 [001] (udev-worker)-1759 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  6.962092 [000] (udev-worker)-1759 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  6.962105 [000] (udev-worker)-1759 addev group=0xe3a90d80 event=0xe3e5df40
+  6.962115 [000] (udev-worker)-1759 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  6.963733 [001] (udev-worker)-1732 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  6.963733 [001] (udev-worker)-1732 addev group=0xe3a90d80 event=0xe3ad09c0
+  6.963733 [001] (udev-worker)-1732 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  6.965167 [000] (udev-worker)-1754 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  6.965167 [000] (udev-worker)-1754 addev group=0xe3a90d80 event=0xe3e5da00
+  6.965170 [000] (udev-worker)-1754 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  7.017932 [001] (udev-worker)-1755 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  7.017943 [001] (udev-worker)-1755 addev group=0xe3a90d80 event=0xe3ad08c0
+  7.017955 [001] (udev-worker)-1755 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  7.255588 [000] systemd-udevd-1728 sched_wakeup comm=udevadm pid=2062 prio=120 target_cpu=000
+  7.255603 [000] udevadm-2062 epwr <-do_epoll_wait ret=1
+  7.255715 [000] udevadm-2062 open name="/run/udev"
+  7.255878 [000] udevadm-2062 iaw fd=0x5 mask=0x200
+  7.255910 [000] udevadm-2062 iawr <-sys_inotify_add_watch ret=1
+  7.255941 [000] udevadm-2062 look name="/run/udev/queue"
+  7.255969 [000] udevadm-2062 epw epfd=0x3 max=0x4 timeout=-1
+  7.255985 [000] udevadm-2062 sched_switch prev_comm=udevadm prev_pid=2062 prev_prio=120 prev_state=S ==> next_comm=systemd-udevd next_pid=1728 next_prio=120
+  7.482104 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  7.482120 [001] systemd-udevd-1728 fsn inode=0xe4a663e8 mask=0x200 name="queue"
+  7.482133 [001] systemd-udevd-1728 ihe group=0xedb6ea80 inode=0xe4a663e8 mask=0x200 name="queue"
+  7.482135 [001] systemd-udevd-1728 addev group=0xedb6ea80 event=0xe3e40500
+  7.482142 [001] systemd-udevd-1728 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+  7.482153 [000] <idle>-0 sched_wakeup comm=udevadm pid=2062 prio=120 target_cpu=000
+  7.482165 [000] udevadm-2062 epwr <-do_epoll_wait ret=1
+  7.482197 [000] udevadm-2062 ird file=0xe3f04480 count=0x110
+  7.482213 [000] udevadm-2062 irdr (vfs_read+0x94/0x110 <- inotify_read) ret=32
+  7.482256 [000] udevadm-2062 look name="/run/udev/queue"
+  7.483716 [000] udevadm-2062 ihe group=0xedb6ea80 inode=0x0 mask=0x8000 name=(fault)
+  7.483722 [000] udevadm-2062 addev group=0xedb6ea80 event=0xe3c06f00
+  7.483722 [000] udevadm-2062 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  7.500570 [000] kworker/u4:2-819 sched_wakeup comm=udevadm pid=2062 prio=120 target_cpu=000
+  7.534167 [000] pyra-settle-tra-1720 tracing_mark_write pyra: settle 2062 gone
+  7.676561 [000] udevadm-2134 open name="/etc/udev/udev.conf"
+  7.677082 [000] udevadm-2134 look name="/run/udev/control"
+  7.677325 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  7.677417 [000] udevadm-2134 epw epfd=0x4 max=0x4 timeout=-1
+  7.677417 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  7.677447 [000] udevadm-2134 sched_switch prev_comm=udevadm prev_pid=2134 prev_prio=120 prev_state=S ==> next_comm=swapper/0 next_pid=0 next_prio=120
+  7.677479 [000] <idle>-0 sched_wakeup comm=udevadm pid=2134 prio=120 target_cpu=000
+  7.677506 [000] udevadm-2134 epwr <-do_epoll_wait ret=1
+  7.677516 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  7.677600 [000] udevadm-2134 open name="/run/udev"
+  7.677763 [000] udevadm-2134 iaw fd=0x5 mask=0x200
+  7.677814 [000] udevadm-2134 iawr <-sys_inotify_add_watch ret=1
+  7.677844 [000] udevadm-2134 look name="/run/udev/queue"
+  7.678943 [000] udevadm-2134 ihe group=0xedb6ea80 inode=0x0 mask=0x8000 name=(fault)
+  7.678954 [000] udevadm-2134 addev group=0xedb6ea80 event=0xe3c069c0
+  7.678961 [000] udevadm-2134 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.393122 [001] udevadm-2155 open name="/etc/udev/udev.conf"
+  8.393739 [001] udevadm-2155 look name="/run/udev/control"
+  8.393889 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.394000 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.394122 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.394368 [001] udevadm-2155 epw epfd=0x4 max=0x4 timeout=-1
+  8.394458 [001] udevadm-2155 open name="/run/udev"
+  8.394641 [001] udevadm-2155 iaw fd=0x5 mask=0x200
+  8.394674 [001] udevadm-2155 iawr <-sys_inotify_add_watch ret=1
+  8.394702 [001] udevadm-2155 look name="/run/udev/queue"
+  8.395801 [001] udevadm-2155 ihe group=0xe3e14e40 inode=0x0 mask=0x8000 name=(fault)
+  8.395801 [001] udevadm-2155 addev group=0xe3e14e40 event=0xe3b121c0
+  8.395806 [001] udevadm-2155 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.410541 [001] kworker/u4:0-7 sched_wakeup comm=udevadm pid=2155 prio=120 target_cpu=001
+  8.439663 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.440132 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.450509 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450519 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450519 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450683 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450690 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450694 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450736 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450743 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450746 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450793 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450793 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450793 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450835 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450840 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450845 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450907 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450914 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450915 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.450946 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.450946 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.450948 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451007 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451007 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451008 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451094 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451098 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451098 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451160 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451160 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451160 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451221 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451221 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451221 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451281 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451282 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451282 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451340 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451343 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451343 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451379 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451387 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451389 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451434 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451434 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451434 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.451479 [001] (udev-worker)-1761 ihe group=0xe3a90d80 inode=0x0 mask=0x8000 name=(fault)
+  8.451486 [001] (udev-worker)-1761 addev group=0xe3a90d80 event=0xe3b12680
+  8.451488 [001] (udev-worker)-1761 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x2
+  8.452151 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.454583 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  8.454730 [001] systemd-udevd-1728 unlink name="/run/udev/queue"
+  9.321577 [000] systemd-1 ihe group=0xe3f27900 inode=0x0 mask=0x8000 name=(fault)
+  9.321582 [000] systemd-1 addev group=0xe3f27900 event=0xe3f52c40
+  9.321582 [000] systemd-1 addevr (inotify_handle_event+0x120/0x228 <- fsnotify_add_event) ret=0x0
+ 10.537524 [000] pyra-settle-tra-1720 tracing_mark_write pyra-settle-trace off

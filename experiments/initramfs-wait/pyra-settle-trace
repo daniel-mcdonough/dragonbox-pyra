@@ -1,0 +1,141 @@
+#!/bin/sh
+# initramfs-tools init-top hook: trace, in the kernel, what happens to the
+# IN_DELETE for /run/udev/queue between udevd's unlink and `udevadm settle`.
+# Shape A (docs/troubleshooting.md) is settle sleeping on its inotify watch
+# after the queue file is gone. This hook says where that wakeup is lost.
+#
+# It runs before init-top/udev, sets up kprobes and two scheduler tracepoints,
+# starts a watcher and returns. Kprobes don't stop the traced task the way
+# strace's ptrace does, so they should not change settle's timing much.
+# Probes, in the order an event should pass them:
+#
+#   iaw       inotify_add_watch in udevadm: settle arms its watch
+#   unlink    do_unlinkat: someone unlinks a path (who, and the name)
+#   fsn       fsnotify with IN_DELETE (0x200): the VFS reports the delete
+#   ihe       inotify_handle_event: an inotify group's mark matched, an event
+#             is built for that group (group pointer, mask, name)
+#   addev     fsnotify_add_event's return: 0 queued, 1 merged with the
+#             previous unread event, 2 overflow or group shut down
+#   epcb      ep_poll_callback: an epoll item's wait queue was woken
+#   sched_wakeup / sched_switch of udevadm: settle woken and run
+#   epw/epwr  do_epoll_wait entry and return in udevadm
+#   ird/irdr  inotify_read entry and return in udevadm
+#   look/open filename_lookup and do_filp_open in udevadm: every path settle
+#             looks up or opens, so its check of /run/udev/queue shows (these
+#             take the kernel's copy of the path; probes on the syscalls
+#             themselves read the user string and mostly get "(fault)")
+#
+# The ring buffer is the kernel's, so it outlives switch_root. The watcher
+# stops tracing 3 s after settle exits (or at switch_root), so later events
+# don't overwrite it. Read it after boot:
+#
+#   sudo cat /sys/kernel/tracing/trace > settle-trace.txt
+#
+# Remove the probes afterwards (or reboot):
+#
+#   cd /sys/kernel/tracing && echo 0 > events/enable && echo > kprobe_events
+#
+# Install: copy to /etc/initramfs-tools/scripts/init-top/, chmod +x, then
+# update-initramfs -u -k <release>. Also usable on a running system as
+# `sh pyra-settle-trace live` (sets up the probes, no watcher).
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+T=/sys/kernel/tracing
+LOG=/run/initramfs/settle-trace.log
+mkdir -p /run/initramfs
+
+[ -d "$T/events" ] || mount -t tracefs nodev "$T" 2>/dev/null
+if [ ! -d "$T/events" ]; then
+	echo "no tracefs at $T" > "$LOG"
+	exit 0
+fi
+
+echo 0 > "$T/tracing_on"
+echo 0 > "$T/events/enable"
+echo > "$T/trace"
+echo > "$T/kprobe_events"
+echo mono > "$T/trace_clock"
+echo 8192 > "$T/buffer_size_kb"
+
+# ARM: arguments 1-4 in r0-r3, 5 onwards on the stack ($stack0 is argument 5).
+# struct qstr is {u32 hash; u32 len; const char *name}, so the name pointer is
+# at +8. struct filename starts with its name pointer.
+{
+	echo 'p:pyra/iaw sys_inotify_add_watch fd=%r0 mask=%r2:x32'
+	echo 'r:pyra/iawr sys_inotify_add_watch ret=$retval:s32'
+	echo 'p:pyra/unlink do_unlinkat name=+0(+0(%r1)):string'
+	echo 'p:pyra/fsn fsnotify inode=%r0 mask=%r1:x32 name=+0(+8($stack0)):string'
+	echo 'p:pyra/ihe inotify_handle_event group=%r0 inode=%r1 mask=%r2:x32 name=+0(+8($stack1)):string'
+	echo 'p:pyra/addev fsnotify_add_event group=%r0 event=%r1'
+	echo 'r:pyra/addevr fsnotify_add_event ret=$retval'
+	echo 'p:pyra/epcb ep_poll_callback wait=%r0 key=%r3:x32'
+	echo 'p:pyra/epw do_epoll_wait epfd=%r0 max=%r2 timeout=%r3:s32'
+	echo 'r:pyra/epwr do_epoll_wait ret=$retval:s32'
+	echo 'p:pyra/ird inotify_read file=%r0 count=%r2'
+	echo 'r:pyra/irdr inotify_read ret=$retval:s32'
+	echo 'p:pyra/look filename_lookup name=+0(+0(%r1)):string'
+	echo 'p:pyra/open do_filp_open name=+0(+0(%r1)):string'
+} >> "$T/kprobe_events" 2> "$LOG"
+
+E=$T/events
+echo 'mask & 0x200' > "$E/pyra/fsn/filter"
+for ev in iaw iawr epw epwr ird irdr; do
+	echo 'comm == "udevadm"' > "$E/pyra/$ev/filter"
+done
+# udevadm trigger looks up some 90000 sysfs paths during boot; tracing them
+# all cost about 2 s of boot time (2026-10-29).
+for ev in look open; do
+	echo 'comm == "udevadm" && name ~ "/run/udev*"' > "$E/pyra/$ev/filter"
+done
+echo 'comm == "udevadm"' > "$E/sched/sched_wakeup/filter"
+echo 'prev_comm == "udevadm" || next_comm == "udevadm"' > "$E/sched/sched_switch/filter"
+echo 1 > "$E/pyra/enable"
+echo 1 > "$E/sched/sched_wakeup/enable"
+echo 1 > "$E/sched/sched_switch/enable"
+echo 1 > "$T/tracing_on"
+echo "pyra-settle-trace on at $(cat /proc/uptime)" > "$T/trace_marker"
+echo "on at uptime $(cat /proc/uptime)" >> "$LOG"
+
+[ "$1" = live ] && exit 0
+
+settle_pid() {
+	for p in $(pidof udevadm); do
+		case "$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)" in
+		*settle*) echo "$p"; return ;;
+		esac
+	done
+}
+
+# The watcher holds tracing_on and trace_marker open, because switch_root moves
+# /sys out from under it. It marks settle's start and exit and each change of
+# the queue file in the trace, then stops tracing.
+(
+	exec 8> "$T/trace_marker" 9> "$T/tracing_on"
+	spid='' q=x n=0
+	while [ -e "$LOG" ] && [ "$n" -lt 1500 ]; do
+		if [ -z "$spid" ]; then
+			spid=$(settle_pid)
+			[ -n "$spid" ] && echo "pyra: settle pid $spid seen" >&8
+		elif [ ! -d "/proc/$spid" ]; then
+			echo "pyra: settle $spid gone" >&8
+			break
+		fi
+		nq=0; [ -e /run/udev/queue ] && nq=1
+		[ "$nq" != "$q" ] && echo "pyra: queue=$nq" >&8 && q=$nq
+		n=$((n + 1))
+		sleep 0.1
+	done
+	sleep 3
+	echo "pyra-settle-trace off" >&8
+	echo 0 >&9
+) </dev/null >/dev/null 2>&1 &
+
+exit 0

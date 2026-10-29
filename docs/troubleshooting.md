@@ -277,10 +277,30 @@ the queue file itself. The kernel does send that event: `vfs_unlink` calls
 `unlink`. Any later `IN_DELETE` in `/run/udev` frees settle. That can be a
 later uevent that makes udevd create and delete the file again, which is
 probably what ended the 26.6 s boot, or it can be the timeout. With neither,
-settle sleeps the full 120 s, and that is the whole of shape A. The sd-event
-side looked right on reading (systemd 257: the watch is armed before the
-first check, and buffered events stop the loop from sleeping). Why the first
-wakeup is lost, kernel or userspace, is still open.
+settle sleeps the full 120 s, and that is the whole of shape A.
+
+**2026-10-29, the cause: a 5.6 kernel bug, `IN_DELETE` before `d_delete()`.**
+The wakeup is not lost. A kprobe trace of a stuck boot
+(`experiments/initramfs-wait/settle-trace-2026-10-29-stuck.txt`) shows the
+`IN_DELETE` for `queue` reaching settle's inotify group, settle woken, the
+32-byte event read, and settle's lookup of `/run/udev/queue`. settle then went
+back to sleep, which it only does when `access()` finds the file. In 5.6.19
+`vfs_unlink()` sends the notification before `d_delete()`. When settle is
+woken on the CPU udevd is running on, it preempts udevd in that gap and finds
+the old dentry still cached. Both misses on that boot were same-CPU wakeups.
+The delete that freed settle, and the one on a fast traced boot, woke it on
+the other CPU. A userspace test reproduces it outside boot
+(`experiments/initramfs-wait/inotify-delete-race.c`): on the Pyra, 1964 of
+2000 `IN_DELETE`s with both processes on one CPU still found the file, against
+4 and 83 of 2000 across CPUs. On a 7.2 kernel it was 0 of 6000. Mainline
+introduced this in v5.3 (49246466a989) and fixed it in v5.17 (a37d9a17f099,
+"fsnotify: invalidate dcache before IN_DELETE event"). systemd is not at
+fault. The fix for our kernels is a backport. Until then, `pyra-settle-nudge`
+works because its extra delete wakes settle again after `d_delete()` has
+run. A backport request is drafted in
+`reports/kernel-fsnotify-delete-before-d-delete.md`. Any other program that
+reads `IN_DELETE` as "the name is gone" can trip on the same bug on these
+kernels.
 
 **Workaround, on the trixie card for `m4-kbdled`:**
 `device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge`. It starts a

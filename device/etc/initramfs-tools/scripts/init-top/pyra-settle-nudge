@@ -3,13 +3,15 @@
 #
 # init-top/udev runs `udevadm settle`, which waits for /run/udev/queue to go
 # away: it watches /run/udev for IN_DELETE and re-checks the file on each one.
-# On some warm reboots it misses the queue file's deletion and sleeps on with
-# the queue already empty, until its 120 s timeout (or until some later uevent
-# makes udevd create and delete the file again), so root mounts at about 126 s
-# instead of 6-10 s. Deleting any other file in /run/udev wakes it at once,
-# and it then exits through its own check (measured 2026-10-29: settle gone
-# 0.05 s after such a delete, 9 s after the queue had emptied). Why the first
-# IN_DELETE goes unnoticed is not known; see docs/troubleshooting.md shape A.
+# On the 5.6 kernels the IN_DELETE arrives before the kernel drops the name
+# from its dentry cache. When settle is woken on udevd's CPU, it runs its check
+# in that gap, still finds the file, and sleeps on with the queue already empty
+# until its 120 s timeout (or until some later uevent makes udevd create and
+# delete the file again). Root then mounts at about 126 s instead of 6-10 s.
+# Deleting any other file in /run/udev wakes it again, and this time its check
+# sees the queue gone (measured 2026-10-29: settle gone 0.05 s after such a
+# delete, 9 s after the queue had emptied). Mainline fixed the kernel side in
+# v5.17 (a37d9a17f099); see docs/troubleshooting.md shape A.
 #
 # This hook starts a background watcher and returns at once. While settle runs,
 # the watcher checks every 0.5 s; when the queue file has been absent for two

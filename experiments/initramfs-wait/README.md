@@ -88,3 +88,56 @@ So the PING conclusion of 2026-10-28 was wrong, and
 `pyra-settle-nudge` was installed beside the diagnostic. Both are in the card's
 m4-kbdled initrd. The diagnostic's poke only fires if settle is still running
 at 15 s, which the nudge should now prevent.
+
+## `pyra-settle-trace` (R21, 2026-10-29)
+
+An `init-top` hook that puts kprobes and two scheduler tracepoints on the
+path from udevd's `unlink` of `/run/udev/queue` to settle's check of it:
+`do_unlinkat`, `fsnotify` (IN_DELETE only), `inotify_handle_event`,
+`fsnotify_add_event` (entry and return), `ep_poll_callback`, and for
+`udevadm` only `sys_inotify_add_watch`, `do_epoll_wait`, `inotify_read`,
+`filename_lookup`/`do_filp_open` of `/run/udev*`, `sched_wakeup` and
+`sched_switch`. Kprobes don't stop the task the way strace's ptrace does.
+The kernel's ring buffer outlives switch_root, and a watcher stops tracing 3 s
+after settle exits. Read it after boot with
+`sudo cat /sys/kernel/tracing/trace`. `chain.py` pulls settle's events out of
+it, and `stall.py` lists each queue deletion during settle's wait, whether
+settle's inotify group got it, and whether settle woke. The header of the hook
+lists what each probe shows.
+
+Probe notes for this ARM kernel: arguments 5 and up are `$stack0` onwards.
+Probes that read user strings (`do_faccessat`, `vfs_statx`,
+`strncpy_from_user` with `:ustring`) mostly print `(fault)`, so the path
+probes sit on `filename_lookup` and `do_filp_open`, which get the kernel's
+copy. `getname_flags` never fires, because callers use its
+`getname_flags.part.0` clone. Unfiltered, `udevadm trigger`'s 90000 sysfs
+lookups cost about 2 s of boot time, so the path probes filter on
+`/run/udev*`.
+
+Test runs had `pyra-settle-nudge` moved out of the m4-kbdled initrd. Two
+traced warm reboots on l5, after 42 and 11 min up:
+
+- Fast (`settle-trace-2026-10-29-fast.txt`): one queue deletion during
+  settle's wait, on CPU 1. settle was woken on CPU 0, looked up the queue
+  file 0.1 ms later and exited.
+- Stuck (`settle-trace-2026-10-29-stuck.txt`, root at 17.8 s): queue
+  deletions at 7.379 and 10.333 s were delivered and read, and settle looked
+  the file up each time and slept on. In both, settle was woken on udevd's CPU
+  and ran before udevd got back from `fsnotify_add_event`, so before
+  `d_delete()`. The deletion at 13.565 s woke it on the other CPU, and it
+  exited.
+
+`inotify-delete-race.c` is the same race outside boot. Build it on the
+Pyra with `gcc -O2`, then run `./inotify-delete-race DIR 2000 0 0` with DIR
+a fresh directory on tmpfs. The result is in `docs/troubleshooting.md` shape A
+and `docs/verification-log.md`.
+
+After the runs the trace hook was removed and the nudge put back. The
+initrd's file list matched `initrd.img-5.6.19-m4-kbdled.before-r21`, kept
+beside it. One boot after that: nudge log `settle exited`, no kprobes left.
+
+The Pyra's serial console (its micro-USB FTDI port, 1500000 baud) was logged on
+the PC for these boots. The cmdline already sends the console there, cable or
+not, so logging it doesn't change the timing. If a traced boot ever hangs
+outright, SysRq-z over serial (a BREAK, then `z`) dumps the ftrace buffer to
+the console.
