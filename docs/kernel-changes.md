@@ -36,6 +36,9 @@ reproducible: change a patch file here and rerun the script, never commit there.
 Every variant is built by `pc/pyra-crossbuild.sh <target>` under its own release name,
 so each one installs beside the others instead of replacing them.
 
+`kernel-m4-kbdled` is the shipped kernel. The others are developer builds
+(`building.md`, "Which kernel ships").
+
 | Target | Release | Carries |
 | --- | --- | --- |
 | `kernel-debug` | `5.6.19-softlockup` | Stock source, plus a lockup detector in the config |
@@ -47,7 +50,7 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4demo` | `5.6.19-m4demo` | `patches/` + `experiments/m4-ipu` only. This is what the demo kit ships |
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
-| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
+| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | **The shipped kernel.** `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4

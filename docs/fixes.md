@@ -515,6 +515,14 @@ battery would drain on the charger again. The pack's thermal protection is the
 charger's TS pin, a hardware comparator on the battery thermistor, and it gates
 charging whatever the input limit says. It was always the thing doing that job.
 
+The release keeps it that way (owner decision, 2026-10-29): no software charge
+control, the TS pin alone. A proper guard is open work and not part of this
+release. It would read a real cell temperature, perhaps the thermistor through
+the Palmas GPADC (not confirmed), and act on the charge current (REG02), not
+the input limit (`experiments/charging/README.md`, "What protects the cell").
+Where the TS pin trips on this board has not been measured; the ~38°C figure
+is from another board.
+
 **What it assumes, which you should know before raising the number.** It
 asserts a current; it detects nothing, because nothing here can. Proper BC1.2
 detection means driving `FORCE_DPDM` in the bq24297's REG07, and that belongs

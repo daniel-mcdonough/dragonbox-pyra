@@ -13,7 +13,9 @@
 #   ./pyra-crossbuild.sh kernel-m4           the fix kernel plus the M4 stack
 #   ./pyra-crossbuild.sh kernel-m4-uprobe    the same, plus user-space probes
 #   ./pyra-crossbuild.sh kernel-m4-uprobe-kprobe  the same, first with 0033, plus PM debug
-#   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED
+#   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED:
+#                                            the shipped kernel. Every other kernel-*
+#                                            target is a developer build
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks-pyra, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else

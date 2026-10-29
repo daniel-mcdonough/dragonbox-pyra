@@ -2,13 +2,14 @@
 #
 # Two variants, both built by pc/pyra-crossbuild.sh exactly as on a PC:
 #
-#   m4-kbdled  5.6.19-m4-kbdled  the everyday kernel on the development unit:
+#   m4-kbdled  5.6.19-m4-kbdled  the shipped kernel:
 #                                patches/, the intermediate OPPs, the M4 stack,
 #                                the AESS audio series, the GPU idle-power fix
 #                                (0034) and the keyboard light as an LED, with
 #                                uprobes and PM debug
 #   m4demo     5.6.19-m4demo     patches/ plus the M4 stack and nothing else,
-#                                the kernel the M4 demo kit ships
+#                                the kernel the M4 demo kit ships, and
+#                                only for that
 #
 # Pushing a tag named kernel-* builds both and creates a release for that tag.
 # Running the workflow by hand builds both and keeps them as workflow
@@ -98,13 +99,13 @@ jobs:
             echo
             echo "## 5.6.19-m4-kbdled"
             echo
-            echo "The everyday kernel on the development unit. Carries the experimental AESS audio path, the intermediate CPU frequency steps and the GPU idle-power fix (0034), which lets the SGX power down at desktop idle (about 0.22 W). If an earlier copy of 0034 is installed as \`/lib/modules/5.6.19-m4-kbdled/updates/pvrsrvkm_omap5_sgx544_116.ko\`, delete it and run \`depmod -a 5.6.19-m4-kbdled\`, or it keeps loading instead of the built-in one. The keyboard light is an LED (\`pyra::kbd_backlight\`), so anything hard-coding \`/sys/class/backlight/keyboard-backlight\` stops reaching it."
+            echo "The shipped kernel, and the one to install. Carries every patch in \`patches/\`, including the late root mount fix (0048-0049), the AESS audio path with headphone-jack switching, the intermediate CPU frequency steps below the rated 1.5 GHz (no overclock) and the GPU idle-power fix (0034), which lets the SGX power down at desktop idle (about 0.22 W). If an earlier copy of 0034 is installed as \`/lib/modules/5.6.19-m4-kbdled/updates/pvrsrvkm_omap5_sgx544_116.ko\`, delete it and run \`depmod -a 5.6.19-m4-kbdled\`, or it keeps loading instead of the built-in one. The keyboard light is an LED (\`pyra::kbd_backlight\`), so anything hard-coding \`/sys/class/backlight/keyboard-backlight\` stops reaching it."
             echo
             sed 's/^/- `/; s/$/`/' m4-kbdled-patches.txt
             echo
             echo "## 5.6.19-m4demo"
             echo
-            echo "The fix set and the M4 stack only, for running the M4 demo kit (\`docs/m4-demo.md\`) without changing audio or the frequency table."
+            echo "Only for the M4 demo kit: the fix set and the M4 stack, for running the M4 demo kit (\`docs/m4-demo.md\`) without changing audio or the frequency table."
             echo
             sed 's/^/- `/; s/$/`/' m4demo-patches.txt
           } > ../notes.md

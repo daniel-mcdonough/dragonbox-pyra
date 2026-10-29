@@ -17,8 +17,9 @@
 #   ./pyra-push-kernel.sh --install --reboot pyra@192.168.0.10
 #   PYRA_HOST=pyra@192.168.0.10 ./pyra-push-kernel.sh --install --reboot
 #
-# The tarball defaults to the fix build. Name another with --tarball, or point
-# PYRA_BUILD_DIR somewhere else, exactly as the build script does.
+# The tarball defaults to the shipped kernel, 5.6.19-m4-kbdled. Name another
+# with --tarball, or point PYRA_BUILD_DIR somewhere else, exactly as the build
+# script does.
 #
 # --slot LABEL is handed to the installer, which then writes that boot entry
 # instead of the test slot l1 (docs/building.md, "Boot slots"). The installer
@@ -35,7 +36,7 @@ REPO_DIR=$(cd "$SELF_DIR/.." && pwd)
 # Default: dragonbox-pyra-build beside this repository.
 BUILD_DIR=${PYRA_BUILD_DIR:-$(cd "$SELF_DIR/../.." && pwd)/dragonbox-pyra-build}
 
-TARBALL=$BUILD_DIR/kernel/fix-kernel.tar.gz
+TARBALL=$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz
 # PYRA_HOST is the default, not the answer: an argument on the command line
 # has to be able to override it, or setting it once in a shell makes the
 # documented form above fail with "one host at a time".

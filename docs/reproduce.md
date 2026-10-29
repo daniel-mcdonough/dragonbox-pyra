@@ -17,7 +17,7 @@ spine, and it points at the other documents rather than repeating them.
 | --- | --- | --- |
 | Rootfs | The Pyra project's trixie image, grown onto the whole card | `procedure.md` sections 1 to 3 |
 | Twelve fixes | Xorg, first-run wizard, nubs, GLX, USB hub, the thermal daemon's broken cap and its ladder, charging, sound, the greeter, GL init, the volume wheel (`docs/fixes.md`) | `pc/pyra-trixie-prep.sh`, applied offline |
-| Kernel | `5.6.19-fix`: the stock pyradef source, a lockup detector, and the patches in `patches/` | `pc/pyra-crossbuild.sh kernel-fix` |
+| Kernel | `5.6.19-m4-kbdled`, the shipped kernel: the stock pyradef source plus `patches/`, the AESS audio path and headphone jack, the SGX idle fix, the intermediate CPU steps (no overclock) and the keyboard light as an LED (`docs/kernel-changes.md`) | `pc/pyra-crossbuild.sh kernel-m4-kbdled` |
 | X display driver | **Stock**, unmodified, from the Pyra repository | nothing to build |
 | Helpers | Boot selector, kernel installer, suspend test, hang trap, profilers, governor sweep, thermal probe and ladder fix | `pc/pyra-push-helpers.sh`, or `device/pyra-install-helpers.sh` on the device |
 | Capture settings | `kernel.sysrq = 446` and all-CPU backtraces | installed with the helpers |
@@ -48,16 +48,16 @@ password and no login prompt. Do it while the card is still in the reader.
 
 ### 2. Build the patched kernel, on the PC
 
-    ./pc/pyra-crossbuild.sh kernel-fix
+    ./pc/pyra-crossbuild.sh kernel-m4-kbdled
 
 Roughly ten minutes on a modern machine, most of it the first container pull.
 It cross-compiles in a throwaway Debian container, so nothing is installed on
 your host beyond the image, and the Pyra is not involved. The output is
-`../dragonbox-pyra-build/kernel/fix-kernel.tar.gz`.
+`../dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz`.
 
-The build prints each patch as it applies it. All six must say `applied` or
+The build prints each patch as it applies it. Every one must say `applied` or
 `already`; a patch that will not apply stops the build rather than producing a
-kernel that is missing a fix it claims to have. `building.md` has what each
+kernel that is missing a fix it claims to have. `kernel-changes.md` has what each
 patch does and why.
 
 ### 3. Copy it and the repository across, and install it
@@ -71,11 +71,11 @@ the installer over ssh, reboots, waits, and checks the machine came back on the
 kernel you just sent. The three steps by hand, if you would rather watch each
 one:
 
-    scp ../dragonbox-pyra-build/kernel/fix-kernel.tar.gz pyra@<address>:
+    scp ../dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz pyra@<address>:
     rsync -a device patches pyra@<address>:dragonbox-pyra/
 
     ssh pyra@<address>
-    sudo ./dragonbox-pyra/device/pyra-install-debug-kernel.sh fix-kernel.tar.gz
+    sudo ./dragonbox-pyra/device/pyra-install-debug-kernel.sh m4-kbdled-kernel.tar.gz
 
 It refuses rather than guesses: a tarball that would destroy the `/lib`
 symlink, too little space in `/boot`, a boot configuration it did not write.
@@ -139,7 +139,7 @@ specific thing to look at.
 
 **The kernel is the patched one.**
 
-    uname -r                                     # 5.6.19-fix
+    uname -r                                     # 5.6.19-m4-kbdled
     sudo pyra-boot-kernel.sh status              # and it is what boots next
 
 **The phantom SD hosts are gone.** This is `patches/0003`. Six hosts become

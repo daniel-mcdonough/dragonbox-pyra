@@ -331,8 +331,8 @@ setting to avoid it:
 With those masked an idle timeout fails immediately instead of freezing the
 session, because nothing starts the service that freezes it.
 
-`patches/0003` fixes the cause, and `reproduce.md` is the path to a kernel
-carrying it. On that kernel, unmask all five and test with
+`patches/0003` fixes the cause, and `reproduce.md` is the path to the shipped
+kernel, `5.6.19-m4-kbdled`, which carries it. On that kernel, unmask all five and test with
 `sudo pyra-sleep-test.sh`, which arms the clock to wake the machine by itself
 and tells you whether the session really came back.
 
@@ -343,7 +343,7 @@ its own repository and also carries a panel applet for the screen and keyboard
 backlights. Build and install it:
 
     ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
-    sudo apt install ./pyra-backlight_0.1_all.deb    # on the Pyra
+    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
     gsettings set org.mate.session idle-delay 5      # minutes before it dims
@@ -435,7 +435,7 @@ again afterwards with `pyra-volumed/install.sh --undo`.
 
 **4. A kernel change: rebuild and install it.** If `patches/` changed, the
 kernel is the only thing that picks it up. Build it on the workstation
-(`building.md`), then install it with
+(`./pc/pyra-crossbuild.sh kernel-m4-kbdled`, `building.md`), then install it with
 `sudo pyra-install-debug-kernel.sh <tarball>` (step 2 put it on `$PATH`), or
 in one go with `./pc/pyra-push-kernel.sh --install --reboot`. Re-running the
 installer is safe. Its rules, from its header and code:

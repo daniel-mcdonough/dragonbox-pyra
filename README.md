@@ -84,17 +84,26 @@ instead), install the separate `pyra-backlight` package. Section 8 of
 
 ## Going further: the patched kernel
 
-The card above runs the stock `5.6.19-pyradef` kernel. The patches in
-`patches/` fix suspend, the nubs dying after a resume, the built-in keyboard
-going silent, and the noise on every resume, and carry the candidate display
-fix. Building it needs Docker on the PC and takes about ten minutes:
+The card above runs the stock `5.6.19-pyradef` kernel. The kernel this
+project ships is `5.6.19-m4-kbdled`. It carries everything in `patches/`: the
+suspend fix, the nubs dying after a resume, the built-in keyboard going silent,
+the noise on every resume, the root filesystem mounting a minute late, and the
+candidate display fix. On top of that it carries the AESS audio path with
+headphone-jack switching, the SGX powering off at idle, five extra CPU
+frequency steps below the rated 1.5 GHz (no overclock), and the keyboard light
+as an LED. [docs/kernel-changes.md](docs/kernel-changes.md) lists every patch.
+Building it needs Docker on the PC and takes about ten minutes:
 
-    ./pc/pyra-crossbuild.sh kernel-fix
+    ./pc/pyra-crossbuild.sh kernel-m4-kbdled
     ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
     ./pc/pyra-push-helpers.sh pyra@<address>
 
 [docs/reproduce.md](docs/reproduce.md) is the full path, including turning
 suspend back on and checking each fix took.
+
+On this kernel the Fn keyboard-brightness keys do nothing, because the stock
+`pyra-brightkey.sh` looks for the keyboard light where it no longer is. The
+`pyra-backlight` 0.2 panel applet controls it instead.
 
 ---
 

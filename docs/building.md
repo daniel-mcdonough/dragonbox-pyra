@@ -175,6 +175,31 @@ Install and roll back, with the X server stopped:
 
 ## The kernel
 
+### Which kernel ships
+
+**`5.6.19-m4-kbdled` is the shipped kernel** (owner decision, 2026-10-29):
+
+    ./pc/pyra-crossbuild.sh kernel-m4-kbdled     # kernel/m4-kbdled-kernel.tar.gz
+
+It carries all of `patches/` (including 0048-0049, the late root mount),
+`0007` from `experiments/thermals-and-frequency/` (five steps below the rated
+1.5 GHz, so the ceiling is unchanged), the M4 stack, the AESS audio series,
+`0034` (SGX idle), the keyboard light as an LED and the jack-detect patches.
+It does not carry `0008`, the 2 GHz overclock. `docs/kernel-changes.md` has
+the full table. `pc/pyra-push-kernel.sh` sends its tarball by default, and the
+release workflow builds it. "The keyboard-LED kernel" below says what to
+expect on it.
+
+**Every other `kernel-*` target is a developer build:** `kernel`,
+`kernel-debug`, `kernel-fix`, `kernel-c2`, `kernel-freq`, `kernel-oc`,
+`kernel-m4`, `kernel-m4demo`, `kernel-m4-uprobe`, `kernel-m4-uprobe-kprobe`
+and `kernel-jack`. They stay buildable because the history in this document
+and the A/B tests depend on them, but the user docs don't point at them.
+Don't hand `kernel-oc` to anyone: its 2 GHz table needs modified cooling
+(`known-limitations.md` §2.4). `kernel-c2` hangs the machine.
+
+### Building the stock source
+
     ./pc/pyra-crossbuild.sh kernel               # zImage, modules, dtbs
     ./pc/pyra-crossbuild.sh kernel bindeb-pkg    # the same, as .debs
 
@@ -445,8 +470,14 @@ console on `ttyO2` at 1500000 is already enabled on every boot entry.
 
 ## The patch set, and the kernel that carries it
 
-Six changes live in `patches/` as ordinary unified diffs, plus a seventh,
-`0033`, added 2026-09-25. So far only `5.6.19-m4-uprobe-kprobe` carries it (see 7 below). They are applied
+**A developer build.** The shipped kernel, `5.6.19-m4-kbdled`, carries all of
+`patches/` and more ("Which kernel ships" above). This section describes
+`kernel-fix`, the build with `patches/` and nothing else, which is what the
+first six patches were tested on.
+
+The first six changes in `patches/` are below, plus a seventh, `0033`, added
+2026-09-25 (see 7 below). `0040`-`0049` came later and are described in
+`kernel-changes.md`. They are applied
 in order by `./pc/pyra-crossbuild.sh kernel-fix`, which builds exactly what
 `kernel-debug` builds — same source, same compiler, same lockup detector —
 and then puts the patches on top. It lands as `5.6.19-fix`, in its own source
@@ -669,6 +700,8 @@ and left nothing in `dmesg`.
 
 ## The experiment kernel, and why it is not in the patch set
 
+**A developer build.** Not shipped.
+
 **Tried on 2026-09-12, and it hangs the machine within two minutes.**
 `experiments/c2-idle/RESULT.md` has the evidence. Everything below still
 describes how to build and boot it, because that machinery is what any future
@@ -729,6 +762,9 @@ at it again, and set the default back:
 
 ## The two frequency kernels
 
+**Developer builds.** Not shipped. The shipped kernel carries `0007` but not
+`0008`.
+
 Added 2026-09-12, from `experiments/thermals-and-frequency/`. Neither has been
 booted. They use the same machinery as the experiment above, so everything in
 that section about one-shot boots and going back applies unchanged; only the
@@ -763,6 +799,8 @@ example of that script that raises the hot-battery charge current more than
 threefold.
 
 ## The M4 kernel
+
+**A developer build.** Not shipped; the shipped kernel is built on it.
 
 Added 2026-09-20, from `experiments/m4-ipu/`. **Booted, and both Cortex-M4s
 have run code on it.** Same machinery as the two above; only the tarball name
@@ -828,7 +866,7 @@ on, and checks the root one too, which nothing did before.
 
 ## The keyboard-LED kernel
 
-`5.6.19-m4-kbdled` is `5.6.19-m4-uprobe-kprobe` (same patches, same config,
+**The shipped kernel.** `5.6.19-m4-kbdled` is `5.6.19-m4-uprobe-kprobe` (same patches, same config,
 checked by diff) plus one device-tree change,
 `experiments/kbd-led/0035-arm-dts-pyra-make-the-keyboard-light-an-led.patch`.
 The change declares the keyboard light as a `pwm-leds` LED,
