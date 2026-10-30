@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 15, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 16, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -545,6 +545,23 @@ else
 fi
 
 ########################################################################
+i "assert fix 16 — the governor setting"
+########################################################################
+for g in "pyra-governor-tune.sh /usr/local/sbin 755" "pyra-governor-tune.service /etc/systemd/system 644"; do
+    read -r name dir mode <<<"$g"
+    G=$MNT$dir/$name
+    if [[ -e $G ]] && cmp -s "$PAYLOADS/$name" "$G"; then
+        p "fix16: $dir/$name matches repo"
+    else
+        f "fix16: $dir/$name missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$G" 2>/dev/null) == "$mode 0:0" ]] && p "fix16: $name is $mode root:root" || f "fix16: $name mode is $(stat -c '%a %u:%g' "$G" 2>/dev/null)"
+done
+[[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/pyra-governor-tune.service" 2>/dev/null) == /etc/systemd/system/pyra-governor-tune.service ]] \
+    && p "fix16: enabled in multi-user.target" \
+    || f "fix16: not enabled"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -573,6 +590,8 @@ grep -qE 'fix14: .*already has both hooks' "$OUT/prep-run2.log" && p "run 2 repo
 ! grep -qE 'fix14: rebuilt' "$OUT/prep-run2.log" && p "run 2 rebuilt no initrd" || f "run 2 rebuilt an initrd"
 grep -qE 'fix15: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix15's script up to date" || f "run 2 did not report fix15's script up to date"
 [[ $(grep -cE 'fix15: .*already set' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix15 keys already set" || f "run 2 did not report both fix15 keys already set"
+[[ $(grep -cE 'fix16: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix16 files up to date" || f "run 2 did not report both fix16 files up to date"
+grep -qE 'fix16: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix16 already enabled" || f "run 2 did not report fix16 already enabled"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"

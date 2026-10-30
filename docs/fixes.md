@@ -1,4 +1,4 @@
-# The fifteen fixes, and what they actually do
+# The sixteen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1006,6 +1006,42 @@ with the keys lasts until that cycle (`procedure.md` §8). Writing through
 UPower's `KbdBacklight.SetBrightness` instead of sysfs does not change that
 (tested the same day: the touch still restored 99 of 100), so the script writes
 sysfs, which also works at the greeter and without UPower.
+
+## Fix 16 — the governor drops the clock between every unit of a burst
+
+The ondemand governor's `sampling_down_factor` is 1 on every kernel here, so it
+steps the clock down at the first idle sample, and work that arrives in bursts
+(a frame, a key press, a page of output) pays the ramp back up for each unit.
+At 10 it waits ten sampling periods before stepping down, so a burst pays the
+ramp once. Measured 2026-09-13, two interleaved passes per setting, thermal
+daemon stopped and the ceiling pinned (`experiments/governor/README.md`): mean
+burst latency 53.8 → 41.2 ms (-23.4 %), median 53.5 → 36.0 ms (-32.7 %), for
+421 → 444 MHz idle mean frequency (+5.4 %). The other ondemand knobs were worth
+about 1 % each and are left at stock; `device/pyra-governor-tune.sh`'s header
+says why.
+
+A sysfs write does not survive a reboot, so prep installs the script to
+`/usr/local/sbin` and `pyra-governor-tune.service` to `/etc/systemd/system`,
+and enables the unit offline with a `multi-user.target.wants` link, as fix 5
+does. `pyra-install-helpers.sh` installs the same two files to the same paths
+and enables the unit online.
+
+The unit is a oneshot with `RemainAfterExit=yes`. Leaving ondemand discards its
+tunables, and the kernel recreates them at stock values when the governor comes
+back (seen 2026-09-28 after a benchmark pin; `pyra-cpu-pin`'s header), so the
+way to put 10 back is `systemctl restart pyra-governor-tune`, not `start`.
+
+**On another governor it does nothing and does not fail.** Every kernel config
+on the trixie card, the stock `5.6.19-pyradef` that a prepared card boots
+included, has `CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y` with `cpufreq-dt` built
+in (checked 2026-10-29 in `/boot/config-*`). On a machine running something
+else, the unit's `ConditionPathExists` on the ondemand directory skips it, and
+the script by itself reports the governor and exits 0.
+
+Check after boot: `pyra-governor-tune.sh --check` reads `sampling_down_factor :
+10` and `applied.`. Checked 2026-10-29 on the trixie card (m4-kbdled), whose
+script, unit, modes and enable link are byte-for-byte what prep writes: the
+boot-time run, 16 s after boot, left 10 (`verification-log.md`).
 
 ## Fixes 6, 7 and 12 as a package
 

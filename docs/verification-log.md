@@ -1211,3 +1211,28 @@ MATE's dimming on this kernel, same card, logged in, on AC (UPower
   later MATE set 25.
 - Input made with `xdotool` did not trigger MATE's dim or restore at all, so
   these needed real touches.
+
+## 2026-10-29 — fix 16, the governor setting at boot
+
+Trixie card, `5.6.19-m4-kbdled`. The card has had `pyra-governor-tune` from
+`pyra-install-helpers.sh`, which is the state prep's fix 16 writes, so no copy
+was needed:
+
+- `/usr/local/sbin/pyra-governor-tune.sh` and
+  `/etc/systemd/system/pyra-governor-tune.service` have the same sha256 as
+  `device/` (`3b674fed…`, `fb2a056c…`), modes 755 and 644 root:root, and
+  `multi-user.target.wants/pyra-governor-tune.service` points at
+  `/etc/systemd/system/pyra-governor-tune.service`, as prep links it.
+- This boot (device clock 2026-10-30 00:31:57 CET), the unit's journal:
+  `sampling_down_factor 1 -> 10`, `applied`, 16 s after boot; `systemctl
+  status` `active (exited)`, 273 ms in `systemd-analyze blame`.
+- `pyra-governor-tune.sh --check` 45 min later: `sampling_down_factor : 10`,
+  governor `ondemand`, `applied.`
+- Every `/boot/config-*` on the card, `5.6.19-pyradef` included, has
+  `CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y` and `CONFIG_CPUFREQ_DT=y`, so the
+  stock kernel a prepared card boots is on ondemand too. Not booted on pyradef
+  this session.
+- Prep's fix 16 block alone, run twice against a scratch root on the PC (without
+  `-o 0 -g 0`, as a user): installed both files and the link, then reported
+  both up to date and already enabled. The full selftest needs root on the PC
+  and was not run.

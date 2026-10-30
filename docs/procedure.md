@@ -11,23 +11,25 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Fifteen fixes are needed, and `fixes.md` explains each one. Most of them are not
+Sixteen fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
 cap at all; fix 7 corrects the ladder it applies, which throttles on the
 fuel gauge's die temperature and can overwrite its own deeper cap; fixes 8
 to 12 cover charging, sound, the greeter holding the sound card, GL on every
-boot, and the volume wheel; fix 13 makes Qt5 programs draw, and fix 14 stops
-root mounting a minute or two late.
+boot, and the volume wheel; fix 13 makes Qt5 programs draw, fix 14 stops
+root mounting a minute or two late, fix 15 makes the Fn keyboard-light keys
+work on the shipped kernel, and fix 16 sets the measured governor tunable at
+boot.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all fifteen fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all sixteen fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fix 14 rebuilds each initrd in a chroot
 (`fixes.md`, fix 14). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8, 13 and 14 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 16 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -196,6 +198,12 @@ You should get three pyraInput devices: keyboard, Gamepad, Mouse.
 On a cold boot it should be `enabled` and its journal should read `hub already
 on the USB bus, nothing to do`. It only does work after a warm reboot, so the
 real test is a `reboot` followed by checking that the USB devices came back.
+
+    # the governor setting (fix 16) was applied at boot
+    /usr/local/sbin/pyra-governor-tune.sh --check
+
+The first line should read `sampling_down_factor : 10` and the last `applied.`.
+`systemctl status pyra-governor-tune` should be `active (exited)`.
 
     # X server came up
     grep -E 'AIGLX|GLX|\(EE\)' /var/log/Xorg.0.log
@@ -413,7 +421,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the fifteen fixes it applies only 13, 14 and 15, whose files it shares
+and of the sixteen fixes it applies only 13 to 16, whose files it shares
 with prep. It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
@@ -434,6 +442,8 @@ from `device/`, with `--check` first if you want to see the state:
 | 12 | `pyra-volumed/` | `sudo ./pyra-volumed/install.sh` | rewrites its three files, rebuilds and restarts the daemon |
 | 13 | `pyra-gles` | step 2 | updated by step 2, which installs it at the same path |
 | 14 | an init-top hook | step 2 | updated by step 2, which rebuilds each initrd that needs it (step 5) |
+| 15 | `pyra-kbdlight.sh` | step 2 | updated by step 2, which also writes its two `/etc/pyrainput.cfg` lines |
+| 16 | `pyra-governor-tune.sh` or its unit | step 2 | updated by step 2, which restarts the unit, so the value is re-applied |
 
 Fixes 8 to 12 write their files through the same function that prep's
 `--emit-into` uses. Re-running one replaces its files with the current

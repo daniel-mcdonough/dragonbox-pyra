@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the fifteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the sixteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -87,6 +87,11 @@ GLES_SRC=$PAYLOADS/pyra-gles
 
 KBDLIGHT_SRC=$PAYLOADS/pyra-kbdlight.sh
 [[ -x $KBDLIGHT_SRC ]] || die "fix15: pyra-kbdlight.sh not found or not executable (looked in $PAYLOADS)"
+
+GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
+GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
+[[ -x $GOVTUNE_SRC ]] || die "fix16: pyra-governor-tune.sh not found or not executable (looked in $PAYLOADS)"
+[[ -r $GOVTUNE_UNIT_SRC ]] || die "fix16: pyra-governor-tune.service not found (looked in $PAYLOADS)"
 
 HOOK_SRC=$PAYLOADS/etc/initramfs-tools/scripts/init-top
 HOOKS="pyra-fw-nofallback pyra-settle-nudge"
@@ -932,6 +937,44 @@ while read -r line; do
     *)              ok "fix15: ${line#pyra-kbdlight: } in /etc/pyrainput.cfg" ;;
     esac
 done < <("$KBDLIGHT_SRC" --configure "$ROOT/etc/pyrainput.cfg" 2>&1)
+
+# ---------------------------------------------------------------------- fix 16
+#
+# ondemand's sampling_down_factor is 1, so the governor drops the clock at the
+# first idle sample and work that arrives in bursts pays the ramp back up on
+# every unit. 10 takes 23% off burst latency for 5.4% more idle frequency
+# (measured 2026-09-13, experiments/governor/README.md; the script's header has
+# the numbers and why it sets only this one value). A sysfs write does not
+# survive a reboot, so the unit applies it at boot. It is a oneshot that stays
+# active: leaving ondemand resets the tunable (pyra-cpu-pin's header), and
+# `systemctl restart` puts it back. Every kernel here, the stock one included,
+# boots on ondemand; on any other governor the unit's condition skips it and
+# the script exits 0, so it cannot fail the boot. Same two files, same paths
+# as pyra-install-helpers.sh, which enables it the same way online.
+
+GOVTUNE_DST=$ROOT/usr/local/sbin/pyra-governor-tune.sh
+GOVTUNE_UNIT=$ROOT/etc/systemd/system/pyra-governor-tune.service
+if [[ -e $GOVTUNE_DST ]] && cmp -s "$GOVTUNE_SRC" "$GOVTUNE_DST"; then
+    ok "fix16: ${GOVTUNE_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $GOVTUNE_DST ]] && echo updated || echo installed)
+    install -m 0755 -o 0 -g 0 "$GOVTUNE_SRC" "$GOVTUNE_DST"
+    ok "fix16: $VERB ${GOVTUNE_DST#$ROOT}"
+fi
+if [[ -e $GOVTUNE_UNIT ]] && cmp -s "$GOVTUNE_UNIT_SRC" "$GOVTUNE_UNIT"; then
+    ok "fix16: ${GOVTUNE_UNIT#$ROOT} already up to date"
+else
+    VERB=$([[ -e $GOVTUNE_UNIT ]] && echo updated || echo installed)
+    install -m 0644 -o 0 -g 0 "$GOVTUNE_UNIT_SRC" "$GOVTUNE_UNIT"
+    ok "fix16: $VERB ${GOVTUNE_UNIT#$ROOT}"
+fi
+if [[ -L $WANTS/pyra-governor-tune.service ]]; then
+    ok "fix16: already enabled in multi-user.target"
+else
+    ln -sf /etc/systemd/system/pyra-governor-tune.service \
+           "$WANTS/pyra-governor-tune.service"
+    ok "fix16: enabled in multi-user.target"
+fi
 
 echo
 sync
