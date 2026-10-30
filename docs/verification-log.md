@@ -1273,3 +1273,34 @@ which is the state prep's fix 17 writes:
   scratch root holding a regular file: an identical one was replaced, a
   differing one was kept as `.before-select`. The full selftest needs root on
   the PC and was not run (expected 88 + 20 = 108 passed).
+
+## 2026-10-29 — the prep selftest through fix 19
+
+`sudo pc/pyra-prep-selftest.sh` against a copy of `pyra-trixie-t1.img`, on the
+same x86 Arch PC with qemu-user binfmt. Prep ran with `--kernel` pointing at
+`m4-kbdled-kernel.tar.gz`, cross-built from the current kernel sources the same
+day. This is the first full run with fixes 16-19 in it; the entries above for
+fixes 16 and 17 ran only their own blocks.
+
+- First attempt: every assertion passed (144/0), but the verdict was `FAIL
+  (harness aborted)`. The selftest's own ERR trap went off at the new check that
+  prep stops when given no kernel option. In bash a `trap - ERR` inside a
+  function is undone when the function returns, so `disarm()` had never disarmed
+  anything. Earlier disarmed commands never failed outside an `||`, which hid
+  it. `arm` and `disarm` now set a flag the trap reads. Prep was unchanged.
+- Second attempt: `144 passed, 0 failed, 0 skipped`, `TEST COMPLETE: PASS`.
+  Fix 19 installed `5.6.19-m4-kbdled` into `user.cfg` slot `l5`, with the stock
+  `l0` append line, its dtbs, modules and initrd (fix 14's loop found both hooks
+  in it, ahead of udev), and `/etc/modprobe.d/pyra-m4-noautoboot.conf`. It made
+  `l5` the base and the default, kept `extlinux.conf.orig` with `default l0`,
+  armed no one-shot revert and left no staged tarball in `/var/tmp`. Both kernel
+  scripts are in `/usr/local/sbin`, 0755 root:root.
+- Run 2 reported every fix already in place, 16-19 included: the kernel was
+  already installed, and `l5` already the base and the default. No initrd was
+  rebuilt, and the snapshots of both partitions are identical to run 1's.
+- A run with no kernel option, while nothing is pinned for download, stopped
+  with `no kernel to install` and wrote nothing (the snapshot is unchanged).
+  The missing-payload run still aborts before fix 1. `fsck.f2fs` was clean.
+
+Not boot-tested: no card was written from the prepared image, so the first boot
+on `l5` is still open.
