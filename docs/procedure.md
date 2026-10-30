@@ -221,8 +221,24 @@ Log in as the user the script created. Then:
     sudo pyra-boot-kernel.sh status          # next boot and base: l5
     cat /etc/modprobe.d/pyra-m4-noautoboot.conf
 
-The last file should end in `blacklist omap_remoteproc`. A card prepared with
-`--no-kernel` reads `5.6.19-pyradef`, and `l0` as the base.
+`status` prints the running kernel and three lines, `next boot`, `base kernel`
+and `one-shot revert : disarmed`, the first two naming `l5`. The last file
+should end in `blacklist omap_remoteproc`. A card prepared with `--no-kernel`
+reads `5.6.19-pyradef`, and `l0` as the base.
+
+    # the stock kernel is still there as the fallback
+    grep -A2 '^label l0$' /boot/extlinux/linux.cfg   # linux /vmlinuz-5.6.19-pyradef
+
+    # root: the whole card, mounted promptly, no filesystem errors
+    df -h /                                  # about the card's size if it was grown
+    systemd-analyze                          # "(kernel)" well under 15 s
+    sudo dmesg | grep -i f2fs
+
+The `dmesg` lines should be `Found nat_bits`, `recover fsync data on readonly
+fs` (normal: root is mounted read-only first) and `Mounted with checkpoint
+version`, and nothing else. A `(kernel)` time near a minute or more is the late
+root mount fix 14 is for (`troubleshooting.md`, "Root mounts a minute or two
+late").
 
     # nubs, keyboard, gamepad
     systemctl status pyrainput
@@ -236,8 +252,10 @@ instead.
     # the USB3503 warm-reboot rescue is installed and armed
     systemctl is-enabled pyra-usb3503-rescue
 
-On a cold boot it should be `enabled` and its journal should read `hub already
-on the USB bus, nothing to do`. It only does work after a warm reboot, so the
+On a cold boot it should be `enabled`, and `sudo journalctl -b -u
+pyra-usb3503-rescue` should read `hub already on the USB bus, nothing to do`
+(without `sudo` the journal shows only your own messages, so it says `No
+entries`). It only does work after a warm reboot, so the
 real test is a `reboot` followed by checking that the USB devices came back.
 
     # the governor setting (fix 16) was applied at boot
@@ -264,21 +282,24 @@ With fix 4 applied the only GLX-related line should be:
 There should be **no** `AIGLX` lines at all, and no `Segmentation fault` /
 `Caught signal 11`. An AIGLX line reappearing means fix 4 is not in effect.
 
-    # the extensions that matter are still there
+    # the extensions that matter are still there (as the user logged in on :0)
     DISPLAY=:0 xdpyinfo | grep -E 'DRI2|DRI3|Present'
 
 `DRI3` and `Present` must both be listed. Those are what the SGX blob's window
 integration uses; `GLX` is deliberately absent.
 
-    # hardware GLES2 through the SGX blob
+    # hardware GLES2 through the SGX blob; copy device/pyra-gles2-smoke.c
+    # from this repository to the card first
     sudo apt-get install libx11-dev
-    gcc -O2 -o gles2-smoke gles2-smoke.c \
+    gcc -O2 -o gles2-smoke pyra-gles2-smoke.c \
         -I/opt/omap5-sgx-ddk-um-linux/include \
         -L/opt/omap5-sgx-ddk-um-linux/lib -lEGL -lGLESv2 -lX11
     sudo env DISPLAY=:0 XAUTHORITY=/var/run/lightdm/root/:0 ./gles2-smoke
 
 Check with `ldd` that it picked up `/opt/omap5-sgx-ddk-um-linux/lib/libEGL.so.1`
-and not the mesa one in `/usr/lib/arm-linux-gnueabihf`.
+and not the mesa one in `/usr/lib/arm-linux-gnueabihf`. A dozen
+`WSEGL_GetDrawableParameters: Buffer busy, waiting` lines at the start are the
+blob's own chatter and harmless.
 
 Measured on the fixed card:
 
@@ -288,6 +309,7 @@ Measured on the fixed card:
     GL_RENDERER  PowerVR SGX 544MP
     GL_VERSION   OpenGL ES 2.0 build 1.14@3699939 (MAIN)
     7073 frames in 5.00 s = 1414 fps   (clear + swap, 320x240, vsync off)
+    (1392 fps on a fix 19 card, m4-kbdled, 2026-10-30)
 
 The `DRI3`/`present` lines are printed by `libpvrDRI3WSEGL` itself — that module
 lives at `/usr/lib/libpvrDRI3WSEGL.so` and comes from the `dri3wsegl-pyra`

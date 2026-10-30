@@ -1331,3 +1331,55 @@ machines before `dd`. First boot, checked over ssh as `pyra` with that key:
   that `--set-password` set. Root is still the image's 5.8 GB (not yet grown).
 
 Not checked on this card yet: sound out of the speaker, suspend, the Fn keys.
+
+## 2026-10-30 — procedure §6 on the grown fix 19 card
+
+The card from the previous entry, grown on a laptop's built-in SD slot, second
+boot and later. Every §6 check, run over ssh as `pyra` (the root ones by the
+owner with `sudo`), 2026-10-30 18:00-18:10:
+
+- `uname -r` `5.6.19-m4-kbdled`. `pyra-boot-kernel.sh status`: next boot and
+  base `l5`, one-shot revert disarmed. `linux.cfg` still has `label l0` on
+  `vmlinuz-5.6.19-pyradef` (with `l0r`, `l0h`). `pyra-m4-noautoboot.conf` ends
+  in `blacklist omap_remoteproc`.
+- `pyrainput` active, three pyraInput devices. `pyra-usb3503-rescue` enabled,
+  journal `hub already on the USB bus, nothing to do` (cold boot).
+- Fix 16: `sampling_down_factor : 10` … `applied.`, unit active.
+  Fix 17: `path aess`, `/etc/pulse/pyra-aess.pa`, `ok`; default sink `aess`.
+- Fix 4: the only GLX line in `Xorg.0.log` is `Extension "GLX" is disabled`; no
+  AIGLX, no `(EE)` entries, no signal 11. `xdpyinfo` lists DRI2, DRI3, Present.
+  `/var/lib/lightdm/data` owned by lightdm.
+- `pyra-gles2-smoke` (§6's build, `libx11-dev` installed for it): `ldd` picks
+  the DDK's `libEGL.so.1` and `libGLESv2.so.1`; EGL vendor Imagination,
+  `PowerVR SGX 544MP`, `OpenGL ES 2.0 build 1.14@3699939`, 6959 frames in 5.00 s
+  = 1392 fps (320x240, vsync off). Fix 11: `/proc/pvr/version` present, pvr on
+  `card2`, SGX up at boot without a hand-run `pvrsrvctl`.
+- Fix 13: `pyra-gles --check` finds the blob's `libGLESv2.so.1`; the shim is
+  made on first use. No Qt5 program is on the card, so a Qt draw was not tried.
+- Prep's payloads: 17 installed files (fixes 5, 8-13, 15, 16, 18) are
+  byte-identical to the repository (SHA-256). Fix 2 marker
+  `/var/lib/pyra/first-run.done` present, no wizard ran. Fixes 6/7: both
+  `pyra-thermal.sh.before-*` backups present, `pyra-thermal` active,
+  `scaling_max_freq` 1500000. Fix 8: `max_current` 2000000 at boot. Fix 12:
+  `pyra_volumed` runs `/usr/local/bin/pyra_volumed`, built on the first boot
+  (03:55) by `pyra-volumed-run`. Fix 15: both `scripts.brightness.fn*` lines in
+  `/etc/pyrainput.cfg`.
+- Fix 14: the m4-kbdled initrd has `pyra-fw-nofallback` and `pyra-settle-nudge`;
+  `ignore_sysfs_fallback` 1. `systemd-analyze` 8.9 s kernel + 22.4 s userspace,
+  `graphical.target` at 15.8 s. The only "Falling back to sysfs" line is
+  `regulatory.db` at 4.7 s, before the initramfs runs; it is the harmless kind
+  (`troubleshooting.md`). `r8152`'s firmware miss at 8.2 s has none.
+- Root: `df -h /` 239G, 4.9G used. `dmesg | grep -i f2fs`: `Found nat_bits`,
+  `recover fsync data on readonly fs`, `Mounted with checkpoint version =
+  435f643f`, nothing else. No `/lost+found` or `/lost_found` on root. No failed
+  units.
+
+§6 corrections from this run: the smoke test's source is named and located
+(`device/pyra-gles2-smoke.c`), the rescue unit's journal needs `sudo`, the `l0`
+fallback, `df`, `systemd-analyze` and the F2FS lines are now checks, and the
+blob's `Buffer busy` lines are called harmless.
+
+Not checked here (need hands, listed in the owner's TODO): charger
+unplug/replug keeping `max_current` 2000000, the headphone jack switching
+sinks, the Fn brightness keys, listening to the speaker, and a root fsck on the
+built-in slot at the next PC check.
