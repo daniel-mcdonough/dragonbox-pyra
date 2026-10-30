@@ -21,7 +21,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all nineteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. |
+| `pc/pyra-trixie-prep.sh` | Applies all nineteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |

@@ -72,6 +72,16 @@ cancel branch and calls `poweroff`.
 The script marks the run done and creates offline the user the wizard would
 have created.
 
+The image already has a `pyra` user, locked or with a password that isn't
+documented (its hash matched none of the obvious defaults, checked 2026-10-29).
+Prep leaves an existing user's password alone unless `--set-password` is given.
+`--ssh-key FILE.pub` authorises one public key for the user: type and key only,
+written to `~/.ssh/authorized_keys` with 0600 and `.ssh` 0700, both owned by the
+user. A private key, or a file without exactly one key, is refused before
+anything is written. The selftest sets a test password on the image's `pyra`
+with `--set-password` and checks the shadow hash. It also checks a test key's
+file, modes and owner, and that its comment didn't land.
+
 Caveat from the original report: the wizard was never retested *after* X was
 properly fixed, so it may well behave now. Skipping it is the path known to
 work.

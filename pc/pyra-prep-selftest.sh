@@ -6,7 +6,8 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 19, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 19 (fix 2 with --set-password and
+# --ssh-key), runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -149,8 +150,14 @@ i "$(wc -l < "$OUT/rootfs-before.txt") entries"
 ########################################################################
 i "run 1 of pyra-trixie-prep.sh"
 ########################################################################
+# Run 1 also exercises fix 2's two options: --set-password on the image's
+# existing pyra user, fed a test password on stdin, and --ssh-key with a key
+# made for this run (its comment must not reach the card).
+TESTPW=selftest-not-a-real-password
+ssh-keygen -q -t ed25519 -N '' -C 'comment-that-must-not-land@example.invalid' -f "$OUT/testkey"
 disarm; set +e
-"$PREP" "${KARGS[@]}" "$MNT" pyra 2>&1 | tee "$OUT/prep-run1.log"
+"$PREP" "${KARGS[@]}" --set-password --ssh-key "$OUT/testkey.pub" "$MNT" pyra \
+    < <(printf '%s\n%s\n' "$TESTPW" "$TESTPW") 2>&1 | tee "$OUT/prep-run1.log"
 RC=${PIPESTATUS[0]}
 set -e; arm
 [[ $RC -eq 0 ]] && p "run 1 exited 0" || f "run 1 exited $RC"
@@ -191,6 +198,20 @@ if [[ -d $MNT/var/lib/lightdm/data ]]; then
 else
     f "fix4: /var/lib/lightdm/data missing"
 fi
+
+# fix 2 — --set-password on the existing pyra user, and --ssh-key
+HASH=$(awk -F: '$1=="pyra"{print $2}' "$MNT/etc/shadow")
+SALT=$(cut -d'$' -f3 <<<"$HASH")
+[[ $HASH == '$6$'* && $(openssl passwd -6 -salt "$SALT" "$TESTPW") == "$HASH" ]] \
+    && p "fix2: --set-password gave the existing pyra user the test password" || f "fix2: pyra's shadow hash is not the test password"
+PHOME=$(awk -F: '$1=="pyra"{print $6}' "$MNT/etc/passwd")
+PIDS=$(awk -F: '$1=="pyra"{print $3":"$4}' "$MNT/etc/passwd")
+AK=$MNT$PHOME/.ssh/authorized_keys
+[[ $(cat "$AK" 2>/dev/null) == "$(awk '{print $1, $2}' "$OUT/testkey.pub")" ]] \
+    && p "fix2: authorized_keys holds the key, type and key only" || f "fix2: authorized_keys is missing or not exactly the key"
+grep -q 'example.invalid' "$AK" 2>/dev/null && f "fix2: the key's comment reached the card" || p "fix2: the key's comment did not reach the card"
+[[ $(stat -c '%a %u:%g' "$AK" 2>/dev/null) == "600 $PIDS" && $(stat -c '%a %u:%g' "$MNT$PHOME/.ssh" 2>/dev/null) == "700 $PIDS" ]] \
+    && p "fix2: .ssh 0700 and authorized_keys 0600, owned by pyra" || f "fix2: .ssh or authorized_keys has the wrong mode or owner"
 
 # fix 2 — marker, user, groups
 [[ -e $MNT/var/lib/pyra/first-run.done ]] && p "fix2: first-run marker present" || f "fix2: marker missing"
@@ -690,7 +711,7 @@ fi
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
-"$PREP" "${KARGS[@]}" "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
+"$PREP" "${KARGS[@]}" --ssh-key "$OUT/testkey.pub" "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
 RC2=${PIPESTATUS[0]}
 set -e; arm
 [[ $RC2 -eq 0 ]] && p "run 2 exited 0" || f "run 2 exited $RC2"
@@ -705,6 +726,8 @@ else
     rm -f "$OUT/.d2"
 fi
 # and it must say so, rather than silently rewriting
+grep -qE "fix2: the key is already authorised" "$OUT/prep-run2.log" && p "run 2 reported the ssh key already authorised" || f "run 2 did not report the ssh key already authorised"
+grep -qE "fix2: its password is unchanged" "$OUT/prep-run2.log" && p "run 2, without --set-password, left the password alone" || f "run 2 did not say it left the password alone"
 grep -qE 'fix5: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix5 already up to date" || f "run 2 did not report fix5 up to date"
 grep -qE 'fix5: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix5 already enabled" || f "run 2 did not report fix5 already enabled"
 grep -qE 'fix6: .*already applies' "$OUT/prep-run2.log" && p "run 2 reported fix6 already applied" || f "run 2 did not report fix6 already applied"

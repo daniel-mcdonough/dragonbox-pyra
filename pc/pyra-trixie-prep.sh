@@ -4,7 +4,13 @@
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
-#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] /mnt [username]
+#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] [--set-password]
+#                              [--ssh-key FILE.pub] /mnt [username]
+#
+# Fix 2 creates the user and asks for its password. A user the image already
+# has keeps its password unless --set-password is given: the vendor image ships
+# a 'pyra' account whose password is not documented. --ssh-key authorises that
+# public key for the user. Both are off unless asked for.
 #
 # Fix 19 installs the shipped kernel, 5.6.19-m4-kbdled, and makes it what the
 # card boots. With no option it offers to download the published release asset
@@ -30,6 +36,8 @@ info() { printf '\e[36mINFO\e[0m   %s\n' "$*"; }
 
 KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-kernel
 KERNEL_FILE=
+SET_PASSWORD=no
+SSH_KEY=
 ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -37,6 +45,10 @@ while [[ $# -gt 0 ]]; do
                  KERNEL_MODE=file; KERNEL_FILE=$2; shift 2 ;;
     --kernel=*)  KERNEL_MODE=file; KERNEL_FILE=${1#--kernel=}; shift ;;
     --no-kernel) KERNEL_MODE=none; shift ;;
+    --set-password) SET_PASSWORD=yes; shift ;;
+    --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
+                 SSH_KEY=$2; shift 2 ;;
+    --ssh-key=*) SSH_KEY=${1#--ssh-key=}; shift ;;
     -*)          die "unknown option: $1" ;;
     *)           ARGS+=("$1"); shift ;;
     esac
@@ -45,9 +57,26 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
+
+# --ssh-key takes one public key, checked before anything is written. A private
+# key is refused: it must never be copied onto a card.
+SSH_KEY_LINE=
+if [[ -n $SSH_KEY ]]; then
+    [[ -r $SSH_KEY ]] || die "fix2: no key file at $SSH_KEY"
+    grep -q 'PRIVATE KEY' "$SSH_KEY" && die "fix2: $SSH_KEY is a private key; pass the .pub file"
+    [[ $(grep -cv '^[[:space:]]*$' "$SSH_KEY") -eq 1 ]] || die "fix2: $SSH_KEY must hold exactly one public key"
+    # Type and key only: the comment is often user@host or an email address,
+    # which has no business on a card.
+    SSH_KEY_LINE=$(grep -v '^[[:space:]]*$' "$SSH_KEY" | awk '{print $1, $2}')
+    [[ $SSH_KEY_LINE == ssh-*\ * || $SSH_KEY_LINE == ecdsa-*\ * || $SSH_KEY_LINE == sk-*\ * ]] ||
+        die "fix2: $SSH_KEY does not start with a key type (ssh-ed25519, ssh-rsa, ...)"
+    if command -v ssh-keygen >/dev/null; then
+        ssh-keygen -l -f "$SSH_KEY" >/dev/null 2>&1 || die "fix2: $SSH_KEY is not a public key ssh-keygen can read"
+    fi
+fi
 
 # Sanity: is this actually a Debian trixie armhf Pyra image, and not, say, your own /?
 [[ $(realpath "$ROOT") != "/" ]] || die "refusing to operate on the host root filesystem"
@@ -334,8 +363,26 @@ install -d -m 0755 "$ROOT$(dirname "$MARKER")"
 ok "fix2: touched $MARKER"
 
 # --- create the user offline ------------------------------------------------
+ask_password() {
+    printf 'Password for %s (input hidden): ' "$USERNAME" >&2
+    read -rs PW1; echo >&2
+    printf 'Repeat: ' >&2
+    read -rs PW2; echo >&2
+    [[ $PW1 == "$PW2" && -n $PW1 ]] || die "fix2: passwords empty or did not match; $1"
+    HASH=$(printf '%s' "$PW1" | openssl passwd -6 -stdin)
+    unset PW1 PW2
+    # chpasswd -e -R writes the hash without it ever hitting the process table.
+    printf '%s:%s\n' "$USERNAME" "$HASH" | chpasswd -e -R "$ROOT"
+    unset HASH
+}
 if grep -q "^${USERNAME}:" "$ROOT/etc/passwd"; then
     ok "fix2: user '$USERNAME' already exists"
+    if [[ $SET_PASSWORD == yes ]]; then
+        ask_password "the password is unchanged"
+        ok "fix2: password set for '$USERNAME'"
+    else
+        info "fix2: its password is unchanged (the image's own 'pyra' password is not documented; --set-password sets one)"
+    fi
 else
     # Prefer shadow-utils' --root: it writes passwd/shadow/group/gshadow
     # consistently, honours the target's login.defs, and won't corrupt the
@@ -347,17 +394,24 @@ else
         die "fix2: no useradd with --root support on this host; install shadow-utils"
     fi
 
-    printf 'Password for %s (input hidden): ' "$USERNAME" >&2
-    read -rs PW1; echo >&2
-    printf 'Repeat: ' >&2
-    read -rs PW2; echo >&2
-    [[ $PW1 == "$PW2" && -n $PW1 ]] || die "fix2: passwords empty or did not match; user has NO password set"
-    HASH=$(printf '%s' "$PW1" | openssl passwd -6 -stdin)
-    unset PW1 PW2
-    # chpasswd -e -R writes the hash without it ever hitting the process table.
-    printf '%s:%s\n' "$USERNAME" "$HASH" | chpasswd -e -R "$ROOT"
-    unset HASH
+    ask_password "user has NO password set"
     ok "fix2: password set for '$USERNAME'"
+fi
+
+# --- an ssh key, if one was given -------------------------------------------
+if [[ -n $SSH_KEY_LINE ]]; then
+    IFS=: read -r _ _ KUID KGID _ KHOME _ < <(grep "^${USERNAME}:" "$ROOT/etc/passwd")
+    [[ -n $KHOME && -d $ROOT$KHOME ]] || die "fix2: '$USERNAME' has no home directory in the image for authorized_keys"
+    AUTH=$ROOT$KHOME/.ssh/authorized_keys
+    install -d -m 0700 -o "$KUID" -g "$KGID" "$ROOT$KHOME/.ssh"
+    if [[ -e $AUTH ]] && grep -qxF "$SSH_KEY_LINE" "$AUTH"; then
+        ok "fix2: the key is already authorised for '$USERNAME'"
+    else
+        printf '%s\n' "$SSH_KEY_LINE" >> "$AUTH"
+        ok "fix2: authorised $(awk '{print $1}' <<<"$SSH_KEY_LINE") key for '$USERNAME' in ${AUTH#$ROOT}"
+    fi
+    chown "$KUID:$KGID" "$AUTH"
+    chmod 0600 "$AUTH"
 fi
 
 # --- group membership -------------------------------------------------------

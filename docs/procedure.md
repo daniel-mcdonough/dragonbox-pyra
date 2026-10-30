@@ -172,6 +172,14 @@ re-running it is safe and just reports what is already in place. Fix 14
 rebuilds each initrd under qemu the first time, which took under a minute on
 an x86 PC for the stock image's one kernel.
 
+**The user.** Pick a name the image doesn't have. The image already has a
+`pyra` account, and its password isn't documented. If you name `pyra`, or any
+other existing user, prep leaves that password alone unless you add
+`--set-password`, which asks for a new one the same way. `--ssh-key
+~/.ssh/yourkey.pub` authorises one public key for the user, so the first boot
+can be reached over ssh (only the key type and key are written, not the
+comment). It refuses a private key. Both options are off unless you ask.
+
 **The kernel (fix 19).** The script offers to download the shipped kernel,
 `m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it
 only if it matches the SHA-256 pinned in the script. To use a tarball you
