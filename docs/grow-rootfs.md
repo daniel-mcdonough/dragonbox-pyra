@@ -22,7 +22,10 @@ filesystem in question is the rootfs, it cannot be unmounted in place.
 
 ## Before anything else: the reader will decide whether this works
 
-**Do not do this through a cheap USB card reader.** The grow rewrites about
+**Do not do this through a cheap USB card reader.** On 2026-10-30 a generic USB
+reader also served stale data from before a card swap to fsck's buffered reads,
+so a healthy card looked damaged (`troubleshooting.md`, "fsck finds damage
+before the grow"). A built-in laptop SD slot had neither problem. The grow rewrites about
 507 MB of f2fs metadata in one sustained write, and a USB bridge that mangles
 that write corrupts the filesystem in a way nothing notices for days.
 

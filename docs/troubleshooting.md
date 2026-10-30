@@ -1381,34 +1381,41 @@ hand and watch the brightness follow:
 
 ## fsck finds damage before the grow, on a card that has booted only once
 
-Seen 2026-10-29 (development log, 2026-10-29 entries; cause still open). A prepared card was written from the
-image through a generic USB SD reader. It booted the shipped kernel cleanly once. When `pyra-trixie-grow.sh`
-then checked it, `fsck.f2fs` found 15 inodes whose node footers were zeroed or held text (one read `0000` /
-` */ `). They belonged to files the vendor build wrote and the boot had no reason to touch: `libuuid.so.1`,
-`libudisks2`, `libavahi-common`, `immodules.cache`, `locale.dir`, `ssh-agent.service`, and some fonts and icons.
-The same image's p2, checked read-only on the PC, is clean, so the damage happened during the write to the card or
-on the card. The capacity check below passed on that card and reader afterwards (238 GiB real, 256 MiB sustained
-round trip clean), which rules out a fake-capacity card. A sustained 6 GiB write through the reader is not ruled out.
+Seen 2026-10-29 and 2026-10-30 (development log, those dates). **The card was fine; the reader lied.** Two prepared
+cards booted the shipped kernel cleanly once, then went into a generic USB SD reader ("Generic SD/MMC") for the
+grow. `fsck.f2fs` found 15 inodes whose node footers were zeroed or held text: files the boot only *read*
+(`libuuid.so.1`, `udisksd`, `mtp-probe`, the lightdm greeter's `.desktop`, Python `.pyc` files, console fonts).
 
-**How to spot it:** the grow stops with `fsck.f2fs found damage; nothing was written`. Before 2026-10-29 the grow
-ran `fsck.f2fs -f`, which repairs: it unlinked those files into `lost_found` and wrote the result back. It also
-grew the partition before checking. Now it checks with `--dry-run` before any write. Treat a card in this state as
-suspect even if it boots, since shared libraries are among the lost files.
+What was measured on the second card (2026-10-30):
+
+- The card read back byte-identical to the image after writing it (`cmp`), so the write was good.
+- Read with direct I/O (`dd iflag=direct`), each of the 15 "damaged" blocks held a valid inode with the right
+  footer. The image had zeros there. The boot had done what F2FS does: under `relatime`, reading an old file
+  rewrites its inode, and F2FS writes that to a new block and updates the node table.
+- fsck through the reader saw the new node table, but read the pre-boot zeros at the new blocks. It also reported
+  an older checkpoint version (`435f6420`) than the card held (`435f643e`). Dropping the page cache did not help.
+- A direct-I/O copy of the card (`dd iflag=direct`), checked with `fsck.f2fs -f --dry-run` on a read-only loop
+  device, was **clean**. The grow then ran without errors through a laptop's built-in SD slot.
+
+So buffered reads through that reader returned stale data from before the card was swapped, and direct reads did
+not. On the first card, the grow's old repairing fsck (`fsck.f2fs -f`) acted on those stale reads and unlinked
+healthy files into `lost_found`, so that card really was damaged, by the repair.
+
+**How to spot it:** fsck reports unreachable inodes or `footer.ino[0x0]` on a card that booted and shut down
+cleanly, and the files are ones the system reads at boot. The grow now stops before any write
+(`fsck.f2fs found damage; nothing was written`); before 2026-10-29 it repaired.
 
 **What to do:**
 
-1. Keep the evidence: image the card's first 7 GiB before any repair
-   (`dd if=/dev/sdX of=card.img bs=4M count=1792 iflag=direct status=progress`). Then
-   `sudo pc/pyra-verify-card-metadata.sh /dev/sdX2` checks for the `USBC` signature described in the next
-   section.
-2. Re-flash, then read the card back and compare it with the image **before it goes in the Pyra**:
-   `cmp -n $(stat -c %s image.img) image.img /dev/sdX` (as root, card unmounted). A difference here puts the cause
-   on the reader or the card, not the kernel.
-3. If the read-back matches: boot once, shut down cleanly (`poweroff`, not the power button), and run a read-only
-   `fsck.f2fs -f --dry-run /dev/sdX2` on the PC. Damage at that point, with a clean read-back, points at the boot
-   rather than the write.
-4. Write through an SD host controller (a built-in laptop slot, `/dev/mmcblk*`) where you can.
-   `grow-rootfs.md` explains why.
+1. Don't repair. Copy the card with direct I/O and check the copy, which takes the reader's read path out:
+
+       sudo dd if=/dev/sdX of=card.img bs=4M count=1792 iflag=direct status=progress
+       LOOP=$(sudo losetup -f --show -r -o $((526336*512)) card.img)
+       echo n | sudo fsck.f2fs -f --dry-run "$LOOP"; sudo losetup -d "$LOOP"
+
+   Clean means the card is fine and the reader is the problem.
+2. Grow through an SD host controller (a built-in laptop slot, `/dev/mmcblk*`), not that reader.
+   `grow-rootfs.md` has the other reason to avoid USB readers.
 
 ## The card will not mount: `Failed to get valid F2FS checkpoint`
 
