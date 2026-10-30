@@ -1,4 +1,4 @@
-# The seventeen fixes, and what they actually do
+# The eighteen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1102,6 +1102,30 @@ prep writes, chose `aess` on m4-kbdled and `direct` on pyradef, and a stream
 ran through the `aess` sink and through the packaged `speakers` sink
 respectively. Whether it was audible was not checked, and a freshly prepared
 card has not been booted with this fix (`verification-log.md`).
+
+## Fix 18 — the built-in keyboard goes dead, with nothing logged, on the stock kernel
+
+The TCA8418 key controller holds its interrupt line asserted for as long as it
+has events queued, and the device tree describes that line as edge triggered.
+A key that arrives between the driver's last FIFO read and the write that
+acknowledges leaves the line asserted, no further edge ever comes, and the
+keyboard stays dead. The handler is never entered, so nothing is logged.
+`patches/0006` fixes it in the kernel (`kernel-changes.md`); the stock
+`5.6.19-pyradef` a prepared card boots does not carry it.
+
+Prep installs `device/pyra-keypad-rescue` as `/usr/local/sbin/pyra-keypad-rescue`.
+It reads the queued events out over i2c and clears the interrupt status, which
+releases the line; the queued keystrokes are discarded, and it changes nothing
+if the chip is not stuck. It is run by hand, from ssh or the touchscreen with an
+on-screen keyboard, so there is no unit and nothing is enabled. How to use it:
+`troubleshooting.md`, "Getting the keyboard back without that kernel".
+
+It needs `i2cget` and `i2cset`. Prep installs no packages; the vendor image
+`pyra-trixie-t1` ships `i2c-tools` 4.4-2 (checked 2026-10-29 in the image's dpkg
+status, and the selftest checks both binaries in the mounted image). Prep warns
+if an image lacks them, and the script says `apt install i2c-tools`.
+
+Unrelated to fix 5, which is the USB hub after a warm reboot.
 
 ## Fixes 6, 7 and 12 as a package
 

@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 17, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 18, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -594,6 +594,22 @@ FILES
     || f "fix17: not enabled"
 
 ########################################################################
+i "assert fix 18 — pyra-keypad-rescue, a manual tool with no unit"
+########################################################################
+K=$MNT/usr/local/sbin/pyra-keypad-rescue
+if [[ -e $K ]] && cmp -s "$PAYLOADS/pyra-keypad-rescue" "$K"; then
+    p "fix18: /usr/local/sbin/pyra-keypad-rescue matches repo"
+else
+    f "fix18: /usr/local/sbin/pyra-keypad-rescue missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "755 0:0" ]] && p "fix18: pyra-keypad-rescue is 0755 root:root" || f "fix18: pyra-keypad-rescue mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null)"
+sh -n "$K" 2>/dev/null && p "fix18: pyra-keypad-rescue parses as /bin/sh" || f "fix18: pyra-keypad-rescue is not valid /bin/sh"
+# Prep installs no packages, so the tool works only if the image ships these.
+for t in i2cget i2cset; do
+    [[ -x $MNT/usr/sbin/$t ]] && p "fix18: the image ships /usr/sbin/$t" || f "fix18: the image has no /usr/sbin/$t"
+done
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -627,6 +643,7 @@ grep -qE 'fix16: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix1
 [[ $(grep -cE 'fix17: .*already up to date' "$OUT/prep-run2.log") -eq 7 ]] && p "run 2 reported all seven fix17 files up to date" || f "run 2 did not report all seven fix17 files up to date"
 grep -qE 'fix17: link already in place' "$OUT/prep-run2.log" && p "run 2 reported fix17's link in place" || f "run 2 did not report fix17's link in place"
 grep -qE 'fix17: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix17 already enabled" || f "run 2 did not report fix17 already enabled"
+grep -qE 'fix18: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix18 already up to date" || f "run 2 did not report fix18 already up to date"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"

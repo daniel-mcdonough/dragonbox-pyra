@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the seventeen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the eighteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -107,6 +107,9 @@ pulse/alsa-mixer/paths/pyra-headphones.conf /usr/share/pulseaudio/alsa-mixer/pat
 while read -r src _ _; do
     [[ -r $PAYLOADS/$src ]] || die "fix17: $src not found (looked in $PAYLOADS)"
 done <<<"$AUDIOSEL_FILES"
+
+KEYPAD_SRC=$PAYLOADS/pyra-keypad-rescue
+[[ -x $KEYPAD_SRC ]] || die "fix18: pyra-keypad-rescue not found or not executable (looked in $PAYLOADS)"
 
 HOOK_SRC=$PAYLOADS/etc/initramfs-tools/scripts/init-top
 HOOKS="pyra-fw-nofallback pyra-settle-nudge"
@@ -1038,6 +1041,35 @@ else
            "$WANTS/pyra-audio-select.service"
     ok "fix17: enabled in multi-user.target"
 fi
+
+# ---------------------------------------------------------------------- fix 18
+#
+# The built-in keyboard can go dead with nothing logged. The TCA8418 holds its
+# interrupt line asserted while it has events queued, the device tree calls
+# the line edge triggered, and a key that lands between the driver's last
+# FIFO read and its acknowledge leaves the line asserted with no new edge to
+# come. patches/0006 fixes it in the kernel; the stock 5.6.19-pyradef this
+# card boots does not carry it. pyra-keypad-rescue drains the queue and clears
+# the status over i2c, run by hand from ssh or the touchscreen. A manual tool:
+# no unit, nothing enabled. docs/troubleshooting.md, "Getting the keyboard
+# back without that kernel".
+#
+# It needs i2cget and i2cset. The vendor image ships i2c-tools; prep installs
+# no packages, so it only warns if an image lacks them.
+
+KEYPAD_DST=$ROOT/usr/local/sbin/pyra-keypad-rescue
+if [[ -e $KEYPAD_DST ]] && cmp -s "$KEYPAD_SRC" "$KEYPAD_DST"; then
+    ok "fix18: ${KEYPAD_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $KEYPAD_DST ]] && echo updated || echo installed)
+    install -d -m 0755 "$ROOT/usr/local/sbin"
+    install -m 0755 -o 0 -g 0 "$KEYPAD_SRC" "$KEYPAD_DST"
+    ok "fix18: $VERB ${KEYPAD_DST#$ROOT}"
+fi
+for t in i2cget i2cset; do
+    [[ -x $ROOT/usr/sbin/$t ]] ||
+        warn "fix18: the image has no /usr/sbin/$t; pyra-keypad-rescue needs i2c-tools (apt install i2c-tools on the device)"
+done
 
 echo
 sync

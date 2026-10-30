@@ -1204,7 +1204,8 @@ same once at the end of probe so the driver always starts from a released pin.
 ### Getting the keyboard back without that kernel
 
 You need another way in, because the keyboard is the broken thing: ssh, or the
-touchscreen with an on-screen keyboard.
+touchscreen with an on-screen keyboard. A card prepared with
+`pc/pyra-trixie-prep.sh` has it in `/usr/local/sbin` (fix 18):
 
     sudo pyra-keypad-rescue
 

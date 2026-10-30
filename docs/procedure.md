@@ -21,16 +21,16 @@ to 12 cover charging, sound, the greeter holding the sound card, GL on every
 boot, and the volume wheel; fix 13 makes Qt5 programs draw, fix 14 stops
 root mounting a minute or two late, fix 15 makes the Fn keyboard-light keys
 work on the shipped kernel, fix 16 sets the measured governor tunable at
-boot, and fix 17 gives PulseAudio the script that matches the kernel's audio
-path at each boot.
+boot, fix 17 gives PulseAudio the script that matches the kernel's audio
+path at each boot, and fix 18 puts the keyboard's manual rescue on the path.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all seventeen fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all eighteen fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fix 14 rebuilds each initrd in a chroot
 (`fixes.md`, fix 14). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 17 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 18 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -430,7 +430,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the seventeen fixes it applies only 13 to 17, whose files it shares
+and of the eighteen fixes it applies only 13 to 18, whose files it shares
 with prep. It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.

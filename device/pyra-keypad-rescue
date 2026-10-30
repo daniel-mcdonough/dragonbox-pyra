@@ -34,7 +34,7 @@ MAX_EVENTS=20
 die() { echo "FAILED: $*" >&2; exit 1; }
 
 [ "$(id -u)" = 0 ] || die "run me as root"
-command -v i2cget >/dev/null || die "i2c-tools is not installed"
+command -v i2cget >/dev/null || die "i2c-tools is not installed (apt install i2c-tools)"
 
 [ -e "/sys/bus/i2c/devices/$BUS-0034/name" ] ||
 	die "no i2c device at $BUS-0034; this is not a Pyra mainboard"

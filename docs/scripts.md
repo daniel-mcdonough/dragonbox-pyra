@@ -21,7 +21,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all seventeen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. |
+| `pc/pyra-trixie-prep.sh` | Applies all eighteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
@@ -113,7 +113,7 @@ marks (decided 2026-10-29):
 | `pyra-fw-nofallback`, `pyra-settle-nudge` (the `init-top` hooks) | prep (fix 14) |
 | `pyra-governor-tune.sh`, `pyra-governor-tune.service` | prep (fix 16, enabled offline) |
 | `pyra-audio-select.sh`, `pyra-audio-select.service`, `pulse/zz-pyra-aess.conf`, `pulse/pyra-aess.pa`, `pulse/alsa-mixer/profile-sets/pyra-aess.conf`, `pyra-speaker.conf`, `pyra-headphones.conf`, plus the `daemon.conf.d` link the script makes (`--link`) | prep (fix 17, enabled offline) |
-| `pyra-keypad-rescue` | prep, planned (a manual rescue for a kernel without `patches/0006`, which the stock one is; no overlap with fix 5, which is the USB hub) |
+| `pyra-keypad-rescue` | prep (fix 18, a manual rescue with no unit, for a kernel without `patches/0006`, which the stock one is; no overlap with fix 5, which is the USB hub) |
 | `pyra-install-debug-kernel.sh`, `pyra-boot-kernel.sh` | developer-only for now; how a prepared card gets the shipped kernel is still open, and may use them |
 | `pyra-undervolt`, `pyra-undervolt.service` | developer-only: 870 mV was found to hold on one unit's silicon, and another chip may not; it also needs a module built for the running kernel |
 | `pyra-soh` | developer-only: it launches Ship of Harkinian, which is not part of this release |
