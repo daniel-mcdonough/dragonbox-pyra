@@ -49,10 +49,15 @@ i() { printf '\e[36m----\e[0m  %s\n' "$*"; }
 #
 # An ERR trap fires whether or not errexit is set, so it must be DISARMED around
 # any command whose failure is a legitimate outcome, not merely wrapped in
-# `set +e`. arm/disarm below; three places need it.
-ERRTRAP='ABORTED=1; printf "\e[31m!!!!\e[0m  unexpected error at line $LINENO\n" >&2'
-arm()    { trap "$ERRTRAP" ERR; }
-disarm() { trap - ERR; }
+# `set +e`. arm/disarm below; four places need it.
+#
+# They flip a flag the trap reads rather than setting and clearing the trap:
+# without errtrace, bash puts the ERR trap back when a function returns, so a
+# `trap - ERR` inside disarm() was undone on the spot and disarm did nothing.
+ERR_ARMED=0
+trap '[[ $ERR_ARMED -eq 1 ]] && { ABORTED=1; printf "\e[31m!!!!\e[0m  unexpected error at line $LINENO\n" >&2; }; true' ERR
+arm()    { ERR_ARMED=1; }
+disarm() { ERR_ARMED=0; }
 arm
 
 LOOP=""
