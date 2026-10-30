@@ -454,6 +454,7 @@ from `device/`, with `--check` first if you want to see the state:
 | 15 | `pyra-kbdlight.sh` | step 2 | updated by step 2, which also writes its two `/etc/pyrainput.cfg` lines |
 | 16 | `pyra-governor-tune.sh` or its unit | step 2 | updated by step 2, which restarts the unit, so the value is re-applied |
 | 17 | `pyra-audio-select.sh`, its unit or a `pulse/` file | step 2 | updated by step 2, which also makes the `daemon.conf.d` link and restarts the unit; a running PulseAudio keeps its script until `systemctl --user restart pulseaudio.service` |
+| 18 | `pyra-keypad-rescue` | step 2 | updated by step 2, which installs it at the same path |
 
 Fixes 8 to 12 write their files through the same function that prep's
 `--emit-into` uses. Re-running one replaces its files with the current
