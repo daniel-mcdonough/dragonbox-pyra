@@ -1,4 +1,4 @@
-# The fourteen fixes, and what they actually do
+# The fifteen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -957,6 +957,55 @@ card gets the initrd it would have built itself. Two things follow:
 An initrd that already lists both hooks and is newer than both is left alone,
 so a second run rebuilds nothing. Once a hook is in `/etc/initramfs-tools`, a
 later kernel install or `update-initramfs` on the device keeps it in.
+
+## Fix 15 — the Fn keyboard-brightness keys do nothing on the shipped kernel
+
+`5.6.19-m4-kbdled` declares the keyboard light as an LED,
+`/sys/class/leds/pyra::kbd_backlight` (0-100, linear), instead of a second
+backlight (`building.md`, "The keyboard-LED kernel"). funkeymonkey's
+`libpyrainput` runs a shell command, as root, for each brightness-key
+combination. Its built-in commands for Fn+brightness and Fn+Shift+brightness
+are `pyra-scripts`' `/usr/share/pyra/scripts/pyra-brightkey.sh key up|down`,
+and that script only knows `/sys/class/backlight/keyboard-backlight`, which
+this kernel does not have. Nothing else calls it (checked in the 0.31 package
+and funkeymonkey-pyrainput 0.1.19's source).
+
+`device/pyra-kbdlight.sh up|down` drives the LED in the stock kernel's nine
+steps (0 1 2 5 10 20 40 60 100 percent, its `brightness-levels` table), from the
+step nearest the current value, so a value the applet or UPower set between two
+steps is no trap. Without the LED it hands the key to the vendor script
+unchanged, so it is right on the stock kernel too, and prep installs it without
+checking which kernel the card boots.
+
+The keys reach it through two lines in `/etc/pyrainput.cfg`:
+
+    scripts.brightness.fn = /usr/local/sbin/pyra-kbdlight.sh up
+    scripts.brightness.fnshift = /usr/local/sbin/pyra-kbdlight.sh down
+
+That file is libpyrainput's documented settings file, no package ships it (fix 3
+creates it empty), and funkeymonkey reads it at start and on
+`systemctl reload pyrainput`. So a `pyra-scripts` upgrade cannot undo this, and
+the vendor file is never touched. `pyra-kbdlight.sh --configure FILE` writes the
+two lines; prep and `pyra-install-helpers.sh` both call it. It leaves alone a
+line the file already has for either key, and prep prints that as a warning.
+
+Rejected: `dpkg-divert` of `pyra-brightkey.sh`, for the reason fix 6/7's guard
+gives (it would keep our copy over any newer vendor one, silently). A copy
+earlier in `PATH` does nothing: libpyrainput calls the script by its absolute
+path.
+
+Checked 2026-10-29 on the trixie card (m4-kbdled): Fn+brightness stepped the
+light 40, 60, 100, and Fn+Shift+brightness down through 60 40 20 10 5 2 1 0 and
+back, at the desktop greeter, with pyra-scripts 0.31 in place
+(`verification-log.md`).
+
+In a MATE session the keys work the same, but MATE's power manager keeps its
+own level for the light: after 15-20 s without input it cuts the light by 75 %,
+and the next touch, a key press included, puts it back to 100 %. So a level set
+with the keys lasts until that cycle (`procedure.md` §8). Writing through
+UPower's `KbdBacklight.SetBrightness` instead of sysfs does not change that
+(tested the same day: the touch still restored 99 of 100), so the script writes
+sysfs, which also works at the greeter and without UPower.
 
 ## Fixes 6, 7 and 12 as a package
 

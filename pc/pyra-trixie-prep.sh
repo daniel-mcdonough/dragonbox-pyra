@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the fourteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the fifteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -84,6 +84,9 @@ WHEEL_FIX=$PAYLOADS/pyra-volumed/install.sh
 
 GLES_SRC=$PAYLOADS/pyra-gles
 [[ -r $GLES_SRC ]] || die "fix13: pyra-gles not found (looked in $PAYLOADS)"
+
+KBDLIGHT_SRC=$PAYLOADS/pyra-kbdlight.sh
+[[ -x $KBDLIGHT_SRC ]] || die "fix15: pyra-kbdlight.sh not found or not executable (looked in $PAYLOADS)"
 
 HOOK_SRC=$PAYLOADS/etc/initramfs-tools/scripts/init-top
 HOOKS="pyra-fw-nofallback pyra-settle-nudge"
@@ -902,6 +905,33 @@ $out"
     ok "fix14: rebuilt /boot/initrd.img-$rel with both hooks"
 done
 chroot_unmount
+
+# ---------------------------------------------------------------------- fix 15
+#
+# The Fn keyboard-brightness keys do nothing on 5.6.19-m4-kbdled. That kernel
+# declares the keyboard light as an LED (pyra::kbd_backlight), and the command
+# funkeymonkey runs for the keys, pyra-scripts' pyra-brightkey.sh, only knows
+# /sys/class/backlight/keyboard-backlight. pyra-kbdlight.sh drives the LED in the
+# same nine steps, and hands the key to the vendor script when there is no LED,
+# so it is right on the stock kernel too and needs no check of which kernel the
+# card boots. The keys reach it through /etc/pyrainput.cfg (fix 3 makes it),
+# which no package ships, so a pyra-scripts upgrade cannot undo this. The script
+# writes the two lines itself, as pyra-install-helpers.sh has it do on a device.
+
+KBDLIGHT_DST=$ROOT/usr/local/sbin/pyra-kbdlight.sh
+if [[ -e $KBDLIGHT_DST ]] && cmp -s "$KBDLIGHT_SRC" "$KBDLIGHT_DST"; then
+    ok "fix15: /usr/local/sbin/pyra-kbdlight.sh already up to date"
+else
+    VERB=$([[ -e $KBDLIGHT_DST ]] && echo updated || echo installed)
+    install -m 0755 -o 0 -g 0 "$KBDLIGHT_SRC" "$KBDLIGHT_DST"
+    ok "fix15: $VERB /usr/local/sbin/pyra-kbdlight.sh"
+fi
+while read -r line; do
+    case $line in
+    *"left alone"*) warn "fix15: ${line#pyra-kbdlight: }" ;;
+    *)              ok "fix15: ${line#pyra-kbdlight: } in /etc/pyrainput.cfg" ;;
+    esac
+done < <("$KBDLIGHT_SRC" --configure "$ROOT/etc/pyrainput.cfg" 2>&1)
 
 echo
 sync

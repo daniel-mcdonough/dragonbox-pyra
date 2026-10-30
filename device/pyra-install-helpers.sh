@@ -21,10 +21,12 @@
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does install the two init-top hooks
 # that keep root from mounting late, and rebuilds the initrd of every kernel in
-# /boot whose initrd lacks them or predates them. It does not apply the fourteen
+# /boot whose initrd lacks them or predates them. It does not apply the fifteen
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
-# Fixes 13 and 14 are the exception, since their files (pyra-gles and the two
-# hooks) are in the map below and land on the same paths prep uses.
+# Fixes 13, 14 and 15 are the exception, since their files (pyra-gles, the two
+# hooks and pyra-kbdlight.sh) are in the map below and land on the same paths
+# prep uses, and fix 15's two lines in /etc/pyrainput.cfg are written by the
+# same script prep calls.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #
@@ -71,6 +73,7 @@ pyra-m4-run.sh                      /usr/local/sbin                    0755
 pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-gles                           /usr/local/bin                     0755
+pyra-kbdlight.sh                    /usr/local/sbin                    0755
 pyra-soh                            /usr/local/bin                     0755
 pyra-cpu-pin                        /usr/local/sbin                    0755
 etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440
@@ -182,6 +185,24 @@ else
 		note "$(/usr/local/sbin/pyra-governor-tune.sh --check | head -1)"
 	else
 		note "could not enable it; check: systemctl status pyra-governor-tune.service"
+	fi
+fi
+
+# ---------------------------------------------------------- the Fn keys
+# The keyboard-light keys reach pyra-kbdlight.sh through two lines in
+# /etc/pyrainput.cfg (the script's header says why there). The script writes
+# them itself, the same way prep's fix 15 does, and funkeymonkey rereads the
+# file on a reload.
+say "the Fn keyboard-brightness keys"
+if [ "$DRYRUN" = 1 ]; then
+	note "would point them at /usr/local/sbin/pyra-kbdlight.sh in /etc/pyrainput.cfg"
+else
+	/usr/local/sbin/pyra-kbdlight.sh --configure /etc/pyrainput.cfg 2>&1 |
+		while read -r line; do note "$line"; done
+	if systemctl reload pyrainput.service >/dev/null 2>&1; then
+		note "pyrainput reloaded"
+	else
+		note "could not reload pyrainput; the keys take effect at the next boot"
 	fi
 fi
 

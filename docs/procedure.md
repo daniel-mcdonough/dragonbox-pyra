@@ -11,7 +11,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Fourteen fixes are needed, and `fixes.md` explains each one. Most of them are not
+Fifteen fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -21,7 +21,7 @@ to 12 cover charging, sound, the greeter holding the sound card, GL on every
 boot, and the volume wheel; fix 13 makes Qt5 programs draw, and fix 14 stops
 root mounting a minute or two late.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all fourteen fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all fifteen fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
@@ -348,11 +348,15 @@ kernel, `5.6.19-m4-kbdled`, which carries it. On that kernel, unmask all five an
 `sudo pyra-sleep-test.sh`, which arms the clock to wake the machine by itself
 and tells you whether the session really came back.
 
-**Make the screen actually dim.** MATE's own dimming adjusts the keyboard light
-rather than the panel, which is why the image ships with it disabled. The
-replacement is `pyra-idle-dim`, in the `pyra-backlight` package, which lives in
-its own repository and also carries a panel applet for the screen and keyboard
-backlights. Build and install it:
+**Make the screen actually dim.** The image ships MATE's own screen dimming
+off (`org.mate.power-manager backlight-enable false`), because on the stock
+`5.6.19-pyradef` it adjusts the keyboard light rather than the panel. On
+`5.6.19-m4-kbdled` it would reach the panel: the keyboard light is an LED there,
+`/sys/class/backlight` holds only the panel, and switching the setting on set
+the panel to MATE's 30 % idle level within a second (measured 2026-10-29). The
+documented path is still `pyra-idle-dim`, in the `pyra-backlight` package,
+which lives in its own repository and also carries a panel applet for the
+screen and keyboard backlights. Build and install it:
 
     ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
     sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
@@ -362,7 +366,17 @@ backlights. Build and install it:
 
 The service takes its timing from `idle-delay` and has no timer of its own, so
 that one setting controls it. Leave `org.mate.power-manager backlight-enable`
-false.
+false, or the two dim the panel at once.
+
+**The keyboard light on `5.6.19-m4-kbdled`.** MATE's power manager drives it
+through UPower whatever `backlight-enable` says. Measured 2026-10-29 on AC,
+with the image's settings: about 15-20 s after the last input it cuts the light
+by 75 % (`kbd-brightness-dim-by-on-idle`), and the next touch puts it back to
+100 % (`kbd-brightness-on-ac`). On battery it also halves it
+(`kbd-brightness-dim-by-on-battery`). So a level you choose with the Fn keys
+(fix 15) or the applet lasts until the next idle-and-touch cycle; neither
+changes the level MATE goes back to. No setting that stops this has been
+tested yet.
 
 ---
 
@@ -396,9 +410,11 @@ The second form copies `device/` to `~/dragonbox-pyra/device` on the Pyra
 safe to re-run. It compares each file with what is installed, reports `same`
 for the ones that match and replaces the rest, then re-enables and restarts
 its three units (governor, AESS script choice, undervolt), re-applies the
-sysctl settings, and rebuilds any initrd that lacks the initramfs hooks
-(step 5). `--dry-run` says what it would change first. It installs no kernel
-and applies none of the fourteen fixes. It does put the fix 6, 7 and 8 scripts
+sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
+reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
+(step 5). `--dry-run` says what it would change first. It installs no kernel,
+and of the fifteen fixes it applies only 13, 14 and 15, whose files it shares
+with prep. It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
 

@@ -898,13 +898,15 @@ the files.
 
 What to expect on it:
 
-- The Fn keyboard-brightness keys do nothing. `pyra-brightkey.sh`
-  hard-codes `/sys/class/backlight/keyboard-backlight`, which is gone.
-  The `pyra-backlight` 0.2 applet drives the LED, in the same nine steps as
-  before.
+- The stock Fn keyboard-brightness script, `pyra-brightkey.sh`, hard-codes
+  `/sys/class/backlight/keyboard-backlight`, which is gone. Prep's fix 15
+  points the keys at `pyra-kbdlight.sh`, which drives the LED in the same nine
+  steps as before (`fixes.md`); the `pyra-backlight` 0.2 applet does too.
 - MATE's power manager now reaches the keyboard light through UPower and
-  applies its stock keyboard settings: it dims the light on battery and on
-  idle.
+  applies its stock keyboard settings, whatever `backlight-enable` says: it
+  halves the light on battery, cuts it by 75 % after 15-20 s without input,
+  and puts it back to 100 % on the next touch, overriding a level set with the
+  Fn keys or the applet (`procedure.md` §8, measured 2026-10-29).
 - The light starts off on the first boot, and after that systemd restores
   the saved level.
 - `palmas-gpadc` logs one failed conversion about 26 s into every boot of

@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8, 13 and 14, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 15, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -520,6 +520,31 @@ for d in dev sys proc; do umount "$MNT/$d"; done
 [[ $NINITRD -gt 0 ]] && p "fix14: checked $NINITRD initrd(s)" || f "fix14: no initrd with modules on the image"
 
 ########################################################################
+i "assert fix 15 — the Fn keyboard-brightness keys"
+########################################################################
+K=$MNT/usr/local/sbin/pyra-kbdlight.sh
+if [[ -e $K ]] && cmp -s "$PAYLOADS/pyra-kbdlight.sh" "$K"; then
+    p "fix15: /usr/local/sbin/pyra-kbdlight.sh matches repo"
+else
+    f "fix15: /usr/local/sbin/pyra-kbdlight.sh missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "755 0:0" ]] && p "fix15: pyra-kbdlight.sh is 0755 root:root" || f "fix15: pyra-kbdlight.sh mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null)"
+for kv in "fn up" "fnshift down"; do
+    if grep -qx "scripts.brightness.${kv% *} = /usr/local/sbin/pyra-kbdlight.sh ${kv#* }" "$MNT/etc/pyrainput.cfg"; then
+        p "fix15: /etc/pyrainput.cfg sends ${kv% *} to pyra-kbdlight.sh ${kv#* }"
+    else
+        f "fix15: /etc/pyrainput.cfg has no ${kv% *} line for pyra-kbdlight.sh"
+    fi
+done
+# The vendor script stays the package's own: nothing diverts or edits it.
+if [[ -e $MNT/usr/share/pyra/scripts/pyra-brightkey.sh ]] &&
+   ! grep -qs 'pyra-brightkey' "$MNT/var/lib/dpkg/diversions"; then
+    p "fix15: the vendor pyra-brightkey.sh is in place and not diverted"
+else
+    f "fix15: the vendor pyra-brightkey.sh is missing or diverted"
+fi
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -546,6 +571,8 @@ grep -qE 'fix8: .*already in place' "$OUT/prep-run2.log" && p "run 2 reported fi
 grep -qE 'fix13: .*already in place' "$OUT/prep-run2.log" && p "run 2 reported fix13 already applied" || f "run 2 did not report fix13 already in place"
 grep -qE 'fix14: .*already has both hooks' "$OUT/prep-run2.log" && p "run 2 reported fix14's initrds current" || f "run 2 did not report fix14's initrds current"
 ! grep -qE 'fix14: rebuilt' "$OUT/prep-run2.log" && p "run 2 rebuilt no initrd" || f "run 2 rebuilt an initrd"
+grep -qE 'fix15: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix15's script up to date" || f "run 2 did not report fix15's script up to date"
+[[ $(grep -cE 'fix15: .*already set' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix15 keys already set" || f "run 2 did not report both fix15 keys already set"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"

@@ -105,9 +105,10 @@ Building it needs Docker on the PC and takes about ten minutes:
 [docs/reproduce.md](docs/reproduce.md) is the full path, including turning
 suspend back on and checking each fix took.
 
-On this kernel the Fn keyboard-brightness keys do nothing, because the stock
-`pyra-brightkey.sh` looks for the keyboard light where it no longer is. The
-`pyra-backlight` 0.2 panel applet controls it instead.
+On this kernel the keyboard light is an LED, which the stock Fn-key script
+cannot find. Prep's fix 15 (and `pyra-push-helpers.sh`) point the Fn keys at
+`pyra-kbdlight.sh`, which drives it; the `pyra-backlight` 0.2 panel applet
+controls it too.
 
 ---
 
@@ -128,7 +129,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card, which must be done on a PC. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card in ten minutes, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The fourteen fixes the prep script applies, what each is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The fifteen fixes the prep script applies, what each is for, and the diagnosis behind it. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

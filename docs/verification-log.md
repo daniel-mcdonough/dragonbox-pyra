@@ -1169,3 +1169,45 @@ binfmt entry has flags `PF`). The selftest now mounts p1 at the rootfs's `/boot`
 Not boot-tested: no card was written from the prepared image. What the initrd
 contains is checked; that it boots and mounts root early is what the device run
 in the `troubleshooting.md` section showed for the same hooks.
+
+## 2026-10-29 — fix 15, the Fn keyboard-light keys on m4-kbdled
+
+Trixie card, `5.6.19-m4-kbdled`, `pyra-scripts` 0.31 (its
+`pyra-brightkey.sh` byte-identical to the archive's 0.31 deb),
+`funkeymonkey-pyrainput` 0.1.19, `pyra-backlight` 0.2. `pyra::kbd_backlight`
+has `max_brightness` 100.
+
+- `pyra-kbdlight.sh` installed to `/usr/local/sbin`, `--configure
+  /etc/pyrainput.cfg` added the `fn` and `fnshift` lines to the three existing
+  `*.export` lines, `systemctl reload pyrainput` took them.
+- Run directly as root from 99: down 60, down 40, up 60, up 100, up 100.
+- The keys, at the greeter (no MATE session), the LED logged every 0.1 s:
+  Fn+brightness 40 → 60 → 100; Fn+Shift+brightness 60 40 20 10 5 2 1 0; then
+  up again through 1 2 5 10 20 40 60 100.
+- `dpkg -S` finds no owner for `/etc/pyrainput.cfg` or the script, `pyra-scripts`
+  ships nothing under `/etc` or `/usr/local`, and no diversion names
+  `pyra-brightkey`. A `pyra-scripts` upgrade has nothing of fix 15's to replace.
+  Not done: an actual upgrade or reinstall.
+- `pc/pyra-prep-selftest.sh`: 81 passed, 0 failed, with fix 15's checks (script
+  matches the repository, 0755 root:root, both lines in `/etc/pyrainput.cfg`,
+  the vendor script present and not diverted, run 2 reports both keys already
+  set).
+
+MATE's dimming on this kernel, same card, logged in, on AC (UPower
+`on-battery: no`), `idle-dim-time 10`, `kbd-brightness-dim-by-on-idle 75`:
+
+- `mate-power-backlight-helper --get-max-brightness` gives 15, the panel's.
+- With the image's `backlight-enable false`, `pyra-idle-dim` stopped and
+  `idle-delay` 1 min, 150 s idle changed neither light (panel 3 of 15, keyboard
+  25). Setting `backlight-enable true` then moved the panel 3 → 5 within 1 s
+  (30 % of 15, MATE's `idle-brightness`); the keyboard did not move.
+  Settings restored afterwards.
+- A nub touch took the keyboard 25 → 99; 20 s later it was back at 25.
+- Fn+Shift+brightness in the session: the first press brought MATE's 99 back,
+  then the keys stepped it 60 40 20 10 5. About 40 s later MATE set 25 (up from
+  5), and the next touch 99.
+- The level set through UPower (`KbdBacklight.SetBrightness 10`) was dimmed to 2
+  after 36 s idle in one run; in the next, a touch restored 99, not 10, and 10 s
+  later MATE set 25.
+- Input made with `xdotool` did not trigger MATE's dim or restore at all, so
+  these needed real touches.
