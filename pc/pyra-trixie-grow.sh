@@ -100,6 +100,16 @@ info "p2 partition $P2_SECTORS_NOW sectors ($(( P2_SECTORS_NOW / 2097152 )) GiB)
 info "p2 filesystem $FS_SECTORS sectors ($(( FS_SECTORS / 2097152 )) GiB)"
 info "unused disk  $FREE sectors ($(( FREE / 2097152 )) GiB)"
 
+# Read-only check, before anything is written. Plain `fsck.f2fs -f` repairs:
+# it unlinks damaged inodes into lost_found, which destroys the evidence of
+# what went wrong and leaves a filesystem that only looks clean. --dry-run
+# reports and changes nothing (exit 0 clean, non-zero otherwise).
+info "checking the filesystem (read-only)"
+if ! fsck.f2fs -f --dry-run "$P2"; then
+    die "fsck.f2fs found damage; nothing was written. Image the card before any repair (docs/troubleshooting.md, \"fsck finds damage before the grow\")"
+fi
+ok "filesystem is clean"
+
 GROW_PART=0
 GROW_FS=0
 [[ $FREE -ge 2097152 ]] && GROW_PART=1
@@ -150,9 +160,6 @@ fi
 ########################################################################
 # Resize the filesystem
 ########################################################################
-info "checking the filesystem before resizing"
-fsck.f2fs -f "$P2" || die "fsck.f2fs reported a problem; not resizing"
-
 # Optional slack at the end of the partition. Costs almost nothing on a card
 # this size and avoids relying on the very last sectors, which are the ones
 # most likely to be marginal. Set RESIZE_MARGIN_SECTORS=0 to use every sector.
@@ -170,7 +177,7 @@ else
 fi
 
 info "checking the filesystem after resizing"
-fsck.f2fs -f "$P2" || warn "post-resize fsck reported a problem — inspect before booting"
+fsck.f2fs -f --dry-run "$P2" || warn "post-resize fsck (read-only) reported a problem — inspect before booting"
 
 echo
 ok "done. Sanity check:"

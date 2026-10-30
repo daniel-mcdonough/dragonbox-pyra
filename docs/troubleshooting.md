@@ -1379,6 +1379,37 @@ hand and watch the brightness follow:
         --object-path /org/gnome/SessionManager/Presence \
         --method org.gnome.SessionManager.Presence.SetStatus 0   # awake
 
+## fsck finds damage before the grow, on a card that has booted only once
+
+Seen 2026-10-29 (development log, 2026-10-29 entries; cause still open). A prepared card was written from the
+image through a generic USB SD reader. It booted the shipped kernel cleanly once. When `pyra-trixie-grow.sh`
+then checked it, `fsck.f2fs` found 15 inodes whose node footers were zeroed or held text (one read `0000` /
+` */ `). They belonged to files the vendor build wrote and the boot had no reason to touch: `libuuid.so.1`,
+`libudisks2`, `libavahi-common`, `immodules.cache`, `locale.dir`, `ssh-agent.service`, and some fonts and icons.
+The same image's p2, checked read-only on the PC, is clean, so the damage happened during the write to the card or
+on the card. The capacity check below passed on that card and reader afterwards (238 GiB real, 256 MiB sustained
+round trip clean), which rules out a fake-capacity card. A sustained 6 GiB write through the reader is not ruled out.
+
+**How to spot it:** the grow stops with `fsck.f2fs found damage; nothing was written`. Before 2026-10-29 the grow
+ran `fsck.f2fs -f`, which repairs: it unlinked those files into `lost_found` and wrote the result back. It also
+grew the partition before checking. Now it checks with `--dry-run` before any write. Treat a card in this state as
+suspect even if it boots, since shared libraries are among the lost files.
+
+**What to do:**
+
+1. Keep the evidence: image the card's first 7 GiB before any repair
+   (`dd if=/dev/sdX of=card.img bs=4M count=1792 iflag=direct status=progress`). Then
+   `sudo pc/pyra-verify-card-metadata.sh /dev/sdX2` checks for the `USBC` signature described in the next
+   section.
+2. Re-flash, then read the card back and compare it with the image **before it goes in the Pyra**:
+   `cmp -n $(stat -c %s image.img) image.img /dev/sdX` (as root, card unmounted). A difference here puts the cause
+   on the reader or the card, not the kernel.
+3. If the read-back matches: boot once, shut down cleanly (`poweroff`, not the power button), and run a read-only
+   `fsck.f2fs -f --dry-run /dev/sdX2` on the PC. Damage at that point, with a clean read-back, points at the boot
+   rather than the write.
+4. Write through an SD host controller (a built-in laptop slot, `/dev/mmcblk*`) where you can.
+   `grow-rootfs.md` explains why.
+
 ## The card will not mount: `Failed to get valid F2FS checkpoint`
 
 Seen 2026-09-10. The symptom, from the Pyra's own boot:

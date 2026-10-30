@@ -64,7 +64,10 @@ So: power the Pyra down, move the card to a reader on a PC, and run
 `pyra-trixie-grow.sh`, in the repository root, refuses to touch anything that is not
 a Pyra trixie card. It checks the MBR disk identifier and both partition start
 sectors, refuses a partition or a mounted device, and backs up the first 1 MiB
-and the partition table before it writes. Partition 2's start sector does not
+and the partition table before it writes. Before any write it runs
+`fsck.f2fs -f --dry-run`, which reports and changes nothing; on damage it stops
+with the card untouched (`troubleshooting.md`, "fsck finds damage before the
+grow"). It never runs a repairing fsck. Partition 2's start sector does not
 move, so the PARTUUIDs that `fstab` and `extlinux.conf` reference stay valid. It
 is idempotent: run it on an already-grown card and it reports there is nothing
 to do.
