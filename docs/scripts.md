@@ -28,6 +28,10 @@ need no privileges beyond reading `/proc`.
 | `pc/pyra-verify-card-metadata.sh` | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
 | `pc/pyra-card-diagnose.sh` | Asks whether a failing card is the card or the reader. Read-only, about a minute. |
 | `pc/pyra-card-read-stability.sh` | Reads the same block twice with the page cache bypassed, to catch a reader that invents data. Read-only. |
+| `pc/pyra-card-backup.sh` | Takes a file-level backup of either card (trixie or bookworm, named after the release on it) read-only, timed, with an `.info` that the restore reads. See `docs/card-backup-restore.md`. |
+| `pc/pyra-card-reader-test.sh` | Against a backup taken through the same reader: re-reads every file, the boot partition and every sector, and checks the SCSI error counter and the kernel log. Read-only. |
+| `pc/pyra-card-restore.sh` | Restores a card from that backup. Destroys the target; without `--yes` it only checks and prints the plan. |
+| `pc/99-pyra-card-noauto.rules` | udev rule: the PC's desktop no longer auto-mounts a Pyra card read-write. Install steps are in the file. |
 | `pc/pyra-card-probe-and-image.sh` | Looks at a suspect card read-only, then images both partitions before anything else is attempted. Writes nothing to the card. |
 | `pc/pyra-repair-lib-symlink.sh` | Puts back the `/lib` symlink that a bad tar extraction destroys. Run from the PC with the card mounted, because the device cannot start a single binary once it is gone. |
 | `pc/pyra-devsetup.sh` | Development conveniences on a machine you own: your SSH key, sudo without a password, and a desktop with no login prompt. Reversible with `--undo`. |

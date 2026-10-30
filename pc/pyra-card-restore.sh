@@ -13,13 +13,16 @@
 #   sfdisk             the partition table as text, to check the MBR against
 #   p1-boot.img.zst    the ext2 boot partition, as an image
 #   p2-root.tar.zst    the f2fs root filesystem, as a tar (numeric owners, xattrs, ACLs)
+#   info               pyra-card-backup.sh's record of the card: its rootfs UUID and f2fs
+#                      features are used here (backups from before it have none; then the
+#                      trixie card's values below, or ROOT_UUID= and F2FS_FEATURES=)
 #   SHA256SUMS         checksums of all of them
 set -euo pipefail
 
 die() { echo "error: $*" >&2; exit 1; }
 say() { echo "== $*"; }
 
-[ $# -ge 3 ] || { sed -n '2,17p' "$0"; exit 1; }
+[ $# -ge 3 ] || { sed -n '2,20p' "$0"; exit 1; }
 DIR=$1 PFX=$2 DEV=$3 GO=${4:-}
 [ "$(id -u)" = 0 ] || die "run as root"
 cd "$DIR"
@@ -33,8 +36,10 @@ command -v zstd >/dev/null || die "zstd not found"
 # Partition names: mmcblk0 -> mmcblk0p1, loop0 -> loop0p1, sdb -> sdb1
 case $DEV in *[0-9]) P1=${DEV}p1 P2=${DEV}p2 ;; *) P1=${DEV}1 P2=${DEV}2 ;; esac
 
-# The card has to hold the saved table: p2 ends at start + size sectors.
-need=$(awk -F'[=,]' '/p2 :/ {gsub(/ /,""); print ($2 + $4) * 512}' "$PFX.sfdisk")
+# The card has to hold the saved table: p2 ends at start + size sectors. p2 is the second
+# partition line, named mmcblk0p2 or sdb2 after the reader the backup was taken on.
+need=$(awk -F'[=,]' '/start=/ && ++n == 2 {gsub(/ /,""); print ($2 + $4) * 512; exit}' "$PFX.sfdisk")
+[ -n "$need" ] || die "no second partition in $PFX.sfdisk"
 have=$(blockdev --getsize64 "$DEV")
 [ "$have" -ge "$need" ] || die "$DEV is $have bytes; the saved table needs $need. Edit the sfdisk file for a smaller card (docs/card-backup-restore.md)."
 if grep -q "^$DEV" /proc/mounts; then
@@ -43,14 +48,23 @@ fi
 
 # The kernel and fstab find partitions by PARTUUID (from the MBR's disk id), not by this;
 # it is kept the same so nothing that reads it notices the restore.
-UUID=${ROOT_UUID:-93b4acaf-6486-4f5b-8216-675e9c2aaced}
+info() { [ -f "$PFX.info" ] || return 0; sed -n "s/^$1=//p" "$PFX.info" | head -1; }
+UUID=${ROOT_UUID:-$(info ROOT_UUID)}
+UUID=${UUID:-93b4acaf-6486-4f5b-8216-675e9c2aaced}
+# The original's features and no others: newer mkfs.f2fs defaults could leave a filesystem
+# the Pyra's 5.6 kernel will not mount.
+FEAT=${F2FS_FEATURES:-$(info F2FS_FEATURES)}
+FEAT=${FEAT:-encrypt}
+[[ $UUID =~ ^[0-9a-f-]{36}$ ]] || die "bad rootfs UUID '$UUID'"
+[[ $FEAT =~ ^[a-z_]+(,[a-z_]+)*$ ]] || die "bad f2fs feature list '$FEAT'"
 
 say "plan"
 echo "  device   $DEV ($have bytes): $(lsblk -dno MODEL,TRAN "$DEV" 2>/dev/null | xargs)"
+echo "  backup   $PFX: $(info RELEASE) card, taken $(info TAKEN)"
 echo "  1. check the SHA256SUMS"
 echo "  2. dd $PFX.first1MiB.bin -> first 1 MiB (table + bootloader)"
 echo "  3. dd $PFX.p1-boot.img.zst -> $P1"
-echo "  4. mkfs.f2fs -l rootfs -O encrypt -U $UUID $P2"
+echo "  4. mkfs.f2fs -l rootfs -O $FEAT -U $UUID $P2"
 echo "  5. untar $PFX.p2-root.tar.zst into it, fsck.f2fs"
 [ "$GO" = --yes ] || { echo "nothing written; add --yes to do it"; exit 0; }
 
@@ -77,9 +91,7 @@ zstd -dc "$PFX.p1-boot.img.zst" | dd of="$P1" bs=4M conv=fsync status=none
 echo "  $(blkid "$P1")"
 
 say "4. root filesystem"
-# Only 'encrypt', as on the original: newer defaults could leave a filesystem the Pyra's
-# 5.6 kernel will not mount.
-mkfs.f2fs -f -q -l rootfs -O encrypt -U "$UUID" "$P2"
+mkfs.f2fs -f -q -l rootfs -O "$FEAT" -U "$UUID" "$P2"
 echo "  $(blkid "$P2")"
 
 say "5. files"

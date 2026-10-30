@@ -1,0 +1,18 @@
+# Keep the desktop from auto-mounting a Pyra card on the PC.
+#
+# A read-write mount by the PC's (much newer) kernel writes to the card: on insertion it
+# replays the f2fs roll-forward log and writes checkpoints, and background GC can run.
+# Back up from a read-only mount instead (pc/pyra-card-backup.sh does).
+#
+# Matches the Pyra layout, not one card: an f2fs labelled rootfs, an ext2 labelled boot.
+# UDISKS_AUTO=0 stops the auto-mount, UDISKS_IGNORE=1 hides it from file managers.
+# Deliberate mounts still work (mount, or udisksctl mount -b /dev/sdX2 -o ro).
+#
+# Install:  sudo install -m644 pc/99-pyra-card-noauto.rules /etc/udev/rules.d/
+#           sudo udevadm control --reload
+# It applies from the next time a card goes in. A card already mounted stays mounted.
+
+SUBSYSTEM!="block", GOTO="pyra_card_end"
+ENV{ID_FS_TYPE}=="f2fs", ENV{ID_FS_LABEL}=="rootfs", ENV{UDISKS_AUTO}="0", ENV{UDISKS_IGNORE}="1"
+ENV{ID_FS_TYPE}=="ext2", ENV{ID_FS_LABEL}=="boot", ENV{UDISKS_AUTO}="0", ENV{UDISKS_IGNORE}="1"
+LABEL="pyra_card_end"
