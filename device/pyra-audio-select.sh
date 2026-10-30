@@ -5,6 +5,8 @@
 #   sudo ./pyra-audio-select.sh            choose, at boot (what the unit runs)
 #        ./pyra-audio-select.sh --check    say which path this kernel has and
 #                                          which script PulseAudio will load
+#   sudo ./pyra-audio-select.sh --link [ROOT]  make the link into /run, under
+#                                          ROOT (default /); install time only
 #
 # WHAT IS WRONG
 #
@@ -37,6 +39,12 @@
 # If the card never appears there is no sound either way; the direct path is
 # chosen, because it is the packaged configuration.
 #
+# --link makes that link, for pyra-install-helpers.sh on a running Pyra and
+# for pc/pyra-trixie-prep.sh (fix 17) on a mounted card, so both make it the
+# same way. A regular file in its place, from an install by hand, would pick
+# the AESS script for every kernel; it is moved aside as .before-select if its
+# settings differ from the payload's, so nothing is lost.
+#
 set -euo pipefail
 
 CARD=/proc/asound/L15
@@ -67,9 +75,27 @@ if [ "${1:-}" = --check ]; then
 	echo "ok"
 	exit 0
 fi
+if [ "${1:-}" = --link ]; then
+	root=${2:-}
+	root=${root%/}
+	[ "$(id -u)" = 0 ] || { echo "run this with sudo" >&2; exit 2; }
+	if [ "$(readlink "$root$LINK" 2>/dev/null)" = "$RUNDIR/zz-pyra-aess.conf" ]; then
+		echo "same      $LINK -> $RUNDIR/zz-pyra-aess.conf"
+		exit 0
+	fi
+	if [ -f "$root$LINK" ] && [ ! -L "$root$LINK" ] &&
+	   ! cmp -s <(grep -v '^#' "$root$LINK") <(grep -v '^#' "$root$PAYLOAD" 2>/dev/null); then
+		mv "$root$LINK" "$root$LINK.before-select"
+		echo "kept the old file as $LINK.before-select"
+	fi
+	install -d -m 0755 "$(dirname "$root$LINK")"
+	ln -sfn "$RUNDIR/zz-pyra-aess.conf" "$root$LINK"
+	echo "linked    $LINK -> $RUNDIR/zz-pyra-aess.conf"
+	exit 0
+fi
 case "${1:-}" in
 "") ;;
--h|--help) sed -n '3,7p' "$0" | sed 's/^# \?//'; exit 0 ;;
+-h|--help) sed -n '3,9p' "$0" | sed 's/^# \?//'; exit 0 ;;
 *) echo "unknown argument: $1" >&2; exit 2 ;;
 esac
 

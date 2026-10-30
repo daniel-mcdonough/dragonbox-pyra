@@ -1236,3 +1236,40 @@ was needed:
   `-o 0 -g 0`, as a user): installed both files and the link, then reported
   both up to date and already enabled. The full selftest needs root on the PC
   and was not run.
+
+## 2026-10-29 — fix 17, the PulseAudio script chosen per boot
+
+Trixie card. It has had `pyra-audio-select` from `pyra-install-helpers.sh`,
+which is the state prep's fix 17 writes:
+
+- The six installed files (unit, the `zz-pyra-aess.conf` payload,
+  `pyra-aess.pa`, the profile set, both mixer paths) are byte-identical to
+  `device/`. The installed `pyra-audio-select.sh` is the previous commit's,
+  which differs only by the new `--link` mode. The new script's `--link` on
+  the card reported `same` for the existing link, exit 0.
+- `dpkg -S` on the seven installed paths finds none of them. It finds only
+  their directories (`pulseaudio` owns `/usr/share/pulseaudio/alsa-mixer/paths`
+  and `profile-sets`). `pyra-config-pulseaudio` owns `daemon.conf.d/pyra.conf`
+  and `pyra.pa`. So no package guard is needed.
+- `5.6.19-m4-kbdled`: the unit logged `AESS kernel: PulseAudio gets
+  /etc/pulse/pyra-aess.pa` 19 s into boot; `--check` read `path aess`, `ok`;
+  the default sink was `aess` (module-alsa-card, s16le 2ch 48000 Hz, port
+  `pyra-speaker`). `paplay -d aess Front_Center.wav`: sink `RUNNING`,
+  `pcm5p` hw_ptr 29280 → 44460 in 0.3 s.
+- `5.6.19-pyradef` (entry `l0`, one boot with `pyra-boot-kernel.sh debug l0
+  --once`): the unit logged `direct-link kernel: PulseAudio gets the packaged
+  /etc/pulse/pyra.pa` 21 s into boot; `/run/pyra-audio/` was empty, so the
+  link dangled; `--check` read `path direct`, `script /etc/pulse/pyra.pa
+  (packaged)`, `ok`; sinks `alsa_output.hw_CARD_L15_DEV_0`, `speakers`
+  (default), `headphones`. `paplay -d speakers`: both sinks `RUNNING`, `pcm0p`
+  hw_ptr 50387 → 78317 in 0.3 s; `Handsfree Left Playback` `HF DAC` (fix 9).
+  The next boot returned to `l5` and `aess`.
+- The data reached the codec on both kernels. Whether it was audible was not
+  checked (no one listening).
+- Prep's fix 17 block alone, run twice against a scratch root on the PC under
+  `unshare -r`: it installed the seven files with their modes, made the link and
+  the `multi-user.target.wants` link, then reported every file up to date, the
+  link in place and the unit already enabled. `--link` was also run against a
+  scratch root holding a regular file: an identical one was replaced, a
+  differing one was kept as `.before-select`. The full selftest needs root on
+  the PC and was not run (expected 88 + 20 = 108 passed).

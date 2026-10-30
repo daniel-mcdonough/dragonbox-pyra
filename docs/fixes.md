@@ -1,4 +1,4 @@
-# The sixteen fixes, and what they actually do
+# The seventeen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1042,6 +1042,66 @@ Check after boot: `pyra-governor-tune.sh --check` reads `sampling_down_factor :
 10` and `applied.`. Checked 2026-10-29 on the trixie card (m4-kbdled), whose
 script, unit, modes and enable link are byte-for-byte what prep writes: the
 boot-time run, 16 s after boot, left 10 (`verification-log.md`).
+
+## Fix 17 — the AESS kernel needs its own PulseAudio script, and the stock one must keep the packaged one
+
+On `5.6.19-m4-kbdled` audio goes through the OMAP5's audio DSP (AESS) on
+`hw:L15,5`; on the stock `5.6.19-pyradef` it goes over the direct McPDM link on
+`hw:L15,0`, which the packaged `/etc/pulse/pyra.pa` opens. Each kernel needs its
+own script, and loading the wrong one leaves the session on `auto_null`, the
+"dummy output" (`audio.md`, "Two paths, chosen by the kernel"). A file in `/etc`
+can name only one of them, and a prepared card boots the stock kernel until the
+shipped one is on it.
+
+So the choice is made per boot. Prep installs, to the same paths
+`pyra-install-helpers.sh` uses:
+
+    /usr/local/sbin/pyra-audio-select.sh                          0755
+    /etc/systemd/system/pyra-audio-select.service                  0644
+    /usr/local/share/pyra-audio/zz-pyra-aess.conf                  0644  the daemon.conf that picks pyra-aess.pa
+    /etc/pulse/pyra-aess.pa                                        0644
+    /etc/pulse/pyra-alsa-mixer/profile-sets/pyra-aess.conf         0644
+    /usr/share/pulseaudio/alsa-mixer/paths/pyra-speaker.conf       0644
+    /usr/share/pulseaudio/alsa-mixer/paths/pyra-headphones.conf    0644
+
+and makes `/etc/pulse/daemon.conf.d/zz-pyra-aess.conf` a link to
+`/run/pyra-audio/zz-pyra-aess.conf`, then enables the unit offline with a
+`multi-user.target.wants` link. `/run` starts empty, so the link dangles until
+the unit runs. Before the display manager, the unit waits for the card and, on a
+kernel whose PCM list has `MultiMedia1 LP`, copies the daemon.conf into `/run`.
+On any other kernel it leaves the link dangling. PulseAudio 17 skips a dangling
+file in `daemon.conf.d`, so on `pyradef` the packaged `pyra.conf` and `pyra.pa`
+apply untouched. Both prep and `pyra-install-helpers.sh` make the link with
+`pyra-audio-select.sh --link`, so it has one implementation. A regular file in
+its place, from an install by hand, is moved aside as `.before-select` if its
+settings differ from the payload's.
+
+**No package guard.** Two of the files have to be in
+`/usr/share/pulseaudio/alsa-mixer/paths`, the only place PulseAudio 17 reads a
+profile set's paths from. The `pulseaudio` package owns that directory but none
+of the seven files: on the trixie card, `dpkg -S` finds only the directories
+(checked 2026-10-29). dpkg replaces and removes only the files it owns, so an
+upgrade leaves these alone. Fixes 6 and 7 need `pyra-thermal-guard` because they
+edit a file that `pyra-hacks` owns and rewrites; this fix edits no packaged file.
+The packaged `pyra.conf` and `pyra.pa` (`pyra-config-pulseaudio`) are left
+untouched, and `zz-` sorts after `pyra.conf`, so its assignments win when it is
+there.
+
+**Next to fixes 9, 10 and 12.** Fix 9's helper sets the four codec routes and
+the DSP's DL1 and DL2 mixers. The AESS path needs those mixers, and its two
+ports switch the routes per output. Fix 10 keeps the greeter's PulseAudio off
+the card, which the session's `module-alsa-card` open needs as much as the
+packaged `module-alsa-sink` does. The two mixer paths have no volume element, so
+`Handsfree Playback Volume` is still the wheel's alone (fix 12).
+
+Check after boot: `pyra-audio-select.sh --check` ends `ok`. On m4-kbdled it
+reads `path aess` and names `/etc/pulse/pyra-aess.pa`, and `pactl list short
+sinks` shows `aess`. On pyradef it reads `path direct` and names the packaged
+`/etc/pulse/pyra.pa`. On 2026-10-29 the trixie card, whose files match what
+prep writes, chose `aess` on m4-kbdled and `direct` on pyradef, and a stream
+ran through the `aess` sink and through the packaged `speakers` sink
+respectively. Whether it was audible was not checked, and a freshly prepared
+card has not been booted with this fix (`verification-log.md`).
 
 ## Fixes 6, 7 and 12 as a package
 

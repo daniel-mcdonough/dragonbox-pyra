@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 16, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 17, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -562,6 +562,38 @@ done
     || f "fix16: not enabled"
 
 ########################################################################
+i "assert fix 17 — the PulseAudio script, chosen per boot"
+########################################################################
+while read -r src dir mode; do
+    A=$MNT$dir/$(basename "$src")
+    if [[ -e $A ]] && cmp -s "$PAYLOADS/$src" "$A"; then
+        p "fix17: $dir/$(basename "$src") matches repo"
+    else
+        f "fix17: $dir/$(basename "$src") missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$A" 2>/dev/null) == "$mode 0:0" ]] && p "fix17: $(basename "$src") is $mode root:root" || f "fix17: $(basename "$src") mode is $(stat -c '%a %u:%g' "$A" 2>/dev/null)"
+done <<'FILES'
+pyra-audio-select.sh /usr/local/sbin 755
+pyra-audio-select.service /etc/systemd/system 644
+pulse/zz-pyra-aess.conf /usr/local/share/pyra-audio 644
+pulse/pyra-aess.pa /etc/pulse 644
+pulse/alsa-mixer/profile-sets/pyra-aess.conf /etc/pulse/pyra-alsa-mixer/profile-sets 644
+pulse/alsa-mixer/paths/pyra-speaker.conf /usr/share/pulseaudio/alsa-mixer/paths 644
+pulse/alsa-mixer/paths/pyra-headphones.conf /usr/share/pulseaudio/alsa-mixer/paths 644
+FILES
+# Dangling on the PC as on any boot until the unit fills /run, which is the
+# point: until then the packaged pyra.conf and pyra.pa are what apply.
+[[ $(readlink "$MNT/etc/pulse/daemon.conf.d/zz-pyra-aess.conf" 2>/dev/null) == /run/pyra-audio/zz-pyra-aess.conf ]] \
+    && p "fix17: daemon.conf.d/zz-pyra-aess.conf links into /run/pyra-audio" \
+    || f "fix17: daemon.conf.d/zz-pyra-aess.conf is not the link into /run"
+[[ -e $MNT/etc/pulse/daemon.conf.d/pyra.conf && -e $MNT/etc/pulse/pyra.pa ]] \
+    && p "fix17: the packaged pyra.conf and pyra.pa are still in place" \
+    || f "fix17: the packaged pyra.conf or pyra.pa is missing"
+[[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/pyra-audio-select.service" 2>/dev/null) == /etc/systemd/system/pyra-audio-select.service ]] \
+    && p "fix17: enabled in multi-user.target" \
+    || f "fix17: not enabled"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -592,6 +624,9 @@ grep -qE 'fix15: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
 [[ $(grep -cE 'fix15: .*already set' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix15 keys already set" || f "run 2 did not report both fix15 keys already set"
 [[ $(grep -cE 'fix16: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix16 files up to date" || f "run 2 did not report both fix16 files up to date"
 grep -qE 'fix16: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix16 already enabled" || f "run 2 did not report fix16 already enabled"
+[[ $(grep -cE 'fix17: .*already up to date' "$OUT/prep-run2.log") -eq 7 ]] && p "run 2 reported all seven fix17 files up to date" || f "run 2 did not report all seven fix17 files up to date"
+grep -qE 'fix17: link already in place' "$OUT/prep-run2.log" && p "run 2 reported fix17's link in place" || f "run 2 did not report fix17's link in place"
+grep -qE 'fix17: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix17 already enabled" || f "run 2 did not report fix17 already enabled"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"

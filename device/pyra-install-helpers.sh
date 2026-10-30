@@ -21,12 +21,14 @@
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does install the two init-top hooks
 # that keep root from mounting late, and rebuilds the initrd of every kernel in
-# /boot whose initrd lacks them or predates them. It does not apply the sixteen
+# /boot whose initrd lacks them or predates them. It does not apply the seventeen
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
-# Fixes 13 to 16 are the exception, since their files (pyra-gles, the two
-# hooks, pyra-kbdlight.sh and pyra-governor-tune's script and unit) are in the
-# map below and land on the same paths prep uses, and fix 15's two lines in /etc/pyrainput.cfg are written by the
-# same script prep calls.
+# Fixes 13 to 17 are the exception, since their files (pyra-gles, the two
+# hooks, pyra-kbdlight.sh, pyra-governor-tune's script and unit, and
+# pyra-audio-select's script, unit and five PulseAudio files) are in the map
+# below and land on the same paths prep uses; fix 15's two lines in
+# /etc/pyrainput.cfg and fix 17's daemon.conf.d link are made by the same
+# scripts prep calls.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #
@@ -209,26 +211,21 @@ fi
 # ------------------------------------------------------- the audio script
 # Which PulseAudio script is right depends on the kernel that booted, so the
 # daemon.conf that picks the AESS one is a link into /run, filled in at each
-# boot by pyra-audio-select.service (its header says how). A regular file
-# here, from an install by hand, would pick the AESS script for every kernel;
-# it is moved aside if its settings differ from the repository's, so nothing
-# is lost.
+# boot by pyra-audio-select.service (its header says how). The script makes
+# the link itself (--link), the same way prep's fix 17 does on a card; a
+# regular file in its place, from an install by hand, is moved aside if its
+# settings differ from the payload's, so nothing is lost.
 say "the PulseAudio script, chosen per boot"
 LINK=/etc/pulse/daemon.conf.d/zz-pyra-aess.conf
 RUNFILE=/run/pyra-audio/zz-pyra-aess.conf
-if [ "$(readlink "$LINK" 2>/dev/null)" = "$RUNFILE" ]; then
-	note "same      $LINK -> $RUNFILE"
-elif [ "$DRYRUN" = 1 ]; then
-	note "would link $LINK -> $RUNFILE"
-else
-	if [ -f "$LINK" ] && [ ! -L "$LINK" ] &&
-	   ! cmp -s <(grep -v '^#' "$LINK") <(grep -v '^#' "$HERE/pulse/zz-pyra-aess.conf"); then
-		mv "$LINK" "$LINK.before-select"
-		note "kept the old file as $LINK.before-select"
+if [ "$DRYRUN" = 1 ]; then
+	if [ "$(readlink "$LINK" 2>/dev/null)" = "$RUNFILE" ]; then
+		note "same      $LINK -> $RUNFILE"
+	else
+		note "would link $LINK -> $RUNFILE"
 	fi
-	install -d -m 0755 "$(dirname "$LINK")"
-	ln -sfn "$RUNFILE" "$LINK"
-	note "linked $LINK -> $RUNFILE"
+else
+	/usr/local/sbin/pyra-audio-select.sh --link | while read -r line; do note "$line"; done
 fi
 if [ "$DRYRUN" = 1 ]; then
 	note "would enable and restart pyra-audio-select.service"

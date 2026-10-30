@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the sixteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the seventeen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -92,6 +92,21 @@ GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
 [[ -x $GOVTUNE_SRC ]] || die "fix16: pyra-governor-tune.sh not found or not executable (looked in $PAYLOADS)"
 [[ -r $GOVTUNE_UNIT_SRC ]] || die "fix16: pyra-governor-tune.service not found (looked in $PAYLOADS)"
+
+# Fix 17 copies seven files and makes one link through the select script's
+# --link door, which pyra-install-helpers.sh uses too. "name destination mode".
+AUDIOSEL_SRC=$PAYLOADS/pyra-audio-select.sh
+[[ -x $AUDIOSEL_SRC ]] || die "fix17: pyra-audio-select.sh not found or not executable (looked in $PAYLOADS)"
+AUDIOSEL_FILES="pyra-audio-select.sh /usr/local/sbin 0755
+pyra-audio-select.service /etc/systemd/system 0644
+pulse/zz-pyra-aess.conf /usr/local/share/pyra-audio 0644
+pulse/pyra-aess.pa /etc/pulse 0644
+pulse/alsa-mixer/profile-sets/pyra-aess.conf /etc/pulse/pyra-alsa-mixer/profile-sets 0644
+pulse/alsa-mixer/paths/pyra-speaker.conf /usr/share/pulseaudio/alsa-mixer/paths 0644
+pulse/alsa-mixer/paths/pyra-headphones.conf /usr/share/pulseaudio/alsa-mixer/paths 0644"
+while read -r src _ _; do
+    [[ -r $PAYLOADS/$src ]] || die "fix17: $src not found (looked in $PAYLOADS)"
+done <<<"$AUDIOSEL_FILES"
 
 HOOK_SRC=$PAYLOADS/etc/initramfs-tools/scripts/init-top
 HOOKS="pyra-fw-nofallback pyra-settle-nudge"
@@ -974,6 +989,54 @@ else
     ln -sf /etc/systemd/system/pyra-governor-tune.service \
            "$WANTS/pyra-governor-tune.service"
     ok "fix16: enabled in multi-user.target"
+fi
+
+# ---------------------------------------------------------------------- fix 17
+#
+# The audio DSP (AESS) path needs its own PulseAudio script, and the packaged
+# pyra.pa is right only for the direct McPDM link: load the wrong one and the
+# session gets auto_null, the "dummy output". Which one is right depends on
+# the kernel that booted, so a file in /etc cannot choose. The daemon.conf
+# that selects pyra-aess.pa sits behind a link into /run, which starts empty;
+# pyra-audio-select.service fills it before the display manager on an AESS
+# kernel (5.6.19-m4-kbdled) and leaves it dangling on any other, where
+# PulseAudio skips it and the packaged pyra.conf and pyra.pa apply untouched.
+# So on the stock 5.6.19-pyradef this card boots, the stock audio is what
+# plays. docs/audio.md, "Two paths, chosen by the kernel".
+#
+# Two of the files go in /usr/share/pulseaudio/alsa-mixer/paths, the only
+# place PulseAudio 17 reads a profile set's paths from. The pulseaudio package
+# owns that directory but not these files, and dpkg replaces or removes only
+# files it owns, so an upgrade leaves them alone and they need no guard like
+# fixes 6 and 7. Fix 9's helper sets the DSP mixers this path plays through;
+# the paths carry no volume element, so the wheel (fix 12) is untouched.
+
+while read -r src dir mode; do
+    dst=$ROOT$dir/$(basename "$src")
+    if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+        ok "fix17: ${dst#$ROOT} already up to date"
+        continue
+    fi
+    VERB=$([[ -e $dst ]] && echo updated || echo installed)
+    install -d -m 0755 "$ROOT$dir"
+    install -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+    ok "fix17: $VERB ${dst#$ROOT}"
+done <<<"$AUDIOSEL_FILES"
+LINKOUT=$("$AUDIOSEL_SRC" --link "$ROOT" 2>&1) ||
+    die "fix17: could not make the daemon.conf.d link:
+       $LINKOUT"
+while read -r line; do
+    case $line in
+    same*) ok "fix17: link already in place: $(echo ${line#same})" ;;
+    *)     ok "fix17: $(echo $line)" ;;
+    esac
+done <<<"$LINKOUT"
+if [[ -L $WANTS/pyra-audio-select.service ]]; then
+    ok "fix17: already enabled in multi-user.target"
+else
+    ln -sf /etc/systemd/system/pyra-audio-select.service \
+           "$WANTS/pyra-audio-select.service"
+    ok "fix17: enabled in multi-user.target"
 fi
 
 echo

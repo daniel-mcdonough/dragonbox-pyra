@@ -37,7 +37,8 @@ Either mismatch gives the same symptom — a single `auto_null` sink, the
 desktop's "dummy output" — and the journal line that tells them apart is under
 *Diagnosing silence* below.
 
-`pyra-audio-select.service` (from `device/pyra-install-helpers.sh`) prevents it.
+`pyra-audio-select.service` prevents it. Prep installs and enables it as fix 17
+(`fixes.md`), and `device/pyra-install-helpers.sh` does the same on a running Pyra.
 `/etc/pulse/daemon.conf.d/zz-pyra-aess.conf` is a symlink to
 `/run/pyra-audio/zz-pyra-aess.conf`, and `/run` starts empty on every boot.
 Before the display manager starts, the service waits for `/proc/asound/L15`
@@ -72,7 +73,7 @@ copies are in `device/pulse/`. Since 2026-10-20 the script loads
 `module-alsa-card` with a profile set of our own, on `hw:L15,5`, stereo,
 `tsched=0`, `mmap=no`, 4 x 2048-frame fragments. That gives the desktop a
 card and the `aess` sink two ports. It needs three files besides the script,
-none of them packaged. `pyra-install-helpers.sh` installs all five:
+none of them packaged. Prep (fix 17) and `pyra-install-helpers.sh` install all five:
 
 | repository | device |
 | --- | --- |

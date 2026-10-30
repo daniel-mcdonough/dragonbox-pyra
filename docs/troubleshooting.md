@@ -1281,7 +1281,8 @@ match the booted kernel: AESS kernels (`-m4`, `-m4-kbdled`) need
     systemctl status pyra-audio-select.service    # what the boot step chose
 
 Recovery, once `--check` says `ok`: `systemctl --user restart pulseaudio.service`.
-If the service is not installed, run `device/pyra-install-helpers.sh`. Every
+A card made with the prep script has the service (fix 17); if it is not
+installed, run `device/pyra-install-helpers.sh`. Every
 other cause (routes off, the greeter holding the card) is in `audio.md`,
 *Diagnosing silence*.
 
