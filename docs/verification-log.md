@@ -1304,3 +1304,30 @@ fixes 16 and 17 ran only their own blocks.
 
 Not boot-tested: no card was written from the prepared image, so the first boot
 on `l5` is still open.
+
+## 2026-10-29 — first boot of a card prepared with fix 19
+
+A fresh copy of `pyra-trixie-t1.img`, prepared on the PC with
+`--kernel m4-kbdled-kernel.tar.gz --set-password --ssh-key <key>.pub` for the
+image's `pyra` user, then written to a 256 GB card. Before writing, the image's
+p1 (read with debugfs) had `default l5`, `pyra-base-label` `l5`, and the `l5`
+entry with the stock `append` line. The SHA-256 of the image matched on both
+machines before `dd`. First boot, checked over ssh as `pyra` with that key:
+
+- `uname -r`: `5.6.19-m4-kbdled`, trixie. `extlinux.conf` still `default l5`,
+  base `l5`, `pyra-boot-revert.service` not installed (no one-shot armed).
+- `/etc/modprobe.d/pyra-m4-noautoboot.conf` ends in `blacklist omap_remoteproc`,
+  and `omap_remoteproc` was not loaded.
+- `systemd-analyze`: 6.5 s kernel + 26.9 s userspace; `graphical.target` at
+  22.6 s. No failed units.
+- `pyra-governor-tune.sh --check`: `applied.` (fix 16).
+  `pyra-audio-select.sh --check`: `ok` (fix 17).
+- lightdm and Xorg running; `pyrainput` active, with `pyraInput keyboard`,
+  `Gamepad` and `Mouse` registered. procedure step 6's old check (`ls
+  /dev/input/by-path | grep -i pyra`) counted the two platform devices instead,
+  since the virtual pyraInput devices have no by-path link. The check now reads
+  the input device names.
+- Key login worked with password-less key auth; `sudo` asks for the password
+  that `--set-password` set. Root is still the image's 5.8 GB (not yet grown).
+
+Not checked on this card yet: sound out of the speaker, suspend, the Fn keys.

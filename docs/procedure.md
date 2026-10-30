@@ -226,9 +226,12 @@ The last file should end in `blacklist omap_remoteproc`. A card prepared with
 
     # nubs, keyboard, gamepad
     systemctl status pyrainput
-    ls /dev/input/by-path | grep -i pyra
+    grep -h pyraInput /sys/class/input/input*/name
 
-You should get three pyraInput devices: keyboard, Gamepad, Mouse.
+You should get three pyraInput devices: keyboard, Gamepad, Mouse. They are
+virtual devices with no `/dev/input/by-path` link, so grepping by-path for
+`pyra` finds the two platform devices (`pyra-game-buttons`, `pyra-lid-wakeup`)
+instead.
 
     # the USB3503 warm-reboot rescue is installed and armed
     systemctl is-enabled pyra-usb3503-rescue
