@@ -38,6 +38,7 @@ On the PC:
     sudo mount /dev/sdX2 /mnt
     sudo mount /dev/sdX1 /mnt/boot
     sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # applies the fixes; asks for a password
+                                                      # and offers to download the kernel
     sudo umount /mnt/boot /mnt && sync
 
 Put the card in the left slot and **hold the power button until both LEDs go
@@ -53,19 +54,23 @@ That is the outline. [docs/procedure.md](docs/procedure.md) is the version to
 follow: it has the checks between the steps, and a list of what to look at to
 confirm each part works.
 
+The prep script installs the shipped kernel, `5.6.19-m4-kbdled`, and the card
+boots it (fix 19). It downloads the kernel from the project's release and checks
+it against a pinned hash, or takes a tarball you name with `--kernel FILE`. No
+release is pinned yet, so for now build the tarball yourself (see below) and
+pass it in. `--no-kernel` keeps the stock `5.6.19-pyradef`.
+
 ## Do these after the first boot
 
-Two things are still wrong on the stock kernel. Neither is hard to live with,
-but you should know about them.
-
 **Turn off suspend.** On the stock kernel it never completes, and a failed
-attempt leaves you a frozen desktop with a working mouse pointer. Mask it so an
-idle timeout fails harmlessly instead:
+attempt leaves you a frozen desktop with a working mouse pointer. Unless
+`uname -r` says `5.6.19-m4-kbdled`, mask it so an idle timeout fails harmlessly
+instead:
 
     sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
                         suspend-then-hibernate.target hibernate.target
 
-The patched kernel fixes this properly (see below).
+The shipped kernel fixes this properly (see below).
 
 **The display can wedge when the screen blanks.** Rarely, but when it does a
 core spins at 100% and only a reboot recovers it. The workaround is to stop the
@@ -86,21 +91,22 @@ instead), install the separate `pyra-backlight` package. Section 8 of
   [docs/card-backup-restore.md](docs/card-backup-restore.md). It takes about ten
   minutes.
 
-## Going further: the patched kernel
+## The shipped kernel
 
-The card above runs the stock `5.6.19-pyradef` kernel. The kernel this
-project ships is `5.6.19-m4-kbdled`. It carries everything in `patches/`: the
+The kernel this project ships is `5.6.19-m4-kbdled`, and a prepared card boots
+it (fix 19); the image's stock `5.6.19-pyradef` stays on the card as `l0`. It carries everything in `patches/`: the
 suspend fix, the nubs dying after a resume, the built-in keyboard going silent,
 the noise on every resume, the root filesystem mounting a minute late, and the
 candidate display fix. On top of that it carries the AESS audio path with
 headphone-jack switching, the SGX powering off at idle, five extra CPU
 frequency steps below the rated 1.5 GHz (no overclock), and the keyboard light
 as an LED. [docs/kernel-changes.md](docs/kernel-changes.md) lists every patch.
-Building it needs Docker on the PC and takes about ten minutes:
+Building it needs Docker on the PC and takes about ten minutes. Hand the
+result to prep, or put it on a card that is already running:
 
-    ./pc/pyra-crossbuild.sh kernel-m4-kbdled
-    ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>
-    ./pc/pyra-push-helpers.sh pyra@<address>
+    ./pc/pyra-crossbuild.sh kernel-m4-kbdled          # ../dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz
+    sudo ./pc/pyra-trixie-prep.sh --kernel ../dragonbox-pyra-build/kernel/m4-kbdled-kernel.tar.gz /mnt yourname
+    ./pc/pyra-push-kernel.sh --install --reboot pyra@<address>   # or this, on a running card
 
 [docs/reproduce.md](docs/reproduce.md) is the full path, including turning
 suspend back on and checking each fix took.
@@ -129,7 +135,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card, which must be done on a PC. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card in ten minutes, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The eighteen fixes the prep script applies, what each is for, and the diagnosis behind it. |
+| [docs/fixes.md](docs/fixes.md) | The nineteen fixes the prep script applies, what each is for, and the diagnosis behind it. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

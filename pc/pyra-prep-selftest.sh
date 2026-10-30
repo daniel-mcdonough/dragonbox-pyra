@@ -6,9 +6,16 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 18, runs it a second time and requires the
+# the end state of fixes 1 to 8 and 13 to 19, runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
+#
+# Fix 19 installs the shipped kernel from a tarball. The image carries only the
+# stock kernel, so the test hands prep the cross-build's output
+# (PYRA_BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz, by default in
+# dragonbox-pyra-build beside the repository; PYRA_KERNEL_TARBALL names another).
+# Without one, it runs prep with --no-kernel and says so in the verdict: a SKIP
+# is counted and printed, never a silent pass.
 #
 # Leaves its snapshots, diffs and logs in a directory it names on the way out;
 # set OUTDIR to choose one.
@@ -26,8 +33,12 @@ WORK=$ROOT/pyra-trixie-t1-preptest.img
 PREP=$REPO/pyra-trixie-prep.sh
 OUT=${OUTDIR:-}
 MNT=$(mktemp -d /tmp/pyraprep.XXXXXX)
+BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$ROOT/.." && pwd)/dragonbox-pyra-build}
+KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
+KREL=5.6.19-m4-kbdled
+KSLOT=l5
 
-PASS=0; FAIL=0; ABORTED=0; BANNERED=0
+PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
 p() { printf '\e[32mPASS\e[0m  %s\n' "$*"; PASS=$((PASS+1)); }
 f() { printf '\e[31mFAIL\e[0m  %s\n' "$*"; FAIL=$((FAIL+1)); }
 i() { printf '\e[36m----\e[0m  %s\n' "$*"; }
@@ -56,13 +67,16 @@ finish() {
     BANNERED=1
     echo
     [[ -n $OUT ]] && printf '\e[36m----\e[0m  logs, snapshots and diffs in %s\n' "$OUT"
-    printf '\e[1m%d passed, %d failed\e[0m\n' "$PASS" "$FAIL"
+    printf '\e[1m%d passed, %d failed, %d skipped\e[0m\n' "$PASS" "$FAIL" "$SKIP"
+    [[ $SKIP -eq 0 ]] || printf '      skipped: fix 19 installed no kernel (no tarball at %s)\n' "$KTAR"
     if [[ $ABORTED -eq 1 ]]; then
         echo "TEST COMPLETE: FAIL (harness aborted before finishing)"
     elif [[ $rc -ne 0 && $FAIL -eq 0 ]]; then
         echo "TEST COMPLETE: FAIL (exited $rc with no assertion failure -- treat as incomplete)"
     elif [[ $FAIL -gt 0 ]]; then
         echo "TEST COMPLETE: FAIL"
+    elif [[ $SKIP -gt 0 ]]; then
+        echo "TEST COMPLETE: PASS, WITH FIX 19'S KERNEL INSTALL SKIPPED"
     else
         echo "TEST COMPLETE: PASS"
     fi
@@ -76,6 +90,14 @@ trap finish EXIT
 [[ -n $OUT ]] || OUT=$(mktemp -d /tmp/pyra-prep-selftest.XXXXXX)
 mkdir -p "$OUT"
 i "artefacts in $OUT"
+if [[ -r $KTAR ]]; then
+    KARGS=(--kernel "$KTAR")
+    i "fix 19 installs $KTAR"
+else
+    KARGS=(--no-kernel)
+    SKIP=$((SKIP+1))
+    printf '\e[33mSKIP\e[0m  fix19: no kernel tarball at %s; prep runs with --no-kernel\n' "$KTAR"
+fi
 
 ########################################################################
 i "working copy"
@@ -123,7 +145,7 @@ i "$(wc -l < "$OUT/rootfs-before.txt") entries"
 i "run 1 of pyra-trixie-prep.sh"
 ########################################################################
 disarm; set +e
-"$PREP" "$MNT" pyra 2>&1 | tee "$OUT/prep-run1.log"
+"$PREP" "${KARGS[@]}" "$MNT" pyra 2>&1 | tee "$OUT/prep-run1.log"
 RC=${PIPESTATUS[0]}
 set -e; arm
 [[ $RC -eq 0 ]] && p "run 1 exited 0" || f "run 1 exited $RC"
@@ -610,10 +632,60 @@ for t in i2cget i2cset; do
 done
 
 ########################################################################
+i "assert fix 19 — the shipped kernel, and the two scripts that manage it"
+########################################################################
+for s in pyra-install-debug-kernel.sh pyra-boot-kernel.sh; do
+    K=$MNT/usr/local/sbin/$s
+    if [[ -e $K ]] && cmp -s "$PAYLOADS/$s" "$K"; then
+        p "fix19: /usr/local/sbin/$s matches repo"
+    else
+        f "fix19: /usr/local/sbin/$s missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "755 0:0" ]] && p "fix19: $s is 0755 root:root" || f "fix19: $s mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null)"
+done
+EXT=$MNT/boot/extlinux
+if [[ ${KARGS[0]} == --kernel ]]; then
+    # One l5 entry, booting the kernel, its dtbs and its initrd, with the
+    # stock entry's append line copied verbatim.
+    ENTRY=$(awk -v want="label $KSLOT" '$0 == want {f=1; print; next} /^label /{f=0} f' "$EXT/user.cfg")
+    [[ $(grep -cx "label $KSLOT" "$EXT/user.cfg") -eq 1 ]] && p "fix19: user.cfg has one $KSLOT entry" || f "fix19: user.cfg has $(grep -cx "label $KSLOT" "$EXT/user.cfg") $KSLOT entries"
+    for want in "linux /vmlinuz-$KREL" "fdtdir /dtb/linux-image-$KREL" "initrd /initrd.img-$KREL"; do
+        grep -qx "[[:space:]]*$want" <<<"$ENTRY" && p "fix19: $KSLOT has '$want'" || f "fix19: $KSLOT lacks '$want'"
+    done
+    A0=$(awk '/^label l0$/{f=1} f&&/^[[:space:]]*append /{print; exit}' "$EXT/linux.cfg")
+    A5=$(grep -m1 '^[[:space:]]*append ' <<<"$ENTRY" || true)
+    [[ -n $A0 && $(echo $A0) == "$(echo $A5)" ]] && p "fix19: $KSLOT's append line is l0's" || f "fix19: $KSLOT's append line differs from l0's"
+    tar xzOf "$KTAR" "./boot/vmlinuz-$KREL" | cmp -s - "$MNT/boot/vmlinuz-$KREL" \
+        && p "fix19: /boot/vmlinuz-$KREL is the tarball's" || f "fix19: /boot/vmlinuz-$KREL missing or not the tarball's"
+    [[ -s $MNT/boot/initrd.img-$KREL ]] && p "fix19: /boot/initrd.img-$KREL was built" || f "fix19: no /boot/initrd.img-$KREL"
+    compgen -G "$MNT/boot/dtb/linux-image-$KREL/*.dtb" >/dev/null && p "fix19: its dtbs are in /boot/dtb" || f "fix19: no dtbs for $KREL"
+    [[ -s $MNT/usr/lib/modules/$KREL/modules.dep ]] && p "fix19: its modules are installed and depmod ran" || f "fix19: no modules.dep for $KREL"
+    [[ -L $MNT/lib ]] && p "fix19: /lib is still a symlink" || f "fix19: /lib is no longer a symlink"
+    # The M4 blacklist only the installer writes (R7). The shipped kernel has
+    # omap_remoteproc, so it must be there.
+    find "$MNT/usr/lib/modules/$KREL" -name 'omap_remoteproc.ko*' | grep -q . \
+        && p "fix19: $KREL carries omap_remoteproc" || f "fix19: $KREL has no omap_remoteproc"
+    grep -qx 'blacklist omap_remoteproc' "$MNT/etc/modprobe.d/pyra-m4-noautoboot.conf" 2>/dev/null \
+        && p "fix19: /etc/modprobe.d/pyra-m4-noautoboot.conf blacklists omap_remoteproc" || f "fix19: no M4 modprobe.d blacklist"
+    [[ $(tr -dc 'a-z0-9' < "$EXT/pyra-base-label" 2>/dev/null) == "$KSLOT" ]] && p "fix19: the base is $KSLOT" || f "fix19: the base is not $KSLOT"
+    [[ $(awk '/^default /{print $2; exit}' "$EXT/extlinux.conf") == "$KSLOT" ]] && p "fix19: extlinux.conf defaults to $KSLOT" || f "fix19: extlinux.conf does not default to $KSLOT"
+    # The fallback the docs promise: l0 untouched, the vendor's conf kept.
+    grep -qx 'label l0' "$EXT/linux.cfg" && grep -qx 'default l0' "$EXT/extlinux.conf.orig" 2>/dev/null \
+        && p "fix19: l0 is still in linux.cfg and extlinux.conf.orig keeps 'default l0'" || f "fix19: the l0 fallback or extlinux.conf.orig is missing"
+    [[ ! -e $MNT/etc/systemd/system/sysinit.target.wants/pyra-boot-revert.service ]] \
+        && p "fix19: no one-shot revert is armed" || f "fix19: the one-shot revert is armed"
+else
+    printf '\e[33mSKIP\e[0m  fix19: kernel assertions (no tarball at %s)\n' "$KTAR"
+    [[ $(awk '/^default /{print $2; exit}' "$EXT/extlinux.conf") == l0 && ! -e $EXT/pyra-base-label ]] \
+        && p "fix19: with --no-kernel the card still boots l0" || f "fix19: --no-kernel changed the boot configuration"
+fi
+[[ ! -e $MNT/var/tmp/pyra-prep-kernel.tar.gz ]] && p "fix19: no staged tarball left in /var/tmp" || f "fix19: the staged tarball is still in /var/tmp"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
-"$PREP" "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
+"$PREP" "${KARGS[@]}" "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
 RC2=${PIPESTATUS[0]}
 set -e; arm
 [[ $RC2 -eq 0 ]] && p "run 2 exited 0" || f "run 2 exited $RC2"
@@ -644,6 +716,25 @@ grep -qE 'fix16: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix1
 grep -qE 'fix17: link already in place' "$OUT/prep-run2.log" && p "run 2 reported fix17's link in place" || f "run 2 did not report fix17's link in place"
 grep -qE 'fix17: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix17 already enabled" || f "run 2 did not report fix17 already enabled"
 grep -qE 'fix18: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix18 already up to date" || f "run 2 did not report fix18 already up to date"
+[[ $(grep -cE 'fix19: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix19 scripts up to date" || f "run 2 did not report both fix19 scripts up to date"
+if [[ ${KARGS[0]} == --kernel ]]; then
+    grep -qE "fix19: $KREL is already installed" "$OUT/prep-run2.log" && p "run 2 reported the kernel already installed" || f "run 2 did not report the kernel already installed"
+    grep -qE 'fix19: .*already the base and the default' "$OUT/prep-run2.log" && p "run 2 reported l5 already the base and default" || f "run 2 did not report l5 already the base and default"
+fi
+
+# With no kernel option prep offers the published download. Until a release
+# is pinned in prep there is none, and it must stop before writing anything.
+if grep -qx 'KERNEL_URL=' "$PREP"; then
+    disarm; set +e
+    NOK=$("$PREP" "$MNT" pyra 2>&1 </dev/null); NRC=$?
+    set -e; arm
+    [[ $NRC -ne 0 ]] && grep -q 'no kernel to install; nothing has been written' <<<"$NOK" \
+        && p "with no release pinned, a run with no kernel option stops" || f "a run with no kernel option and no release pinned did not stop as expected (exit $NRC)"
+    snapshot > "$OUT/rootfs-after3.txt"
+    cmp -s "$OUT/rootfs-after2.txt" "$OUT/rootfs-after3.txt" && p "and it wrote nothing" || f "a run that stopped for no kernel changed the filesystem"
+else
+    i "a release is pinned in prep; not testing the download here"
+fi
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"
@@ -656,7 +747,7 @@ ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 # This run is SUPPOSED to fail, so its failure must not read as a harness abort.
 ARC=0
 disarm
-ABORT=$("$STAGE/$(basename "$PREP")" "$MNT" pyra 2>&1) || ARC=$?
+ABORT=$("$STAGE/$(basename "$PREP")" --no-kernel "$MNT" pyra 2>&1) || ARC=$?
 arm
 [[ $ARC -ne 0 ]] && p "no-payload run exited $ARC" || f "no-payload run exited 0"
 grep -q 'pyra-usb3503-rescue not found' <<<"$ABORT" \

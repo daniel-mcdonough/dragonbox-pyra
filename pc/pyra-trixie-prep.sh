@@ -1,12 +1,18 @@
 #!/usr/bin/env bash
-# Apply the eighteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the nineteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
-#   sudo ./pyra-trixie-prep.sh /mnt [username]
+#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] /mnt [username]
 #
-# Fix 14 runs the image's own update-initramfs in a chroot, so a PC that is not
+# Fix 19 installs the shipped kernel, 5.6.19-m4-kbdled, and makes it what the
+# card boots. With no option it offers to download the published release asset
+# and checks it against the SHA-256 pinned below; --kernel FILE uses a tarball
+# you already have (a download, or ./pc/pyra-crossbuild.sh kernel-m4-kbdled);
+# --no-kernel leaves the card on the stock 5.6.19-pyradef.
+#
+# Fixes 14 and 19 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -17,16 +23,29 @@
 
 set -euo pipefail
 
-ROOT=${1:-}
-USERNAME=${2:-pyra}
-GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
-
 die()  { printf '\e[31mERROR\e[0m  %s\n' "$*" >&2; exit 1; }
 warn() { printf '\e[33mWARN\e[0m   %s\n' "$*" >&2; }
 ok()   { printf '\e[32mOK\e[0m     %s\n' "$*"; }
 info() { printf '\e[36mINFO\e[0m   %s\n' "$*"; }
 
-[[ -n $ROOT ]] || die "usage: $0 /path/to/mounted/rootfs [username]"
+KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-kernel
+KERNEL_FILE=
+ARGS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+    --kernel)    [[ $# -ge 2 ]] || die "--kernel needs a tarball"
+                 KERNEL_MODE=file; KERNEL_FILE=$2; shift 2 ;;
+    --kernel=*)  KERNEL_MODE=file; KERNEL_FILE=${1#--kernel=}; shift ;;
+    --no-kernel) KERNEL_MODE=none; shift ;;
+    -*)          die "unknown option: $1" ;;
+    *)           ARGS+=("$1"); shift ;;
+    esac
+done
+ROOT=${ARGS[0]:-}
+USERNAME=${ARGS[1]:-pyra}
+GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
+
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -135,6 +154,82 @@ in_chroot /bin/true 2>/dev/null ||
        (Debian/Ubuntu: qemu-user-static binfmt-support; Arch: qemu-user-static qemu-user-static-binfmt)"
 in_chroot sh -c 'command -v update-initramfs && command -v lsinitramfs' >/dev/null 2>&1 ||
     die "fix14: the image has no update-initramfs or lsinitramfs (initramfs-tools)"
+
+# Fix 19 runs the two device scripts that own a kernel install and the boot
+# choice, so both must be here; and the tarball is found, downloaded and
+# checked now, so a bad one stops prep before fix 1 has written anything.
+KINSTALL_SRC=$PAYLOADS/pyra-install-debug-kernel.sh
+KBOOT_SRC=$PAYLOADS/pyra-boot-kernel.sh
+for f in "$KINSTALL_SRC" "$KBOOT_SRC"; do
+    [[ -x $f ]] || die "fix19: $(basename "$f") not found or not executable (looked in $PAYLOADS)"
+done
+KERNEL_REL=5.6.19-m4-kbdled
+KERNEL_SLOT=l5
+# The published release asset. Empty until the first kernel-* release exists
+# (the public repository has no remote yet); a release fills in all three
+# together. The hash is what makes a download trustworthy: the script comes
+# from the repository, so the hash travels with the source that names it.
+KERNEL_TAG=
+KERNEL_URL=
+KERNEL_SHA256=
+KERNEL_TMP=
+STAGED_KERNEL=$ROOT/var/tmp/pyra-prep-kernel.tar.gz
+cleanup() {
+    [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
+    [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
+    rm -f -- "$STAGED_KERNEL"
+}
+trap cleanup EXIT
+
+if [[ $KERNEL_MODE == ask ]]; then
+    if [[ -z $KERNEL_URL || -z $KERNEL_SHA256 ]]; then
+        warn "fix19: no kernel release is published yet, so there is nothing to download.
+       Pass --kernel FILE (./pc/pyra-crossbuild.sh kernel-m4-kbdled builds one),
+       or --no-kernel to leave this card on the stock 5.6.19-pyradef."
+        die "fix19: no kernel to install; nothing has been written"
+    fi
+    ans=y
+    if [[ -t 0 ]]; then
+        printf 'Download the shipped kernel (%s, release %s) from\n  %s\nand install it? [Y/n] ' \
+            "$KERNEL_REL" "$KERNEL_TAG" "$KERNEL_URL" >&2
+        read -r ans || ans=n
+    fi
+    case ${ans:-y} in
+    [Yy]*) command -v curl >/dev/null || die "fix19: the download needs curl on this PC"
+           KERNEL_TMP=$(mktemp -d)
+           KERNEL_FILE=$KERNEL_TMP/m4-kbdled-kernel.tar.gz
+           info "fix19: downloading $KERNEL_URL"
+           curl -fL --proto '=https' --tlsv1.2 -o "$KERNEL_FILE" "$KERNEL_URL" ||
+               die "fix19: the download failed; nothing has been written"
+           KERNEL_MODE=file ;;
+    *)     KERNEL_MODE=none ;;
+    esac
+fi
+if [[ $KERNEL_MODE == file ]]; then
+    [[ -r $KERNEL_FILE ]] || die "fix19: no tarball at $KERNEL_FILE"
+    sum=$(sha256sum "$KERNEL_FILE" | cut -d' ' -f1)
+    if [[ -n $KERNEL_TMP ]]; then
+        [[ $sum == "$KERNEL_SHA256" ]] ||
+            die "fix19: the download's SHA-256 is $sum, not the pinned $KERNEL_SHA256. Not installing it."
+        ok "fix19: the download matches the pinned SHA-256"
+    fi
+    LIST=$(tar tzf "$KERNEL_FILE") || die "fix19: $KERNEL_FILE is not a readable .tar.gz"
+    grep -qx "./boot/vmlinuz-$KERNEL_REL" <<<"$LIST" ||
+        die "fix19: $KERNEL_FILE does not carry ./boot/vmlinuz-$KERNEL_REL; prep installs only the shipped kernel"
+    # The installer refuses this too, but by then fixes 1-18 are on the card.
+    grep -qx './lib/' <<<"$LIST" &&
+        die "fix19: $KERNEL_FILE has a ./lib/ entry, which would replace the image's /lib symlink"
+    unset LIST
+    if [[ -z $KERNEL_TMP ]]; then
+        if [[ -n $KERNEL_SHA256 && $sum == "$KERNEL_SHA256" ]]; then
+            ok "fix19: $KERNEL_FILE is the published release $KERNEL_TAG"
+        else
+            info "fix19: $KERNEL_FILE is not the published release (a local build?); installing it as given"
+        fi
+    fi
+elif [[ $KERNEL_MODE == none ]]; then
+    warn "fix19: no kernel will be installed; this card will boot the stock 5.6.19-pyradef"
+fi
 
 
 echo
@@ -891,7 +986,6 @@ chroot_unmount() {
     for m in "${CHROOT_MOUNTS[@]}"; do umount "$m" 2>/dev/null || umount -l "$m"; done
     CHROOT_MOUNTS=()
 }
-trap chroot_unmount EXIT
 chroot_mount() {        # lsinitramfs and update-initramfs want /proc, /sys and /dev
     local d
     [[ ${#CHROOT_MOUNTS[@]} -eq 0 ]] || return 0
@@ -1048,8 +1142,8 @@ fi
 # interrupt line asserted while it has events queued, the device tree calls
 # the line edge triggered, and a key that lands between the driver's last
 # FIFO read and its acknowledge leaves the line asserted with no new edge to
-# come. patches/0006 fixes it in the kernel; the stock 5.6.19-pyradef this
-# card boots does not carry it. pyra-keypad-rescue drains the queue and clears
+# come. patches/0006 fixes it in the kernel fix 19 installs; the stock
+# 5.6.19-pyradef, which a --no-kernel card boots, does not carry it. pyra-keypad-rescue drains the queue and clears
 # the status over i2c, run by hand from ssh or the touchscreen. A manual tool:
 # no unit, nothing enabled. docs/troubleshooting.md, "Getting the keyboard
 # back without that kernel".
@@ -1070,6 +1164,94 @@ for t in i2cget i2cset; do
     [[ -x $ROOT/usr/sbin/$t ]] ||
         warn "fix18: the image has no /usr/sbin/$t; pyra-keypad-rescue needs i2c-tools (apt install i2c-tools on the device)"
 done
+
+# ---------------------------------------------------------------------- fix 19
+#
+# The image boots the stock 5.6.19-pyradef, which has none of the kernel fixes:
+# suspend, the nubs after resume, the keyboard (patches/0006), the jack, AESS
+# audio, the keyboard light as an LED. The shipped kernel, 5.6.19-m4-kbdled,
+# carries them (docs/building.md, "Which kernel ships"). Fix 19 installs it
+# into user.cfg slot l5 and makes l5 the base, so the card boots it from the
+# first boot; the distro kernel stays in linux.cfg as l0.
+#
+# The install is pyra-install-debug-kernel.sh, run in the chroot exactly as on
+# the device, so there is one implementation of it: it guards /lib, depmod's
+# the tree, writes the M4 modprobe.d blacklist before the initrd, builds the
+# initrd (with fix 14's hooks, which are in place by now) and copies the stock
+# append line into the entry. pyra-boot-kernel.sh then names l5 the base and
+# makes it the default. Prep installs both scripts on every run, kernel or
+# not: they are how a user changes kernels later.
+#
+# Fallback: a kernel that never reaches userspace can't be undone from the
+# device. Put the card in a PC and change `default l5` to `default l0` in
+# extlinux.conf on p1 (docs/troubleshooting.md, "The card does not boot
+# after prep installed the kernel").
+
+for s in "$KINSTALL_SRC" "$KBOOT_SRC"; do
+    dst=$ROOT/usr/local/sbin/$(basename "$s")
+    if [[ -e $dst ]] && cmp -s "$s" "$dst"; then
+        ok "fix19: ${dst#$ROOT} already up to date"
+    else
+        VERB=$([[ -e $dst ]] && echo updated || echo installed)
+        install -d -m 0755 "$ROOT/usr/local/sbin"
+        install -m 0755 -o 0 -g 0 "$s" "$dst"
+        ok "fix19: $VERB ${dst#$ROOT}"
+    fi
+done
+
+if [[ $KERNEL_MODE == file ]]; then
+    EXTDIR=$ROOT/boot/extlinux
+    KMOD=$ROOT/usr/lib/modules/$KERNEL_REL
+    M4_CONF=$ROOT/etc/modprobe.d/pyra-m4-noautoboot.conf
+    slot_linux=$(awk -v want="label $KERNEL_SLOT" '$0 == want {f=1; next} /^label /{f=0}
+        f && /^[[:space:]]*linux /{print $2; exit}' "$EXTDIR/user.cfg" 2>/dev/null || true)
+    # Installed means: the entry boots it, its files are there, the image is
+    # this tarball's, and a kernel with omap_remoteproc has the blacklist.
+    current=no
+    if [[ $slot_linux == "/vmlinuz-$KERNEL_REL" && -f $ROOT/boot/initrd.img-$KERNEL_REL && -d $KMOD ]] &&
+       tar xzOf "$KERNEL_FILE" "./boot/vmlinuz-$KERNEL_REL" | cmp -s - "$ROOT/boot/vmlinuz-$KERNEL_REL"; then
+        current=yes
+        if find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q . &&
+           ! grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
+            current=no
+        fi
+    fi
+    if [[ $current == yes ]]; then
+        ok "fix19: $KERNEL_REL is already installed in slot $KERNEL_SLOT"
+    else
+        cp -- "$KERNEL_FILE" "$STAGED_KERNEL"
+        chroot_mount
+        info "fix19: installing $KERNEL_REL in the chroot (under qemu, a few minutes)"
+        if ! out=$(in_chroot /usr/local/sbin/pyra-install-debug-kernel.sh \
+                --slot "$KERNEL_SLOT" "${STAGED_KERNEL#$ROOT}" 2>&1); then
+            die "fix19: pyra-install-debug-kernel.sh failed in the chroot:
+$out"
+        fi
+        rm -f -- "$STAGED_KERNEL"
+        ok "fix19: installed $KERNEL_REL into slot $KERNEL_SLOT, with its initrd"
+    fi
+    if grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
+        ok "fix19: ${M4_CONF#$ROOT} keeps the M4s from starting at boot"
+    elif find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q .; then
+        die "fix19: $KERNEL_REL has omap_remoteproc but ${M4_CONF#$ROOT} was not written"
+    fi
+
+    base=$(tr -dc 'a-z0-9' < "$EXTDIR/pyra-base-label" 2>/dev/null || true)
+    def=$(awk '/^[[:space:]]*default /{print $2; exit}' "$EXTDIR/extlinux.conf")
+    if [[ $base == "$KERNEL_SLOT" && $def == "$KERNEL_SLOT" ]]; then
+        ok "fix19: $KERNEL_SLOT is already the base and the default"
+    else
+        chroot_mount
+        in_chroot /usr/local/sbin/pyra-boot-kernel.sh base "$KERNEL_SLOT" --quiet ||
+            die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the base"
+        in_chroot /usr/local/sbin/pyra-boot-kernel.sh stock --quiet ||
+            die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the default"
+        ok "fix19: the card boots $KERNEL_REL ($KERNEL_SLOT is the base and the default; l0 is the stock kernel)"
+    fi
+    chroot_unmount
+else
+    warn "fix19: no kernel installed; the card boots the stock 5.6.19-pyradef"
+fi
 
 echo
 sync

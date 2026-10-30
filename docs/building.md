@@ -186,8 +186,9 @@ It carries all of `patches/` (including 0048-0049, the late root mount),
 1.5 GHz, so the ceiling is unchanged), the M4 stack, the AESS audio series,
 `0034` (SGX idle), the keyboard light as an LED and the jack-detect patches.
 It does not carry `0008`, the 2 GHz overclock. `docs/kernel-changes.md` has
-the full table. `pc/pyra-push-kernel.sh` sends its tarball by default, and the
-release workflow builds it. "The keyboard-LED kernel" below says what to
+the full table. `pc/pyra-push-kernel.sh` sends its tarball by default, the
+release workflow builds it, and prep installs it into slot `l5` as the base
+(fix 19, `fixes.md`), from the pinned release download or `--kernel FILE`. "The keyboard-LED kernel" below says what to
 expect on it.
 
 **Every other `kernel-*` target is a developer build:** `kernel`,

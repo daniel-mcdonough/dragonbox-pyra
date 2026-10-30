@@ -4,14 +4,16 @@
 
 The procedure: buy a card, write the image, apply the fixes offline, boot it.
 Target is a V5.x Pyra booting live from the left full-size SD slot, with the
-eMMC untouched. The kernel is the same 5.6.19-pyradef that bookworm-7 uses.
+eMMC untouched. The card boots the shipped kernel, `5.6.19-m4-kbdled`, which
+prep installs (fix 19); the image's own 5.6.19-pyradef, the kernel bookworm-7
+uses, stays on the card as the fallback.
 
 Status: **working.** The card boots to a MATE desktop, hardware GLES2 runs on
 the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Seventeen fixes are needed, and `fixes.md` explains each one. Most of them are not
+Nineteen fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -22,15 +24,16 @@ boot, and the volume wheel; fix 13 makes Qt5 programs draw, fix 14 stops
 root mounting a minute or two late, fix 15 makes the Fn keyboard-light keys
 work on the shipped kernel, fix 16 sets the measured governor tunable at
 boot, fix 17 gives PulseAudio the script that matches the kernel's audio
-path at each boot, and fix 18 puts the keyboard's manual rescue on the path.
+path at each boot, fix 18 puts the keyboard's manual rescue on the path, and
+fix 19 installs the shipped kernel and makes it what the card boots.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all eighteen fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all nineteen fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
-armhf, qemu-user with binfmt: fix 14 rebuilds each initrd in a chroot
-(`fixes.md`, fix 14). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 18 against a copy of the
+armhf, qemu-user with binfmt: fixes 14 and 19 run the image's own tools in a
+chroot (`fixes.md`). It checks both before writing anything.
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 19 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -104,9 +107,9 @@ Check the three assumptions by hand:
 
 Then run the script against the loop mount to confirm it completes cleanly:
 
-    sudo ./pc/pyra-trixie-prep.sh /mnt/pyra testuser
+    sudo ./pc/pyra-trixie-prep.sh --no-kernel /mnt/pyra testuser
 
-The script reports what it found for each fix. If anything surprises you, adjust
+(or `--kernel FILE` in place of `--no-kernel`, step 4). The script reports what it found for each fix. If anything surprises you, adjust
 before committing it to a card.
 
     sudo umount /mnt/pyra/boot /mnt/pyra
@@ -124,7 +127,10 @@ the paths someone thought to assert on. It reads each rebuilt initrd with the
 image's own `lsinitramfs` for fix 14. It then runs the prep script a second
 time and requires every entry to be unchanged, with no initrd rebuilt, and
 finally removes a fix 5 payload to confirm the script aborts *before* fix 1
-writes anything. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
+writes anything. For fix 19 it hands prep the cross-build's
+`m4-kbdled-kernel.tar.gz` (`PYRA_KERNEL_TARBALL` names another). Without one it
+runs prep with `--no-kernel`, and the verdict says the kernel install was
+skipped. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
 Note: if you ran the prep script by hand above, the image file itself is now
 prepared, with the user you named and the initrds rebuilt. You can `dd` *that*
@@ -166,6 +172,21 @@ re-running it is safe and just reports what is already in place. Fix 14
 rebuilds each initrd under qemu the first time, which took under a minute on
 an x86 PC for the stock image's one kernel.
 
+**The kernel (fix 19).** The script offers to download the shipped kernel,
+`m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it
+only if it matches the SHA-256 pinned in the script. To use a tarball you
+already have, downloaded or built with `./pc/pyra-crossbuild.sh kernel-m4-kbdled`
+(`building.md`), name it:
+
+    sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra yourusername
+
+Until a release is pinned in the script there is nothing to download, and a run
+without `--kernel` stops before writing anything. `--no-kernel` prepares a card
+that boots the stock `5.6.19-pyradef`, with every other fix in place. The card
+boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
+not come up on the new kernel, `troubleshooting.md`, "The card does not boot
+after prep installed the kernel", switches it back from the PC.
+
 ---
 
 ## 5. Boot it
@@ -186,6 +207,14 @@ boot at all.
 ## 6. Verify
 
 Log in as the user the script created. Then:
+
+    # the shipped kernel (fix 19), and what boots next
+    uname -r                                 # 5.6.19-m4-kbdled
+    sudo pyra-boot-kernel.sh status          # next boot and base: l5
+    cat /etc/modprobe.d/pyra-m4-noautoboot.conf
+
+The last file should end in `blacklist omap_remoteproc`. A card prepared with
+`--no-kernel` reads `5.6.19-pyradef`, and `l0` as the base.
 
     # nubs, keyboard, gamepad
     systemctl status pyrainput
@@ -346,8 +375,9 @@ encrypting the card if the data on it matters.
 ## 8. Recommended after the first boot: power behaviour
 
 Two things about this machine's power handling are wrong out of the box, and
-what you should do about them depends on whether you are going to build the
-patched kernel. Both are covered in detail in `troubleshooting.md`.
+what you should do about them depends on which kernel the card runs: the
+shipped one that prep installs (fix 19), or the stock one (`--no-kernel`, or
+back on `l0`). Both are covered in detail in `troubleshooting.md`.
 
 **Suspend.** On the stock kernel it cannot complete, and a failed attempt
 leaves the desktop frozen behind a working mouse pointer with no way back
@@ -360,8 +390,9 @@ setting to avoid it:
 With those masked an idle timeout fails immediately instead of freezing the
 session, because nothing starts the service that freezes it.
 
-`patches/0003` fixes the cause, and `reproduce.md` is the path to the shipped
-kernel, `5.6.19-m4-kbdled`, which carries it. On that kernel, unmask all five and test with
+`patches/0003` fixes the cause, and the shipped kernel, `5.6.19-m4-kbdled`,
+carries it. Prep installs it (fix 19); `uname -r` says which one you are on. On
+that kernel, unmask all five and test with
 `sudo pyra-sleep-test.sh`, which arms the clock to wake the machine by itself
 and tells you whether the session really came back.
 
@@ -430,8 +461,8 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the eighteen fixes it applies only 13 to 18, whose files it shares
-with prep. It does put the fix 6, 7 and 8 scripts
+and of the nineteen fixes it applies only 13 to 18, whose files it shares
+with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
 

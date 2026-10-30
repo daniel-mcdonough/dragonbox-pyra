@@ -1,4 +1,4 @@
-# The eighteen fixes, and what they actually do
+# The nineteen fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1032,8 +1032,7 @@ back (seen 2026-09-28 after a benchmark pin; `pyra-cpu-pin`'s header), so the
 way to put 10 back is `systemctl restart pyra-governor-tune`, not `start`.
 
 **On another governor it does nothing and does not fail.** Every kernel config
-on the trixie card, the stock `5.6.19-pyradef` that a prepared card boots
-included, has `CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y` with `cpufreq-dt` built
+on the trixie card, the stock `5.6.19-pyradef` included, has `CONFIG_CPU_FREQ_DEFAULT_GOV_ONDEMAND=y` with `cpufreq-dt` built
 in (checked 2026-10-29 in `/boot/config-*`). On a machine running something
 else, the unit's `ConditionPathExists` on the ondemand directory skips it, and
 the script by itself reports the governor and exits 0.
@@ -1050,8 +1049,8 @@ On `5.6.19-m4-kbdled` audio goes through the OMAP5's audio DSP (AESS) on
 `hw:L15,0`, which the packaged `/etc/pulse/pyra.pa` opens. Each kernel needs its
 own script, and loading the wrong one leaves the session on `auto_null`, the
 "dummy output" (`audio.md`, "Two paths, chosen by the kernel"). A file in `/etc`
-can name only one of them, and a prepared card boots the stock kernel until the
-shipped one is on it.
+can name only one of them, and a prepared card has both: it boots the shipped
+kernel (fix 19), and the stock one is its fallback (`--no-kernel`, or `l0`).
 
 So the choice is made per boot. Prep installs, to the same paths
 `pyra-install-helpers.sh` uses:
@@ -1110,8 +1109,9 @@ has events queued, and the device tree describes that line as edge triggered.
 A key that arrives between the driver's last FIFO read and the write that
 acknowledges leaves the line asserted, no further edge ever comes, and the
 keyboard stays dead. The handler is never entered, so nothing is logged.
-`patches/0006` fixes it in the kernel (`kernel-changes.md`); the stock
-`5.6.19-pyradef` a prepared card boots does not carry it.
+`patches/0006` fixes it in the kernel (`kernel-changes.md`), and the shipped
+kernel fix 19 installs carries it; the stock `5.6.19-pyradef` does not, so the
+rescue is for a card prepared with `--no-kernel` or booted on `l0`.
 
 Prep installs `device/pyra-keypad-rescue` as `/usr/local/sbin/pyra-keypad-rescue`.
 It reads the queued events out over i2c and clears the interrupt status, which
@@ -1126,6 +1126,73 @@ status, and the selftest checks both binaries in the mounted image). Prep warns
 if an image lacks them, and the script says `apt install i2c-tools`.
 
 Unrelated to fix 5, which is the USB hub after a warm reboot.
+
+## Fix 19 — the card boots the stock kernel, which has none of the kernel fixes
+
+The image boots `5.6.19-pyradef`. Suspend never completes on it, the nubs die
+after a resume, the keyboard can go silent (fix 18 is the manual workaround),
+and it has no AESS audio path, no jack switching and no keyboard light as an
+LED. The shipped kernel, `5.6.19-m4-kbdled` (`building.md`, "Which kernel
+ships"), carries all of that. Before this fix, a prepared card reached it only
+through a cross-build and `pyra-push-kernel.sh`.
+
+Prep installs it into `user.cfg` slot `l5` and makes `l5` the base and the
+default, so the card's first boot is on the shipped kernel. The distro kernel
+stays in `linux.cfg` as `l0`, untouched. The vendor's `extlinux.conf` is kept as
+`extlinux.conf.orig`.
+
+**Where the kernel comes from.** The release workflow publishes
+`m4-kbdled-kernel.tar.gz` on each `kernel-*` tag. With no option, prep offers to
+download that asset ([Y/n]; a run with no terminal takes yes) and installs it
+only if its SHA-256 matches the hash pinned in the script. The script comes from
+the repository, so the hash travels with the source that names it.
+`--kernel FILE` installs a tarball you already have, whether a download or
+`./pc/pyra-crossbuild.sh kernel-m4-kbdled`. Prep says whether it matches the
+pinned release, and installs it either way. It refuses any tarball that doesn't
+carry `./boot/vmlinuz-5.6.19-m4-kbdled`, or that has a `./lib/` entry.
+`--no-kernel` leaves the card on the stock kernel. All of this happens before
+fix 1 writes anything, so a failed download or a wrong tarball leaves the card
+untouched.
+
+No release is pinned yet: the public repository has no remote, so no
+`kernel-*` release exists. Until one does, a run with no option stops before
+writing and asks for `--kernel FILE` or `--no-kernel`.
+
+**How it installs.** The two device scripts do the work, run in the chroot the
+way fix 14 runs the image's tools, so each job has one implementation:
+
+- `pyra-install-debug-kernel.sh --slot l5` refuses a tarball that would replace
+  the `/lib` symlink, checks the room in `/boot` and the root filesystem,
+  extracts, and runs `depmod`. It then writes
+  `/etc/modprobe.d/pyra-m4-noautoboot.conf` (the shipped kernel has
+  `omap_remoteproc` as a module, and without the blacklist both M4s start at
+  boot once their firmware exists). It builds the initrd (fix 14's hooks are
+  in place by then, so it has them) and writes the `l5` entry with the stock
+  `append` line copied verbatim.
+- `pyra-boot-kernel.sh base l5`, then `stock`, makes `l5` the kernel the
+  one-shot revert and `stock` return to, and the default.
+
+Prep also installs both scripts in `/usr/local/sbin` on every run, with or
+without a kernel, because they are how a user changes kernels afterwards
+(`building.md`, "Boot slots").
+
+A second run compares the slot's entry, the installed `vmlinuz` with the
+tarball's, the initrd, the modules and the blacklist. When all of them match it
+changes nothing. A different tarball (a newer release) is installed over the
+old one in the same slot.
+
+**Fallback.** A kernel that never reaches userspace cannot be undone from the
+device, and U-Boot shows no menu. Put the card in a PC, mount p1, and change
+`default l5` to `default l0` in `extlinux/extlinux.conf`
+(`troubleshooting.md`, "The card does not boot after prep installed the
+kernel"). From a running system, `sudo pyra-boot-kernel.sh debug l0 --once`
+tries the stock kernel for one boot, and `sudo pyra-boot-kernel.sh base l0 &&
+sudo pyra-boot-kernel.sh stock` goes back to it for good.
+
+The selftest installs the cross-build's tarball when it finds one and asserts
+the entry, the files, the blacklist, the base and the default. Without a
+tarball it runs prep with `--no-kernel` and reports the skip in its verdict.
+No prepared card has booted this fix yet (`verification-log.md`).
 
 ## Fixes 6, 7 and 12 as a package
 

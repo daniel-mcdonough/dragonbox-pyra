@@ -52,6 +52,10 @@ path you cannot watch, and wifi is a second way in that does not depend on it.
 a partition (`/dev/sdX1`), and that `dd` finished with `conv=fsync` plus a
 `sync`.
 
+**The LEDs come on but the screen stays dark, or it hangs early in the boot.**
+If prep installed the kernel (fix 19), go back to the stock one from a PC: see
+"The card does not boot after prep installed the kernel" below.
+
 **It boots and then powers off.** Fix 2 didn't take — the marker path was wrong.
 Pull the card, mount it, and read `/usr/bin/pyra-first-run.sh` to find the
 actual guard condition.
@@ -80,6 +84,32 @@ twice, on 2026-09-10; `patches/0001` targets it but is not yet confirmed.
 it. Pull the card, mount it on the PC, read the logs there
 (`/var/log/Xorg.0.log`, `journalctl --directory=/mnt/pyra/var/log/journal`).
 That is the working debug loop for this image.
+
+---
+
+## The card does not boot after prep installed the kernel
+
+Fix 19 makes the card boot the shipped kernel, `5.6.19-m4-kbdled`, from slot
+`l5`. The stock kernel is still on the card as `l0`. U-Boot shows no menu on
+the screen (`building.md`, "There is no boot menu on this machine"), and a
+kernel that never reaches userspace can't switch itself back, so the switch is
+made on a PC:
+
+    sudo mount /dev/sdX1 /mnt                          # p1, the boot partition
+    sudo sed -i 's/^default l5$/default l0/' /mnt/extlinux/extlinux.conf
+    grep ^default /mnt/extlinux/extlinux.conf          # default l0
+    sudo umount /mnt && sync
+
+Editing that file by hand is safe here: nothing on this image regenerates it.
+The card now boots the stock kernel, with every other fix in place. Once it is
+up, `sudo pyra-boot-kernel.sh base l0` makes that stick: the base is what
+`pyra-boot-kernel.sh stock` and the one-shot revert return to. The `l5` entry
+stays on the card, and `sudo pyra-boot-kernel.sh debug l5 --once` tries it again
+for a single boot. Please report what the kernel did, with
+`journalctl -b -1 -k` from a boot that got far enough to write a journal.
+
+To prepare a card that boots the stock kernel from the start, run prep with
+`--no-kernel`.
 
 ---
 
