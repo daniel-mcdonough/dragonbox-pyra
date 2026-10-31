@@ -185,7 +185,10 @@ It carries all of `patches/` (including 0048-0049, the late root mount),
 `0007` from `experiments/thermals-and-frequency/` (five steps below the rated
 1.5 GHz, so the ceiling is unchanged), the M4 stack, the AESS audio series,
 `0034` (SGX idle), the keyboard light as an LED and the jack-detect patches.
-It does not carry `0008`, the 2 GHz overclock. `docs/kernel-changes.md` has
+It does not carry `0008`, the 2 GHz overclock. Its config turns off
+`CONFIG_FW_LOADER_USER_HELPER_FALLBACK` (the `-NAME` entry in its
+`pyra-crossbuild.sh` target; the build fails if it comes back on), which is
+shape B of the late root mount (`troubleshooting.md`). `docs/kernel-changes.md` has
 the full table. `pc/pyra-push-kernel.sh` sends its tarball by default, the
 release workflow builds it, and prep installs it into slot `l5` as the base
 (fix 19, `fixes.md`), from the pinned release download or `--kernel FILE`. "The keyboard-LED kernel" below says what to

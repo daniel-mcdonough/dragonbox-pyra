@@ -129,8 +129,9 @@ gives up after 120 s, and root is mounted only after that.
 not there.** Only cold boots, 2 of 13 (boots on 2026-10-24 and 2026-10-28). When
 the RTL8153 adapter behind the on-board hub enumerates while the initramfs's udev
 is still running, `r8152` asks for `rtl_nic/rtl8153a-4.fw`. It is not in the
-initramfs or on the card. The kernels are built with
-`CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y`, so the failed direct load falls back to
+initramfs or on the card. The stock kernel and the developer builds have
+`CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y` (the shipped `5.6.19-m4-kbdled` has it
+off since 2026-10-31, see below), so the failed direct load falls back to
 the sysfs interface and waits its 60 s timeout for a helper that systemd-udev
 does not provide. Meanwhile the probe holds the device lock, the udev worker
 loading `r8152` blocks behind it, and the firmware uevent that the initramfs's
@@ -180,6 +181,13 @@ initramfs, which is the shape B trigger, and gave up on the firmware within
 kernel in `/boot` (`procedure.md` section 9, step 5), and prep does the same
 offline as fix 14 (`fixes.md`), together with `pyra-settle-nudge`. Without it,
 the workaround is to unplug the adapter for a cold boot.
+
+The shipped `5.6.19-m4-kbdled` is built without
+`CONFIG_FW_LOADER_USER_HELPER_FALLBACK` (2026-10-31), so on it a missing firmware
+file fails at once with no fallback, hook or not. The hook stays for the stock
+`5.6.19-pyradef`. The old builds of m4-kbdled still have the fallback; `grep
+FW_LOADER_USER_HELPER_FALLBACK /boot/config-5.6.19-m4-kbdled` says which one a
+card has.
 
 **Shape A, worked around: `udevadm settle` sleeps through the end of the
 queue.** The cause and the fix are under "2026-10-29" at the end of this

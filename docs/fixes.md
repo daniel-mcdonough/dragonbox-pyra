@@ -941,8 +941,10 @@ measurements). There are two causes, and an `init-top` hook for each:
 - `pyra-fw-nofallback` sets `/proc/sys/kernel/firmware_config/ignore_sysfs_fallback`
   before udev starts. Without it, a USB ethernet adapter that probes inside the
   initramfs waits 60 s for firmware that is not on the card, and
-  `udevadm settle` waits behind it. Every kernel here is built with
-  `CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y`, the shipped one included.
+  `udevadm settle` waits behind it. The stock `5.6.19-pyradef` and every
+  developer build have `CONFIG_FW_LOADER_USER_HELPER_FALLBACK=y`. The shipped
+  `5.6.19-m4-kbdled` is built with it off (`building.md`), and there the hook
+  changes nothing; it stays for the stock kernel.
 - `pyra-settle-nudge` wakes a `udevadm settle` that slept through the end of
   the event queue. `patches/0048` fixes that cause in our kernels, but a card
   also boots the stock `5.6.19-pyradef`, which does not have it. On a kernel

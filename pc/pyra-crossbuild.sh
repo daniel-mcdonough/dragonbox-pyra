@@ -216,10 +216,10 @@ build_kernel() {
 #       patch meant to go last has to sort last.
 #   $3  source directory under the work tree, one per variant so that a
 #       patched tree never leaks into an unpatched build
-#   $4  extra config symbols to enable, space separated, empty for none.
-#       NAME builds it in, NAME=m builds it as a module. Each is checked
-#       afterwards, because olddefconfig silently drops anything whose
-#       dependencies are unmet.
+#   $4  extra config symbols, space separated, empty for none. NAME builds
+#       it in, NAME=m builds it as a module, -NAME turns it off. Each is
+#       checked afterwards, because olddefconfig silently drops anything
+#       whose dependencies are unmet and can select a disabled one back on.
 build_kernel_variant() {
 	local suffix=$1 patchdirs=$2 srcdir=$3 extracfg=${4:-} pd
 	local dir=$BUILD_DIR/kernel
@@ -311,6 +311,7 @@ build_kernel_variant() {
 			--disable DEBUG_MISC
 		for opt in $EXTRACFG; do
 			case "$opt" in
+			-*)  scripts/config --file .config --disable "${opt#-}" ;;
 			*=m) scripts/config --file .config --module "${opt%=m}" ;;
 			*)   scripts/config --file .config --enable "$opt" ;;
 			esac
@@ -333,7 +334,13 @@ build_kernel_variant() {
 		fail=0
 		for opt in DEBUG_KERNEL LOCKUP_DETECTOR SOFTLOCKUP_DETECTOR DETECT_HUNG_TASK \
 			   GENERIC_IRQ_DEBUGFS ${EXTRACFG//=m/}; do
-			if grep -qE "^CONFIG_${opt}=(y|m)" .config; then
+			if [ "${opt#-}" != "$opt" ]; then
+				if grep -qE "^CONFIG_${opt#-}=(y|m)" .config; then
+					echo "  FAIL CONFIG_${opt#-} is still on"; fail=1
+				else
+					echo "  ok   CONFIG_${opt#-} off"
+				fi
+			elif grep -qE "^CONFIG_${opt}=(y|m)" .config; then
 				echo "  ok   $(grep -E "^CONFIG_${opt}=" .config)"
 			else
 				echo "  FAIL CONFIG_${opt} did not stick"; fail=1
@@ -454,10 +461,16 @@ build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 # And the headphone jack (experiments/jack-detect, 0037 and 0038): the
 # TS3A227E reports the jack instead of the TWL6040. They sort after the AESS
 # series and apply on top of it.
+#
+# FW_LOADER_USER_HELPER_FALLBACK is off: with it on, a firmware file missing
+# from the initramfs (the USB LAN adapter's, at boot) waits 60 s for a sysfs
+# upload nobody makes, and the root mount waits behind it (shape B of the late
+# root mount, troubleshooting.md). Fix 14's pyra-fw-nofallback hook sets the
+# same at runtime and stays for the stock kernel.
 build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
 	"$M4_PATCHES $SELF_DIR/../experiments/gpu-power/0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch \
 	 $SELF_DIR/../experiments/kbd-led $SELF_DIR/../experiments/jack-detect" src-m4-kbdled \
-	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"; }
+	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG -FW_LOADER_USER_HELPER_FALLBACK"; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
