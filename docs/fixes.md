@@ -999,6 +999,15 @@ the vendor file is never touched. `pyra-kbdlight.sh --configure FILE` writes the
 two lines; prep and `pyra-install-helpers.sh` both call it. It leaves alone a
 line the file already has for either key, and prep prints that as a warning.
 
+**At start the two lines don't take effect**: in
+funkeymonkey-pyrainput 0.1.19, `init()` loads the file and then, at its end,
+sets the four brightness commands back to the built-in ones
+(`pyrainput.cpp:158-161`). Only a reload (SIGUSR1, `user1()`) applies them,
+because `resetSettings()` leaves the brightness commands alone. So on a
+prepared card the keys still run the vendor script after every boot until
+someone runs `sudo systemctl reload pyrainput` (found 2026-10-31 on the fix 19
+card, `verification-log.md`). Not fixed yet.
+
 Rejected: `dpkg-divert` of `pyra-brightkey.sh`, for the reason fix 6/7's guard
 gives (it would keep our copy over any newer vendor one, silently). A copy
 earlier in `PATH` does nothing: libpyrainput calls the script by its absolute
@@ -1007,7 +1016,8 @@ path.
 Checked 2026-10-29 on the trixie card (m4-kbdled): Fn+brightness stepped the
 light 40, 60, 100, and Fn+Shift+brightness down through 60 40 20 10 5 2 1 0 and
 back, at the desktop greeter, with pyra-scripts 0.31 in place
-(`verification-log.md`).
+(`verification-log.md`). It passed only because `pyra-install-helpers.sh` had
+just reloaded pyrainput; after a reboot the keys do nothing (above).
 
 In a MATE session the keys work the same, but MATE's power manager keeps its
 own level for the light: after 15-20 s without input it cuts the light by 75 %,

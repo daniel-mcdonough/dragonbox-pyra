@@ -24,7 +24,9 @@
 # it alone, and nothing hides a newer vendor script. --configure writes the two
 # lines (pc/pyra-trixie-prep.sh and pyra-install-helpers.sh both call it). It
 # leaves a line the user wrote for either key alone. funkeymonkey reads the file
-# at start and on `systemctl reload pyrainput`.
+# at start and on `systemctl reload pyrainput`, but 0.1.19 overwrites the four
+# brightness commands with its built-in ones after the read at start
+# (pyrainput.cpp:158-161), so only the reload applies these lines (fixes.md, fix 15).
 #
 set -u
 

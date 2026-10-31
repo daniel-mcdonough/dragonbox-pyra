@@ -1390,3 +1390,15 @@ package. The card's lists in `/var/lib/apt/lists` dated from 2026-01-10 and
 the versions they named. §6 now runs `apt-get update` before its one install.
 Fn+brightness did not change the keyboard light, which already sat at 99 of
 100. Fn+brightness steps the light up, so this does not show a fault yet; Fn+Shift+brightness, which steps it down, is the test still to do.
+
+Fn keyboard-light keys, 2026-10-31, same card: **fix 15 fails after a boot.**
+The light sat at 60 for two minutes of the owner pressing Fn+brightness and
+Fn+Shift+brightness. `sudo /usr/local/sbin/pyra-kbdlight.sh down` dimmed it, and
+`/etc/pyrainput.cfg` had both lines. An strace of funkeymonkey during the presses
+showed it running the built-in `pyra-brightkey.sh key up` and `key down`, which
+fail on the missing `keyboard-backlight` directory (the journal has the errors),
+and `screen up` for plain brightness. Cause, in funkeymonkey-pyrainput 0.1.19's
+source: `init()` reads the config, then resets the four brightness commands to
+the built-in ones (`pyrainput.cpp:158-161`); only SIGUSR1 (`systemctl reload
+pyrainput`) applies the file. The 2026-10-29 pass came right after
+`pyra-install-helpers.sh` reloaded the service. Details in `fixes.md`, fix 15.
