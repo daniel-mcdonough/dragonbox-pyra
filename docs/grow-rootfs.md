@@ -98,7 +98,8 @@ A refused card must come back byte-identical.
 
 **Booted on a Pyra once** (2026-10-31, the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
-before that boot). The second boot's "nothing to do" has not been checked yet.
+before that boot). The boots after it log `nothing to do` and print nothing; root
+mounted at 8.2 s on the next one (serial console, 2026-11-01).
 
 ---
 
