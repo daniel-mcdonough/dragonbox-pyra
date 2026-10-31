@@ -88,7 +88,7 @@ reload() {
 		sleep 0.1
 	done
 	kill -USR1 "$pid" && sleep 1 && kill -USR1 "$pid" &&
-		echo "pyra-kbdlight: pyrainput reloaded, Fn keys from the config (handler up after ${n}00 ms)"
+		echo "pyra-kbdlight: pyrainput reloaded, Fn keys from the config (handler up after $((n * 100)) ms)"
 	return 0
 }
 

@@ -1028,7 +1028,9 @@ The journal shows the result at each start:
 `pyra-kbdlight: pyrainput reloaded, Fn keys from the config (handler up after
 N ms)`, or a line saying why it didn't. `pyra-install-helpers.sh` installs the
 same drop-in, and still reloads the running daemon itself. The real fix
-belongs upstream: set the four defaults before `loadConfig()` in `init()`.
+belongs upstream: set the four defaults before `loadConfig()` in `init()`
+(drafted with a patch in `reports/pyra-funkeymonkey-pyrainput-brightness-order.md`;
+the start-up signal windows are in `reports/pyra-funkeymonkey-early-signals.md`).
 
 Checked 2026-10-31 on the fix 19 card (`verification-log.md`): two cold boots
 each logged the reload at about 23 s, the handler up 300 and 100 ms after
