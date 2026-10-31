@@ -1402,3 +1402,26 @@ source: `init()` reads the config, then resets the four brightness commands to
 the built-in ones (`pyrainput.cpp:158-161`); only SIGUSR1 (`systemctl reload
 pyrainput`) applies the file. The 2026-10-29 pass came right after
 `pyra-install-helpers.sh` reloaded the service. Details in `fixes.md`, fix 15.
+
+## 2026-10-31 — fix 15 across cold boots, with the reload at start
+
+Card: the grown fix 19 card, `5.6.19-m4-kbdled`. Installed by hand the same
+files prep's fix 15 now installs (`pyra-kbdlight.sh` with `--reload`, and
+`pyrainput.service.d/pyra-kbdlight.conf`); the prep selftest, run after the
+change, passed (owner, 2026-10-31), so prep writes the same two files.
+
+- **Restart** right after the install: the journal has `pyra-kbdlight:
+  pyrainput reloaded, Fn keys from the config` 1.07 s after the start (most of
+  it the one-second gap before the second USR1). Fn+Shift+brightness and
+  Fn+brightness then stepped the light 100 60 40 20 10 5 and back to 100.
+- **Cold boot 1:** the boot's own start logged the reload at 22.9 s of
+  monotonic time, the handler up 300 ms after the process began (measured: the
+  script's poll count). So an ExecStartPost that sent USR1 at once would have
+  killed the daemon. The keys were pressed only after the restart above, so
+  this boot shows the reload, not the keys.
+- **Cold boot 2,** nothing run between boot and check: the reload logged at
+  22.95 s (handler up after 100 ms), NRestarts=0. At 63 s up, the owner's presses
+  stepped the light 60 → 100, then down through 60 40 20 10 5 2 1 0 and back up
+  to 100, every step as a single change.
+
+Fix 15 now holds after a boot.

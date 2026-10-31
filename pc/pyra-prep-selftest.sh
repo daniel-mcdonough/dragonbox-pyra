@@ -584,6 +584,19 @@ for kv in "fn up" "fnshift down"; do
         f "fix15: /etc/pyrainput.cfg has no ${kv% *} line for pyra-kbdlight.sh"
     fi
 done
+D=$MNT/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf
+if [[ -e $D ]] && cmp -s "$PAYLOADS/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf" "$D"; then
+    p "fix15: pyrainput.service.d/pyra-kbdlight.conf matches repo"
+else
+    f "fix15: pyrainput.service.d/pyra-kbdlight.conf missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "644 0:0" ]] && p "fix15: the drop-in is 0644 root:root" || f "fix15: the drop-in mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null)"
+# It must reload through the script, ignoring failure, and the unit it extends must exist.
+if grep -qx 'ExecStartPost=-/usr/local/sbin/pyra-kbdlight.sh --reload $MAINPID' "$D" 2>/dev/null && [[ -n ${PYRAUNIT:-} ]]; then
+    p "fix15: pyrainput.service reloads through pyra-kbdlight.sh at start"
+else
+    f "fix15: the drop-in has no ExecStartPost reload, or there is no pyrainput.service"
+fi
 # The vendor script stays the package's own: nothing diverts or edits it.
 if [[ -e $MNT/usr/share/pyra/scripts/pyra-brightkey.sh ]] &&
    ! grep -qs 'pyra-brightkey' "$MNT/var/lib/dpkg/diversions"; then
@@ -738,6 +751,7 @@ grep -qE 'fix14: .*already has both hooks' "$OUT/prep-run2.log" && p "run 2 repo
 ! grep -qE 'fix14: rebuilt' "$OUT/prep-run2.log" && p "run 2 rebuilt no initrd" || f "run 2 rebuilt an initrd"
 grep -qE 'fix15: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix15's script up to date" || f "run 2 did not report fix15's script up to date"
 [[ $(grep -cE 'fix15: .*already set' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix15 keys already set" || f "run 2 did not report both fix15 keys already set"
+grep -qE 'fix15: pyrainput.service.d/pyra-kbdlight.conf already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix15's drop-in up to date" || f "run 2 did not report fix15's drop-in up to date"
 [[ $(grep -cE 'fix16: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both fix16 files up to date" || f "run 2 did not report both fix16 files up to date"
 grep -qE 'fix16: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix16 already enabled" || f "run 2 did not report fix16 already enabled"
 [[ $(grep -cE 'fix17: .*already up to date' "$OUT/prep-run2.log") -eq 7 ]] && p "run 2 reported all seven fix17 files up to date" || f "run 2 did not report all seven fix17 files up to date"

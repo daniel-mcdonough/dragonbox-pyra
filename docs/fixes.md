@@ -999,14 +999,39 @@ the vendor file is never touched. `pyra-kbdlight.sh --configure FILE` writes the
 two lines; prep and `pyra-install-helpers.sh` both call it. It leaves alone a
 line the file already has for either key, and prep prints that as a warning.
 
-**At start the two lines don't take effect**: in
+**At start the two lines don't take effect on their own**: in
 funkeymonkey-pyrainput 0.1.19, `init()` loads the file and then, at its end,
 sets the four brightness commands back to the built-in ones
 (`pyrainput.cpp:158-161`). Only a reload (SIGUSR1, `user1()`) applies them,
-because `resetSettings()` leaves the brightness commands alone. So on a
-prepared card the keys still run the vendor script after every boot until
-someone runs `sudo systemctl reload pyrainput` (found 2026-10-31 on the fix 19
-card, `verification-log.md`). Not fixed yet.
+because `resetSettings()` leaves the brightness commands alone. Found
+2026-10-31 on the fix 19 card (`verification-log.md`): after every boot the
+keys ran the vendor script until someone ran `sudo systemctl reload pyrainput`.
+
+So fix 15 also installs a drop-in,
+`/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf`, whose
+`ExecStartPost=-/usr/local/sbin/pyra-kbdlight.sh --reload $MAINPID` reloads
+the daemon once at each start (a restart after a crash included). The reload
+can't be sent right away. funkeymonkey 0.1.2 installs its SIGUSR1 handler only
+after it has opened and grabbed the input devices and loaded the plugin
+(`main.cpp`, `process()`). A USR1 before that kills the daemon, and
+`Restart=on-failure` would then loop. So `--reload` polls
+`/proc/PID/status` until `SigCgt` has bit 9 (SIGUSR1) set, for at most 10 s,
+and only then sends it. A USR1 that lands during the plugin's `init()` is not
+lost: the flag is served after `init()` returns. A second USR1 follows one
+second later. It covers a signal that lands between the main loop's flag check
+and its `select()`, which has no timeout and would otherwise sleep until the
+next input event and handle that event with the built-in commands. Both the
+`-` prefix and the script's exit status 0 keep a miss from failing the unit.
+The journal shows the result at each start:
+`pyra-kbdlight: pyrainput reloaded, Fn keys from the config (handler up after
+N ms)`, or a line saying why it didn't. `pyra-install-helpers.sh` installs the
+same drop-in, and still reloads the running daemon itself. The real fix
+belongs upstream: set the four defaults before `loadConfig()` in `init()`.
+
+Checked 2026-10-31 on the fix 19 card (`verification-log.md`): two cold boots
+each logged the reload at about 23 s, the handler up 300 and 100 ms after
+the process started. After the second, with nothing run by hand, both key
+combinations stepped the light through all nine steps.
 
 Rejected: `dpkg-divert` of `pyra-brightkey.sh`, for the reason fix 6/7's guard
 gives (it would keep our copy over any newer vendor one, silently). A copy
@@ -1017,7 +1042,7 @@ Checked 2026-10-29 on the trixie card (m4-kbdled): Fn+brightness stepped the
 light 40, 60, 100, and Fn+Shift+brightness down through 60 40 20 10 5 2 1 0 and
 back, at the desktop greeter, with pyra-scripts 0.31 in place
 (`verification-log.md`). It passed only because `pyra-install-helpers.sh` had
-just reloaded pyrainput; after a reboot the keys do nothing (above).
+just reloaded pyrainput; before the drop-in, a reboot undid it (above).
 
 In a MATE session the keys work the same, but MATE's power manager keeps its
 own level for the light: after 15-20 s without input it cuts the light by 75 %,

@@ -24,7 +24,8 @@
 # /boot whose initrd lacks them or predates them. It does not apply the nineteen
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
 # Fixes 13 to 18 are the exception, since their files (pyra-gles, the two
-# hooks, pyra-kbdlight.sh, pyra-governor-tune's script and unit,
+# hooks, pyra-kbdlight.sh and its pyrainput.service drop-in,
+# pyra-governor-tune's script and unit,
 # pyra-audio-select's script, unit and five PulseAudio files, and
 # pyra-keypad-rescue) are in the map
 # below and land on the same paths prep uses; fix 15's two lines in
@@ -77,6 +78,7 @@ pyra-usb3503-rescue                 /usr/local/sbin                    0755
 pyra-keypad-rescue                  /usr/local/sbin                    0755
 pyra-gles                           /usr/local/bin                     0755
 pyra-kbdlight.sh                    /usr/local/sbin                    0755
+etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf /etc/systemd/system/pyrainput.service.d 0644
 pyra-soh                            /usr/local/bin                     0755
 pyra-cpu-pin                        /usr/local/sbin                    0755
 etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440
@@ -195,7 +197,8 @@ fi
 # The keyboard-light keys reach pyra-kbdlight.sh through two lines in
 # /etc/pyrainput.cfg (the script's header says why there). The script writes
 # them itself, the same way prep's fix 15 does, and funkeymonkey rereads the
-# file on a reload.
+# file on a reload. The drop-in in the map reloads it at every start from now on
+# (the daemon-reload above picks it up); this reload covers the running daemon.
 say "the Fn keyboard-brightness keys"
 if [ "$DRYRUN" = 1 ]; then
 	note "would point them at /usr/local/sbin/pyra-kbdlight.sh in /etc/pyrainput.cfg"

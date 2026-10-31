@@ -135,6 +135,8 @@ GLES_SRC=$PAYLOADS/pyra-gles
 
 KBDLIGHT_SRC=$PAYLOADS/pyra-kbdlight.sh
 [[ -x $KBDLIGHT_SRC ]] || die "fix15: pyra-kbdlight.sh not found or not executable (looked in $PAYLOADS)"
+KBDLIGHT_DROPIN_SRC=$PAYLOADS/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf
+[[ -r $KBDLIGHT_DROPIN_SRC ]] || die "fix15: pyrainput.service.d/pyra-kbdlight.conf not found (looked in $PAYLOADS)"
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -1088,6 +1090,9 @@ chroot_unmount
 # card boots. The keys reach it through /etc/pyrainput.cfg (fix 3 makes it),
 # which no package ships, so a pyra-scripts upgrade cannot undo this. The script
 # writes the two lines itself, as pyra-install-helpers.sh has it do on a device.
+# funkeymonkey-pyrainput 0.1.19 drops those lines at start and only applies them
+# on a reload, so a drop-in for pyrainput.service reloads it once at each start
+# (pyra-kbdlight.sh --reload says how it avoids killing the daemon).
 
 KBDLIGHT_DST=$ROOT/usr/local/sbin/pyra-kbdlight.sh
 if [[ -e $KBDLIGHT_DST ]] && cmp -s "$KBDLIGHT_SRC" "$KBDLIGHT_DST"; then
@@ -1103,6 +1108,15 @@ while read -r line; do
     *)              ok "fix15: ${line#pyra-kbdlight: } in /etc/pyrainput.cfg" ;;
     esac
 done < <("$KBDLIGHT_SRC" --configure "$ROOT/etc/pyrainput.cfg" 2>&1)
+KBDLIGHT_DROPIN=$ROOT/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf
+if [[ -e $KBDLIGHT_DROPIN ]] && cmp -s "$KBDLIGHT_DROPIN_SRC" "$KBDLIGHT_DROPIN"; then
+    ok "fix15: pyrainput.service.d/pyra-kbdlight.conf already up to date"
+else
+    VERB=$([[ -e $KBDLIGHT_DROPIN ]] && echo updated || echo installed)
+    install -d -m 0755 -o 0 -g 0 "$(dirname "$KBDLIGHT_DROPIN")"
+    install -m 0644 -o 0 -g 0 "$KBDLIGHT_DROPIN_SRC" "$KBDLIGHT_DROPIN"
+    ok "fix15: $VERB pyrainput.service.d/pyra-kbdlight.conf (reload at start)"
+fi
 
 # ---------------------------------------------------------------------- fix 16
 #

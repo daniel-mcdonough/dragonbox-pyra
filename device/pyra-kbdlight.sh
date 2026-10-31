@@ -4,6 +4,7 @@
 #
 #   pyra-kbdlight.sh up|down          one step brighter or dimmer
 #   pyra-kbdlight.sh --configure CFG  point the Fn keys at this script in CFG
+#   pyra-kbdlight.sh --reload PID     make pyrainput (funkeymonkey, PID) apply CFG
 #
 # funkeymonkey (libpyrainput) runs a shell command for each brightness key
 # combination, as root. Its built-in commands for Fn+brightness and
@@ -26,7 +27,9 @@
 # leaves a line the user wrote for either key alone. funkeymonkey reads the file
 # at start and on `systemctl reload pyrainput`, but 0.1.19 overwrites the four
 # brightness commands with its built-in ones after the read at start
-# (pyrainput.cpp:158-161), so only the reload applies these lines (fixes.md, fix 15).
+# (pyrainput.cpp:158-161), so only the reload applies these lines. The drop-in
+# pyrainput.service.d/pyra-kbdlight.conf runs --reload from ExecStartPost, so
+# every start ends with a reload (fixes.md, fix 15).
 #
 set -u
 
@@ -56,6 +59,37 @@ configure() {
 			echo "pyra-kbdlight: $key set"
 		fi
 	done
+}
+
+# funkeymonkey 0.1.2 installs its SIGUSR1 handler only once it has opened and
+# grabbed the devices and loaded the plugin (main.cpp, process()), and a USR1
+# before that kills it. ExecStartPost runs as soon as the process exists, so
+# wait for /proc/PID/status to show USR1 caught. A USR1 that lands during the
+# plugin's init() is kept and served after it. The second one covers a USR1 that
+# lands between the loop's flag check and its select(), which has no timeout:
+# that one would wait for the next input event, which would still get the old
+# commands; the second interrupts the select(). Always exits 0, so a miss never
+# fails the unit; it only logs.
+reload() {
+	pid=$1 n=0
+	while :; do
+		cgt=$(sed -n 's/^SigCgt:[[:space:]]*//p' "/proc/$pid/status" 2>/dev/null)
+		if [ -z "$cgt" ]; then
+			echo "pyra-kbdlight: pyrainput (pid $pid) is gone, not reloaded" >&2
+			return 0
+		fi
+		# SIGUSR1 is signal 10, bit 9 of the mask; the last four digits hold it.
+		[ $(( 0x${cgt#"${cgt%????}"} & 0x200 )) -ne 0 ] && break
+		n=$((n + 1))
+		if [ "$n" -ge 100 ]; then
+			echo "pyra-kbdlight: pyrainput (pid $pid) has no SIGUSR1 handler after 10 s, not reloaded" >&2
+			return 0
+		fi
+		sleep 0.1
+	done
+	kill -USR1 "$pid" && sleep 1 && kill -USR1 "$pid" &&
+		echo "pyra-kbdlight: pyrainput reloaded, Fn keys from the config (handler up after ${n}00 ms)"
+	return 0
 }
 
 step() {
@@ -96,5 +130,7 @@ case "${1:-}" in
 up|down)     step "$1" ;;
 --configure) [ -n "${2:-}" ] || { echo "usage: $0 --configure /etc/pyrainput.cfg" >&2; exit 2; }
              configure "$2" ;;
-*)           echo "usage: $0 up|down | --configure CFG" >&2; exit 2 ;;
+--reload)    case ${2:-} in ''|*[!0-9]*) echo "usage: $0 --reload PID" >&2; exit 2 ;; esac
+             reload "$2" ;;
+*)           echo "usage: $0 up|down | --configure CFG | --reload PID" >&2; exit 2 ;;
 esac
