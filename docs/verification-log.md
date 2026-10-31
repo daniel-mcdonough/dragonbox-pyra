@@ -1383,3 +1383,10 @@ Not checked here (need hands, listed in the owner's TODO): charger
 unplug/replug keeping `max_current` 2000000, the headphone jack switching
 sinks, the Fn brightness keys, listening to the speaker, and a root fsck on the
 built-in slot at the next PC check.
+
+Owner follow-up, same day: `apt install mpv` failed with 404s on every
+package. The card's lists in `/var/lib/apt/lists` dated from 2026-01-10 and
+2026-02-01, which is when the image was built, and the archive had since dropped
+the versions they named. §6 now runs `apt-get update` before its one install.
+Fn+brightness did not change the keyboard light, which already sat at 99 of
+100. Fn+brightness steps the light up, so this does not show a fault yet; Fn+Shift+brightness, which steps it down, is the test still to do.

@@ -289,7 +289,9 @@ There should be **no** `AIGLX` lines at all, and no `Segmentation fault` /
 integration uses; `GLX` is deliberately absent.
 
     # hardware GLES2 through the SGX blob; copy device/pyra-gles2-smoke.c
-    # from this repository to the card first
+    # from this repository to the card first. The image's package lists are
+    # months old, so refresh them before any install or the fetch 404s.
+    sudo apt-get update
     sudo apt-get install libx11-dev
     gcc -O2 -o gles2-smoke pyra-gles2-smoke.c \
         -I/opt/omap5-sgx-ddk-um-linux/include \
