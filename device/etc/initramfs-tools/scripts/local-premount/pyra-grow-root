@@ -20,5 +20,31 @@ prereqs)
 esac
 
 [ -x /usr/sbin/pyra-grow-root ] || exit 0
-/usr/sbin/pyra-grow-root "$ROOT" < /dev/null
+
+# initramfs-tools runs local-premount once, from mount_top, before
+# local_mount_root has resolved ROOT or waited for the card: here ROOT is still
+# what the command line says (root=PARTUUID=21a4c285-02 on the Pyra), and the
+# card may not have been probed yet. So resolve it here and wait for it; root
+# cannot mount before the card appears anyway.
+LOG=/run/initramfs/pyra-grow-root.log
+resolve() {
+	case $1 in
+	/dev/*) [ -b "$1" ] && readlink -f "$1" ;;
+	*=*) blkid -l -t "$1" -o device 2>/dev/null ;;
+	esac
+}
+dev=
+n=0
+while [ $n -lt 60 ]; do
+	dev=$(resolve "$ROOT") && [ -b "$dev" ] && break
+	dev=
+	sleep 0.5
+	n=$((n + 1))
+done
+if [ -z "$dev" ]; then
+	mkdir -p /run/initramfs
+	echo "root=$ROOT did not appear within 30 s; not growing on this boot" >> "$LOG"
+	exit 0
+fi
+/usr/sbin/pyra-grow-root "$dev" < /dev/null
 exit 0

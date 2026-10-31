@@ -29,8 +29,13 @@ initramfs runs before root is mounted, which is what the first-boot grow uses.
 fix 14's initrds:
 
 - `device/pyra-grow-root`, as `/usr/local/sbin/pyra-grow-root`: does the work.
-- `device/etc/initramfs-tools/scripts/local-premount/pyra-grow-root`: runs it
-  with the root device, after the card appears and before root is mounted.
+- `device/etc/initramfs-tools/scripts/local-premount/pyra-grow-root`: finds
+  the root device, waits up to 30 s for the card to appear, and runs it, before
+  root is mounted. It has to resolve the device itself: initramfs-tools 0.148
+  runs `local-premount` once, from `mount_premount`, before `mountroot`. At that
+  point `ROOT` is still the command line's `PARTUUID=21a4c285-02`, and the card
+  may not have been probed yet. Found on the first card booted with it
+  (2026-10-31): the hook was handed the `PARTUUID=` string and did nothing.
 - `device/etc/initramfs-tools/hooks/pyra-grow-root`: copies it, `sfdisk`,
   `partx` and `resize.f2fs` into the initrd. Busybox supplies the rest.
 
@@ -59,6 +64,18 @@ that is not as expected:
    dry run.
 
 The screen says what is happening, and not to switch off during step 5.
+Measured 2026-10-31 on a 256 GB SanDisk (SA256): capacity check 931 samples,
+about 8 s; each fsck dry run 68 s; `resize.f2fs` 513 s; about 11 minutes in all,
+once. Root came up at 239 G with 234 G free.
+
+The first mount after the grow logs `F2FS-fs (mmcblk1p2): invalid crc_offset: 0`
+once. That is expected, not damage. `resize.f2fs` writes its new checkpoint into
+one of the two checkpoint packs and zeroes the other, so nothing can roll back
+to the old geometry. The kernel picks the valid pack, and its next checkpoint
+rewrites the zeroed one. Checked on that card by reading both pack headers
+afterwards: versions 1130324925 and 1130324926, both with `crc_offset` 4092.
+Compare 2026-09-10 below, where the offset was garbage (`295978`) and *neither*
+pack was valid.
 Everything goes to `/run/initramfs/pyra-grow-root.log`, which survives into the
 running system. Power lost between steps 4 and 5 is harmless: the next boot
 finds the partition grown and does only step 5. Power lost during step 5 can
@@ -79,8 +96,9 @@ throwaway loop-device cards:
 
 A refused card must come back byte-identical.
 
-**Not yet booted on a Pyra.** Until a prepped card has grown itself on the
-device, use the PC procedure below for anything you care about.
+**Booted on a Pyra once** (2026-10-31, the card above, through
+`pyra-image-build.sh`; the hook fix described above was applied on the card
+before that boot). The second boot's "nothing to do" has not been checked yet.
 
 ---
 

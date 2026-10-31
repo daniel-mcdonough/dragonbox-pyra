@@ -68,6 +68,7 @@ fs_sectors() {
 }
 
 [ -n "$PART" ] || { echo "usage: $0 /dev/PARTITION" >&2; exit 1; }
+[ -b "$PART" ] || { quiet "'$PART' is not a block device"; exit 0; }
 PART=$(readlink -f "$PART")
 P=${PART##*/}
 SYS=/sys/class/block/$P
@@ -180,7 +181,7 @@ if [ $GROW_PART = 1 ]; then
 fi
 
 TARGET=$((PART_SZ - MARGIN))
-say "resizing the filesystem to $((TARGET / 2097152)) GiB. DO NOT SWITCH OFF; this takes a minute or two"
+say "resizing the filesystem to $((TARGET / 2097152)) GiB. DO NOT SWITCH OFF: about 10 minutes for a 256 GB card"
 resize.f2fs -t "$TARGET" "$PART" >> "$LOG" 2>&1 || { say "resize.f2fs failed; see $LOG"; exit 1; }
 NEW_FS=$(fs_sectors "$PART")
 if ! fsck.f2fs -f --dry-run "$PART" >> "$LOG" 2>&1; then
