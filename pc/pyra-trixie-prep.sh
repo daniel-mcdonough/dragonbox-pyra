@@ -5,7 +5,7 @@
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
 #   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] [--set-password]
-#                              [--ssh-key FILE.pub] /mnt [username]
+#                              [--ssh-key FILE.pub] [--grow-on-boot] /mnt [username]
 #
 # Fix 2 creates the user and asks for its password. A user the image already
 # has keeps its password unless --set-password is given: the vendor image ships
@@ -17,6 +17,10 @@
 # and checks it against the SHA-256 pinned below; --kernel FILE uses a tarball
 # you already have (a download, or ./pc/pyra-crossbuild.sh kernel-m4-kbdled);
 # --no-kernel leaves the card on the stock 5.6.19-pyradef.
+#
+# --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
+# the card checks its capacity and grows the rootfs to fill itself, so no PC
+# grow is needed. Off by default. docs/grow-rootfs.md.
 #
 # Fixes 14 and 19 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
@@ -38,6 +42,7 @@ KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-ke
 KERNEL_FILE=
 SET_PASSWORD=no
 SSH_KEY=
+GROW_ON_BOOT=no
 ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -49,6 +54,7 @@ while [[ $# -gt 0 ]]; do
     --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
                  SSH_KEY=$2; shift 2 ;;
     --ssh-key=*) SSH_KEY=${1#--ssh-key=}; shift ;;
+    --grow-on-boot) GROW_ON_BOOT=yes; shift ;;
     -*)          die "unknown option: $1" ;;
     *)           ARGS+=("$1"); shift ;;
     esac
@@ -57,7 +63,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -166,6 +172,19 @@ HOOKS="pyra-fw-nofallback pyra-settle-nudge"
 for h in $HOOKS; do
     [[ -r $HOOK_SRC/$h ]] || die "fix14: $h not found (looked in $HOOK_SRC)"
 done
+# --grow-on-boot: the grow script, the local-premount hook that runs it, and
+# the initramfs-tools hook that copies it and its tools into the initrd.
+# Destination (in the image) and source (in device/), mode 0755 each.
+GROW_FILES=(
+    usr/local/sbin/pyra-grow-root:pyra-grow-root
+    etc/initramfs-tools/scripts/local-premount/pyra-grow-root:etc/initramfs-tools/scripts/local-premount/pyra-grow-root
+    etc/initramfs-tools/hooks/pyra-grow-root:etc/initramfs-tools/hooks/pyra-grow-root
+)
+if [[ $GROW_ON_BOOT == yes ]]; then
+    for g in "${GROW_FILES[@]}"; do
+        [[ -r $PAYLOADS/${g#*:} ]] || die "grow-on-boot: ${g#*:} not found (looked in $PAYLOADS)"
+    done
+fi
 
 # Fix 14 rebuilds each kernel's initrd with the image's own update-initramfs,
 # run in a chroot, so two more things must hold before anything is written:
@@ -185,6 +204,11 @@ in_chroot /bin/true 2>/dev/null ||
        (Debian/Ubuntu: qemu-user-static binfmt-support; Arch: qemu-user-static qemu-user-static-binfmt)"
 in_chroot sh -c 'command -v update-initramfs && command -v lsinitramfs' >/dev/null 2>&1 ||
     die "fix14: the image has no update-initramfs or lsinitramfs (initramfs-tools)"
+if [[ $GROW_ON_BOOT == yes ]]; then
+    for t in /usr/sbin/sfdisk /usr/bin/partx /usr/sbin/fsck.f2fs /usr/sbin/resize.f2fs; do
+        [[ -e $ROOT$t ]] || die "grow-on-boot: the image has no $t, which the initrd needs to grow the card"
+    done
+fi
 
 # Fix 19 runs the two device scripts that own a kernel install and the boot
 # choice, so both must be here; and the tarball is found, downloaded and
@@ -1025,6 +1049,21 @@ for h in $HOOKS; do
         ok "fix14: wrote /etc/initramfs-tools/scripts/init-top/$h"
     fi
 done
+if [[ $GROW_ON_BOOT == yes ]]; then
+    for g in "${GROW_FILES[@]}"; do
+        dst=$ROOT/${g%%:*}
+        src=$PAYLOADS/${g#*:}
+        if [[ -e $dst ]] && cmp -s "$src" "$dst"; then
+            ok "grow-on-boot: /${g%%:*} already in place"
+        else
+            mkdir -p "$(dirname "$dst")"
+            install -m 0755 -o 0 -g 0 "$src" "$dst"
+            ok "grow-on-boot: wrote /${g%%:*}"
+        fi
+    done
+fi
+GROW_NOTE=
+[[ $GROW_ON_BOOT == yes ]] && GROW_NOTE=" and pyra-grow-root"
 
 initrd_has_hooks() {    # /boot/initrd.img-REL (chroot path) -> true when current
     local h list
@@ -1033,6 +1072,14 @@ initrd_has_hooks() {    # /boot/initrd.img-REL (chroot path) -> true when curren
         [[ $HOOK_DIR/$h -nt $ROOT$1 ]] && return 1
         grep -qx "scripts/init-top/$h" <<<"$list" || return 1
     done
+    if [[ $GROW_ON_BOOT == yes ]]; then
+        for g in "${GROW_FILES[@]}"; do
+            [[ $ROOT/${g%%:*} -nt $ROOT$1 ]] && return 1
+        done
+        grep -qx "scripts/local-premount/pyra-grow-root" <<<"$list" || return 1
+        grep -qx "usr/sbin/pyra-grow-root" <<<"$list" || return 1
+        grep -qx "usr/sbin/sfdisk" <<<"$list" || return 1
+    fi
     return 0
 }
 
@@ -1060,7 +1107,7 @@ for initrd in "$ROOT"/boot/initrd.img-*; do
         continue
     fi
     if initrd_has_hooks "/boot/initrd.img-$rel"; then
-        ok "fix14: /boot/initrd.img-$rel already has both hooks"
+        ok "fix14: /boot/initrd.img-$rel already has both hooks$GROW_NOTE"
         continue
     fi
     need=$(( $(stat -c %s "$initrd") / 1024 + 2048 ))
@@ -1074,8 +1121,8 @@ for initrd in "$ROOT"/boot/initrd.img-*; do
 $out"
     fi
     initrd_has_hooks "/boot/initrd.img-$rel" ||
-        die "fix14: /boot/initrd.img-$rel was rebuilt but does not list both hooks"
-    ok "fix14: rebuilt /boot/initrd.img-$rel with both hooks"
+        die "fix14: /boot/initrd.img-$rel was rebuilt but does not list both hooks$GROW_NOTE"
+    ok "fix14: rebuilt /boot/initrd.img-$rel with both hooks$GROW_NOTE"
 done
 chroot_unmount
 

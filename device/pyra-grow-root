@@ -1,0 +1,191 @@
+#!/bin/sh
+# pyra-grow-root: grow the root partition and its f2fs to fill the card, from
+# the initramfs, before root is mounted. docs/grow-rootfs.md.
+#
+#   pyra-grow-root /dev/mmcblk1p2
+#
+# The initramfs hook scripts/local-premount/pyra-grow-root runs it with the
+# resolved root device on every boot. It is idempotent: when the partition
+# already reaches the end of the card and the filesystem fills the partition,
+# it reads sysfs and one superblock and exits. Nothing is kept between boots.
+#
+# Why here: the 5.6.19 kernel's f2fs online resize only shrinks, and
+# resize.f2fs refuses a mounted filesystem. In the initramfs root is not yet
+# mounted, so the offline grow pyra-trixie-grow.sh does on a PC works on the
+# device too, through the Pyra's own SD controller rather than a USB reader.
+#
+# What it does, stopping at the first thing that is not as expected:
+#   1. Only a Pyra trixie card: partition 2 starting at sector 526336, exactly
+#      two partitions, MBR disk identifier 0x21a4c285, f2fs on p2.
+#   2. Capacity check, before the partition grows: a 4 KiB sample every
+#      256 MiB across the unpartitioned space, and one at the very end, all
+#      written, then all read back past the page cache. A card that drops
+#      writes beyond its real size reads back zeros or errors; one that wraps
+#      them onto lower addresses has two samples land in the same block, so
+#      one is lost (guaranteed when its real size is a multiple of 256 MiB and
+#      no more than the space being checked). Each sample's block is read and
+#      saved first and put back on failure, so a wrapping card gets back
+#      whatever the samples landed on. Not as thorough as
+#      verify-card-capacity.sh, which writes far more.
+#   3. fsck.f2fs -f --dry-run, which changes nothing. On damage, no grow.
+#   4. Partition 2 extended to the end of the card. Its start does not move,
+#      so the PARTUUIDs in fstab and extlinux.conf stay valid.
+#   5. resize.f2fs, leaving a 64 MiB margin at the end, then a second dry run.
+#
+# Power loss during step 5 can leave a damaged filesystem: the screen says not
+# to switch off. Power loss between 4 and 5 is harmless; the next boot finds
+# the partition grown and only resizes the filesystem.
+#
+# Opt out with pyra.nogrow on the kernel command line.
+#
+# Exit status: 0 nothing to do or not a card it handles, 10 grown, 20 refused
+# (opted out, capacity check failed, filesystem damaged), 1 an error part way.
+#
+# The environment variables below exist for pc/pyra-grow-root-selftest.sh.
+
+PART=${1:-}
+CMDLINE=${PYRA_GROW_CMDLINE:-/proc/cmdline}
+LOG=${PYRA_GROW_LOG:-/run/initramfs/pyra-grow-root.log}
+TMP=${PYRA_GROW_TMP:-/run/pyra-grow-root}
+
+WANT_DISKID=0x21a4c285
+WANT_P2_START=526336
+MARGIN=131072           # 64 MiB in sectors, as docs/grow-rootfs.md measured
+SLACK=2097152           # 1 GiB: less unused than this is not worth a grow
+STEP=524288             # 256 MiB between capacity samples
+F2FS_MAGIC=4076150800   # 0xF2F52010
+
+mkdir -p "${LOG%/*}" 2>/dev/null
+say() { echo "pyra-grow-root: $*"; echo "$*" >> "$LOG" 2>/dev/null; }
+quiet() { echo "$*" >> "$LOG" 2>/dev/null; }
+
+# Filesystem size in sectors, from the f2fs superblock at byte 1024 of the
+# partition: magic is word 0, log_blocksize word 4, block_count words 9-10.
+fs_sectors() {
+	set -- $(dd if="$1" bs=1024 skip=1 count=1 2>/dev/null | od -An -tu4 -N44)
+	[ $# -eq 11 ] && [ "$1" = "$F2FS_MAGIC" ] || return 1
+	echo $(( (${10} + (${11} << 32)) << ($5 - 9) ))
+}
+
+[ -n "$PART" ] || { echo "usage: $0 /dev/PARTITION" >&2; exit 1; }
+PART=$(readlink -f "$PART")
+P=${PART##*/}
+SYS=/sys/class/block/$P
+[ -e "$SYS/partition" ] || { quiet "$PART is not a partition"; exit 0; }
+[ "$(cat "$SYS/partition")" = 2 ] || { quiet "$PART is not partition 2"; exit 0; }
+[ "$(cat "$SYS/start")" = "$WANT_P2_START" ] || { quiet "$PART does not start at $WANT_P2_START"; exit 0; }
+D=$(basename "$(readlink -f "$SYS/..")")
+DISK=/dev/$D
+NPARTS=0
+for p in /sys/class/block/$D/"$D"*; do [ -e "$p/partition" ] && NPARTS=$((NPARTS + 1)); done
+[ "$NPARTS" = 2 ] || { quiet "$DISK has $NPARTS partitions, not 2"; exit 0; }
+
+DISK_SZ=$(cat "/sys/class/block/$D/size")
+PART_SZ=$(cat "$SYS/size")
+FS_SZ=$(fs_sectors "$PART") || { quiet "$PART holds no f2fs"; exit 0; }
+FREE_START=$((WANT_P2_START + PART_SZ))
+GROW_PART=0
+GROW_FS=0
+[ $((DISK_SZ - FREE_START)) -ge "$SLACK" ] && GROW_PART=1
+[ $((PART_SZ - MARGIN - FS_SZ)) -ge "$SLACK" ] && GROW_FS=1
+if [ $GROW_PART = 0 ] && [ $GROW_FS = 0 ]; then
+	quiet "nothing to do: disk $DISK_SZ, partition $PART_SZ, filesystem $FS_SZ sectors"
+	exit 0
+fi
+
+if grep -qw pyra.nogrow "$CMDLINE" 2>/dev/null; then
+	say "pyra.nogrow is set, leaving the root filesystem at $((FS_SZ / 2097152)) GiB"
+	exit 20
+fi
+# From the MBR itself (bytes 440-443) rather than sfdisk, which will not open
+# a card whose upper range fails to read; that card should reach the capacity
+# check below and be reported, not be skipped in silence.
+DISKID=0x$(dd if="$DISK" bs=1 skip=440 count=4 2>/dev/null | od -An -tx4 | tr -d ' ')
+[ "$DISKID" = "$WANT_DISKID" ] || { quiet "$DISK identifier is '${DISKID:-unknown}', not $WANT_DISKID"; exit 0; }
+
+say "the card has $(((DISK_SZ - FREE_START) / 2097152)) GiB unused; growing the root filesystem"
+
+if [ $GROW_PART = 1 ]; then
+	say "checking that the card really has that space"
+	rm -rf "$TMP"
+	mkdir -p "$TMP" || { say "cannot make $TMP"; exit 1; }
+	NONCE=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "$$")
+	S=$(( (FREE_START + 7) / 8 * 8 ))
+	LAST=$(( (DISK_SZ - 8) / 8 * 8 ))
+	SAMPLES=
+	while [ "$S" -lt "$LAST" ]; do SAMPLES="$SAMPLES $S"; S=$((S + STEP)); done
+	SAMPLES="$SAMPLES $LAST"
+	n=0
+	for S in $SAMPLES; do n=$((n + 1)); done
+	quiet "$n samples from sector $FREE_START to $LAST"
+
+	# Save what is there before writing anything, so that nothing has been
+	# written if the card cannot even read its upper range.
+	for S in $SAMPLES; do
+		dd if="$DISK" of="$TMP/$S" bs=4096 skip=$((S / 8)) count=1 2>/dev/null
+		[ "$(stat -c %s "$TMP/$S" 2>/dev/null)" = 4096 ] || {
+			say "the card cannot read sector $S; not growing"
+			rm -rf "$TMP"
+			exit 20
+		}
+	done
+	WRITTEN=
+	BAD=
+	for S in $SAMPLES; do
+		printf 'PYRA-GROW-ROOT %s %s\n' "$NONCE" "$S" |
+			dd of="$DISK" bs=4096 seek=$((S / 8)) count=1 conv=sync,notrunc 2>/dev/null ||
+			{ BAD="write at sector $S failed"; break; }
+		WRITTEN="$WRITTEN $S"
+	done
+	sync
+	blockdev --flushbufs "$DISK" 2>/dev/null
+	echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
+	if [ -z "$BAD" ]; then
+		for S in $SAMPLES; do
+			got=$(dd if="$DISK" bs=4096 skip=$((S / 8)) count=1 2>/dev/null | head -n 1 | tr -d '\000')
+			[ "$got" = "PYRA-GROW-ROOT $NONCE $S" ] || { BAD="sector $S did not read back"; break; }
+		done
+	fi
+	if [ -n "$BAD" ]; then
+		for S in $WRITTEN; do
+			dd if="$TMP/$S" of="$DISK" bs=4096 seek=$((S / 8)) count=1 conv=notrunc 2>/dev/null
+		done
+		sync
+		blockdev --flushbufs "$DISK" 2>/dev/null
+		rm -rf "$TMP"
+		say "CAPACITY CHECK FAILED: $BAD"
+		say "this card is probably smaller than it claims; the root filesystem stays at $((FS_SZ / 2097152)) GiB"
+		exit 20
+	fi
+	rm -rf "$TMP"
+	say "capacity check passed"
+fi
+
+say "checking the filesystem (read-only)"
+if ! fsck.f2fs -f --dry-run "$PART" >> "$LOG" 2>&1; then
+	say "fsck.f2fs found damage; not growing. Image the card before any repair (docs/troubleshooting.md)"
+	exit 20
+fi
+
+if [ $GROW_PART = 1 ]; then
+	echo ',+' | sfdisk --no-reread --no-tell-kernel --wipe never --wipe-partitions never -q -N 2 "$DISK" >> "$LOG" 2>&1 ||
+		{ say "sfdisk failed; nothing else was changed"; exit 1; }
+	partx -u --nr 2 "$DISK" >> "$LOG" 2>&1 || blockdev --rereadpt "$DISK" >> "$LOG" 2>&1
+	NEW_SZ=$(cat "$SYS/size")
+	[ "$(cat "$SYS/start")" = "$WANT_P2_START" ] || { say "partition 2 start moved; restore the partition table"; exit 1; }
+	[ "$NEW_SZ" -gt "$PART_SZ" ] ||
+		{ say "the kernel still sees partition 2 at $NEW_SZ sectors; the next boot will finish the grow"; exit 1; }
+	PART_SZ=$NEW_SZ
+	quiet "partition 2 is now $PART_SZ sectors"
+fi
+
+TARGET=$((PART_SZ - MARGIN))
+say "resizing the filesystem to $((TARGET / 2097152)) GiB. DO NOT SWITCH OFF; this takes a minute or two"
+resize.f2fs -t "$TARGET" "$PART" >> "$LOG" 2>&1 || { say "resize.f2fs failed; see $LOG"; exit 1; }
+NEW_FS=$(fs_sectors "$PART")
+if ! fsck.f2fs -f --dry-run "$PART" >> "$LOG" 2>&1; then
+	say "WARNING: the read-only check after the resize reported a problem; see $LOG"
+	exit 1
+fi
+say "done: the root filesystem is now $((NEW_FS / 2097152)) GiB"
+exit 10

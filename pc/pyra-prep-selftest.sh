@@ -7,7 +7,7 @@
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
 # the end state of fixes 1 to 8 and 13 to 19 (fix 2 with --set-password and
-# --ssh-key), runs it a second time and requires the
+# --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
 #
@@ -156,7 +156,7 @@ i "run 1 of pyra-trixie-prep.sh"
 TESTPW=selftest-not-a-real-password
 ssh-keygen -q -t ed25519 -N '' -C 'comment-that-must-not-land@example.invalid' -f "$OUT/testkey"
 disarm; set +e
-"$PREP" "${KARGS[@]}" --set-password --ssh-key "$OUT/testkey.pub" "$MNT" pyra \
+"$PREP" "${KARGS[@]}" --set-password --ssh-key "$OUT/testkey.pub" --grow-on-boot "$MNT" pyra \
     < <(printf '%s\n%s\n' "$TESTPW" "$TESTPW") 2>&1 | tee "$OUT/prep-run1.log"
 RC=${PIPESTATUS[0]}
 set -e; arm
@@ -531,6 +531,17 @@ for h in pyra-fw-nofallback pyra-settle-nudge; do
     fi
     [[ $(stat -c '%a %u:%g' "$H" 2>/dev/null) == "755 0:0" ]] || f "fix14: ${H#$MNT} mode is $(stat -c '%a %u:%g' "$H" 2>/dev/null)"
 done
+for g in usr/local/sbin/pyra-grow-root:pyra-grow-root \
+         etc/initramfs-tools/scripts/local-premount/pyra-grow-root:etc/initramfs-tools/scripts/local-premount/pyra-grow-root \
+         etc/initramfs-tools/hooks/pyra-grow-root:etc/initramfs-tools/hooks/pyra-grow-root; do
+    H=$MNT/${g%%:*}
+    if [[ -e $H ]] && cmp -s "$PAYLOADS/${g#*:}" "$H"; then
+        p "grow-on-boot: /${g%%:*} matches repo"
+    else
+        f "grow-on-boot: /${g%%:*} missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$H" 2>/dev/null) == "755 0:0" ]] || f "grow-on-boot: /${g%%:*} mode is $(stat -c '%a %u:%g' "$H" 2>/dev/null)"
+done
 # Read each initrd with the image's own lsinitramfs, as prep does, and require
 # both hooks in the archive and in init-top/ORDER before udev, which is what
 # makes them run before `udevadm settle`.
@@ -561,6 +572,16 @@ for initrd in "$MNT"/boot/initrd.img-*; do
             p "fix14: initrd.img-$rel runs $h before udev"
         else
             f "fix14: initrd.img-$rel does not run $h before udev (ORDER line ${hl:-none}, udev ${ul:-none})"
+        fi
+    done
+    # --grow-on-boot: the hook, the script it runs, and the tools the script
+    # needs beyond busybox, all inside the archive.
+    for x in scripts/local-premount/pyra-grow-root usr/sbin/pyra-grow-root \
+             usr/sbin/sfdisk usr/bin/partx usr/sbin/fsck.f2fs usr/sbin/resize.f2fs; do
+        if grep -qx "$x" <<<"$LIST"; then
+            p "grow-on-boot: initrd.img-$rel contains $x"
+        else
+            f "grow-on-boot: initrd.img-$rel lacks $x"
         fi
     done
 done
@@ -724,7 +745,7 @@ fi
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
-"$PREP" "${KARGS[@]}" --ssh-key "$OUT/testkey.pub" "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
+"$PREP" "${KARGS[@]}" --ssh-key "$OUT/testkey.pub" --grow-on-boot "$MNT" pyra 2>&1 | tee "$OUT/prep-run2.log"
 RC2=${PIPESTATUS[0]}
 set -e; arm
 [[ $RC2 -eq 0 ]] && p "run 2 exited 0" || f "run 2 exited $RC2"

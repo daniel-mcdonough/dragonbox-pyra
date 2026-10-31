@@ -21,10 +21,11 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all nineteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. |
+| `pc/pyra-trixie-prep.sh` | Applies all nineteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. `--grow-on-boot` adds `pyra-grow-root` to the initrds, so the card grows its rootfs on its first boot (`grow-rootfs.md`). |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
+| `pc/pyra-grow-root-selftest.sh` | Runs `device/pyra-grow-root` against throwaway loop-device cards: genuine, three device-mapper fakes, interrupted, damaged, the guards, and a copy of the real image. Needs root; runs on a PC or a Pyra. |
 | `pc/pyra-verify-card-metadata.sh` | Scans the card's f2fs metadata for the signature of a card reader that corrupted what it wrote. Run after every write and every grow. |
 | `pc/pyra-card-diagnose.sh` | Asks whether a failing card is the card or the reader. Read-only, about a minute. |
 | `pc/pyra-card-read-stability.sh` | Reads the same block twice with the page cache bypassed, to catch a reader that invents data. Read-only. |
@@ -66,6 +67,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback` | Turns off the kernel's 60 s sysfs firmware fallback before the initramfs's udev starts. Without it a USB ethernet adapter that enumerates early can hold root back by a minute or two. See "Root mounts a minute or two late" in `troubleshooting.md`. Installed by prep (fix 14) and by `pyra-install-helpers.sh`; both rebuild the initrds. Measured 2026-10-28: 5 cold boots with the adapter plugged in mounted root at 6-10 s. |
 | `device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge` | Wakes `udevadm settle` in the initramfs when the 5.6 kernels' early `IN_DELETE` leaves it asleep with udev's queue already empty, which otherwise holds root back about 120 s. Never fires on a kernel with `patches/0048`. See shape A under "Root mounts a minute or two late" in `troubleshooting.md`. Installed by prep (fix 14) and by `pyra-install-helpers.sh`; both rebuild the initrds. |
+| `device/pyra-grow-root`, `device/etc/initramfs-tools/scripts/local-premount/pyra-grow-root`, `device/etc/initramfs-tools/hooks/pyra-grow-root` | Grow the rootfs to fill the card from the initramfs on the first boot, after a capacity check and a read-only fsck; nothing on every boot after. Installed by prep with `--grow-on-boot`, which rebuilds the initrds. Tested by `pc/pyra-grow-root-selftest.sh`; not yet booted on a Pyra. See `grow-rootfs.md`. |
 | `device/pyra-keypad-rescue` | Unsticks the built-in keyboard when its controller is left holding an edge-triggered interrupt line asserted. |
 | `device/pyra-idle-profile.sh` | Which idle states the processor has, how much of a window it spent in each, and what the battery did meanwhile. Read-only. |
 | `device/pyra-modem-power.sh` | Reads the board's one INA231, on the modem rail, or explains why it cannot be read. On a unit with no modem fitted it cannot: the rail is down and the sensor is powered from it. Read-only. |
@@ -115,6 +117,7 @@ marks (decided 2026-10-29):
 | `pyra-gles` | prep (fix 13) |
 | `pyra-kbdlight.sh` | prep (fix 15, with its two `/etc/pyrainput.cfg` lines) |
 | `pyra-fw-nofallback`, `pyra-settle-nudge` (the `init-top` hooks) | prep (fix 14) |
+| `pyra-grow-root` and its two initramfs hooks | prep, with `--grow-on-boot` (the release image turns it on) |
 | `pyra-governor-tune.sh`, `pyra-governor-tune.service` | prep (fix 16, enabled offline) |
 | `pyra-audio-select.sh`, `pyra-audio-select.service`, `pulse/zz-pyra-aess.conf`, `pulse/pyra-aess.pa`, `pulse/alsa-mixer/profile-sets/pyra-aess.conf`, `pyra-speaker.conf`, `pyra-headphones.conf`, plus the `daemon.conf.d` link the script makes (`--link`) | prep (fix 17, enabled offline) |
 | `pyra-keypad-rescue` | prep (fix 18, a manual rescue with no unit, for a kernel without `patches/0006`, which the stock one is; no overlap with fix 5, which is the USB hub) |

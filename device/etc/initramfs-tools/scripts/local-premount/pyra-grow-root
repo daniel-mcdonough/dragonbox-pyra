@@ -1,0 +1,24 @@
+#!/bin/sh
+# Grow the root partition and filesystem to fill the card, before root is
+# mounted. The work is done by /usr/sbin/pyra-grow-root, which the hook
+# hooks/pyra-grow-root puts in the initrd with the tools it needs; see that
+# script and docs/grow-rootfs.md. It does nothing once the card is grown, and
+# it never stops the boot: whatever it reports, root is mounted as usual.
+# What it did is logged to /run/initramfs/pyra-grow-root.log, which survives
+# switch_root.
+#
+# Install: copy to /etc/initramfs-tools/scripts/local-premount/, chmod +x,
+# with hooks/pyra-grow-root beside it, then update-initramfs -u -k <release>.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+[ -x /usr/sbin/pyra-grow-root ] || exit 0
+/usr/sbin/pyra-grow-root "$ROOT" < /dev/null
+exit 0

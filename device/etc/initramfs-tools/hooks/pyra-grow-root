@@ -1,0 +1,33 @@
+#!/bin/sh
+# Put pyra-grow-root and the tools it needs into the initrd, for
+# scripts/local-premount/pyra-grow-root. blkid, dd, od and blockdev come from
+# busybox, which Debian's initrd always carries. A missing tool leaves the
+# script out, so the boot-time hook finds nothing to run and the card is
+# simply not grown; it never fails the initrd build.
+#
+# Install: copy to /etc/initramfs-tools/hooks/, chmod +x, with
+# /usr/local/sbin/pyra-grow-root in place.
+
+PREREQ=""
+prereqs() { echo "$PREREQ"; }
+case "$1" in
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+for t in /usr/sbin/sfdisk /usr/bin/partx /usr/sbin/fsck.f2fs /usr/sbin/resize.f2fs /usr/local/sbin/pyra-grow-root; do
+	if [ ! -e "$t" ]; then
+		echo "W: pyra-grow-root: $t is missing, so the card will not grow on boot" >&2
+		exit 0
+	fi
+done
+copy_exec /usr/sbin/sfdisk
+copy_exec /usr/bin/partx
+copy_exec /usr/sbin/fsck.f2fs
+copy_exec /usr/sbin/resize.f2fs
+copy_file script /usr/local/sbin/pyra-grow-root /usr/sbin/pyra-grow-root
+exit 0

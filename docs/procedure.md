@@ -180,6 +180,11 @@ other existing user, prep leaves that password alone unless you add
 can be reached over ssh (only the key type and key are written, not the
 comment). It refuses a private key. Both options are off unless you ask.
 
+**Growing on the first boot.** `--grow-on-boot` makes the card grow its rootfs
+to fill itself on its first boot, from the initramfs, after a capacity check and
+a read-only fsck. Without it, grow the card from the PC afterwards, as below.
+`grow-rootfs.md` has the details and the status: not yet booted on a Pyra.
+
 **The kernel (fix 19).** The script offers to download the shipped kernel,
 `m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it
 only if it matches the SHA-256 pinned in the script. To use a tarball you

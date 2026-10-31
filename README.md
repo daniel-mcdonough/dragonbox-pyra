@@ -50,6 +50,9 @@ of it (the image is only 6 GiB):
 
     sudo ./pc/pyra-trixie-grow.sh /dev/sdX
 
+(Prep's `--grow-on-boot` makes the card do this itself on its first boot
+instead; see [docs/grow-rootfs.md](docs/grow-rootfs.md).)
+
 That is the outline. [docs/procedure.md](docs/procedure.md) is the version to
 follow: it has the checks between the steps, and a list of what to look at to
 confirm each part works.

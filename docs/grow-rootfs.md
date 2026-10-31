@@ -5,18 +5,82 @@
 Commands here are run from the repository root, on a PC, with the card in a
 reader.
 
-The image is 6 GiB and nothing grows it on boot, so on a 128 GB card about
-113 GB sits unused. Growing it means extending partition 2 and running
-`resize.f2fs`.
+The image is 6 GiB, so on a 128 GB card about 113 GB sits unused. Growing it
+means extending partition 2 and running `resize.f2fs`. There are two ways: a
+card prepped with `--grow-on-boot` grows itself from the initramfs on its first
+boot (next section), and any card can be grown from a PC (the rest of this
+page).
 
-**This cannot be done on the Pyra.** f2fs online resize goes through
+**This cannot be done on a running Pyra.** f2fs online resize goes through
 `F2FS_IOC_RESIZE_FS`, and the 5.6.19 kernel's implementation only shrinks — ask
 it to grow and it returns `EINVAL`. Confirmed by calling the ioctl directly
 against a throwaway loopback f2fs on the device, rather than inferring it.
 `f2fs_io` in f2fs-tools 1.16.0 has no `resize` subcommand either, so there is no
 userspace path to it regardless. And `resize.f2fs` is a symlink to `fsck.f2fs`,
 which is an offline tool and will not operate on a mounted filesystem. Since the
-filesystem in question is the rootfs, it cannot be unmounted in place.
+filesystem in question is the rootfs, it cannot be unmounted in place. The
+initramfs runs before root is mounted, which is what the first-boot grow uses.
+
+---
+
+## On the first boot: `--grow-on-boot`
+
+`pc/pyra-trixie-prep.sh --grow-on-boot` installs three files and puts them in
+fix 14's initrds:
+
+- `device/pyra-grow-root`, as `/usr/local/sbin/pyra-grow-root`: does the work.
+- `device/etc/initramfs-tools/scripts/local-premount/pyra-grow-root`: runs it
+  with the root device, after the card appears and before root is mounted.
+- `device/etc/initramfs-tools/hooks/pyra-grow-root`: copies it, `sfdisk`,
+  `partx` and `resize.f2fs` into the initrd. Busybox supplies the rest.
+
+On each boot the script compares partition 2, the card and the filesystem from
+sysfs and the f2fs superblock, and exits if fewer than 1 GiB are unused. Once a
+card is grown, that is all it ever does. Otherwise, stopping at the first thing
+that is not as expected:
+
+1. **Only a Pyra trixie card**: p2 at sector 526336, exactly two partitions,
+   MBR identifier `0x21a4c285`, f2fs on p2. Anything else is left alone.
+   `pyra.nogrow` on the kernel command line also leaves it alone.
+2. **A capacity check.** The script writes a 4 KiB sample every 256 MiB across
+   the unused space, plus one at the last sector, then reads them all back past
+   the page cache. A card that drops writes beyond its real size reads back
+   zeros or errors. A card that wraps writes onto lower addresses lands two
+   samples in the same block. That is guaranteed when its real size is a
+   multiple of 256 MiB, which fakes, being built on power-of-two flash,
+   normally are. Each sample's block is read and saved first and put back on
+   failure, so whatever a wrapping card's samples landed on is put back. This
+   check writes about 4 MB where `verify-card-capacity.sh` writes far more, so
+   it is a filter, not a proof.
+3. **`fsck.f2fs -f --dry-run`.** On damage, no grow.
+4. **Partition 2 extended** to the end of the card, start unchanged, so the
+   PARTUUIDs stay valid. The kernel learns the new size through `partx`.
+5. **`resize.f2fs`**, leaving the 64 MiB margin measured below, then a second
+   dry run.
+
+The screen says what is happening, and not to switch off during step 5.
+Everything goes to `/run/initramfs/pyra-grow-root.log`, which survives into the
+running system. Power lost between steps 4 and 5 is harmless: the next boot
+finds the partition grown and does only step 5. Power lost during step 5 can
+damage the filesystem. Whatever the script reports, the boot carries on and
+mounts root.
+
+The grow goes through the Pyra's own SD controller, so the USB reader failures
+in the next section cannot happen.
+
+`pc/pyra-grow-root-selftest.sh` (root, on a PC or a Pyra) runs it against
+throwaway loop-device cards:
+- a genuine card
+- three device-mapper fakes: wrapping, dropping writes, and an upper range that fails to read
+- an interrupted grow
+- zeroed checkpoints
+- the opt-out and the guards
+- a copy of the real vendor image on a 16 GiB card
+
+A refused card must come back byte-identical.
+
+**Not yet booted on a Pyra.** Until a prepped card has grown itself on the
+device, use the PC procedure below for anything you care about.
 
 ---
 
