@@ -152,6 +152,33 @@ With `/dev/sdX` replaced by the **whole card device**, not a partition:
     sudo dd if=pyra-trixie-*.img of=/dev/sdX bs=4M status=progress conv=fsync
     sync
 
+### Or: build a prepared image and write that
+
+Sections 3 and 4 can be done the other way round: prep an image file on the PC,
+then write the finished image to the card. That also lets the card be written on
+another machine, the one with the reader.
+
+    sudo ./pc/pyra-image-build.sh                # on the PC: vendor .7z + prep -> images/
+    ./pc/pyra-image-push.sh [IMAGE] [user@host]  # copy it, and the write script, to the reader machine
+    cd ~/pyra-images && sudo ./pyra-image-write.sh IMAGE /dev/sdX   # there
+
+- **Build.** `pyra-image-build.sh` unpacks the vendor `.7z` itself and checks
+  both the archive and the unpacked image against pinned SHA-256s, so the result
+  never starts from an image that was mounted or booted. By default it runs prep
+  with `--grow-on-boot --set-password --kernel <m4-kbdled tarball>` for the
+  `pyra` user, which asks for the password. Options after `--` replace those.
+  Output goes to `../dragonbox-pyra-build/images/`: the image, a `.sha256`, and
+  an `.info` with the repository commit and prep options.
+- **Push.** `pyra-image-push.sh` rsyncs the image to `PYRA_WRITER` (or the host
+  given) and checks the checksum there.
+- **Write.** `pyra-image-write.sh` refuses a partition, a non-removable disk, the
+  disk holding `/`, and anything mounted. It shows what is on the card, warns if
+  that is already a Pyra system, and asks for the device name to be typed. It
+  writes with direct I/O, then reads the card back with direct I/O and requires
+  the same SHA-256.
+
+With that route, skip section 4 and go to section 5.
+
 ---
 
 ## 4. Apply the fixes, before first boot
@@ -183,7 +210,7 @@ comment). It refuses a private key. Both options are off unless you ask.
 **Growing on the first boot.** `--grow-on-boot` makes the card grow its rootfs
 to fill itself on its first boot, from the initramfs, after a capacity check and
 a read-only fsck. Without it, grow the card from the PC afterwards, as below.
-`grow-rootfs.md` has the details and the status: not yet booted on a Pyra.
+It takes about 10 minutes on a 256 GB card; do not switch off. `grow-rootfs.md` has the details.
 
 **The kernel (fix 19).** The script offers to download the shipped kernel,
 `m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it
