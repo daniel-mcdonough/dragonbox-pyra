@@ -1451,3 +1451,17 @@ two `firmware_config` knobs and dmesg.
   has no such line.
 
 Shape B can't happen on this build, with or without the hook.
+
+## 2026-10-31 — `pyra-kbdlight.sh --reload` message, on the image-written card
+
+Card: the image-written card, `5.6.19-m4-kbdled`. Installed the corrected
+`pyra-kbdlight.sh` (0755 root:root, SHA-256 equal to the repo's); `dash -n`
+clean. `--reload` against the running pyrainput printed `handler up after 0 ms`
+(was `000 ms`), and the daemon stayed active on the same PID. Against a dash
+stand-in that installs its USR1 trap after 0.35 s it printed `handler up after
+300 ms`. Prep selftest after the change: 169 passed, 0 failed (owner).
+
+The funkeymonkey-pyrainput 0.1.19 tree, original and with
+`reports/patches/funkeymonkey-pyrainput/0001-brightness-defaults-before-config.patch`,
+built on the same card with g++ 14.2.0 (`-std=c++20 -shared`, funkeymonkey 0.1.2
+headers, about 3 min for both). The patched library was not run.
