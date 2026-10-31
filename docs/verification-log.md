@@ -1425,3 +1425,29 @@ change, passed (owner, 2026-10-31), so prep writes the same two files.
   to 100, every step as a single change.
 
 Fix 15 now holds after a boot.
+
+## 2026-10-31 — the shipped kernel without the firmware sysfs fallback, five cold boots
+
+Card: the card written from the prepared image and grown on its first boot.
+Installed `5.6.19-m4-kbdled` rebuilt with `CONFIG_FW_LOADER_USER_HELPER_FALLBACK`
+off (`pc/pyra-push-kernel.sh --install --slot l5`; vmlinuz SHA-256 on the card
+matched the build), and rebuilt its initrd **without** `pyra-fw-nofallback`,
+so the hook could not be what made the difference. The stock kernel's initrd
+kept the hook. Five cold boots (owner, power off and on), USB LAN adapter
+plugged in, checked each time with a script that reads `/proc/config.gz`, the
+two `firmware_config` knobs and dmesg.
+
+- Every boot: the running config has the fallback off, `force_sysfs_fallback=0`
+  and `ignore_sysfs_fallback=0`, and no "Falling back to sysfs" or "Ignoring
+  firmware sysfs fallback" line, for any firmware.
+- On all five, `r8152` probed inside the initramfs, before the root mount, which
+  is the shape B trigger. Its firmware load failed within 6-7 ms with `(-2)`.
+- Root mounted at 7.18, 7.15, 8.42, 7.40 and 7.45 s (measured, dmesg). Carrier at
+  26.0, 21.9, 22.5, 21.8 and 22.5 s. The adapter enumerates a second time at about
+  13 s, after `pyra-usb3503-rescue` resets the hub, and that load fails at once too.
+- Baseline, the previous m4-kbdled build with the hook, warm boot: fallback `=y`, both
+  knobs 1; `regulatory.db` still reached the sysfs fallback at 4.8 s, before
+  init-top runs, which the hook cannot prevent (udev cancels it). The new build
+  has no such line.
+
+Shape B can't happen on this build, with or without the hook.

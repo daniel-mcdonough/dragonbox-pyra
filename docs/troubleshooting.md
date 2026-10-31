@@ -187,7 +187,10 @@ The shipped `5.6.19-m4-kbdled` is built without
 file fails at once with no fallback, hook or not. The hook stays for the stock
 `5.6.19-pyradef`. The old builds of m4-kbdled still have the fallback; `grep
 FW_LOADER_USER_HELPER_FALLBACK /boot/config-5.6.19-m4-kbdled` says which one a
-card has.
+card has. Five cold boots of that build with the adapter
+plugged in and the hook left out of its initrd (2026-10-31) mounted root at
+7.2-8.4 s; `r8152` probed inside the initramfs on all five and failed the load
+within 7 ms (`verification-log.md`).
 
 **Shape A, worked around: `udevadm settle` sleeps through the end of the
 queue.** The cause and the fix are under "2026-10-29" at the end of this
