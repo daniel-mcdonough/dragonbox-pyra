@@ -1,6 +1,6 @@
 # The vendor trixie image: where it comes from, its pinned checksums, and how
-# to unpack it. Sourced by pyra-image-build.sh and pyra-prep-selftest.sh, so
-# the pins live in one place. Not run on its own.
+# to unpack it. Sourced by pyra-image-build.sh, pyra-prep-selftest.sh and
+# pyra-grow-root-selftest.sh, so the pins live in one place. Not run on its own.
 #
 # Needs TOP (the top of the repository) set before it is sourced.
 # PYRA_VENDOR_7Z names another archive.

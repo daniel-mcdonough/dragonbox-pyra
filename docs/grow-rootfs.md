@@ -95,7 +95,9 @@ throwaway loop-device cards:
 - an interrupted grow
 - zeroed checkpoints
 - the opt-out and the guards
-- a copy of the real vendor image on a 16 GiB card
+- a copy of the real vendor image on a 16 GiB card. It must match the pin in
+  `pc/pyra-vendor-image.sh`; any other image is skipped, and the skip is counted
+  in the verdict (`PASS, WITH n SKIPPED`), not passed
 
 A refused card must come back byte-identical.
 

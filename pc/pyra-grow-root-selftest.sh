@@ -13,7 +13,9 @@
 #
 # Unless --quick, a last case grows a copy of the real vendor image
 # (pyra-trixie-t1.img at the top of the repository by default) on a 16 GiB
-# sparse file, and checks the result mounts with its files intact.
+# sparse file, and checks the result mounts with its files intact. The image
+# must match the vendor pin in pyra-vendor-image.sh; any other image is a SKIP,
+# counted in the verdict, since the other cases need no image.
 #
 # Runs the script under `busybox sh` when busybox is installed, which is the
 # shell the initramfs runs it under; otherwise under sh, and says so. It runs
@@ -34,6 +36,8 @@ IMG=${1:-$TOP/pyra-trixie-t1.img}
 REALCOPY=$TOP/pyra-trixie-t1-growtest.img
 OUT=${OUTDIR:-}
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# shellcheck source=pyra-vendor-image.sh
+. "$HERE/pyra-vendor-image.sh"
 
 GIB=2097152                 # sectors
 P2_START=526336
@@ -303,6 +307,9 @@ if [[ $QUICK -eq 1 ]]; then
     s "real image: --quick"
 elif [[ ! -r $IMG ]]; then
     s "real image: none at $IMG"
+elif i "hashing $IMG" && ! vendor_img_ok "$IMG"; then
+    # Hashed before the copy, so a wrong image costs no copy, and only once.
+    s "real image: $IMG is not the vendor image (SHA-256 differs from the pin in pyra-vendor-image.sh)"
 else
     cp --sparse=always "$IMG" "$REALCOPY"
     truncate -s 16G "$REALCOPY"
