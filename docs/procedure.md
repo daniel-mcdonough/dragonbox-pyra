@@ -234,7 +234,12 @@ than `pyra`, and an image that already has an authorised ssh key or a
 `NOPASSWD` sudo rule for all commands: start from the vendor image. The
 vendor's own `/etc/sudoers.d/pyrainput` (`pyrainputctl` without a password, for
 the `sudo` group) stays. Asserted by
-`pc/pyra-prep-selftest.sh`; not yet booted on a Pyra.
+`pc/pyra-prep-selftest.sh`, and booted on a Pyra on 2026-11-01. With
+`--grow-on-boot` on a 256 GB card, the greeter appeared about 11 minutes after
+power-on, because the grow runs first. The forced change works at the greeter
+and over ssh. A key login still has to change the password, so it needs
+`ssh -t`: without a terminal, sshd refuses with `Password change required but no
+TTY available`.
 
 **The vendor image's ssh host keys.** The vendor image ships its host keys, so
 every card written from it has the same ones, and anyone with another card can

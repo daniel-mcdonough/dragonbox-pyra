@@ -1571,3 +1571,51 @@ there: release mode then refused any NOPASSWD rule and so refused the vendor's
 Not booted: no card has been written from a release image, so the greeter's
 handling of the expired password and the first-boot key generation are
 untested on a Pyra.
+
+## 2026-11-01 — a release image booted on the Pyra (R42)
+
+`pyra-trixie-prepped-20261101-025203.img`, built from 293eb11 with
+`--release --grow-on-boot --kernel m4-kbdled-kernel.tar.gz` (`repo_dirty=no`),
+written to a 256 GB card and booted on kernel `5.6.19-m4-kbdled`. Everything
+below is measured, from the card's journal (one boot) and the files themselves.
+
+- **Grow:** it ran in the initramfs on the first boot, with no reboot. The log
+  found 232 GiB unused and passed the capacity check (931 samples). The read-only
+  fsck took 64 s, `resize.f2fs` 486 s and the fsck after it 67 s, all clean,
+  ending with `done: the root filesystem is now 238 GiB`. `df -h /` then showed
+  239G with 4.9G used. The grow is why everything else in userspace happened
+  about 11 minutes after the kernel started: the RTC set the clock to 04:17:53
+  CET, and the machine-id was written at 04:28:45.
+- **machine-id:** new (33 bytes, written this boot); `/var/lib/dbus/machine-id`
+  is a link to it.
+- **No console prompt:** `systemd-firstboot.service` is `masked` and inactive,
+  and nothing prompted on the console.
+- **Host keys:** `pyra-ssh-hostkeys.service` logged `ssh-keygen: generating new
+  host keys: RSA ECDSA ED25519` and finished after about 13 s (9.4 s CPU).
+  `ssh.service` started right after it and was listening 0.2 s later. The key
+  files are dated 04:29:07, and the new ED25519 fingerprint is not that of the
+  card made from the vendor image without `--release`. A client that knew the
+  vendor key would get the host-identification warning, which is what should
+  happen.
+- **Password at the greeter:** lightdm logged `pam_unix(lightdm:account): expired
+  password for user pyra (root enforced)` and asked for a new one. A rejected
+  choice (`new password not acceptable`) and a wrong current password each
+  started again from the login screen. The third attempt logged `password changed
+  for pyra`. The new password then worked for an ssh password login (`Accepted
+  password for pyra`) and in the session.
+- **Password over ssh:** the password was expired again with `passwd -e pyra`
+  to test the ssh path on its own. A key login with no terminal was refused:
+  `You are required to change your password immediately (administrator
+  enforced).` … `Password change required but no TTY available.` (exit 1). With
+  `ssh -t`, sshd accepted the key, PAM reported the expired password, and sshd
+  ran `passwd`. That asked for the current password and then a new one (`password
+  changed for pyra`). After that, key logins went straight to a shell. So an
+  authorised key does not skip the forced change.
+
+To make testing easier, the owner added a key to `~/.ssh/authorized_keys` and a
+NOPASSWD sudo rule after the first login. Neither came from the image:
+`~/.ssh` was created at 04:34, after the password change at 04:30, and the
+image's `/etc/sudoers.d` holds only the vendor's `pyrainput` rule and README.
+
+This was a test card, which will be rewritten. A card meant for sharing would be
+written again from the image, not passed on after a boot.
