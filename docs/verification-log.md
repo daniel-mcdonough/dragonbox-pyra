@@ -1642,3 +1642,26 @@ written again from the image, not passed on after a boot.
   stock one; the cause was not looked at. The patch's
   effect on a running game is in Shipwright report 10 §10.7: Ship of Harkinian
   kept its log open and held a flat descriptor count.
+
+## 2026-11-01 — fix 21 kept across a package run (`pyra-wsegl-guard`)
+
+- **On the Pyra** (the R42 release card, which had no fix 21 files; the script,
+  the guard and its dpkg config installed by hand), with real dpkg runs:
+  `install` patched the library, and `dpkg -i dri3wsegl-pyra_0.4_armhf.deb`
+  (the vendor's trixie deb, sha256 `1f7494f8…10c4`) reinstalled the stock
+  build, after which the guard re-patched it and printed its line. After
+  `rollback`, the same reinstall left the stock build and the guard said
+  nothing. With an unknown build in place (the stock file plus one byte),
+  `dpkg --configure -a` printed the guard's banner and left the file alone:
+  an empty dpkg run still fires `post-invoke` hooks. dpkg exited 0 every time,
+  and the journal had the guard's notice and warning. The card was left as
+  found: the stock library, no fix 21 files, `dpkg --verify dri3wsegl-pyra` clean.
+- **ldconfig and the rollback marker:** a first version kept the marker as an
+  empty `libpvrDRI3WSEGL.so.rolled-back` beside the library; the libc trigger's
+  ldconfig then printed `File /lib/libpvrDRI3WSEGL.so.rolled-back is empty, not
+  checked`. The marker moved to `/var/lib/pyra-wsegl-fdfix/rolled-back`.
+  `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` comes from the
+  vendor package on every reinstall, patched or not.
+- **Prep selftest:** 236 passed, 0 failed, 0 skipped, with the real 0.4 deb
+  reinstalled by the image's dpkg in the qemu chroot (re-patched; rolled-back
+  image stayed stock; unknown build warned, unchanged, dpkg exit 0).

@@ -1,0 +1,99 @@
+#!/bin/sh
+#
+# pyra-wsegl-guard — put fix 21 back after a package run reverts it.
+#
+# Run by dpkg after every package operation, from
+# /etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard. That covers `apt upgrade`,
+# `apt install --reinstall dri3wsegl-pyra` and a plain `dpkg -i` of any
+# dri3wsegl-pyra deb. It can also be run by hand, as root.
+#
+# WHY
+#
+# Fix 21 (pyra-wsegl-fdfix.sh) patches /usr/lib/libpvrDRI3WSEGL.so, which
+# dri3wsegl-pyra owns. Any reinstall of that package writes the stock build
+# back without a word, and the double close is back: a program that keeps
+# files open, like Ship of Harkinian, can lose its log or a save file again.
+#
+# WHAT IT DOES
+#
+# It acts only on a machine where the fix was applied and not rolled back:
+# libpvrDRI3WSEGL.so.stock exists (install made it) and
+# /var/lib/pyra-wsegl-fdfix/rolled-back does not (rollback makes it, install
+# removes it). Anywhere else it does nothing, silently.
+#
+# When the library is the fixed build, nothing, silently. That is every run but
+# the one after dri3wsegl-pyra was replaced.
+#
+# When it is the known stock build, it runs `pyra-wsegl-fdfix.sh install`,
+# which checks both SHA-256s and replaces the file by rename, and says so.
+# Programs already running keep the stock build until they restart.
+#
+# When it is neither, a newer or different package is in. It changes nothing,
+# prints a warning on every package run until someone looks, and logs it to the
+# journal. The new build may have fixed the bug, or may need a new patch; either
+# way it is a person's call.
+#
+# It never fails the package run: it always exits 0.
+#
+# Why not dpkg-divert: it would keep the patched 0.4 file over any newer vendor
+# build, silently. Why not an apt pin: it blocks upstream changes and does
+# nothing for --reinstall.
+#
+set -u
+
+# For testing on a copy: the image or directory to act on. With it set, the
+# guard does not write to the journal.
+ROOT=${PYRA_WSEGL_ROOT:-}
+ROOT=${ROOT%/}
+LIVE=1; [ -n "$ROOT" ] && LIVE=0
+FIX=${PYRA_WSEGL_FIX:-/usr/local/sbin/pyra-wsegl-fdfix.sh}
+NAME=/usr/lib/libpvrDRI3WSEGL.so
+LIB=$ROOT$NAME
+
+warn() {
+	{
+		echo
+		echo "*****************************************************************"
+		echo "pyra-wsegl-guard: FIX 21 IS NOT APPLIED"
+		printf '  %s\n' "$@"
+		echo "  The SGX driver may close descriptors it no longer owns again."
+		echo "  Check with:"
+		echo "    sudo pyra-wsegl-fdfix.sh status"
+		echo "*****************************************************************"
+		echo
+	} >&2
+	[ "$LIVE" = 1 ] && logger -t pyra-wsegl-guard -p user.warning "fix 21 not applied: $*" 2>/dev/null
+	exit 0
+}
+
+# Package removed, fix never applied here, or rolled back on purpose.
+[ -f "$LIB" ] || exit 0
+[ -e "$LIB.stock" ] || exit 0
+[ -e "$ROOT/var/lib/pyra-wsegl-fdfix/rolled-back" ] && exit 0
+
+[ -x "$FIX" ] || warn "$NAME may have been replaced by a package, and there is no" \
+	"$FIX to check or re-apply it."
+
+if [ -n "$ROOT" ]; then
+	set -- --root "$ROOT"
+else
+	set --
+fi
+st=$("$FIX" "$@" status 2>&1 | head -1)
+case $st in
+"$NAME: fixed") exit 0 ;;
+"$NAME: stock") ;;
+"$NAME: unknown")
+	warn "$NAME was replaced by a package with a build pyra-wsegl-fdfix.sh does" \
+		"not know (not dri3wsegl-pyra 0.4). Nothing was changed." ;;
+*)
+	warn "pyra-wsegl-fdfix.sh status failed: $st" ;;
+esac
+
+out=$("$FIX" "$@" install 2>&1) \
+	|| warn "a package put the stock $NAME back, and re-applying the fix failed:" "$out"
+
+msg="a package run put the stock $NAME back; re-applied fix 21. Programs started from now on get it."
+echo "pyra-wsegl-guard: $msg"
+[ "$LIVE" = 1 ] && logger -t pyra-wsegl-guard -p user.notice "$msg" 2>/dev/null
+exit 0

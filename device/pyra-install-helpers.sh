@@ -31,7 +31,9 @@
 # pyra-keypad-rescue, and the MATE keyboard-light override) are in the map
 # below and land on the same paths prep uses; fix 15's two lines in
 # /etc/pyrainput.cfg and fix 17's daemon.conf.d link are made by the same
-# scripts prep calls.
+# scripts prep calls. Fix 21's script and its dpkg guard land where prep puts
+# them, but the library is not patched: that is `sudo pyra-wsegl-fdfix.sh
+# install`, after which the guard keeps it patched across package runs.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #
@@ -67,6 +69,9 @@ pyra-thermal-fix.sh                 /usr/local/sbin                    0755
 pyra-thermal-ladder.sh              /usr/local/sbin                    0755
 pyra-thermal-guard                  /usr/local/sbin                    0755
 etc/dpkg/dpkg.cfg.d/pyra-thermal-guard /etc/dpkg/dpkg.cfg.d          0644
+pyra-wsegl-fdfix.sh                 /usr/local/sbin                    0755
+pyra-wsegl-guard                    /usr/local/sbin                    0755
+etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard /etc/dpkg/dpkg.cfg.d            0644
 pyra-thermal-probe.sh               /usr/local/sbin                    0755
 pyra-ceiling-cost.sh                /usr/local/sbin                    0755
 pyra-charge-probe.sh                /usr/local/sbin                    0755
@@ -439,6 +444,10 @@ Done. What is now on the path:
     pyra-thermal-ladder.sh --check    is its corrected ladder still applied
     pyra-thermal-guard                run by dpkg after every package run: puts
                                       both back if a pyra-hacks reinstall reverts them
+    pyra-wsegl-fdfix.sh status        is fix 21 (the SGX double close) applied
+                                      (install to apply it, rollback to undo it)
+    pyra-wsegl-guard                  run by dpkg after every package run: re-patches
+                                      the library if a dri3wsegl-pyra reinstall reverts it
     pyra-charge-current.sh --check    can the machine charge while it runs
     pyra-chgwatch.sh                  watch the charge path, change nothing
     pyra-anno1602-test.sh             the box86 and Wine workload

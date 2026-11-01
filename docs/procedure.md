@@ -317,7 +317,8 @@ late").
 
 The second line, `/usr/lib/libpvrDRI3WSEGL.so.stock: stock`, is the vendor's
 file, kept for `sudo pyra-wsegl-fdfix.sh rollback`. `stock` on the first line
-means a package run put the vendor's file back (`fixes.md`, fix 21).
+after a package run means the guard that re-patches it is missing or was
+skipped (`fixes.md`, fix 21); after a rollback, a third line says so.
 
     # nubs, keyboard, gamepad
     systemctl status pyrainput
@@ -589,7 +590,8 @@ reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 and of the twenty-one fixes it applies only 13 to 18 and 20, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
-place, because the two share a path.
+place, because the two share a path. It installs fix 21's script and its dpkg
+guard but does not patch the library; `sudo pyra-wsegl-fdfix.sh install` does.
 
 **3. A fix whose script changed: re-run that script on the device.** Run it
 from `device/`, with `--check` first if you want to see the state:
@@ -611,7 +613,7 @@ from `device/`, with `--check` first if you want to see the state:
 | 16 | `pyra-governor-tune.sh` or its unit | step 2 | updated by step 2, which restarts the unit, so the value is re-applied |
 | 17 | `pyra-audio-select.sh`, its unit or a `pulse/` file | step 2 | updated by step 2, which also makes the `daemon.conf.d` link and restarts the unit; a running PulseAudio keeps its script until `systemctl --user restart pulseaudio.service` |
 | 18 | `pyra-keypad-rescue` | step 2 | updated by step 2, which installs it at the same path |
-| 21 | `pyra-wsegl-fdfix.sh` | `sudo ./pyra-wsegl-fdfix.sh install`, then `sudo install -m 0755 pyra-wsegl-fdfix.sh /usr/local/sbin/` | says `already patched` once applied; a new patch would come with new SHA-256s |
+| 21 | `pyra-wsegl-fdfix.sh` or `pyra-wsegl-guard` | step 2, then `sudo pyra-wsegl-fdfix.sh install` | says `already patched` once applied; a new patch would come with new SHA-256s |
 
 Fixes 8 to 12 write their files through the same function that prep's
 `--emit-into` uses. Re-running one replaces its files with the current

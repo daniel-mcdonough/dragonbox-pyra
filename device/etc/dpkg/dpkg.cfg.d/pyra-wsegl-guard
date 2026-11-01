@@ -1,0 +1,5 @@
+# Re-apply fix 21 after any package run that reverts it.
+# dri3wsegl-pyra owns the library it patches; see /usr/local/sbin/pyra-wsegl-guard.
+# The test keeps dpkg working if the guard has been deleted: a failing
+# post-invoke hook fails every package operation.
+post-invoke="if [ -x /usr/local/sbin/pyra-wsegl-guard ]; then /usr/local/sbin/pyra-wsegl-guard; fi"

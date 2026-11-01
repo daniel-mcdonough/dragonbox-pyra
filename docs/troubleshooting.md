@@ -1335,14 +1335,17 @@ A GLES program lost a file to the SGX window system's double close, which fix
 
     sudo pyra-wsegl-fdfix.sh status     # "/usr/lib/libpvrDRI3WSEGL.so: fixed"
 
-`stock` means it was never patched, or a package run (`apt install --reinstall
-dri3wsegl-pyra`) put the vendor's file back: `sudo pyra-wsegl-fdfix.sh install`,
-then restart the program (or the desktop session, for programs already
-running). `unknown` is a package version the script does not know; it will
+`stock` means it was never patched, it was rolled back (a third line says
+so), or a package run put the vendor's file back and the dpkg guard
+(`pyra-wsegl-guard`) is missing: `sudo pyra-wsegl-fdfix.sh install`, then
+restart the program (or the desktop session, for programs already running).
+After a reinstall with the guard in place, programs started before it still
+have the stock build until they restart. `unknown` is a package version the script does not know; it will
 not patch it. Back up saves first: a damaged save is not repaired by the fix.
 
 If a program misbehaves with the patched library, `sudo pyra-wsegl-fdfix.sh
-rollback` puts the stock file back, checked against its SHA-256.
+rollback` puts the stock file back, checked against its SHA-256, and keeps
+the guard from re-patching it; `install` undoes both.
 
 ## The screen never dims, and MATE's setting for it does nothing
 

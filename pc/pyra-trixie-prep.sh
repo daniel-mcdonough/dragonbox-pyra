@@ -41,7 +41,8 @@
 #
 # Fix 21 patches the SGX driver's /usr/lib/libpvrDRI3WSEGL.so (a double close
 # that corrupts game saves) and refuses an image whose copy is not the known
-# stock build, before anything is written.
+# stock build, before anything is written. A dpkg hook (pyra-wsegl-guard)
+# re-applies it after a package run puts the stock build back.
 #
 # Fixes 5 and 6 use files that live in device/ in the repository, so run this
 # from a checkout rather than copying the script somewhere on its own.
@@ -194,6 +195,9 @@ KBDMATE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_kbdlight.gschema.override
 # implementation. A library it doesn't know stops prep here, before fix 1.
 WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
 [[ -x $WSEGL_FIX ]] || die "fix21: pyra-wsegl-fdfix.sh not found or not executable (looked in $PAYLOADS)"
+for f in pyra-wsegl-guard etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard; do
+    [[ -r $PAYLOADS/$f ]] || die "fix21: $f not found (looked in $PAYLOADS)"
+done
 WSEGL_STATE=$("$WSEGL_FIX" --root "$ROOT" status 2>&1 | head -1) || true
 case ${WSEGL_STATE##*: } in
 stock|fixed) ;;
@@ -1494,7 +1498,11 @@ ok "fix20: MATE leaves the keyboard light alone on battery (kbd-backlight-batter
 # a save file. pyra-wsegl-fdfix.sh turns the second close() into two Thumb NOPs,
 # checked against the stock and fixed SHA-256s, keeps the stock file as
 # libpvrDRI3WSEGL.so.stock and replaces the library by rename. It goes onto
-# the card too, for its status and rollback.
+# the card too, for its status and rollback. dri3wsegl-pyra owns the library,
+# so a reinstall of that package puts the stock build back; a dpkg post-invoke
+# hook runs pyra-wsegl-guard after every package run, which re-patches it, warns
+# on every run about a build it doesn't know, and leaves a rolled-back card
+# alone.
 
 if out=$("$WSEGL_FIX" --root "$ROOT" install 2>&1); then
     case $out in
@@ -1505,15 +1513,21 @@ else
     die "fix21: pyra-wsegl-fdfix.sh could not patch the library:
 $out"
 fi
-WSEGL_DST=$ROOT/usr/local/sbin/pyra-wsegl-fdfix.sh
-if [[ -e $WSEGL_DST ]] && cmp -s "$WSEGL_FIX" "$WSEGL_DST"; then
-    ok "fix21: ${WSEGL_DST#$ROOT} already up to date"
-else
-    VERB=$([[ -e $WSEGL_DST ]] && echo updated || echo installed)
-    install -d -m 0755 "$ROOT/usr/local/sbin"
-    install -m 0755 -o 0 -g 0 "$WSEGL_FIX" "$WSEGL_DST"
-    ok "fix21: $VERB ${WSEGL_DST#$ROOT}"
-fi
+for spec in pyra-wsegl-fdfix.sh:/usr/local/sbin:0755 \
+            pyra-wsegl-guard:/usr/local/sbin:0755 \
+            etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard:/etc/dpkg/dpkg.cfg.d:0644; do
+    IFS=: read -r src dir mode <<<"$spec"
+    [[ -r $PAYLOADS/$src ]] || die "fix21: $src not found (looked in $PAYLOADS)"
+    dst=$ROOT$dir/$(basename "$src")
+    if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+        ok "fix21: ${dst#$ROOT} already up to date"
+    else
+        VERB=$([[ -e $dst ]] && echo updated || echo installed)
+        [[ -d $ROOT$dir ]] || install -d -m 0755 "$ROOT$dir"
+        install -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+        ok "fix21: $VERB ${dst#$ROOT}"
+    fi
+done
 
 # ------------------------------------------------------------------- release
 #

@@ -13,8 +13,10 @@
 # the end state of fixes 1 to 8 and 13 to 21 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that a missing fix 5 payload and an
-# unknown driver library (fix 21) each abort before fix 1 writes anything, and
-# finally runs --release twice on the same
+# unknown driver library (fix 21) each abort before fix 1 writes anything,
+# fires fix 21's dpkg guard with the image's own dpkg (it must re-patch after a
+# reinstall, leave a rolled-back card stock, and warn about an unknown build
+# without touching it), and finally runs --release twice on the same
 # image: what it refuses (writing nothing), the release end state (password
 # 'pyra' expired, no host keys, empty machine-id, no prompts, no NOPASSWD
 # rule for all commands, systemd-firstboot masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
@@ -25,6 +27,12 @@
 # dragonbox-pyra-build beside the repository; PYRA_KERNEL_TARBALL names another).
 # Without one, it runs prep with --no-kernel and says so in the verdict: a SKIP
 # is counted and printed, never a silent pass.
+#
+# Fix 21's guard is fired by a real reinstall of the vendor's dri3wsegl-pyra 0.4
+# deb when PYRA_WSEGL_DEB (by default the package archive beside the
+# repository) holds it with the pinned SHA-256. Without it, the stock library
+# is written back by hand and an empty dpkg run fires the same hook; the log
+# says which.
 #
 # Leaves its snapshots, diffs and logs in a directory it names on the way out;
 # set OUTDIR to choose one.
@@ -793,13 +801,18 @@ for x in "$WL" "$WL.stock"; do
     [[ $(stat -c '%a %u:%g' "$x" 2>/dev/null) == "644 0:0" ]] && p "fix21: $(basename "$x") is 0644 root:root" || f "fix21: $(basename "$x") mode is $(stat -c '%a %u:%g' "$x" 2>/dev/null)"
 done
 compgen -G "$WL.*.tmp" >/dev/null && f "fix21: a temporary file is left: $(ls "$WL".*.tmp)" || p "fix21: no temporary file left"
-K=$MNT/usr/local/sbin/pyra-wsegl-fdfix.sh
-if [[ -e $K ]] && cmp -s "$WSEGL" "$K"; then
-    p "fix21: /usr/local/sbin/pyra-wsegl-fdfix.sh matches repo"
-else
-    f "fix21: /usr/local/sbin/pyra-wsegl-fdfix.sh missing or differs from repo"
-fi
-[[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "755 0:0" ]] && p "fix21: pyra-wsegl-fdfix.sh is 0755 root:root" || f "fix21: pyra-wsegl-fdfix.sh mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null)"
+for spec in pyra-wsegl-fdfix.sh:/usr/local/sbin:755 \
+            pyra-wsegl-guard:/usr/local/sbin:755 \
+            etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard:/etc/dpkg/dpkg.cfg.d:644; do
+    IFS=: read -r src dir mode <<<"$spec"
+    K=$MNT$dir/$(basename "$src")
+    if [[ -e $K ]] && cmp -s "$PAYLOADS/$src" "$K"; then
+        p "fix21: ${K#$MNT} matches repo"
+    else
+        f "fix21: ${K#$MNT} missing or differs from repo"
+    fi
+    [[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "$mode 0:0" ]] && p "fix21: ${K#$MNT} is $mode root:root" || f "fix21: ${K#$MNT} mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null), want $mode 0:0"
+done
 # The card's own copy, run by the image's /bin/sh, as a user would on the device.
 WST=$(in_chroot /usr/local/sbin/pyra-wsegl-fdfix.sh status 2>&1 || true)
 [[ $WST == $'/usr/lib/libpvrDRI3WSEGL.so: fixed\n/usr/lib/libpvrDRI3WSEGL.so.stock: stock' ]] \
@@ -850,7 +863,9 @@ if [[ ${KARGS[0]} == --kernel ]]; then
 fi
 grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix20 already up to date" || f "run 2 did not report fix20 already up to date"
 grep -qE 'fix21: .*libpvrDRI3WSEGL.so already patched' "$OUT/prep-run2.log" && p "run 2 reported the library already patched" || f "run 2 did not report the library already patched"
-grep -qE 'fix21: .*pyra-wsegl-fdfix.sh already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix21's script up to date" || f "run 2 did not report fix21's script up to date"
+for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; do
+    grep -qE "fix21: .*$x already up to date" "$OUT/prep-run2.log" && p "run 2 reported fix21's $x up to date" || f "run 2 did not report fix21's $x up to date"
+done
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.
@@ -911,6 +926,79 @@ fi
 [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "and it stopped before fix 1 wrote anything" || f "an unknown library let fix 1 run first"
 rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 mv "$WL.selftest-keep" "$WL"
+
+########################################################################
+i "fix 21's guard — a package run that puts the stock library back"
+########################################################################
+# The image's dpkg, in the chroot, fires the hook prep installed. The image
+# carries no dri3wsegl-pyra deb, so the real reinstall needs the vendor's 0.4
+# deb (PYRA_WSEGL_DEB, by default the package archive beside the repository),
+# checked against its SHA-256. Without it, the stock build is written back the
+# way dpkg writes it (by rename) and `dpkg --configure -a`, which has nothing
+# to configure but still runs post-invoke hooks, fires the guard.
+WDEB_SHA=1f7494f83b517c50b3602a6252c6250654a33c5538c4fe78df250ee0c36d10c4
+WDEB=${PYRA_WSEGL_DEB:-$(cd -- "$ROOT/.." && pwd)/pyra-packages-archive/packages.pyra-handheld.com/trixie/dri3wsegl-pyra_0.4_armhf.deb}
+WFIX=/usr/local/sbin/pyra-wsegl-fdfix.sh
+WMARK=$MNT/var/lib/pyra-wsegl-fdfix
+for d in proc sys dev; do mount --bind "/$d" "$MNT/$d"; done
+wsha() { sha256sum < "$WL" | cut -d' ' -f1; }
+stock_back() {      # put the stock build where the library is, as dpkg would
+    cp -p "$WL.stock" "$WL.selftest-new" && mv "$WL.selftest-new" "$WL"
+}
+pkgrun() {          # pkgrun: a dpkg run in the image; its output in $WOUT, exit in $WRC
+    disarm; set +e
+    if [[ $WREAL == yes ]]; then
+        WOUT=$(in_chroot dpkg -i /tmp/dri3wsegl-pyra_0.4_armhf.deb 2>&1 </dev/null)
+    else
+        stock_back
+        WOUT=$(in_chroot dpkg --configure -a 2>&1 </dev/null)
+    fi
+    WRC=$?
+    set -e; arm
+}
+WREAL=no
+if [[ -r $WDEB ]] && [[ $(sha256sum < "$WDEB" | cut -d' ' -f1) == "$WDEB_SHA" ]]; then
+    WREAL=yes; cp "$WDEB" "$MNT/tmp/"
+    i "fix21 guard: reinstalling the vendor's dri3wsegl-pyra 0.4 deb with the image's dpkg"
+else
+    i "fix21 guard: no checked 0.4 deb at $WDEB; writing the stock build back by hand, dpkg --configure -a fires the hook"
+fi
+pkgrun
+[[ $WRC -eq 0 ]] && p "fix21 guard: the package run exited 0" || f "fix21 guard: the package run exited $WRC: $(tail -2 <<<"$WOUT")"
+[[ $(wsha) == "$SHA_FIXED" ]] && p "fix21 guard: after the package run the library is the fixed build again" || f "fix21 guard: after the package run the library is not the fixed build"
+grep -q 'pyra-wsegl-guard: a package run put the stock' <<<"$WOUT" && p "fix21 guard: it said it re-applied the fix" || f "fix21 guard: no re-apply message: $(tail -3 <<<"$WOUT" | tr '\n' ' ')"
+[[ $(stat -c '%a %u:%g' "$WL") == "644 0:0" ]] && p "fix21 guard: the re-patched library is 0644 root:root" || f "fix21 guard: re-patched library mode is $(stat -c '%a %u:%g' "$WL")"
+compgen -G "$WL.*.tmp" >/dev/null && f "fix21 guard: a temporary file is left" || p "fix21 guard: no temporary file left"
+# Nothing to do on a fixed library: silent.
+disarm; WOUT=$(in_chroot /usr/local/sbin/pyra-wsegl-guard 2>&1 || true); arm
+[[ -z $WOUT ]] && p "fix21 guard: silent when the library is already fixed" || f "fix21 guard: on a fixed library it said: $WOUT"
+
+# A deliberate rollback must survive the next package run.
+in_chroot "$WFIX" rollback >/dev/null 2>&1 || f "fix21 guard: rollback failed in the chroot"
+pkgrun
+if [[ $(wsha) == "$SHA_STOCK" ]] && ! grep -q pyra-wsegl-guard <<<"$WOUT"; then
+    p "fix21 guard: a rolled-back card stays stock across a package run, silently"
+else
+    f "fix21 guard: after rollback and a package run: $(in_chroot "$WFIX" status 2>&1 | tr '\n' ' ')"
+fi
+in_chroot "$WFIX" install >/dev/null 2>&1 || f "fix21 guard: install after rollback failed"
+[[ $(wsha) == "$SHA_FIXED" && ! -e $WMARK/rolled-back ]] && p "fix21 guard: install after rollback patches and clears the rollback marker" || f "fix21 guard: install after rollback left $(in_chroot "$WFIX" status 2>&1 | tr '\n' ' ')"
+rmdir "$WMARK" 2>/dev/null || true
+
+# A build the fix does not know: warn, change nothing, never fail dpkg.
+cp -p "$WL" "$WL.selftest-keep"
+{ cat "$WL.stock"; printf x; } > "$WL.selftest-new"; chmod 644 "$WL.selftest-new"; mv "$WL.selftest-new" "$WL"
+UNK=$(wsha)
+disarm; set +e
+WOUT=$(in_chroot dpkg --configure -a 2>&1 </dev/null); WRC=$?
+set -e; arm
+[[ $WRC -eq 0 ]] && p "fix21 guard: an unknown build does not fail the package run" || f "fix21 guard: an unknown build made dpkg exit $WRC"
+grep -q 'FIX 21 IS NOT APPLIED' <<<"$WOUT" && p "fix21 guard: an unknown build prints the warning" || f "fix21 guard: no warning for an unknown build: $(tail -3 <<<"$WOUT" | tr '\n' ' ')"
+[[ $(wsha) == "$UNK" ]] && p "fix21 guard: an unknown build is left unchanged" || f "fix21 guard: the guard changed an unknown build"
+mv "$WL.selftest-keep" "$WL"
+rm -f "$MNT/tmp/dri3wsegl-pyra_0.4_armhf.deb"
+for d in dev sys proc; do umount "$MNT/$d"; done
+[[ $(wsha) == "$SHA_FIXED" ]] || f "fix21 guard: the fixed library was not put back after the test"
 
 ########################################################################
 i "release mode — prep --release"

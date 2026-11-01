@@ -1335,6 +1335,36 @@ script also goes onto the card as `/usr/local/sbin/pyra-wsegl-fdfix.sh`:
 puts the stock one back. On a card that was not prepared, `sudo
 ./pyra-wsegl-fdfix.sh install` from `device/` applies the same patch.
 
+`dri3wsegl-pyra` owns the file, so `apt install --reinstall dri3wsegl-pyra`
+(or any `dpkg -i` of the deb) writes the stock build back without a word.
+Prep and `pyra-install-helpers.sh` therefore also install a dpkg hook, shaped
+like the one for fixes 6 and 7 ("Surviving a package run" below):
+
+    /usr/local/sbin/pyra-wsegl-guard          the guard
+    /etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard     post-invoke=... runs the guard
+
+After every dpkg run the guard looks at the library, but only on a card where
+the fix was applied (`libpvrDRI3WSEGL.so.stock` exists) and not rolled back.
+The fixed build: nothing, silently. The stock build: it runs
+`pyra-wsegl-fdfix.sh install` and prints one line; programs already running
+keep the stock build until they restart. Any other build (a newer package):
+it changes nothing, and prints a banner and logs a journal warning on every
+package run until someone looks. It always exits 0, and the config line skips
+it if the guard has been deleted.
+
+A rollback must stay a rollback, and the `.stock` file is still there after
+one, so `rollback` also writes `/var/lib/pyra-wsegl-fdfix/rolled-back`, which
+the guard respects; `install` removes it, and `status` mentions it. The marker
+is not kept beside the library: ldconfig warns about an empty file in
+`/usr/lib` on every libc trigger. `pyra-install-helpers.sh` installs the
+script and the guard but does not patch: on such a card the guard has no
+`.stock` file and does nothing until `sudo pyra-wsegl-fdfix.sh install`.
+Checked on a Pyra on 2026-11-01 with real dpkg runs: `dpkg -i` of the 0.4
+deb re-patched the library, a rolled-back card stayed stock through the same
+reinstall, and an unknown build warned and was left alone (`dpkg --configure
+-a`), with dpkg exiting 0 each time. The prep selftest fires the same hook in
+its chroot.
+
 The vendor image carries the stock build (checked 2026-11-01 on the image at
 the vendor pin, and the trixie 0.4 deb has the same file). With the patch, the
 same game run had no `Bad file descriptor`, kept its log open until its own
@@ -1344,10 +1374,14 @@ left open (Shipwright report 10 §10.7).
 What it does not cover:
 
 - `dri3wsegl-pyra` owns the file, so `dpkg --verify dri3wsegl-pyra` reports it
-  changed, and `apt install --reinstall dri3wsegl-pyra` puts the stock build
-  back without a word. A newer package version is a build the script does not
-  know: it refuses to patch it, and prep stops on it. Nothing watches the file
-  after a package run, as `pyra-thermal-guard` does for fixes 6 and 7.
+  changed. A newer package version is a build the script does not know: it
+  refuses to patch it, prep stops on it, and on a card the guard warns on
+  every package run but leaves it alone, so until someone adds its hashes the
+  card runs that build unpatched. Rejected for the guard: `dpkg-divert`, which
+  would keep the patched 0.4 file over a newer vendor build, silently.
+- After a reinstall, `rollback` still restores the `.stock` copy made at the
+  first `install`. For 0.4 that is the same file; for a newer package the guard
+  has already said the library is unknown.
 - The fix belongs in the source: drop the `close()` at `dri3_ws.c:324`. 0.5
   (bullseye, bookworm) and TI's upstream have the same code
   (`reports/pyra-ddk-dri3-wsegl-double-close.md`).

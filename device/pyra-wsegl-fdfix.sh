@@ -12,12 +12,17 @@
 # one left; a running game holds a flat descriptor count with no dma-buf descriptors piling up.
 #
 #   sudo pyra-wsegl-fdfix.sh install     patch, keeping the stock file as libpvrDRI3WSEGL.so.stock
-#   sudo pyra-wsegl-fdfix.sh rollback    put the stock file back
+#   sudo pyra-wsegl-fdfix.sh rollback    put the stock file back, and keep it (see below)
 #   pyra-wsegl-fdfix.sh status
 #   pyra-wsegl-fdfix.sh --root DIR ...   the same, on the image mounted at DIR (prep's fix 21)
 #
 # The file is replaced by rename, never written in place: running programs have it mapped. Programs
 # started afterwards get the fix; restart the desktop session (or reboot) for the ones already running.
+#
+# A package run that reinstalls dri3wsegl-pyra puts the stock file back; pyra-wsegl-guard, a dpkg
+# hook, then runs install again. rollback leaves /var/lib/pyra-wsegl-fdfix/rolled-back so the guard
+# leaves a rolled-back machine alone; install removes it. (Not beside the library: ldconfig warns about
+# an empty file in /usr/lib on every libc trigger.)
 #
 # The path is dpkg's (dri3wsegl-pyra 0.4); /lib links to usr/lib. Under --root the file is taken
 # from DIR/usr/lib, never through DIR/lib, and a symlink is refused: either could lead off the image.
@@ -32,7 +37,9 @@ fi
 NAME=/usr/lib/libpvrDRI3WSEGL.so
 LIB=$ROOT$NAME
 STOCK=$LIB.stock
-for f in "$LIB" "$STOCK" "$LIB.fdfix.tmp" "$LIB.rollback.tmp"; do
+MARKDIR=$ROOT/var/lib/pyra-wsegl-fdfix
+MARK=$MARKDIR/rolled-back
+for f in "$LIB" "$STOCK" "$MARKDIR" "$MARK" "$LIB.fdfix.tmp" "$LIB.rollback.tmp"; do
     [ ! -L "$f" ] || { echo "${f#"$ROOT"} is a symlink; not touching it" >&2; exit 1; }
 done
 [ -f "$LIB" ] || { echo "no $NAME${ROOT:+ under $ROOT}" >&2; exit 1; }
@@ -55,10 +62,13 @@ status)
     if [ -e "$STOCK" ]; then
         echo "$NAME.stock: $( [ "$(sha "$STOCK")" = "$SHA_STOCK" ] && echo stock || echo unknown)"
     fi
+    if [ -e "$MARK" ]; then
+        echo "rolled back on purpose: pyra-wsegl-guard will not re-patch (install undoes this)"
+    fi
     ;;
 install)
     s=$(state)
-    [ "$s" = fixed ] && { echo "already patched"; exit 0; }
+    [ "$s" = fixed ] && { rm -f "$MARK"; echo "already patched"; exit 0; }
     [ "$s" = stock ] || { echo "$NAME is not the known stock build (sha256 $(sha "$LIB")); not touching it" >&2; exit 1; }
     [ -e "$STOCK" ] || cp -p "$LIB" "$STOCK"
     tmp=$LIB.fdfix.tmp
@@ -68,12 +78,15 @@ install)
     printf '\000\277\000\277' | dd of="$tmp" bs=1 seek=$((0x1548)) conv=notrunc status=none
     [ "$(sha "$tmp")" = "$SHA_FIXED" ] || { rm -f "$tmp"; echo "patched file has the wrong sha256" >&2; exit 1; }
     mv "$tmp" "$LIB"
+    rm -f "$MARK"
     echo "patched; stock kept as $NAME.stock. Programs started from now on get the fix."
     ;;
 rollback)
     [ -e "$STOCK" ] && [ "$(sha "$STOCK")" = "$SHA_STOCK" ] || { echo "no verified $NAME.stock" >&2; exit 1; }
     cp -p "$STOCK" "$LIB.rollback.tmp"
     mv "$LIB.rollback.tmp" "$LIB"
+    mkdir -p "$MARKDIR"
+    : > "$MARK"
     echo "stock restored"
     ;;
 *)
