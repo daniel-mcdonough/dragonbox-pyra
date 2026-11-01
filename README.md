@@ -1,21 +1,70 @@
 # Debian 13 (trixie) on the DragonBox Pyra
 
-The Pyra project publishes a trixie image, but it does not work as shipped: X
-crashes, the first-run wizard powers the unit off, the nubs are dead, and
-there is no sound. This repository turns that image into a working SD card for
-a V5.x Pyra, with a MATE desktop, hardware GLES2 on the SGX, desktop GL through
-gl4es, sound, charging, and x86 software under box86.
+This continues the effort to make the trixie image published on the Pyra
+forums good enough to use as the Pyra's everyday OS. As published, X crashes,
+the first-run wizard powers the unit off, the nubs are dead, and there is no
+sound. This repository turns that image into a working SD card for a V5.x Pyra,
+with a MATE desktop, hardware GLES2 on the SGX, desktop GL through gl4es,
+sound, charging, and x86 software under box86.
 
 It runs from an SD card. The eMMC is never touched, so your bookworm install
 stays as it is and takes over again when you pull the card.
 
+There are two ways to get a card:
+
+- **Write the prebuilt image** (quick start, below). The fixes are already
+  applied and the shipped kernel is installed. You only write it to a card.
+- **Build the card yourself** from the vendor image with the prep script, on a
+  Linux PC. This is what the image is made from, and the way to choose your own
+  user name and options.
+
 ---
 
-## What you need
+## Quick start: the prebuilt image
 
-- A V5.x Pyra.
-- A full-size SDXC card, 16 GB or larger, Class 10 / U1 or better. A microSD in
-  an adapter is fine. It goes in the **left** full-size slot.
+> The first image is not published yet. Until it is, use
+> [Build the card yourself](#build-the-card-yourself).
+
+You need a V5.x Pyra and a full-size SDXC card, 16 GB or larger, Class 10 / U1
+or better (a microSD in an adapter is fine). You also need any computer with a
+card reader.
+
+1. Download `pyra-trixie-release-<commit>.img.xz` and its `.img.xz.sha256`
+   from this repository's Releases page, and check it:
+
+        sha256sum -c pyra-trixie-release-<commit>.img.xz.sha256
+
+2. Write it to the card. On Linux:
+
+        lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT      # find the card; get this right
+        xzcat pyra-trixie-release-<commit>.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
+
+   On Windows or macOS, a writer that takes `.xz` files directly works too
+   (balenaEtcher, Raspberry Pi Imager).
+
+3. Put the card in the **left** full-size slot and **hold the power button
+   until both LEDs go green**. A short tap looks exactly like a dead card. It
+   isn't: this image's U-Boot ignores anything but a long press.
+
+4. **Wait.** On its first boot the card grows its root filesystem to fill
+   the card before anything else starts. On a 256 GB card the login screen
+   appeared after about 11 minutes. Don't switch it off in that time.
+
+5. Log in as `pyra` with the password `pyra`. You are asked for a new password
+   straight away, at the login screen, on a console or over ssh. Over ssh, use
+   `ssh -t` so there is a terminal to change it on.
+
+Each card makes its own ssh host keys and machine-id on that first boot, so
+two cards written from the same image don't share them. Then carry on with
+[Do these after the first boot](#do-these-after-the-first-boot).
+[docs/procedure.md](docs/procedure.md) has the checks that confirm each part
+works.
+
+## Build the card yourself
+
+### What you need
+
+- A V5.x Pyra, and an SD card as above.
 - A Linux PC with a card reader, `7z`, and root. Unless the PC is itself armhf,
   it also needs qemu-user with binfmt (`qemu-user-static` and `binfmt-support`
   on Debian or Ubuntu; `qemu-user-static` and `qemu-user-static-binfmt` on
@@ -23,7 +72,7 @@ stays as it is and takes over again when you pull the card.
 - A checkout of this repository on that PC. Run the scripts from inside it;
   some of them use files that sit beside them.
 
-## Get it running
+### Steps
 
 On the PC:
 
@@ -41,9 +90,8 @@ On the PC:
                                                       # and needs a kernel: see below
     sudo umount /mnt/boot /mnt && sync
 
-Put the card in the left slot and **hold the power button until both LEDs go
-green**. A short tap looks exactly like a dead card. It isn't: this image's
-U-Boot ignores anything but a long press.
+Boot it as in step 3 of the quick start (hold the power button until both
+LEDs go green).
 
 After the first boot, shut down, put the card back in the PC, and fill the rest
 of it (the image is only 6 GiB):
@@ -55,7 +103,8 @@ instead; see [docs/grow-rootfs.md](docs/grow-rootfs.md).)
 
 That is the outline. [docs/procedure.md](docs/procedure.md) is the version to
 follow: it has the checks between the steps, and a list of what to look at to
-confirm each part works.
+confirm each part works. The prebuilt image is this same procedure with
+`--release` ([docs/building.md](docs/building.md), "The release image in CI").
 
 The prep script installs the shipped kernel, `5.6.19-m4-kbdled`, and the card
 boots it (fix 19). It downloads the kernel from the project's release and checks
