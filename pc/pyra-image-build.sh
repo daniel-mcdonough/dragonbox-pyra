@@ -7,7 +7,7 @@
 # Starts from the vendor archive, never from an image that has been mounted or
 # booted: pyra-trixie-t1-brokenxorg.7z at the top of the repository (PYRA_VENDOR_7Z
 # names another), checked against the archive's SHA-256 and the unpacked image's,
-# both pinned below. Nothing from this machine or any card can reach the result
+# both pinned in pyra-vendor-image.sh. Nothing from this machine or any card can reach the result
 # except what prep writes and the options given to it.
 #
 # Without PREP-OPTIONS, prep runs with
@@ -36,14 +36,9 @@ HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 TOP=$(cd -- "$HERE/.." && pwd)
 PREP=$HERE/pyra-trixie-prep.sh
 BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$TOP/.." && pwd)/dragonbox-pyra-build}
-VENDOR_7Z=${PYRA_VENDOR_7Z:-$TOP/pyra-trixie-t1-brokenxorg.7z}
 KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
-
-# packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z as served
-# since 2026-02-01 (862273362 bytes), and the one image inside it.
-SHA_7Z=b2220b3f5ab9974d397d9fbac6c6190c8ff6690fdf977d0b52c4a6ade3fd28c7
-SHA_IMG=d8e98ff644bb57472ad8585b2bb2c2c396c8de69c768f015f7dbbece2d3637ce
-IMG_IN_7Z=pyra-trixie-t1.img
+# shellcheck source=pyra-vendor-image.sh
+. "$HERE/pyra-vendor-image.sh"
 
 OUT=
 USERNAME=pyra
@@ -62,14 +57,7 @@ PREP_ARGS=("$@")
 [[ $EUID -eq 0 ]] || die "must run as root (loop devices and mounts)"
 [[ -x $PREP ]] || die "no $PREP"
 [[ -r $VENDOR_7Z ]] || die "no vendor archive at $VENDOR_7Z
-       download https://packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z"
-if command -v bsdtar >/dev/null; then
-    unpack() { bsdtar -xOf "$VENDOR_7Z" "$IMG_IN_7Z"; }
-elif command -v 7z >/dev/null; then
-    unpack() { 7z x -so "$VENDOR_7Z" "$IMG_IN_7Z"; }
-else
-    die "need bsdtar (libarchive) or 7z to unpack $VENDOR_7Z"
-fi
+       download $VENDOR_URL"
 if [[ ${#PREP_ARGS[@]} -eq 0 ]]; then
     [[ -r $KTAR ]] || die "no kernel tarball at $KTAR (./pc/pyra-crossbuild.sh kernel-m4-kbdled, or set PYRA_KERNEL_TARBALL)"
     PREP_ARGS=(--grow-on-boot --set-password --kernel "$KTAR")
@@ -96,15 +84,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-info "checking $VENDOR_7Z"
-[[ $(sha256sum < "$VENDOR_7Z" | cut -d' ' -f1) == "$SHA_7Z" ]] ||
-    die "$VENDOR_7Z is not the archive this script knows (SHA-256 differs); re-download it"
-ok "vendor archive matches its pinned SHA-256"
-
-info "unpacking $IMG_IN_7Z (about half a minute)"
-unpack | dd of="$TMP" bs=4M conv=sparse status=none
-[[ $(sha256sum < "$TMP" | cut -d' ' -f1) == "$SHA_IMG" ]] || die "the unpacked image's SHA-256 differs from the pinned one"
-ok "unpacked image matches its pinned SHA-256"
+info "checking and unpacking $VENDOR_7Z (about half a minute)"
+vendor_unpack "$TMP" || die "no usable vendor image"
+ok "vendor archive and its image match their pinned SHA-256s"
 
 modprobe f2fs 2>/dev/null || true
 LOOP=$(losetup --find --partscan --show "$TMP")

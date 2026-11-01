@@ -3,8 +3,12 @@
 #
 #   sudo ./pc/pyra-prep-selftest.sh [/path/to/pyra-trixie-t1.img]
 #
-# Runs on a COPY, so the image itself stays the record of what was written to
-# the card. Snapshots the whole rootfs before and after, so an unexpected write
+# The image must be the vendor's exactly: its SHA-256 is checked against the
+# pin in pyra-vendor-image.sh, and a mismatch stops the test, because an image
+# that was once mounted read-write or prepped hides what prep itself changes.
+# With no image argument and no pyra-trixie-t1.img at the top of the
+# repository, it is unpacked from the vendor .7z (archive checked too). Runs on
+# a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
 # the end state of fixes 1 to 8 and 13 to 20 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
@@ -30,6 +34,9 @@ REPO=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 ROOT=$(cd -- "$REPO/.." && pwd)
 PAYLOADS=$ROOT/device
 IMG=${1:-$ROOT/pyra-trixie-t1.img}
+TOP=$ROOT
+# shellcheck source=pyra-vendor-image.sh
+. "$REPO/pyra-vendor-image.sh"
 WORK=$ROOT/pyra-trixie-t1-preptest.img
 PREP=$REPO/pyra-trixie-prep.sh
 OUT=${OUTDIR:-}
@@ -90,7 +97,15 @@ finish() {
 trap finish EXIT
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
+if [[ ! -e $IMG && $# -eq 0 ]]; then
+    i "no $IMG; unpacking it from $VENDOR_7Z"
+    vendor_unpack "$IMG" || { rm -f "$IMG"; exit 1; }
+    chown "${SUDO_UID:-0}:${SUDO_GID:-0}" "$IMG"
+    chmod a-w "$IMG"
+fi
 [[ -r $IMG ]] || { echo "no image at $IMG" >&2; exit 1; }
+vendor_img_ok "$IMG" || { echo "$IMG is not the vendor image (SHA-256 differs from the pin in pyra-vendor-image.sh); rename it and rerun to unpack a fresh one" >&2; exit 1; }
+i "$IMG matches the vendor image's pinned SHA-256"
 [[ -x $PREP ]] || { echo "no pyra-trixie-prep.sh beside this script" >&2; exit 1; }
 # Deferred until after the guards, so a refused run leaves no stray directory.
 [[ -n $OUT ]] || OUT=$(mktemp -d /tmp/pyra-prep-selftest.XXXXXX)
@@ -115,6 +130,7 @@ if [[ -e $WORK ]] && cmp -s "$IMG" "$WORK"; then
 else
     rm -f "$WORK"
     cp --sparse=always "$IMG" "$WORK"
+    chmod 644 "$WORK"   # the pristine image is kept read-only; its copy must not be
     i "copied $IMG -> $WORK"
 fi
 

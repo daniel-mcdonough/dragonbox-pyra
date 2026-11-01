@@ -22,7 +22,8 @@ need no privileges beyond reading `/proc`.
 | Script | What it does |
 | --- | --- |
 | `pc/pyra-trixie-prep.sh` | Applies all twenty fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. `--grow-on-boot` adds `pyra-grow-root` to the initrds, so the card grows its rootfs on its first boot (`grow-rootfs.md`). |
-| `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
+| `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. Refuses an image whose SHA-256 is not the vendor's pinned one, and unpacks `pyra-trixie-t1.img` from the `.7z` when it is missing. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
+| `pc/pyra-vendor-image.sh` | Not run on its own: the vendor archive's URL, its and its image's pinned SHA-256s, and the unpack-and-check function. Sourced by the self-test and `pyra-image-build.sh`. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
 | `pc/pyra-image-build.sh` | Builds a prepared card image: unpacks the vendor `.7z` (archive and image checked against pinned SHA-256s), runs prep on it loop-mounted (default `--grow-on-boot --set-password` and the m4-kbdled kernel), checks it with fsck, and writes `.sha256` and `.info` beside it in `../dragonbox-pyra-build/images/`. Root, qemu-user binfmt. `procedure.md` §3. |

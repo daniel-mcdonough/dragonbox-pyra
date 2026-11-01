@@ -1520,3 +1520,22 @@ reset), the owner logged out and in, and MATE started with the new default:
   Plugging in gave 99, and 4 min later on AC idle dimmed it to 25. So the
   AC-tab checkbox also dims the keyboard. That is a likely, unconfirmed
   explanation for the 2026-10-29 entry's AC result.
+
+## 2026-10-31 — prep self-test from a hash-checked vendor image (fix 20's first run)
+
+`pyra-trixie-t1.img`, the image every earlier prep self-test ran on, was not
+the vendor's: it differed from what the `.7z` unpacks to (SHA-256 `d8e98ff6…`)
+in 39062 4 KiB blocks, starting with p1's superblock, and its mtime was
+2026-09-08, after the archive's 2026-02-01. It was most likely mounted
+read-write, or prepped, in an early session. It is kept, renamed and read-only,
+as `pyra-trixie-t1-notpristine-20260908.img`.
+
+A fresh image unpacked from `pyra-trixie-t1-brokenxorg.7z` matched both pins
+(archive `b2220b3f…`, image `d8e98ff6…`). The self-test now checks its source
+image against the pin before it starts. `sudo pc/pyra-prep-selftest.sh` on it,
+with the cross-build's m4-kbdled tarball: **176 passed, 0 failed, 0 skipped**.
+That is the 169 checks that passed on the old image, plus fix 20's seven (the
+override matches the repository and is 0644 root:root, `gschemas.compiled` is
+rebuilt, three keys default to false, and run 2 reports it up to date). So none
+of the earlier passes depended on what the old image had been given. Fix 20's
+`glib-compile-schemas` and `gsettings` run cleanly in the qemu chroot.
