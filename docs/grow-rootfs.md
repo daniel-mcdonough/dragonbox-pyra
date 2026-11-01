@@ -93,6 +93,7 @@ throwaway loop-device cards:
 - a genuine card
 - three device-mapper fakes: wrapping, dropping writes, and an upper range that fails to read
 - an interrupted grow
+- p2 missing from the kernel for a moment after the grow, and for good
 - zeroed checkpoints
 - the opt-out and the guards
 - a copy of the real vendor image on a 16 GiB card. It must match the pin in
@@ -104,15 +105,26 @@ A refused card must come back byte-identical.
 The real-image case hashes the image once, before copying it. A wrong image
 costs no 7 GiB copy.
 
-**Open: a false "partition 2 start moved".** In one of three PC runs on
-2026-11-01, the genuine case's `/sys/class/block/loop0p2/start` did not exist
-for a moment after `sfdisk` and `partx -u`. The script read nothing from it and
-exited 1 with `partition 2 start moved; restore the partition table`. The table
-was fine: the partition had grown and the filesystem had not, and the next run
-finished the grow as an interrupted one. The likely cause is the host's udev
-re-reading the table when the disk is closed after the write. Whether the
-initramfs's udev can do the same on a Pyra is unknown. Until this is fixed,
-don't act on that message. Reboot once: the next boot finishes the grow.
+**A partition node that vanishes after the grow.** In one of three PC
+selftest runs on 2026-11-01, `/sys/class/block/loop0p2/start` did not exist
+for a moment after `sfdisk` and `partx -u`. The script then read nothing,
+reported `partition 2 start moved; restore the partition table` and exited 1.
+The table was fine: the next run finished the grow as an interrupted one. The
+likely cause is udev re-reading the table when the disk is closed after a
+write, which drops and re-adds the partition nodes. The initramfs runs udev
+too, so the same could happen on a Pyra. Now the script:
+- holds a `flock` on the disk from `sfdisk` until it exits. udev does not
+  re-read a locked disk (`sfdisk(8)`, `--lock`). The hook copies `flock` into
+  the initrd.
+- waits up to 10 s for p2's device node, start and size. If they never
+  appear, it says the next boot will finish the grow and exits 1.
+- reports a moved start only when it read a start that differs, and names
+  the sector.
+
+The selftest forces both shapes through a test hook in the script
+(`PYRA_GROW_TEST_DROP`, which takes p2 away from the kernel right after
+`partx -u`): back after 3 s (the grow must finish), and never back (exit 1,
+then the next run finishes).
 
 **Booted on a Pyra twice.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card

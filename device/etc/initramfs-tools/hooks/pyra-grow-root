@@ -29,5 +29,8 @@ copy_exec /usr/sbin/sfdisk
 copy_exec /usr/bin/partx
 copy_exec /usr/sbin/fsck.f2fs
 copy_exec /usr/sbin/resize.f2fs
+# Optional: the script locks the disk during the grow if it can (busybox may
+# have flock too), and waits out a missing partition node if it cannot.
+[ -e /usr/bin/flock ] && copy_exec /usr/bin/flock
 copy_file script /usr/local/sbin/pyra-grow-root /usr/sbin/pyra-grow-root
 exit 0

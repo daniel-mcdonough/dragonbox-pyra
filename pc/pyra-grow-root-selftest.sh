@@ -251,6 +251,46 @@ payload_ok "${L}p2" "$SUM" && p "half: files intact" || f "half: files changed"
 cleanup
 
 ########################################################################
+i "partition 2 missing for a moment after the grow, then never back"
+########################################################################
+# The script's test hook drops p2 from the kernel right after partx -u, as a
+# re-read of the table does, and adds it back after PYRA_GROW_TEST_DROP
+# seconds (0: never). Neither is a moved start.
+truncate -s 4G "$WORK/race"
+newloop "$WORK/race"
+SUM=$(make_card "$L")
+export PYRA_GROW_TEST_DROP=3
+run race "${L}p2"
+unset PYRA_GROW_TEST_DROP
+expect_rc race 10
+grep -q 'reappeared' "$OUT/race.log" && p "race: waited for p2 to come back" || f "race: no wait in the log"
+! grep -q 'restore the partition table' "$OUT/race.log" && p "race: no moved start reported" || f "race: reported a moved start"
+[[ $((P2_START + $(blockdev --getsz "${L}p2"))) -eq $(blockdev --getsz "$L") ]] && p "race: p2 reaches the end of the card" || f "race: p2 not grown"
+payload_ok "${L}p2" "$SUM" && p "race: files intact" || f "race: files changed"
+cleanup
+
+truncate -s 4G "$WORK/gone"
+newloop "$WORK/gone"
+SUM=$(make_card "$L")
+export PYRA_GROW_TEST_DROP=0
+run gone "${L}p2"
+unset PYRA_GROW_TEST_DROP
+if [[ $RC -eq 10 ]] && grep -q 'reappeared' "$OUT/gone.log"; then
+    f "gone: p2 came back by itself, so something re-read the table despite the script's lock on the disk"
+else
+    expect_rc gone 1
+fi
+grep -q 'next boot will finish' "$OUT/gone.out" && p "gone: says the next boot finishes the grow" || f "gone: no next-boot message (see $OUT/gone.out)"
+! grep -q 'restore the partition table' "$OUT/gone.log" && p "gone: no moved start reported" || f "gone: reported a moved start"
+[[ $(sfdisk -d "$L" | sed -n 's/.*p2 : start= *\([0-9]*\),.*/\1/p') -eq $P2_START ]] && p "gone: p2 start unchanged in the table" || f "gone: p2 start changed in the table"
+partx -a --nr 2 "$L"
+udevadm settle 2>/dev/null || true
+run gone-next "${L}p2"
+expect_rc gone-next 10
+payload_ok "${L}p2" "$SUM" && p "gone-next: the next run finished the grow, files intact" || f "gone-next: files changed"
+cleanup
+
+########################################################################
 i "damaged filesystem: both checkpoint packs zeroed"
 ########################################################################
 truncate -s 4G "$WORK/damaged"

@@ -168,12 +168,46 @@ if ! fsck.f2fs -f --dry-run "$PART" >> "$LOG" 2>&1; then
 	exit 20
 fi
 
+# After the grow, wait up to 10 s for the kernel to show partition 2: its
+# device node and a readable start and size, left in NEW_ST and NEW_SZ. A
+# re-read of the table drops and re-adds the partition nodes, so they can be
+# missing for a moment (docs/grow-rootfs.md). An empty read means "not there
+# yet", never a moved start.
+part_ready() {
+	NEW_ST=$(cat "$SYS/start" 2>/dev/null)
+	NEW_SZ=$(cat "$SYS/size" 2>/dev/null)
+	[ -b "$PART" ] && [ -n "$NEW_ST" ] && [ -n "$NEW_SZ" ]
+}
+wait_part() {
+	n=0
+	until part_ready; do
+		[ $n -lt 50 ] || return 1
+		sleep 0.2 2>/dev/null || sleep 1
+		n=$((n + 1))
+	done
+	[ $n = 0 ] || quiet "partition 2 reappeared after $n polls"
+}
+
 if [ $GROW_PART = 1 ]; then
+	# udev re-reads the table when the disk is closed after a write unless the
+	# disk is locked (sfdisk(8), --lock), and that re-read is what makes the
+	# partition nodes vanish. Hold the lock until exit, so udev only sends
+	# change events. Not a guarantee, so wait_part still guards the reads.
+	if command -v flock >/dev/null 2>&1 && exec 9<"$DISK"; then
+		flock -x 9 || quiet "could not lock $DISK"
+	fi
 	echo ',+' | sfdisk --no-reread --no-tell-kernel --wipe never --wipe-partitions never -q -N 2 "$DISK" >> "$LOG" 2>&1 ||
 		{ say "sfdisk failed; nothing else was changed"; exit 1; }
 	partx -u --nr 2 "$DISK" >> "$LOG" 2>&1 || blockdev --rereadpt "$DISK" >> "$LOG" 2>&1
-	NEW_SZ=$(cat "$SYS/size")
-	[ "$(cat "$SYS/start")" = "$WANT_P2_START" ] || { say "partition 2 start moved; restore the partition table"; exit 1; }
+	# A hook for pc/pyra-grow-root-selftest.sh: take partition 2 away from the
+	# kernel, as the re-read does, and give it back after N seconds (0: never).
+	if [ -n "${PYRA_GROW_TEST_DROP:-}" ]; then
+		partx -d --nr 2 "$DISK" >> "$LOG" 2>&1
+		[ "$PYRA_GROW_TEST_DROP" -gt 0 ] && { sleep "$PYRA_GROW_TEST_DROP"; partx -a --nr 2 "$DISK" >> "$LOG" 2>&1; } &
+	fi
+	wait_part || { say "the kernel does not show partition 2 after the grow; the next boot will finish it"; exit 1; }
+	[ "$NEW_ST" = "$WANT_P2_START" ] ||
+		{ say "partition 2 now starts at sector $NEW_ST, not $WANT_P2_START; restore the partition table"; exit 1; }
 	[ "$NEW_SZ" -gt "$PART_SZ" ] ||
 		{ say "the kernel still sees partition 2 at $NEW_SZ sectors; the next boot will finish the grow"; exit 1; }
 	PART_SZ=$NEW_SZ
