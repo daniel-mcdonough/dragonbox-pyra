@@ -1,0 +1,46 @@
+From 593d59de71a6200104f2c8fb77d817d56ca6ad3a Mon Sep 17 00:00:00 2001
+From: Daniel McDonough <90170351+daniel-mcdonough@users.noreply.github.com>
+Date: Tue, 20 Oct 2026 18:10:20 -0400
+Subject: [PATCH pyra-hacks 1/2] pyra-thermal: set the ceiling through sysfs,
+ not cpufreq-set
+
+doThermal() applies its ceiling with cpufreq-set -u, which came from
+cpufrequtils. That package is not in trixie, so every cycle has failed with
+"cpufreq-set: not found" since the image's first boot, and the daemon has
+reported itself active while never capping a frequency. With only step_wise
+left, two cores of 7z b took one unit from 64 C to 107 C, past its 100 C
+passive trip, in under two minutes.
+
+Write scaling_max_freq directly, which is all cpufreq-set -u did. The ladder
+itself is unchanged.
+
+Measured on a stock Pyra V5.3 on Debian 13; the full report is sent with
+this patch.
+---
+ pyra-thermal.sh | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/pyra-thermal.sh b/pyra-thermal.sh
+index 58be93d..849b86d 100755
+--- a/pyra-thermal.sh
++++ b/pyra-thermal.sh
+@@ -86,7 +86,15 @@ doThermal()
+                 echo MaxFreq: ${current_maxFreq} MaxCharge: ${current_maxCharge}
+         fi
+ 
+-       	cpufreq-set -u ${current_maxFreq}MHz
++	# cpufreq-set came from cpufrequtils, which is not in
++	# trixie and has no candidate version, so this call failed on every
++	# cycle since the first boot and the daemon never capped anything.
++	# Writing scaling_max_freq is what cpufreq-set -u did, and needs
++	# nothing installed. Both cores share one policy on this SoC.
++	for _policy in /sys/devices/system/cpu/cpufreq/policy*; do
++		[ -w "$_policy/scaling_max_freq" ] || continue
++		echo $((current_maxFreq * 1000)) > "$_policy/scaling_max_freq"
++	done
+        	echo ${current_maxCharge} > /dev/usb_max_current
+        	
+ }
+-- 
+2.55.0
+

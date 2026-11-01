@@ -1,0 +1,34 @@
+Set the brightness-key defaults before the config file is read
+
+init() read the config file and then assigned the four built-in brightness
+commands, so scripts.brightness.normal, .shift, .fn and .fnshift in the file
+had no effect until the first SIGUSR1. Assign the defaults first and let the
+file override them.
+
+Against funkeymonkey-pyrainput 0.1.19. Apply with: patch -p1 < this-file
+
+--- a/pyrainput.cpp
++++ b/pyrainput.cpp
+@@ -19,6 +19,11 @@
+ 	// Read settings
+ 	// Must be done before the key behavior to take key remapping via file into account
+ 	handleArgs(argv, argc, global.settings);
++	// Defaults for the brightness keys; the config file may override them
++	global.settings.scripts.brightnessNormal = "/usr/share/pyra/scripts/pyra-brightkey.sh screen up";
++	global.settings.scripts.brightnessShift = "/usr/share/pyra/scripts/pyra-brightkey.sh screen down";
++	global.settings.scripts.brightnessFn = "/usr/share/pyra/scripts/pyra-brightkey.sh key up";
++	global.settings.scripts.brightnessFnShift = "/usr/share/pyra/scripts/pyra-brightkey.sh key down";
+ 	if(!global.settings.configFile.empty()) {
+ 		loadConfig(global.settings.configFile, global.settings);
+ 	}
+@@ -155,10 +160,6 @@
+ 	global.mouseThread  = std::move(std::thread(handleMouse, global.mouse, &global.settings, &global.stop));
+ 	global.rumbleThread = std::move(std::thread(handleRumble, global.gamepad, &global.stop));
+ 
+-	global.settings.scripts.brightnessNormal = "/usr/share/pyra/scripts/pyra-brightkey.sh screen up";
+-	global.settings.scripts.brightnessShift = "/usr/share/pyra/scripts/pyra-brightkey.sh screen down";
+-	global.settings.scripts.brightnessFn = "/usr/share/pyra/scripts/pyra-brightkey.sh key up";
+-	global.settings.scripts.brightnessFnShift = "/usr/share/pyra/scripts/pyra-brightkey.sh key down";
+ }
+ 
+ void handle(input_event const& e, unsigned int role) {

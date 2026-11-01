@@ -17,13 +17,14 @@ order the builds apply them. That is the form to review or send them in:
 
 | Branch | On | Carries |
 | --- | --- | --- |
-| `pyra/fixes` | `main` | `patches/` |
+| `pyra/fixes` | `main` | `patches/*.patch` (not `patches/userspace/`) |
 | `pyra/opp` | `pyra/fixes` | 0007 (intermediate OPPs) |
 | `pyra/m4-ipu` | `pyra/opp` | `experiments/m4-ipu` |
 | `pyra/aess` | `pyra/m4-ipu` | `experiments/aess` |
-| `pyra/device` | `pyra/aess` | 0034 and `experiments/kbd-led`: the source of `5.6.19-m4-kbdled` |
+| `pyra/device` | `pyra/aess` | 0034, `experiments/kbd-led` and `experiments/jack-detect`: the source of `5.6.19-m4-kbdled` |
 | `pyra/overclock` | `pyra/opp` | 0008 |
 | `pyra/c2-idle` | `pyra/fixes` | the other 0007 |
+| `pyra/jack` | `pyra/fixes` | `experiments/jack-detect` alone |
 
 `git log main..pyra/fixes` is the fix series; `git format-patch -s pyra/m4-ipu..pyra/aess`
 makes the audio series ready to send. The tree is generated and its hashes are
@@ -369,5 +370,5 @@ after boot, with no log output. Built only as `kernel-c2`. Kept with its result 
 These live in the same experiment directories and are easy to mistake for kernel
 patches:
 
-- `kms-plane/armsoc-0001-leavevt-drop-drm-master.patch` and `dragonbox-pyra-build/ddx/patches/0001-leavevt-drop-drm-master.patch`: the X armsoc display driver, not the kernel.
+- `kms-plane/armsoc-0001-leavevt-drop-drm-master.patch`: the X armsoc display driver, not the kernel.
 - `gpu-tools/apitrace-pyra-waitnative.patch`: apitrace's `eglretrace`.

@@ -1462,7 +1462,7 @@ stand-in that installs its USR1 trap after 0.35 s it printed `handler up after
 300 ms`. Prep selftest after the change: 169 passed, 0 failed (owner).
 
 The funkeymonkey-pyrainput 0.1.19 tree, original and with
-`reports/patches/funkeymonkey-pyrainput/0001-brightness-defaults-before-config.patch`,
+`patches/userspace/funkeymonkey-pyrainput/0001-brightness-defaults-before-config.patch`,
 built on the same card with g++ 14.2.0 (`-std=c++20 -shared`, funkeymonkey 0.1.2
 headers, about 3 min for both). The patched library was not run.
 
