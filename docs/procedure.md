@@ -13,7 +13,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Nineteen fixes are needed, and `fixes.md` explains each one. Most of them are not
+Twenty fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -25,15 +25,16 @@ root mounting a minute or two late, fix 15 makes the Fn keyboard-light keys
 work on the shipped kernel, fix 16 sets the measured governor tunable at
 boot, fix 17 gives PulseAudio the script that matches the kernel's audio
 path at each boot, fix 18 puts the keyboard's manual rescue on the path, and
-fix 19 installs the shipped kernel and makes it what the card boots.
+fix 19 installs the shipped kernel and makes it what the card boots, and fix
+20 keeps MATE from taking the keyboard light over on battery.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all nineteen fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
-armhf, qemu-user with binfmt: fixes 14 and 19 run the image's own tools in a
+armhf, qemu-user with binfmt: fixes 14, 19 and 20 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 19 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 20 against a copy of the
 real image, without a Pyra and without touching a card.
 
 ---
@@ -484,14 +485,25 @@ that one setting controls it. Leave `org.mate.power-manager backlight-enable`
 false, or the two dim the panel at once.
 
 **The keyboard light on `5.6.19-m4-kbdled`.** MATE's power manager drives it
-through UPower whatever `backlight-enable` says. Measured 2026-10-29 on AC,
-with the image's settings: about 15-20 s after the last input it cuts the light
-by 75 % (`kbd-brightness-dim-by-on-idle`), and the next touch puts it back to
-100 % (`kbd-brightness-on-ac`). On battery it also halves it
-(`kbd-brightness-dim-by-on-battery`). So a level you choose with the Fn keys
-(fix 15) or the applet lasts until the next idle-and-touch cycle; neither
-changes the level MATE goes back to. No setting that stops this has been
-tested yet.
+through UPower, and with MATE's defaults it takes it over on battery: at each
+power change it sets half of its own 100 %, dims that by 75 % when idle, and
+puts its 50 % back at the next touch, so a level set with the Fn keys (fix 15)
+or the applet would last until the next idle period. Prep's fix 20 sets
+`org.mate.power-manager kbd-backlight-battery-reduce` false by default, which
+switches all of that off. On AC MATE leaves the light alone already
+(`idle-dim-ac` is false). Measured 2026-10-31 on a prepared card, with the
+setting false: a level set with the keys stayed through unplugging, 60 s idle,
+a touch, a key press and plugging back in. The one reset left is at login on
+AC, when MATE starts and sets 100 %.
+
+Two checkboxes in MATE's Power Management preferences hand the light back to
+MATE. On the battery tab, "Reduce keyboard backlight brightness" is
+`kbd-backlight-battery-reduce`, which fix 20 leaves unticked. On the AC tab,
+"Dim display when idle" (`idle-dim-ac`) also dims the keyboard light on AC,
+which the label doesn't say. With either ticked, MATE dims the light when idle
+and on the next touch puts back its own level (100 % on AC, 50 % on battery),
+not the one you set with the keys (measured 2026-10-31). MATE has no setting
+that makes it restore your level.
 
 ---
 
@@ -528,7 +540,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the nineteen fixes it applies only 13 to 18, whose files it shares
+and of the twenty fixes it applies only 13 to 18 and 20, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.

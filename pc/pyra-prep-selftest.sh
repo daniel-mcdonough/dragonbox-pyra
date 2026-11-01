@@ -6,7 +6,7 @@
 # Runs on a COPY, so the image itself stays the record of what was written to
 # the card. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 19 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 20 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, and finally checks that a missing fix 5 payload
 # aborts before fix 1 writes anything.
@@ -742,6 +742,24 @@ fi
 [[ ! -e $MNT/var/tmp/pyra-prep-kernel.tar.gz ]] && p "fix19: no staged tarball left in /var/tmp" || f "fix19: the staged tarball is still in /var/tmp"
 
 ########################################################################
+i "assert fix 20 — MATE leaves the keyboard light alone on battery"
+########################################################################
+SD=usr/share/glib-2.0/schemas
+O=$MNT/$SD/99_pyra_kbdlight.gschema.override
+if [[ -e $O ]] && cmp -s "$PAYLOADS/$SD/99_pyra_kbdlight.gschema.override" "$O"; then
+    p "fix20: /$SD/99_pyra_kbdlight.gschema.override matches repo"
+else
+    f "fix20: /$SD/99_pyra_kbdlight.gschema.override missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$O" 2>/dev/null) == "644 0:0" ]] && p "fix20: the override is 0644 root:root" || f "fix20: the override mode is $(stat -c '%a %u:%g' "$O" 2>/dev/null)"
+[[ $MNT/$SD/gschemas.compiled -nt $O ]] && p "fix20: gschemas.compiled is newer than the override" || f "fix20: gschemas.compiled was not rebuilt after the override"
+# The compiled defaults, as a new user sees them: no dconf database involved.
+for kv in "kbd-backlight-battery-reduce false" "idle-dim-ac false" "backlight-enable false"; do
+    got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.power-manager "${kv% *}" 2>/dev/null || true)
+    [[ $got == "${kv#* }" ]] && p "fix20: ${kv% *} defaults to ${kv#* }" || f "fix20: ${kv% *} defaults to '$got', want ${kv#* }"
+done
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -784,6 +802,7 @@ if [[ ${KARGS[0]} == --kernel ]]; then
     grep -qE "fix19: $KREL is already installed" "$OUT/prep-run2.log" && p "run 2 reported the kernel already installed" || f "run 2 did not report the kernel already installed"
     grep -qE 'fix19: .*already the base and the default' "$OUT/prep-run2.log" && p "run 2 reported l5 already the base and default" || f "run 2 did not report l5 already the base and default"
 fi
+grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix20 already up to date" || f "run 2 did not report fix20 already up to date"
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.

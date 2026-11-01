@@ -21,7 +21,7 @@ need no privileges beyond reading `/proc`.
 
 | Script | What it does |
 | --- | --- |
-| `pc/pyra-trixie-prep.sh` | Applies all nineteen fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. `--grow-on-boot` adds `pyra-grow-root` to the initrds, so the card grows its rootfs on its first boot (`grow-rootfs.md`). |
+| `pc/pyra-trixie-prep.sh` | Applies all twenty fixes to a mounted rootfs (boot partition at its `/boot`), before the card's first boot. Fix 19 installs the shipped kernel: `--kernel FILE`, `--no-kernel`, or by default the pinned release download. `--set-password` and `--ssh-key FILE.pub` are fix 2's opt-in options for the user. `--grow-on-boot` adds `pyra-grow-root` to the initrds, so the card grows its rootfs on its first boot (`grow-rootfs.md`). |
 | `pc/pyra-prep-selftest.sh` | Proves the prep script does exactly that, against a copy of the real image. No Pyra, no card. Needs root, and qemu-user binfmt like prep. |
 | `pc/verify-card-capacity.sh` | Checks the card's real capacity and link stability before anything is grown onto it. |
 | `pc/pyra-trixie-grow.sh` | Extends partition 2 and the f2fs onto the rest of the card. |
@@ -67,6 +67,7 @@ need no privileges beyond reading `/proc`.
 | `device/pyra-modeset-hang-trap.sh` | Provokes the display hang on purpose, captures the kernel backtrace of the spinning core, and reboots. Read its header first. |
 | `device/pyra-gles` | Runs a GLES2 program against the SGX driver instead of glvnd, which is otherwise what it gets and why it draws nothing. Needs no root. Prep installs it as `/usr/local/bin/pyra-gles` (fix 13). |
 | `device/pyra-kbdlight.sh` | What the Fn keyboard-brightness keys run: drives the keyboard LED of the shipped kernel in nine steps, and hands the key to the vendor `pyra-brightkey.sh` on a kernel without the LED. `--configure /etc/pyrainput.cfg` points the keys at it. Prep installs it (fix 15). |
+| `device/usr/share/glib-2.0/schemas/99_pyra_kbdlight.gschema.override` | Sets MATE's `kbd-backlight-battery-reduce` false by default, so mate-power-manager stops dimming and resetting the keyboard light on battery and a level set with the Fn keys stays. Takes effect after `glib-compile-schemas /usr/share/glib-2.0/schemas`. Installed by prep (fix 20) and by `pyra-install-helpers.sh`, which recompiles. |
 | `device/pyra-usb3503-rescue` | Re-resets the USB hub when a warm reboot leaves it dead. Installed by fix 5. |
 | `device/etc/initramfs-tools/scripts/init-top/pyra-fw-nofallback` | Turns off the kernel's 60 s sysfs firmware fallback before the initramfs's udev starts. Without it a USB ethernet adapter that enumerates early can hold root back by a minute or two. See "Root mounts a minute or two late" in `troubleshooting.md`. Installed by prep (fix 14) and by `pyra-install-helpers.sh`; both rebuild the initrds. Measured 2026-10-28: 5 cold boots with the adapter plugged in mounted root at 6-10 s. |
 | `device/etc/initramfs-tools/scripts/init-top/pyra-settle-nudge` | Wakes `udevadm settle` in the initramfs when the 5.6 kernels' early `IN_DELETE` leaves it asleep with udev's queue already empty, which otherwise holds root back about 120 s. Never fires on a kernel with `patches/0048`. See shape A under "Root mounts a minute or two late" in `troubleshooting.md`. Installed by prep (fix 14) and by `pyra-install-helpers.sh`; both rebuild the initrds. |
@@ -119,6 +120,7 @@ marks (decided 2026-10-29):
 | `pyra-usb3503-rescue` | prep (fix 5) |
 | `pyra-gles` | prep (fix 13) |
 | `pyra-kbdlight.sh` | prep (fix 15, with its two `/etc/pyrainput.cfg` lines) |
+| `usr/share/glib-2.0/schemas/99_pyra_kbdlight.gschema.override` | prep (fix 20, schemas recompiled offline) |
 | `pyra-fw-nofallback`, `pyra-settle-nudge` (the `init-top` hooks) | prep (fix 14) |
 | `pyra-grow-root` and its two initramfs hooks | prep, with `--grow-on-boot` (the release image turns it on) |
 | `pyra-governor-tune.sh`, `pyra-governor-tune.service` | prep (fix 16, enabled offline) |

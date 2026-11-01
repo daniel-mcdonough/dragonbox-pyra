@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the nineteen known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -22,7 +22,7 @@
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
 #
-# Fixes 14 and 19 run the image's own tools in a chroot, so a PC that is not
+# Fixes 14, 19 and 20 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -143,6 +143,12 @@ KBDLIGHT_SRC=$PAYLOADS/pyra-kbdlight.sh
 [[ -x $KBDLIGHT_SRC ]] || die "fix15: pyra-kbdlight.sh not found or not executable (looked in $PAYLOADS)"
 KBDLIGHT_DROPIN_SRC=$PAYLOADS/etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf
 [[ -r $KBDLIGHT_DROPIN_SRC ]] || die "fix15: pyrainput.service.d/pyra-kbdlight.conf not found (looked in $PAYLOADS)"
+# Fix 20's override, and the image's schema directory it compiles into.
+SCHEMA_DIR=usr/share/glib-2.0/schemas
+KBDMATE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_kbdlight.gschema.override
+[[ -r $KBDMATE_SRC ]] || die "fix20: 99_pyra_kbdlight.gschema.override not found (looked in $PAYLOADS)"
+[[ -e $ROOT/$SCHEMA_DIR/org.mate.power-manager.gschema.xml ]] ||
+    die "fix20: the image has no org.mate.power-manager schema (mate-power-manager)"
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -204,6 +210,8 @@ in_chroot /bin/true 2>/dev/null ||
        (Debian/Ubuntu: qemu-user-static binfmt-support; Arch: qemu-user-static qemu-user-static-binfmt)"
 in_chroot sh -c 'command -v update-initramfs && command -v lsinitramfs' >/dev/null 2>&1 ||
     die "fix14: the image has no update-initramfs or lsinitramfs (initramfs-tools)"
+in_chroot sh -c 'command -v glib-compile-schemas && command -v gsettings' >/dev/null 2>&1 ||
+    die "fix20: the image has no glib-compile-schemas or gsettings (libglib2.0-bin)"
 if [[ $GROW_ON_BOOT == yes ]]; then
     for t in /usr/sbin/sfdisk /usr/bin/partx /usr/sbin/fsck.f2fs /usr/sbin/resize.f2fs; do
         [[ -e $ROOT$t ]] || die "grow-on-boot: the image has no $t, which the initrd needs to grow the card"
@@ -1367,6 +1375,37 @@ $out"
 else
     warn "fix19: no kernel installed; the card boots the stock 5.6.19-pyradef"
 fi
+
+# ---------------------------------------------------------------------- fix 20
+#
+# On battery, MATE's power manager takes the keyboard light over: at every
+# power change it replaces the level with half of its own 100 %, dims that by
+# 75 % when idle, and puts its 50 % back at the next touch, so a level set with
+# the Fn keys (fix 15) or an applet lasts until the next idle period. All of it
+# hangs on kbd-backlight-battery-reduce (true by default); on AC the same steps
+# hang on idle-dim-ac, false by default and in the image. A system override
+# sets it false, so a user's own gsettings value still wins (measured
+# 2026-10-31, docs/verification-log.md). The override needs the schemas
+# recompiled; dpkg's glib trigger recompiles them with it after any package
+# change, so no package can undo it.
+
+KBDMATE_DST=$ROOT/$SCHEMA_DIR/$(basename "$KBDMATE_SRC")
+if [[ -e $KBDMATE_DST ]] && cmp -s "$KBDMATE_SRC" "$KBDMATE_DST" &&
+   [[ $ROOT/$SCHEMA_DIR/gschemas.compiled -nt $KBDMATE_DST ]]; then
+    ok "fix20: ${KBDMATE_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $KBDMATE_DST ]] && echo updated || echo installed)
+    install -m 0644 -o 0 -g 0 "$KBDMATE_SRC" "$KBDMATE_DST"
+    in_chroot glib-compile-schemas --strict "/$SCHEMA_DIR" ||
+        die "fix20: glib-compile-schemas rejected the schemas with the override in place"
+    ok "fix20: $VERB ${KBDMATE_DST#$ROOT} and recompiled the schemas"
+fi
+# Read back through the compiled schemas, with no user database in the way.
+KBDMATE_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
+    gsettings get org.mate.power-manager kbd-backlight-battery-reduce 2>/dev/null || true)
+[[ $KBDMATE_VAL == false ]] ||
+    die "fix20: kbd-backlight-battery-reduce reads '$KBDMATE_VAL' after the override, not false"
+ok "fix20: MATE leaves the keyboard light alone on battery (kbd-backlight-battery-reduce false)"
 
 echo
 sync

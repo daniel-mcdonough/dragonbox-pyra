@@ -1,0 +1,14 @@
+# Prep fix 20 (docs/fixes.md): keep MATE's power manager off the keyboard
+# light, so a level set with the Fn keys (fix 15) or an applet stays.
+#
+# mate-power-manager 1.26.1 dims and restores the keyboard light through
+# UPower only when this key is true (on battery) or idle-dim-ac is true (on
+# AC, false by default). On battery it also replaces whatever level is set
+# with half of its own 100 % at every power change, then dims that by 75 %
+# when idle and puts its 50 % back at the next touch.
+#
+# The name sorts after pyra-config-desktop's 99_pyra.gschema.override ('_'
+# after '.'), so a key both files set takes this file's value.
+
+[org.mate.power-manager]
+kbd-backlight-battery-reduce=false

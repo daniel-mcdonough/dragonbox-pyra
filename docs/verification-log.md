@@ -1465,3 +1465,58 @@ The funkeymonkey-pyrainput 0.1.19 tree, original and with
 `reports/patches/funkeymonkey-pyrainput/0001-brightness-defaults-before-config.patch`,
 built on the same card with g++ 14.2.0 (`-std=c++20 -shared`, funkeymonkey 0.1.2
 headers, about 3 min for both). The patched library was not run.
+
+## 2026-10-31 — MATE and the keyboard light, on AC and on battery (fix 20)
+
+Card: the image-written card, `5.6.19-m4-kbdled`, logged into MATE,
+mate-power-manager 1.26.1-1.1 (Debian trixie), the image's settings:
+`idle-dim-ac false`, `idle-dim-battery true`, `idle-dim-time 10`,
+`kbd-backlight-battery-reduce true`, `kbd-brightness-dim-by-on-battery 50`,
+`kbd-brightness-dim-by-on-idle 75`, `kbd-brightness-on-ac 100`. The LED and
+UPower's `OnBattery` were logged on every change, polled every 0.2 s. The
+owner's hands did the touches (`xdotool` input does not reach MATE's idle
+detection).
+
+- **AC, image settings.** Fn+Shift+brightness took the light 99 → 5. 60 s
+  idle, a nub touch, a key press 10 s later, 30 s idle: it stayed at 5 throughout.
+  This does not reproduce the 2026-10-29 entry above, where MATE dimmed and
+  restored the light on AC. The source agrees with this run: on AC the idle
+  path runs only if `idle-dim-ac` is true. What differed on that card is not
+  known (it has since been overwritten).
+- **Battery, image settings.** Unplugging took the light 5 → 49 → 99 → 50
+  within 1.8 s (UPower flapped to `OnBattery false` and back once). About 15 s
+  later MATE dimmed it to 12. The keys then set it to 1, and 20 s later MATE
+  raised it to 12. A nub touch at 60 s took it to 50 (the owner saw "one level
+  up"). Plugging back in took it to 99.
+- **Battery, `kbd-backlight-battery-reduce false`** (set with `gsettings` in
+  the session, without restarting MATE). The keys set 60. It stayed at 60
+  through unplugging, a flap to AC and back after 2 s, 60 s idle, a nub
+  touch, a key press, 30 s idle, and plugging back in.
+
+Why the plug-in in the last run did not reset to 100: mate-power-manager steps
+toward its target from the level it last set, and the keys write sysfs without
+telling it, so it believed the light was already at 100
+(`gpm_kbd_backlight_set`, `src/gpm-kbd-backlight.c`).
+
+The override file, compiled in a copy of the card's schema directory with
+`glib-compile-schemas --strict`, gave `kbd-backlight-battery-reduce false` on
+the memory backend. A conflict test (the same key in both override files) took
+this file's value over `99_pyra.gschema.override`'s.
+
+Then, after fix 20's override was installed on the card (SHA-256 equal to the
+repository's, schemas recompiled with `--strict`, the session's test value
+reset), the owner logged out and in, and MATE started with the new default:
+
+- Login on AC set 100 (MATE's start; expected). Unplugged at 01:31:01: it
+  stayed at 99. The keys set 40 at 01:31:25. The owner ran the sequence (60 s
+  idle, a nub touch, a key press 10 s later) and reported no change; the log has
+  none until the owner's next key presses at 01:33:58.
+- The owner then ticked "Reduce keyboard backlight brightness" (battery tab)
+  and "Dim display when idle" (AC tab) in MATE's Power Management preferences.
+  These set the user values `kbd-backlight-battery-reduce true` and
+  `idle-dim-ac true`. With them, on battery: the keys set 100, idle dimmed it
+  to 25, a touch gave 50, the keys set 100 again, idle dimmed it to 12 (75 % off
+  MATE's 50, not off the 100 shown), a touch gave 50 and idle 12 again.
+  Plugging in gave 99, and 4 min later on AC idle dimmed it to 25. So the
+  AC-tab checkbox also dims the keyboard. That is a likely, unconfirmed
+  explanation for the 2026-10-29 entry's AC result.

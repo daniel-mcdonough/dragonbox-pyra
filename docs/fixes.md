@@ -1,4 +1,4 @@
-# The nineteen fixes, and what they actually do
+# The twenty fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1048,13 +1048,11 @@ back, at the desktop greeter, with pyra-scripts 0.31 in place
 (`verification-log.md`). It passed only because `pyra-install-helpers.sh` had
 just reloaded pyrainput; before the drop-in, a reboot undid it (above).
 
-In a MATE session the keys work the same, but MATE's power manager keeps its
-own level for the light: after 15-20 s without input it cuts the light by 75 %,
-and the next touch, a key press included, puts it back to 100 %. So a level set
-with the keys lasts until that cycle (`procedure.md` §8). Writing through
-UPower's `KbdBacklight.SetBrightness` instead of sysfs does not change that
-(tested the same day: the touch still restored 99 of 100), so the script writes
-sysfs, which also works at the greeter and without UPower.
+In a MATE session the keys work the same. MATE's power manager would keep its
+own level for the light on battery and undo theirs; fix 20 turns that off. The
+script writes sysfs rather than UPower's `KbdBacklight.SetBrightness`: sysfs
+also works at the greeter and without UPower, and a UPower write updates the
+level MATE keeps for itself, which a later power change would put back (fix 20).
 
 ## Fix 16 — the governor drops the clock between every unit of a burst
 
@@ -1242,6 +1240,65 @@ The selftest installs the cross-build's tarball when it finds one and asserts
 the entry, the files, the blacklist, the base and the default. Without a
 tarball it runs prep with `--no-kernel` and reports the skip in its verdict.
 No prepared card has booted this fix yet (`verification-log.md`).
+
+## Fix 20 — on battery, MATE takes the keyboard light back from the Fn keys
+
+On the shipped kernel the keyboard light is an LED UPower knows
+(`pyra::kbd_backlight`), so mate-power-manager drives it. On battery, with
+MATE's defaults, it does three things to it (measured 2026-10-31 on the image
+card, `verification-log.md`):
+
+- at every power change, unplugging included, it sets the light to half of its
+  own 100 % (`kbd-brightness-dim-by-on-battery 50`), whatever the keys had set;
+- after the idle time it dims that by 75 % (`kbd-brightness-dim-by-on-idle`),
+  raising a level the keys had set below it;
+- at the next touch it puts its 50 % back.
+
+So a level set with the Fn keys (fix 15) or an applet lasted until the next
+idle period. All three hang on one key. In mate-power-manager 1.26.1
+(`src/gpm-kbd-backlight.c`), the idle dim and restore run on battery only when
+`idle-dim-battery` and `kbd-backlight-battery-reduce` are both true, and the
+power-change step does nothing on battery when `kbd-backlight-battery-reduce`
+is false. On AC the idle dim and restore hang on `idle-dim-ac`, false by
+default and in the image, so MATE never dims the light on AC.
+
+Fix 20 installs
+`/usr/share/glib-2.0/schemas/99_pyra_kbdlight.gschema.override`, which sets
+`kbd-backlight-battery-reduce=false`, and recompiles the schemas with the
+image's own `glib-compile-schemas --strict`, in the chroot. It then reads the
+value back with `gsettings` on the memory backend, so the compiled default is
+what it checks. It is a default, so a user who wants MATE's battery dimming
+back sets the key with `gsettings` and that wins. dpkg's glib trigger
+recompiles every override after any schema package changes, so no upgrade
+drops it. MATE's Power Management preferences show the key as "Reduce keyboard
+backlight brightness" on the battery tab, so the user can turn MATE's
+behaviour back on from there. Ticking it, or "Dim display when idle" on the AC
+tab (`idle-dim-ac`, which also covers the keyboard), brings back the dim and
+the restore to MATE's own level, never the one the keys set: MATE's restore
+sets `master_percentage` to 100 and ignores the current level (checked
+2026-10-31 with both ticked). The name sorts after pyra-config-desktop's `99_pyra.gschema.override`,
+so if that package ever sets the same key, this file's value still wins.
+`pyra-install-helpers.sh` installs the same file and recompiles; a running
+session picks the value up at the next power change.
+
+One reset is left, on AC. When MATE goes to its AC level (100 %, at a plug-in or
+a resume), it steps from the level it last set itself, not the real one. The
+keys and the applet write the LED without telling MATE (sysfs, or logind), so
+MATE still thinks the light is at its 100 % and sends nothing. Only at
+mate-power-manager's start, at login on AC, does it read the real level and set
+100 %. A write through UPower's `SetBrightness` is different: MATE follows
+UPower's `BrightnessChanged` signal and takes that level as its own (source,
+not measured), so a later plug-in or resume would put 100 % back.
+
+Checked 2026-10-31 on the image card: with the key false, the light stayed at
+the level the keys set across unplugging, an on-battery flap, 60 s idle, a nub
+touch, a key press and plugging back in (`verification-log.md`).
+
+Not done: an idle dim that restores the user's level. MATE can't, so it would
+be `pyra-idle-dim`'s job (the `pyra-backlight` package), not a setting.
+Not done: `kbd-brightness-dim-by-on-idle 0`. It stops only the dim. The touch
+would still put MATE's 50 % back, and so would every power change. The upstream
+side is in `reports/pyra-kernel-kbd-backlight.md`.
 
 ## Fixes 6, 7 and 12 as a package
 

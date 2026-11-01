@@ -907,10 +907,13 @@ What to expect on it:
   points the keys at `pyra-kbdlight.sh`, which drives the LED in the same nine
   steps as before (`fixes.md`); the `pyra-backlight` 0.2 applet does too.
 - MATE's power manager now reaches the keyboard light through UPower and
-  applies its stock keyboard settings, whatever `backlight-enable` says: it
-  halves the light on battery, cuts it by 75 % after 15-20 s without input,
-  and puts it back to 100 % on the next touch, overriding a level set with the
-  Fn keys or the applet (`procedure.md` §8, measured 2026-10-29).
+  applies its stock keyboard settings, whatever `backlight-enable` says. On
+  battery it halves the light at each power change, cuts it by 75 % when idle
+  and puts its 50 % back on the next touch, overriding a level set with the Fn
+  keys or the applet. Prep's fix 20 turns that off with
+  `kbd-backlight-battery-reduce false`; on AC MATE leaves the light alone
+  unless "Dim display when idle" is ticked (`procedure.md` §8, measured
+  2026-10-31).
 - The light starts off on the first boot, and after that systemd restores
   the saved level.
 - `palmas-gpadc` logs one failed conversion about 26 s into every boot of
