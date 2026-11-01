@@ -1682,3 +1682,36 @@ written again from the image, not passed on after a boot.
   `nothing to do: disk 500006912, partition 499480576, filesystem 499349504
   sectors`; root mounted at 7.19 s (dmesg).
 - **Not run:** a grow with the lock on a Pyra (`grow-rootfs.md`).
+
+## 2026-11-01 — a first-boot grow with the lock on a Pyra (R46)
+
+`pyra-trixie-prepped-20261101-050948.img`, built from f45b0b9 with
+`--release --grow-on-boot --kernel m4-kbdled-kernel.tar.gz` (`repo_dirty=no`),
+written to the 256 GB card and booted once on `5.6.19-m4-kbdled`. Read over
+ssh after that boot, with nothing changed on the card except the login
+password, an ssh key and a sudoers line, plus a serial console capture
+(`ttyO2`, 1500000 baud) of the same boot.
+
+- **initrd:** `lsinitramfs` lists `usr/bin/flock` (util-linux 2.41),
+  `usr/lib/udev/rules.d/60-block.rules` and `usr/sbin/pyra-grow-root`. The
+  unpacked script is byte-identical to the repo copy (SHA-256 `13da9c02…`).
+- **Grow log** (`/run/initramfs/pyra-grow-root.log`): 232 GiB unused, capacity
+  check passed (931 samples), read-only fsck 64 s, `partition 2 is now 499480576
+  sectors`, `resize.f2fs` 490 s, fsck after it 67 s, all clean, then
+  `done: the root filesystem is now 238 GiB`. No `next boot will finish it`, no
+  `moved`, no `could not lock`. (The only "Move" lines are `resize.f2fs`'s own
+  `[FIX] Move curseg` output.)
+- **After:** `blockdev --getsz` gives 500006912 for the disk and 499480576 for
+  p2; `df -h /` 239G, 4.9G used; no failed units.
+- **Timing:** `Run /init` at 3.66 s; root mounted at 652.9 s (dmesg, F2FS
+  `Mounted with checkpoint version = 435f63aa`). The serial console shows
+  nothing between 33.8 s and 651.9 s.
+- **udev re-reads:** dmesg has 80 `mmcblk1: p1 p2` lines between 11.7 s and
+  18.0 s, during the capacity check: its 931 one-sector `dd of=/dev/mmcblk1`
+  writes each close a write-opened disk, and the `watch` rule re-reads the
+  table on that close. None appear after that, including after `sfdisk`, which
+  runs under the lock. That fits the lock keeping udev off, but no run without
+  the lock was made to compare.
+- **Serial console:** the grow's own messages never reach it. `console=tty0`
+  comes last on the command line, so `/dev/console`, where the initramfs
+  scripts write, is the LCD; only kernel messages go to `ttyO2`.

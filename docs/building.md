@@ -469,6 +469,10 @@ itself to the stock kernel on the following boot.
 
 If a test kernel wedges the display before the menu is usable, the serial
 console on `ttyO2` at 1500000 is already enabled on every boot entry.
+It carries the kernel's messages only. Every entry lists `console=tty0` after
+`console=ttyO2,1500000n8`, so `/dev/console` is the LCD, and whatever the
+initramfs scripts write there (the first-boot grow's progress, for
+one) shows on the screen and not on the serial line (measured 2026-11-01).
 
 ---
 

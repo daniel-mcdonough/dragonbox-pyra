@@ -141,15 +141,27 @@ hook, inspected with `lsinitramfs` and `unmkinitramfs`):
 
 The boot after the rebuild (already grown, from `l5`) logged
 `nothing to do: disk 500006912, partition 499480576, filesystem 499349504
-sectors`, and root mounted at 7.2 s (dmesg). A grow on a Pyra with the lock has
-not been run yet.
+sectors`, and root mounted at 7.2 s (dmesg).
 
-**Booted on a Pyra twice.** First on 2026-10-31 (the card above, through
+**A grow with the lock on a Pyra** (2026-11-01, a `--release` image built
+from f45b0b9, first boot, `verification-log.md`): `done: the root filesystem
+is now 238 GiB`, with no wait message and no moved start; root mounted at
+653 s. udev did re-read the table on that boot: 80 times in 6 s, during the
+capacity check, whose one-sector writes each close the disk after writing.
+That is before `sfdisk` and the lock, while the table is still unchanged, so
+the partition nodes it drops come back unchanged. dmesg shows no re-read after
+`sfdisk`. The grow's messages go to `/dev/console`, which is the LCD
+(`console=tty0` is last on the command line); the serial console shows only
+the kernel's lines, and a gap while the grow runs.
+
+**Booted on a Pyra three times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
 mounted at 8.2 s on the next one (serial console, 2026-11-01). Then on
 2026-11-01, from a `--release` image: the grow ran on the first boot, with no
 reboot, and ended `done: the root filesystem is now 238 GiB` (`verification-log.md`).
+Then again on 2026-11-01 from a `--release` image with the lock, the same way
+(above).
 
 ---
 
