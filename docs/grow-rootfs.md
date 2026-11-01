@@ -101,6 +101,19 @@ throwaway loop-device cards:
 
 A refused card must come back byte-identical.
 
+The real-image case hashes the image once, before copying it. A wrong image
+costs no 7 GiB copy.
+
+**Open: a false "partition 2 start moved".** In one of three PC runs on
+2026-11-01, the genuine case's `/sys/class/block/loop0p2/start` did not exist
+for a moment after `sfdisk` and `partx -u`. The script read nothing from it and
+exited 1 with `partition 2 start moved; restore the partition table`. The table
+was fine: the partition had grown and the filesystem had not, and the next run
+finished the grow as an interrupted one. The likely cause is the host's udev
+re-reading the table when the disk is closed after the write. Whether the
+initramfs's udev can do the same on a Pyra is unknown. Until this is fixed,
+don't act on that message. Reboot once: the next boot finishes the grow.
+
 **Booted on a Pyra twice.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
