@@ -929,6 +929,63 @@ there. No boot entry used them any more, and
 `../dragonbox-pyra-build/kernel/m4-uprobe-kernel.tar.gz` reinstalls them.
 Its modules are still in `/usr/lib/modules`.
 
+## The release image in CI
+
+`.github/workflows/release-image.yml` builds the release image on a hosted
+`ubuntu-24.04` runner. It runs by hand only (`workflow_dispatch`), and its
+build step is the same command as on a PC:
+
+    sudo env PYRA_VENDOR_7Z=<archive> ./pc/pyra-image-build.sh --out <name>.img \
+        -- --release --grow-on-boot --kernel <m4-kbdled-kernel.tar.gz>
+
+The workflow adds only what a PC already has: the host tools, the vendor
+archive, and the kernel tarball. The vendor archive is downloaded from the URL
+in `pc/pyra-vendor-image.sh` and cached under its pinned SHA-256. The build
+script checks the archive and the image inside it, as it does on a PC. The
+kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
+workflow's one input is that run's ID. Once a `kernel-*` release is pinned
+(R34 in the work queue), that release's asset should replace the input.
+
+The workflow's result is a workflow artifact. It holds the image compressed with
+`xz -6`, the build script's `.sha256` of the uncompressed image (for
+`sha256sum -c` after `unxz`), a `.sha256` of the `.xz`, the `.info` manifest,
+and the prep and fsck logs. On 2026-11-01, `xz -T0 -6` brought a 6 GiB release
+image to 936 MB in 90 s on the build PC (measured). That is under GitHub's
+2 GiB limit for a release asset, so a release can host the image. Hosting is
+still undecided.
+
+**What the runner must allow, and how the workflow checks it.** The workflow
+has not run on GitHub yet, because the repository has no remote. These are
+assumptions about hosted runners, and the workflow checks each one before
+the build so that a gap fails early with a clear error:
+
+| Need | Why | Checked by |
+| --- | --- | --- |
+| root | loop devices and mounts | hosted runners have passwordless `sudo` |
+| `losetup --partscan` | the image's two partitions | the build script stops on a missing `p2` |
+| f2fs in the kernel | the vendor rootfs is f2fs | `modprobe f2fs`. If that fails, the workflow installs `linux-modules-extra-$(uname -r)` and tries again, then checks `/proc/filesystems` |
+| qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
+| 12 GiB free in the work tree | archive (862 MB), sparse 6 GiB image (3.7 GiB used), its `.xz` | `df` before the download |
+| time | an estimate, not measured on a runner: under an hour, mostly the qemu steps | `timeout-minutes: 120` |
+
+The f2fs row is the most likely to fail: runner images use a cloud kernel
+flavour, and it may not carry f2fs. If the first run fails there and the
+extra-modules package doesn't help, don't work around it inside the
+workflow. Write the image with a FUSE f2fs or a VM instead, and treat that as
+a change of build shape. The other option is a self-hosted runner, which
+needs only the same packages as a PC.
+
+`pyra-image-push.sh` and `pyra-image-write.sh` copy and write images on the
+owner's machines, so they stay out of CI. A CI image is written the same way
+once it is unpacked.
+
+**Checking a change on a PC.** The workflow's `Build` and `Compress` steps are
+plain shell with `$WORK` as their tree. To run them unchanged on a PC, point
+`WORK` at a directory that holds `vendor/pyra-trixie-t1-brokenxorg.7z` and
+`kernel/m4-kbdled-kernel.tar.gz`, set `GITHUB_SHA` to the commit and
+`GITHUB_ENV` to a scratch file, and run each step's `run:` text with `bash -e`.
+GitHub runs `run:` steps on Linux the same way.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card

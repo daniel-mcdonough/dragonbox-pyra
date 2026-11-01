@@ -1,0 +1,133 @@
+# Build the release card image: the vendor trixie image with
+# pyra-trixie-prep.sh --release --grow-on-boot applied and the shipped kernel
+# installed, by pc/pyra-image-build.sh exactly as on a PC.
+#
+# Run by hand only. The kernel comes from a run of the Kernel release
+# workflow: give that run's ID, and its kernel-m4-kbdled artifact goes into the
+# image. (No kernel-* release is pinned in prep yet; docs/building.md.)
+#
+# The build script checks the vendor archive and the image inside it against
+# the SHA-256s pinned in pc/pyra-vendor-image.sh, so the image cannot be built
+# from anything else. The result is kept as a workflow artifact: the image
+# compressed with xz, the build script's .sha256 (of the uncompressed image,
+# for sha256sum -c after unxz), a .sha256 of the .xz, its .info manifest, and
+# the prep and fsck logs.
+#
+# Needs on the runner: root (loop devices with partition scan, mounts), f2fs in
+# the kernel, qemu-user-static with binfmt's fix-binary flag (prep runs the
+# image's armhf tools in a chroot) and about 12 GiB free. docs/building.md,
+# "The release image in CI", says which of those are checked here and how.
+
+name: Release image
+
+on:
+  workflow_dispatch:
+    inputs:
+      kernel_run_id:
+        description: ID of a Kernel release run whose kernel-m4-kbdled artifact goes into the image
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read   # the kernel artifact of another run
+
+concurrency:
+  group: release-image
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: Build the release image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      # Outside the checkout. The runner context is not available to a job's
+      # env, hence this step.
+      - name: Work tree
+        run: echo "WORK=$RUNNER_TEMP/pyra" >> "$GITHUB_ENV"
+
+      - name: Host tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-user-static f2fs-tools libarchive-tools xz-utils
+          # The chroot cannot see the host's qemu-arm-static, so binfmt must
+          # have opened it at registration: the F flag.
+          sudo systemctl restart systemd-binfmt || true
+          f=/proc/sys/fs/binfmt_misc/qemu-arm
+          [[ -r $f ]] || { echo "::error::no qemu-arm binfmt entry"; exit 1; }
+          grep -q '^flags:.*F' "$f" || { cat "$f"; echo "::error::qemu-arm binfmt lacks the F flag"; exit 1; }
+          # The vendor rootfs is f2fs. The runner kernel may carry it only in
+          # its extra modules.
+          if ! sudo modprobe f2fs; then
+            sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+            sudo modprobe f2fs
+          fi
+          grep -qw f2fs /proc/filesystems || { echo "::error::no f2fs in the runner kernel"; exit 1; }
+
+      # The vendor archive (862 MB) unpacks to a sparse 6 GiB image; the
+      # prepared image, its .xz and the archive must fit side by side.
+      - name: Disk space
+        run: |
+          mkdir -p "$WORK"
+          df -h / "$WORK"
+          free=$(df --output=avail -B1G "$WORK" | tail -1)
+          [[ $free -ge 12 ]] || { echo "::error::only ${free} GiB free in $WORK, need 12"; exit 1; }
+
+      - name: Vendor pin
+        id: vendor
+        run: |
+          TOP=$PWD
+          . pc/pyra-vendor-image.sh
+          echo "sha=$SHA_7Z" >> "$GITHUB_OUTPUT"
+          echo "url=$VENDOR_URL" >> "$GITHUB_OUTPUT"
+
+      # Cached by the archive's pinned hash, and saved only after a build that
+      # checked it, so a changed pin downloads again.
+      - uses: actions/cache@v4
+        id: vendor-cache
+        with:
+          path: ${{ runner.temp }}/pyra/vendor
+          key: vendor-7z-${{ steps.vendor.outputs.sha }}
+
+      - name: Vendor archive
+        if: steps.vendor-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$WORK/vendor"
+          curl -fL --retry 3 -o "$WORK/vendor/pyra-trixie-t1-brokenxorg.7z" "${{ steps.vendor.outputs.url }}"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: kernel-m4-kbdled
+          run-id: ${{ inputs.kernel_run_id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/pyra/kernel
+
+      # The output directory is made here so that it, and the .xz written into
+      # it next, belong to the runner user rather than root.
+      - name: Build
+        run: |
+          name=pyra-trixie-release-${GITHUB_SHA::12}
+          mkdir -p "$WORK/image"
+          sudo env PYRA_VENDOR_7Z="$WORK/vendor/pyra-trixie-t1-brokenxorg.7z" \
+            ./pc/pyra-image-build.sh --out "$WORK/image/$name.img" \
+            -- --release --grow-on-boot --kernel "$WORK/kernel/m4-kbdled-kernel.tar.gz"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+
+      - name: Compress
+        run: |
+          cd "$WORK/image"
+          xz -T0 -6 "$NAME.img"
+          sha256sum "$NAME.img.xz" > "$NAME.img.xz.sha256"
+          cat "$NAME.info"
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: ${{ runner.temp }}/pyra/image/
+          compression-level: 0
+          if-no-files-found: error
