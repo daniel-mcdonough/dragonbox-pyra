@@ -168,7 +168,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/building.md](docs/building.md) | Compiling the X driver and the kernel on a PC, and installing a test build safely. |
 | [docs/kernel-changes.md](docs/kernel-changes.md) | Every kernel patch, what it does, and which builds carry it. |
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
-| [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra: the demo kit, and how to undo it. |
+| [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra, on the shipped kernel or a one-boot M4 kernel, and how to undo it. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | [reports/](reports/) | Findings written up for submission upstream. Drafts, not sent. |
 

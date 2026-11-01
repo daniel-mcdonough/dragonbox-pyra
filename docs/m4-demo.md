@@ -3,7 +3,7 @@
 > **Type: instructions.** Steps to follow.
 
 The OMAP5432 in the Pyra has two Cortex-M4 cores, called the IPU, that nothing
-on the shipped system ever starts. This kit starts them under Linux
+on the stock system ever starts. This demo starts them under Linux
 `remoteproc`, shows both of them running code, measures their clock speed, and
 leaves the machine the way it was.
 
@@ -13,14 +13,18 @@ are unlikely ever to. What it does show is the whole path working on Pyra
 hardware: device tree, IOMMU, carveout memory, firmware loading and both cores
 coming out of reset.
 
-**Status.** The kernel changes and the heartbeat firmware were first booted on
-a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`). **The whole kit was run on that
-unit on 2026-10-18**, following the steps below: the `5.6.19-m4demo` kernel
-booted, the desktop, GPU driver and both backlights came up as usual, and the
-one-boot revert set the default back. On that kernel `pyra-m4-check.sh` gave
-13 ok, `pyra-m4-demo.sh` 13 ok with **both cores measured at 212.9 MHz**, and
-`pyra-m4-run.sh` 11 ok, all with 0 failed. The logs are in
-`experiments/m4-ipu/results/`.
+Everything it needs is in this repository: the kernel patches
+(`experiments/m4-ipu/`), the firmware source (`experiments/m4-ipu/firmware/`)
+and the device scripts (`device/pyra-m4-*.sh`).
+
+**Status.** First booted on a V5.3 unit on 2026-09-20 (`docs/m4-ipu.md`).
+**Run end to end on that unit on 2026-10-18**, on both kernels that carry the
+M4 work: the shipped `5.6.19-m4-kbdled` and the M4-only `5.6.19-m4demo`. On
+each, `pyra-m4-demo.sh` gave 13 ok, 0 failed, with **both cores measured at
+212.8 to 212.9 MHz**. On `5.6.19-m4demo`, `pyra-m4-check.sh` also gave 13 ok
+and `pyra-m4-run.sh` 11 ok, both with 0 failed. The logs are in
+`experiments/m4-ipu/results/`. **One unit so far.** Results from another unit
+are the most useful thing you can add (see "If you post results").
 
 ---
 
@@ -79,21 +83,27 @@ Why this is evidence rather than a script printing numbers:
 ## What you need
 
 - A **Pyra** running the **Debian 13 (trixie) card image** from
-  `packages.pyra-handheld.com/images/trixie/`, set up per this repository's
-  `docs/procedure.md`. The kernel here is built from that image's own kernel
-  source (`5.6.19-pyradef`) and installs **beside** it.
-  Tested on a V5.3 mainboard. Other mainboards have not been tried.
+  `packages.pyra-handheld.com/images/trixie/`. Tested on a V5.3 mainboard.
+  Other mainboards have not been tried.
 - A **GP** (general purpose) SoC, which retail Pyras are. Check it with:
 
       cat /sys/bus/soc/devices/soc0/type        # must say GP
 
   On an HS part the firmware would have to be signed by TI and none of this
   works.
-- SSH or a terminal on the Pyra, about **47 MB free in `/boot`** (kernel,
-  initrd and device trees) and 41 MB in `/usr`. The installer checks both and
-  stops before changing anything if either is short. A `/boot` that has
-  collected test kernels may not have room: kernels that no boot entry points
-  at still keep their files there.
+- A kernel with the M4 work in it. Which route you take depends on what the
+  card runs now:
+
+      uname -r
+
+  | `uname -r` says | route |
+  | --- | --- |
+  | `5.6.19-m4-kbdled` | **A.** The shipped kernel already has it. Nothing to install. |
+  | `5.6.19-pyradef` (stock) | **B.** Build `5.6.19-m4demo` and boot it once. |
+
+- On the PC: this repository and `arm-none-eabi-gcc` (Debian/Ubuntu:
+  `gcc-arm-none-eabi`; Arch: `arm-none-eabi-gcc`).
+  Route B also needs Docker for the kernel build.
 
 ---
 
@@ -101,66 +111,97 @@ Why this is evidence rather than a script printing numbers:
 
 Read this part even if you skip everything else.
 
-- **One new kernel, `5.6.19-m4demo`, beside the stock one.** The stock kernel,
-  its modules and its boot entry are not touched. The new kernel gets the
-  `l1` test slot in `/boot/extlinux/user.cfg`. **If you already have a test
-  kernel in `l1`, its entry is replaced** (its files stay on disk), so save
-  `user.cfg` first.
+- **Never leave the firmware in `/lib/firmware`.** Once `omap_remoteproc` is
+  loaded, the kernel starts the M4s by itself whenever `omap5-ipu-fw.xem4` is
+  there, at every boot. Both scripts remove it on exit, however they exit.
+  Every install path in this repository (`pyra-trixie-prep.sh`,
+  `pyra-install-debug-kernel.sh`) also writes
+  `/etc/modprobe.d/pyra-m4-noautoboot.conf`, which stops `omap_remoteproc`
+  loading at boot. The scripts load it themselves when you run them, and it
+  stays loaded until the next boot.
+- **Route A changes nothing else.** It runs on the kernel you already boot.
+- **Route B adds one kernel, `5.6.19-m4demo`, beside the stock one.** The stock
+  kernel, its modules and its boot entry are not touched. The new kernel gets
+  the `l1` test slot in `/boot/extlinux/user.cfg`. **If you already have a
+  test kernel in `l1`, its entry is replaced** (its files stay on disk), so
+  save `user.cfg` first. The installer needs about **47 MB free in `/boot`**
+  and 41 MB in `/usr`, checks both, and stops before changing anything if
+  either is short. Kernels that no boot entry points at still keep their files
+  in `/boot`.
 - **The Pyra has no boot menu you can see.** U-Boot has no display driver, so
   the menu exists only on the serial console. To boot a test kernel you make it
   the default, and `pyra-boot-kernel.sh debug --once` arms a service that puts
-  the default back early in the following boot. A kernel that boots therefore
-  gets exactly one boot.
+  the default back early in the following boot. A test kernel that boots
+  therefore gets exactly one boot.
 - **If the new kernel does not boot at all**, nothing on the device can fix
   it. Put the SD card in a PC and change the `default l1` line in
   `/boot/extlinux/extlinux.conf` back to what it was (`default l0` on a
   stock image).
-- **Never leave the firmware in `/lib/firmware`.** Without a blacklist the
-  kernel starts the M4s automatically whenever `omap5-ipu-fw.xem4` is there,
-  at every boot. Both scripts remove it on exit, however they exit. The
-  install script also writes `/etc/modprobe.d/pyra-m4-noautoboot.conf`, which
-  keeps `omap_remoteproc` from loading at boot; the demo loads it itself when
-  you run it, and it stays loaded until the next boot.
-- The kernel carries **only** this repository's general fixes (`patches/`) and
-  the four M4 patches. It does not carry the AESS audio work or the
-  frequency-table changes that this project's everyday `5.6.19-m4` kernel
-  has. Your audio and CPU frequencies behave as they do on stock.
+- `5.6.19-m4demo` carries **only** the general fixes in `patches/` and the four
+  M4 patches. It does not carry the AESS audio work, the GPU idle-power fix or
+  the extra frequency steps that the shipped `5.6.19-m4-kbdled` has. While
+  it runs, audio and CPU frequencies behave as they do on stock.
 
 ---
 
 ## Steps
 
-On the Pyra, in the unpacked kit:
+### On the PC: build the firmware and copy it over
 
-    sha256sum -c SHA256SUMS
+From the top of this repository:
 
-    # once: the one-boot revert service runs the script from here
-    sudo install -m 0755 pyra-boot-kernel.sh /usr/local/sbin/
+    make -C experiments/m4-ipu/firmware all demo
+    ./pc/pyra-m4-verify.sh --patches        # optional: the patch set and firmware still say what docs/m4-ipu.md claims
 
-    sudo ./pyra-m4-check.sh            # read-only; safe on the stock kernel
-    sudo ./pyra-install-debug-kernel.sh m4demo-kernel.tar.gz
+    ssh pyra@<address> mkdir -p pyra-m4
+    scp device/pyra-m4-check.sh device/pyra-m4-demo.sh device/pyra-m4-run.sh \
+        experiments/m4-ipu/firmware/pyra-m4-demo.xem4 \
+        experiments/m4-ipu/firmware/omap5-ipu-fw.xem4 \
+        pyra@<address>:pyra-m4/
+
+`pyra-m4-demo.xem4` is the one with the clock measurement. `omap5-ipu-fw.xem4`
+is the plain heartbeat, for the strict test. Each is about a kilobyte, built
+from a few hundred lines of C and assembly with no TI toolchain.
+
+### Route B only: boot the M4 kernel once
+
+Skip this on `5.6.19-m4-kbdled`. On the PC (about ten minutes):
+
+    ./pc/pyra-crossbuild.sh kernel-m4demo
+    ./pc/pyra-push-kernel.sh --install \
+        --tarball ../dragonbox-pyra-build/kernel/m4demo-kernel.tar.gz pyra@<address>
+
+`pyra-push-kernel.sh` copies `device/` to `~/dragonbox-pyra/` on the Pyra and
+installs the kernel into `l1`. It does not make it the default. On the Pyra:
+
+    sudo install -m 0755 ~/dragonbox-pyra/device/pyra-boot-kernel.sh /usr/local/sbin/   # once; the revert service runs it from there
     sudo pyra-boot-kernel.sh debug --once
     sudo pyra-boot-kernel.sh status    # "next boot: l1", "one-shot revert: enabled"
     sudo systemctl reboot
 
-After it comes back:
+After it comes back, `uname -r` should say `5.6.19-m4demo`. The reboot after
+that returns to the stock kernel on its own.
 
-    uname -r                           # 5.6.19-m4demo
-    sudo ./pyra-m4-check.sh            # expect two remoteproc devices, both offline
+### On the Pyra: run it
+
+    cd ~/pyra-m4
+    ./pyra-m4-check.sh --modprobe      # read-only; expect two remoteproc devices, both offline
     sudo ./pyra-m4-demo.sh | tee m4-demo.log
 
 and, for the strict version of the test, using the plain heartbeat firmware:
 
-    sudo ./pyra-m4-run.sh firmware/omap5-ipu-fw.xem4
+    sudo ./pyra-m4-run.sh omap5-ipu-fw.xem4
 
-The next reboot returns to the stock kernel on its own. To run the demo again
-later, use `sudo pyra-boot-kernel.sh debug --once` and reboot.
+`pyra-m4-check.sh --modprobe` is safe because the firmware is not in
+`/lib/firmware`: loading the module with no firmware starts nothing.
 
 **If you post results**, please include `m4-demo.log`, the output of
 `cat /sys/bus/soc/devices/soc0/*` and your mainboard version. A second unit's
 clock measurement is worth more than the first.
 
 ### Removing it
+
+Route A leaves nothing behind but `~/pyra-m4`. For route B, also:
 
     sudo pyra-boot-kernel.sh stock
     sudo sed -i '/^label l1$/,/^label /{/^label l1$/d;/^label /!d}' /boot/extlinux/user.cfg
@@ -173,31 +214,32 @@ clock measurement is worth more than the first.
 
 | what you see | what it means |
 | --- | --- |
-| `no ipu remoteproc device` | Not running `5.6.19-m4demo` (check `uname -r`), or the `modprobe omap_remoteproc` the demo runs failed (its error is printed above). The blacklist does not cause this: it stops only the load at boot. |
-| `writing 'start' failed`, `-EBUSY` in dmesg | Something asked for a hardware timer the backlight owns. The kit's device tree deliberately gives the IPU none. If you edited it, see "The one Pyra-specific trap" in `docs/m4-ipu.md`. |
+| `no ipu remoteproc device` | Not running a kernel with the M4 work (check `uname -r` against the table above), or the `modprobe omap_remoteproc` the script runs failed (its error is printed above). The blacklist does not cause this: it stops only the load at boot. |
+| `writing 'start' failed`, `-EBUSY` in dmesg | Something asked for a hardware timer the backlight owns. This repository's device tree deliberately gives the IPU none. If you edited it, see "The one Pyra-specific trap" in `docs/m4-ipu.md`. |
 | `core1 never ran` / `did not advance` | Only one M4 left reset. Please post the log; this has not been seen. |
 | `state=FAULT` | The firmware took a fault. Please post the log and `dmesg`. |
 | `clock-src=none` | Neither the DWT cycle counter nor SysTick worked on your M4s. The heartbeat is still the proof they run, and the clock is simply not measured. Please post the `clock-src` line. |
 | `clock-src=dwt` | Your M4s have a DWT cycle counter, unlike the unit this was developed on. Please post it. |
 | `the count stood still` or `disagree by more than 2%` | The clock reading was not trustworthy, so no figure is reported. Run again with `--seconds 30`. If it persists, post the log. |
-| `BUG: scheduling while atomic` | The kernel is missing `0012`. This kit's kernel has it, so you are on a different one. |
+| `BUG: scheduling while atomic` | The kernel is missing `0012`. Both kernels built here have it, so you are on a different one. |
 | `/lib/firmware/omap5-ipu-fw.xem4 already exists` | Left behind by something else. `sudo ./pyra-m4-run.sh --stop` removes it. |
 
 ---
 
-## Building it yourself
+## A standalone kit, for someone without the repository
 
-Everything in the kit can be rebuilt from this repository on a Linux PC with
-Docker and `arm-none-eabi-gcc`:
+`pc/pyra-m4-demo-kit.sh` packs route B into one tarball: the `5.6.19-m4demo`
+kernel, both firmwares, the device scripts and this file as its README. Because
+it ships a kernel binary, it also ships what that binary was built from: every
+patch in the order applied, the exact `.config`, and the upstream source
+package name and checksum. It refuses to finish if anything in it names the
+person who built it.
 
-    ./pc/pyra-crossbuild.sh kernel-m4demo        # the kernel, in a bookworm container
-    make -C experiments/m4-ipu/firmware all demo # both firmwares
-    ./pc/pyra-m4-demo-kit.sh                     # the kit itself
+    ./pc/pyra-crossbuild.sh kernel-m4demo
+    ./pc/pyra-m4-demo-kit.sh             # ../dragonbox-pyra-build/m4-demo-kit/pyra-m4-demo-<date>.tar.gz
 
-The kit's `kernel-source/` holds what the kernel binary was built from: every
-patch in the order it was applied, the exact `.config`, and the upstream
-source package name and checksum. `firmware-source/` is the firmware, about a
-few hundred lines of C and assembly, about a kilobyte compiled, with no TI toolchain involved.
+Rebuild the kit after any change to the scripts or this file. A kit only
+carries the versions it was built from.
 
 ---
 

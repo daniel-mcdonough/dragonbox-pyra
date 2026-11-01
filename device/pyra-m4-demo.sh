@@ -8,8 +8,9 @@
 #
 # This is the one to run for an audience; pyra-m4-run.sh is the strict test
 # and the two complement each other. Build the firmware on a PC with
-# `make demo` in experiments/m4-ipu/firmware, or use the prebuilt one in the
-# demo kit. Needs the 5.6.19-m4 kernel.
+# `make demo` in experiments/m4-ipu/firmware (docs/m4-demo.md), or use the
+# prebuilt one in a demo kit. Needs a kernel with the M4 work: 5.6.19-m4-kbdled
+# or 5.6.19-m4demo.
 #
 # What you see, and why each part means something:
 #
