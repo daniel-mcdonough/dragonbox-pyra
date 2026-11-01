@@ -113,9 +113,12 @@ The table was fine: the next run finished the grow as an interrupted one. The
 likely cause is udev re-reading the table when the disk is closed after a
 write, which drops and re-adds the partition nodes. The initramfs runs udev
 too, so the same could happen on a Pyra. Now the script:
-- holds a `flock` on the disk from `sfdisk` until it exits. udev does not
-  re-read a locked disk (`sfdisk(8)`, `--lock`). The hook copies `flock` into
-  the initrd.
+- holds a `flock` on the disk from just before the capacity check's first
+  write until it exits, so the check's one-sector writes and `sfdisk` are all
+  covered. udev does not re-read a locked disk (`sfdisk(8)`, `--lock`). The
+  hook copies `flock` into the initrd; without it the script runs unlocked.
+  Only a grow that extends the partition takes it, since that is the only one
+  that writes to the whole disk.
 - waits up to 10 s for p2's device node, start and size. If they never
   appear, it says the next boot will finish the grow and exits 1.
 - reports a moved start only when it read a start that differs, and names
@@ -150,9 +153,19 @@ is now 238 GiB`, with no wait message and no moved start; root mounted at
 capacity check, whose one-sector writes each close the disk after writing.
 That is before `sfdisk` and the lock, while the table is still unchanged, so
 the partition nodes it drops come back unchanged. dmesg shows no re-read after
-`sfdisk`. The grow's messages go to `/dev/console`, which is the LCD
-(`console=tty0` is last on the command line); the serial console shows only
-the kernel's lines, and a gap while the grow runs.
+`sfdisk`. Since then the lock is taken before the capacity check (below).
+The grow's messages go to `/dev/console`, which is the LCD (`console=tty0` is
+last on the command line); the serial console shows only the kernel's lines,
+and a gap while the grow runs.
+
+**The lock from the capacity check on** (PC, 2026-11-01,
+`pyra-grow-root-selftest.sh --quick` with each run of the script marked in
+dmesg, and the `loopN: p1 p2` lines between the marks counted): with the lock
+taken at `sfdisk`, the script's 14 runs made 26 table re-reads, up to 9 in one
+run. With the lock taken before the capacity check they made none. The
+selftest's own card setup, outside the script, made 24 and 23. The full
+selftest, real image included, passes with the new scope. Not yet run on a
+Pyra.
 
 **Booted on a Pyra three times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card

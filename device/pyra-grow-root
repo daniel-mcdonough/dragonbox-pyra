@@ -107,6 +107,15 @@ DISKID=0x$(dd if="$DISK" bs=1 skip=440 count=4 2>/dev/null | od -An -tx4 | tr -d
 say "the card has $(((DISK_SZ - FREE_START) / 2097152)) GiB unused; growing the root filesystem"
 
 if [ $GROW_PART = 1 ]; then
+	# udev re-reads the table when the disk is closed after a write unless the
+	# disk is locked (sfdisk(8), --lock), and that re-read is what makes the
+	# partition nodes vanish. The capacity check's writes close the disk once
+	# per sample, and sfdisk once more, so lock it before the first of them and
+	# hold the lock until exit; udev then only sends change events. Not a
+	# guarantee, so wait_part still guards the reads after sfdisk.
+	if command -v flock >/dev/null 2>&1 && exec 9<"$DISK"; then
+		flock -x 9 || quiet "could not lock $DISK"
+	fi
 	say "checking that the card really has that space"
 	rm -rf "$TMP"
 	mkdir -p "$TMP" || { say "cannot make $TMP"; exit 1; }
@@ -189,13 +198,6 @@ wait_part() {
 }
 
 if [ $GROW_PART = 1 ]; then
-	# udev re-reads the table when the disk is closed after a write unless the
-	# disk is locked (sfdisk(8), --lock), and that re-read is what makes the
-	# partition nodes vanish. Hold the lock until exit, so udev only sends
-	# change events. Not a guarantee, so wait_part still guards the reads.
-	if command -v flock >/dev/null 2>&1 && exec 9<"$DISK"; then
-		flock -x 9 || quiet "could not lock $DISK"
-	fi
 	echo ',+' | sfdisk --no-reread --no-tell-kernel --wipe never --wipe-partitions never -q -N 2 "$DISK" >> "$LOG" 2>&1 ||
 		{ say "sfdisk failed; nothing else was changed"; exit 1; }
 	partx -u --nr 2 "$DISK" >> "$LOG" 2>&1 || blockdev --rereadpt "$DISK" >> "$LOG" 2>&1
