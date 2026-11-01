@@ -38,7 +38,7 @@ On the PC:
     sudo mount /dev/sdX2 /mnt
     sudo mount /dev/sdX1 /mnt/boot
     sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # applies the fixes; asks for a password
-                                                      # and offers to download the kernel
+                                                      # and needs a kernel: see below
     sudo umount /mnt/boot /mnt && sync
 
 Put the card in the left slot and **hold the power button until both LEDs go
@@ -170,7 +170,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
 | [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra, on the shipped kernel or a one-boot M4 kernel, and how to undo it. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
-| [reports/](reports/) | Findings written up for submission upstream. Drafts, not sent. |
+| `reports/` | Findings written up for submission upstream. Drafts, not sent, so the public copy leaves them out until they are; the docs still name them where they cite one. |
 
 ### Logs: history, not instructions
 
@@ -191,7 +191,7 @@ with the private development notes; it is not published.
     device/      run these on the Pyra, or install them onto it
     patches/     kernel source patches, applied by the build script
     experiments/ kernel changes and measurements on trial, kept out of patches/
-    reports/     findings written up for upstream, drafted but not sent
+    reports/     findings written up for upstream, drafted but not sent (not in the public copy)
     docs/        one document per job, listed above
 
 The scripts are idempotent and refuse to run against anything that is not what
