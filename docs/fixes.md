@@ -1454,3 +1454,7 @@ Fix 12 is not watched. Its drop-in survives package runs by itself, but on a
 card where it was removed for the `0.38+pyra1` package, an archive upgrade
 brings back the stock wheel mapping without a word.
 
+Fix 21 has a guard of the same shape, `pyra-wsegl-guard`, for the library
+`dri3wsegl-pyra` owns. It is described under fix 21: it keys on the `.stock`
+copy and a rollback marker rather than on backups.
+

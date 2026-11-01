@@ -701,5 +701,15 @@ them. To check one initrd by hand:
   in favour of the `0.38+pyra1` package: there, an archive upgrade also
   brings back the uncalibrated wheel, so re-run `pyra-volumed/install.sh`.
   The hook does not watch fix 12.
+- **A `dri3wsegl-pyra` reinstall or upgrade** puts the stock
+  `libpvrDRI3WSEGL.so` back, which reverts fix 21. A second dpkg hook
+  (`/etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard`) re-patches it after the package
+  run and prints `pyra-wsegl-guard: ... re-applied fix 21`; programs already
+  running keep the stock build until they restart. A newer package is a build
+  the fix does not know: the hook changes nothing and prints a
+  `FIX 21 IS NOT APPLIED` banner on every package run. It leaves alone a card
+  you rolled back with `sudo pyra-wsegl-fdfix.sh rollback`, and a card where
+  the fix was never applied. A card prepared before the hook existed gets it
+  from step 2, which installs it but does not patch.
 - **A new kernel whose initrd was built before the hook was installed** boots
   without the hook. Check with `lsinitramfs`, as above; step 2 rebuilds it.
