@@ -360,7 +360,9 @@ schematic, which is not in the repository.
 With `module-suspend-on-idle timeout=300` the amplifier stays on for five
 minutes after the last sound, so in practice an unplug during or shortly
 after playback leaves the sink on the unplugged headphones, silent, until
-the user picks Speakers or five idle minutes pass. Before step 3 the switch
+the user picks Speakers or five idle minutes pass. (When the amplifier powers
+off, the sink does go back to the speakers by itself: heard on the release card,
+2026-11-01, `docs/verification-log.md`.) Before step 3 the switch
 was manual both ways, so this is no worse for unplugging and better for
 plugging in. It is not what the step promised.
 

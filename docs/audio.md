@@ -124,7 +124,9 @@ fraction of a second. Unplugging is not seen while the headset amplifier is
 powered, which is during playback and for the five idle minutes after it
 (`timeout=300`, below): the jack chip's detect pin is held low by the
 amplifier (`known-limitations.md` 2.9; confirmed on the board schematic). So after unplugging, pick Speakers
-under *Connector*, or wait out the idle timeout. On `5.6.19-m4` the jack
+under *Connector*, or wait out the idle timeout: when the amplifier powers
+down, the removal registers and the sink goes back to the speakers by itself
+(heard on the release card, 2026-11-01). On `5.6.19-m4` the jack
 always reads plugged in, the headphones port is the only available one, and
 the speakers could not play through the DSP on that kernel anyway (it
 predates `experiments/aess/0036`).

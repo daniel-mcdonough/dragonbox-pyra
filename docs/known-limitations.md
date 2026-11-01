@@ -215,7 +215,8 @@ which rests on the headphone left output whenever nothing is plugged in.
 
 So plugging in switches PulseAudio to the headphones, and unplugging leaves
 it on them, silent, until Speakers is picked by hand or the amplifier powers
-down. The board has no other removal signal: the TWL6040's own `PLUGDET`
+down. When the amplifier powers down, the sink goes back to the speakers on its
+own (confirmed on the release card, 2026-11-01, `verification-log.md`). The board has no other removal signal: the TWL6040's own `PLUGDET`
 input is driven by a FET from the same contact. Fixing it would take a board
 change, such as using the jack's switch without sharing the tip.
 `experiments/jack-detect/README.md`, step 3.

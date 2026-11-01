@@ -1715,3 +1715,18 @@ password, an ssh key and a sudoers line, plus a serial console capture
 - **Serial console:** the grow's own messages never reach it. `console=tty0`
   comes last on the command line, so `/dev/console`, where the initramfs
   scripts write, is the LCD; only kernel messages go to `ttyO2`.
+
+## 2026-11-01 — the headphone jack on the release card, by ear
+
+The R46 card (the release image, grown on first boot), `5.6.19-m4-kbdled`.
+Done by hand on the device and reported by the owner, with no log captured.
+
+- **Plug in during playback:** the sound moves to the headphones.
+- **Unplug while the headset amplifier is on:** the sink stays on the
+  headphones, as `known-limitations.md` 2.9 predicts.
+- **The amplifier powers off:** the sink goes back to the speakers on its
+  own. Until now, only the case where someone picked Speakers by hand had been
+  seen (`experiments/jack-detect/amp-blinds-removal-20261024.log`). Over ssh
+  afterwards, `aess` was on `pyra-speaker`.
+
+So the unplug half comes late but needs nothing from the user.
