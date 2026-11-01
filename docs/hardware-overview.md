@@ -46,7 +46,7 @@ The thermal envelope, not the clock ceiling, decides what the machine sustains.
 | Panel | BOE btl507212-w677l, 720x1280, 60 Hz, MIPI DSI 4-lane, **video mode burst** | Kernel source |
 | Desktop orientation | 1280x720, rotated 270° **in hardware** by the TILER | Measured |
 | Display scanout cost | 221 MB/s of DDR reads, continuous, unavoidable | Reasoning |
-| 2D engine | Vivante GC320 ("bb2d"), fills and blits only | Measured |
+| 2D engine | Vivante GC320 ("bb2d"): fills and blits; the X driver also uses it for Xv's YUV conversion and scaling (rendering-guidelines.md §1.7) | Measured (fills, blits); driver source (Xv) |
 | Audio codec | TWL6040, accepts **only S32_LE at 88200 or 96000 Hz** | Measured |
 | Audio DSP | OMAP5 AESS — live silicon, driven only by this repo's patches | Measured |
 | Thermal trips | passive 100 °C on `cpu_thermal`, critical 125 °C | Kernel source |

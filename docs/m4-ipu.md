@@ -838,8 +838,8 @@ of `0012`, and it means one conflict to resolve by keeping ours. Going from
   TILER rotation. `vo_drm_omap` does not set a rotation on its video plane, and
   a rotated NV12 plane needs TILER-backed buffers, not the dumb buffers
   `libdce` allocates. Expect real work here.
-- Playback inside an X window, through Xv on `armsoc` or an NV12 EGLImage on
-  SGX DDK 1.14, is a separate open-ended project. Nothing here provides it.
+- Playback inside an X window needs its own output path. Nothing in MobiAqua
+  provides it; "Playback in an X window" below has the routes.
 
 **Estimate:**
 
@@ -848,20 +848,69 @@ of `0012`, and it means one conflict to resolve by keeping ours. Going from
 | firmware boots, `/dev/rpmsg-dce` appears | 3–6 evenings | the patch backport; reserved memory; a first-ever boot of this firmware image |
 | a decoded frame lands in memory (`libdce` test) | 2–5 evenings more | IVA-HD power fighting the kernel PM; TILER address translation |
 | full-screen playback with `mpv-mini` from a VT, correctly rotated | 1–2 weeks more | rotation; plane format support on DISPC |
-| playback inside X | open-ended | Xv or EGL import against a closed DDK |
+| playback inside X, instead of the VT step above | 1–2 weeks more | see "Playback in an X window" below |
 
 **Realistically that is 3–5 weeks of evenings to watch a correctly rotated
-H.264 file from a console.**
+H.264 file from a console**, and about the same to watch it in an X window,
+because the window route skips the rotation work.
+
+#### Playback in an X window
+
+Added 2026-11-01, from the X driver's source. Nothing here has been built.
+
+A window on the desktop avoids two of the console route's problems at once.
+The player does not need DRM master, so X keeps running. And it never sees the
+portrait panel, because the TILER rotates the landscape desktop, windows
+included (`rendering-guidelines.md` §1.1). What it needs instead is a way to
+get the decoder's NV12 frames into a window. In order of preference:
+
+1. **The GC320, through the X driver's Xv: a few evenings to a week.** The
+   armsoc driver already has an Xv adaptor that converts and scales on the
+   GC320 (`rendering-guidelines.md` §1.7). It does not list NV12, so either
+   enable NV12 in the driver (the GC320 defines the format) or convert NV12 to
+   I420 on the CPU, which only splits the interleaved chroma. The cost is CPU
+   copies: the player reads each frame out of the decoder's buffer, which is
+   slow memory for the CPU to read, and X copies it again into its own pixmap.
+   About 1.4 MB a frame each time at 720p. This works, but it gives back part
+   of the battery saving that justifies hardware decode.
+2. **The GC320, zero-copy: about 2–3 weeks.** The player imports the decoder's
+   buffer into etnaviv, has the GC320 convert and scale it into an RGB buffer
+   of its own, and presents that with DRI3 and Present. No CPU copy at all.
+   Every part runs on the Pyra today, and every driver involved is open;
+   only the player-side code is new.
+3. **The SGX, through an EGLImage: about 1–2 weeks, if the driver allows it.**
+   `mplayer-mini`'s `vo_omap_drm_egl` already imports the decoded buffer as an
+   EGLImage and draws it with GLES, but onto a GBM surface. Moving it to an X11
+   window and EGL window surface is mostly window setup.
+   `GL_OES_EGL_image_external` is present (`gpu-optimization.md` §2.2). What is
+   not known is whether the closed DDK's EGL, under X11, can import a dma-buf:
+   `EGL_EXT_image_dma_buf_import` with NV12, or a TI-specific extension (TI's
+   SGX releases had `EGL_TI_raw_video`, as far as is known). Check before
+   counting on it:
+
+       strings /usr/lib/arm-linux-gnueabihf/libEGL*.so* | grep -E '^EGL_(EXT|KHR|IMG|TI)_' | sort -u
+
+   If it is missing there is no way round it short of the closed driver.
+
+An Xv adaptor of the driver's own on DISPC overlay planes is not on the list.
+It would need writing, and the overlay would have to be rotated, which
+brings back the TILER-buffer problem that the console route has.
+
+The GC320 routes come first because they depend only on open code this project
+already builds and runs. The SGX route depends on one fact about a closed
+driver.
 
 **Weigh it against software decode.** Two A15s at 1.5 GHz decode 720p H.264,
 the panel's native resolution, in software with FFmpeg's NEON paths. That is
 unmeasured on this unit but well inside what the core does elsewhere, and it
 works under X today. Hardware decode would buy battery life and 1080p
-headroom, but only for H.264, MPEG-2/4 and VC-1 content, and only outside X.
-Most web video is now VP9 or AV1, which the IVA-HD cannot touch. **Measure
-software decode first** with `mpv --hwdec=no` on a 720p H.264 file, reading
-CPU load and `bq27421` current. Only if that disappoints is this project
-worth starting.
+headroom, but only for H.264, MPEG-2/4 and VC-1 content, and only outside X
+until one of the window routes above exists. Most web video is now VP9 or AV1,
+which the IVA-HD cannot touch. **Measure software decode first** with
+`mpv --hwdec=no` on a 720p H.264 file, reading CPU load and `bq27421` current,
+once with mpv's default output and once with `--vo=xv`, which moves conversion
+and scaling onto the GC320. Only if both disappoint is this project worth
+starting.
 
 ### Option 2: bare metal — done, and it works
 

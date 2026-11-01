@@ -20,7 +20,7 @@ Know this before deciding what resolution to render at.
 | Rotation | Done by the **TILER in the display controller**. No CPU pass, no GPU pass |
 | Scaling | DISPC has hardware scalers |
 | Composition | X11, DRI3 + Present, `omap5` DDX. Desktop compositing is **off** |
-| 2D acceleration | Vivante GC320, fills and blits |
+| 2D acceleration | Vivante GC320: fills, blits, and Xv's YUV conversion and scaling (§1.7) |
 | Swap | ~~`Option "SwapbuffersWait" "true"` — swaps tied to vblank~~ Decided by the window system library `libpvrDRI3WSEGL.so` and X's Present, not by any X config option. See §1.2 |
 
 ### 1.1 Rotation is free; do not re-implement it
@@ -203,6 +203,42 @@ What follows for a renderer:
 
 The fix is in the open-source library, not in your renderer: `improvements.md`
 §6, "What the source says".
+
+### 1.7 Video: Xv runs on the GC320, not the SGX
+
+Read from the X driver's source on 2026-11-01; not yet run on the device.
+
+The X driver this project builds (`xserver-xorg-video-armsoc-omap5` 0.6) has
+an Xv adaptor, **"ARMSOC Textured Video"** (`armsoc_xv.c`). It does not use the
+SGX. `Viv2DPutTextureImage` (`viv2d/viv2d_exa.c`) has the GC320 convert YUV to
+RGB and scale it into the window, as a two-pass filtered blit with a 9-tap
+sinc kernel. The CPU does neither.
+
+- **Formats:** YV12, I420, UYVY, YUY2 (`Viv2DGetFormats`). I420 is passed to the
+  hardware as YV12.
+- **NV12 is commented out** in both `armsoc_xv.c` and `Viv2DGetFormats`. The
+  GC320's register file defines `DE_FORMAT_NV12` (`viv2d/state_2d.xml.h`), so
+  the hardware should take it. Enabling it means adding the format and setting
+  up the second plane, the way the planar path already does for YV12. Untested.
+- **One CPU copy per frame:** `ARMSOCVideoPutImage` copies the client's image
+  into a GC320-visible pixmap (`setupplane`) before the blit. At 720p that is
+  about 1.4 MB a frame.
+- **Rotation is not the player's problem.** The Xv output lands in a window on
+  the landscape desktop, and the TILER rotates that like everything else (§1.1).
+
+For a player this means `mpv --vo=xv` puts conversion and scaling on the GC320,
+leaving the A15s only the decode and one copy. Whether that beats mpv's default
+output on CPU load and power is unmeasured. Check that the adaptor is there
+with:
+
+    xvinfo | grep -A3 "Textured Video"
+
+**Zero-copy is possible but not written.** A client can import a buffer it did
+not allocate (for example a hardware decoder's) into etnaviv, have the GC320
+blit it into an RGB buffer of its own, and hand that to X with DRI3 and
+Present. The driver implements DRI3 (`armsoc_dri3.c`). No player does
+this yet; the filtered blit in `viv2d_exa.c` is the code to borrow.
+`m4-ipu.md`, "Playback in an X window", is where this matters.
 
 ---
 
