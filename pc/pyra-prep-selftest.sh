@@ -10,10 +10,11 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 20 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 21 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
-# filesystem to be unchanged, checks that a missing fix 5 payload aborts
-# before fix 1 writes anything, and finally runs --release twice on the same
+# filesystem to be unchanged, checks that a missing fix 5 payload and an
+# unknown driver library (fix 21) each abort before fix 1 writes anything, and
+# finally runs --release twice on the same
 # image: what it refuses (writing nothing), the release end state (password
 # 'pyra' expired, no host keys, empty machine-id, no prompts, no NOPASSWD
 # rule for all commands, systemd-firstboot masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
@@ -779,6 +780,32 @@ for kv in "kbd-backlight-battery-reduce false" "idle-dim-ac false" "backlight-en
 done
 
 ########################################################################
+i "assert fix 21 — the SGX window system no longer closes a descriptor twice"
+########################################################################
+# The hashes are the device script's own, so test and fix can't disagree on them.
+WSEGL=$PAYLOADS/pyra-wsegl-fdfix.sh
+SHA_STOCK=$(sed -n 's/^SHA_STOCK=//p' "$WSEGL")
+SHA_FIXED=$(sed -n 's/^SHA_FIXED=//p' "$WSEGL")
+WL=$MNT/usr/lib/libpvrDRI3WSEGL.so
+[[ $(sha256sum < "$WL" | cut -d' ' -f1) == "$SHA_FIXED" ]] && p "fix21: /usr/lib/libpvrDRI3WSEGL.so has the fixed SHA-256" || f "fix21: /usr/lib/libpvrDRI3WSEGL.so is not the fixed build"
+[[ $(sha256sum < "$WL.stock" 2>/dev/null | cut -d' ' -f1) == "$SHA_STOCK" ]] && p "fix21: libpvrDRI3WSEGL.so.stock is the vendor's stock build" || f "fix21: libpvrDRI3WSEGL.so.stock is missing or not the stock build"
+for x in "$WL" "$WL.stock"; do
+    [[ $(stat -c '%a %u:%g' "$x" 2>/dev/null) == "644 0:0" ]] && p "fix21: $(basename "$x") is 0644 root:root" || f "fix21: $(basename "$x") mode is $(stat -c '%a %u:%g' "$x" 2>/dev/null)"
+done
+compgen -G "$WL.*.tmp" >/dev/null && f "fix21: a temporary file is left: $(ls "$WL".*.tmp)" || p "fix21: no temporary file left"
+K=$MNT/usr/local/sbin/pyra-wsegl-fdfix.sh
+if [[ -e $K ]] && cmp -s "$WSEGL" "$K"; then
+    p "fix21: /usr/local/sbin/pyra-wsegl-fdfix.sh matches repo"
+else
+    f "fix21: /usr/local/sbin/pyra-wsegl-fdfix.sh missing or differs from repo"
+fi
+[[ $(stat -c '%a %u:%g' "$K" 2>/dev/null) == "755 0:0" ]] && p "fix21: pyra-wsegl-fdfix.sh is 0755 root:root" || f "fix21: pyra-wsegl-fdfix.sh mode is $(stat -c '%a %u:%g' "$K" 2>/dev/null)"
+# The card's own copy, run by the image's /bin/sh, as a user would on the device.
+WST=$(in_chroot /usr/local/sbin/pyra-wsegl-fdfix.sh status 2>&1 || true)
+[[ $WST == $'/usr/lib/libpvrDRI3WSEGL.so: fixed\n/usr/lib/libpvrDRI3WSEGL.so.stock: stock' ]] \
+    && p "fix21: on the card, pyra-wsegl-fdfix.sh status reads fixed, with the stock copy" || f "fix21: on the card, status says: ${WST//$'\n'/; }"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -822,6 +849,8 @@ if [[ ${KARGS[0]} == --kernel ]]; then
     grep -qE 'fix19: .*already the base and the default' "$OUT/prep-run2.log" && p "run 2 reported l5 already the base and default" || f "run 2 did not report l5 already the base and default"
 fi
 grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix20 already up to date" || f "run 2 did not report fix20 already up to date"
+grep -qE 'fix21: .*libpvrDRI3WSEGL.so already patched' "$OUT/prep-run2.log" && p "run 2 reported the library already patched" || f "run 2 did not report the library already patched"
+grep -qE 'fix21: .*pyra-wsegl-fdfix.sh already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix21's script up to date" || f "run 2 did not report fix21's script up to date"
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.
@@ -861,6 +890,27 @@ else
 fi
 rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 rm -rf "$STAGE"
+
+########################################################################
+i "unknown driver library — fix 21 must stop prep before fix 1 writes"
+########################################################################
+# A library that is neither the stock nor the fixed build (one byte added),
+# the same canary as above, then the real file put back.
+mv "$WL" "$WL.selftest-keep"
+{ cat "$WL.selftest-keep"; printf x; } > "$WL"
+ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+ARC=0
+disarm
+ABORT=$("$PREP" --no-kernel "$MNT" pyra 2>&1 </dev/null) || ARC=$?
+arm
+if [[ $ARC -ne 0 ]] && grep -q 'fix21: /usr/lib/libpvrDRI3WSEGL.so: unknown' <<<"$ABORT"; then
+    p "an unknown libpvrDRI3WSEGL.so stops prep (exit $ARC) for the right reason"
+else
+    f "an unknown libpvrDRI3WSEGL.so: exit $ARC:"; tail -3 <<<"$ABORT" | sed 's/^/      /'
+fi
+[[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "and it stopped before fix 1 wrote anything" || f "an unknown library let fix 1 run first"
+rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+mv "$WL.selftest-keep" "$WL"
 
 ########################################################################
 i "release mode — prep --release"
@@ -939,6 +989,8 @@ i "release: NOPASSWD rules left (the vendor's, one command each): $(grep -shE '^
 [[ $(readlink "$MNT/etc/systemd/system/systemd-firstboot.service") == /dev/null ]] \
     && p "release: systemd-firstboot.service masked" || f "release: systemd-firstboot.service not masked"
 [[ ! -e $AK && ! -e $MNT/root/.ssh/authorized_keys ]] && p "release: no authorized_keys for pyra or root" || f "release: an authorized_keys file is there"
+grep -qE 'fix21: .*already patched' "$OUT/prep-run3.log" && [[ $(sha256sum < "$WL" | cut -d' ' -f1) == "$SHA_FIXED" ]] \
+    && p "release: the image carries the patched libpvrDRI3WSEGL.so" || f "release: the library is not the fixed build after run 3"
 
 # Run 4: release mode is idempotent too.
 snapshot > "$OUT/rootfs-after3.txt"

@@ -1619,3 +1619,26 @@ image's `/etc/sudoers.d` holds only the vendor's `pyrainput` rule and README.
 
 This was a test card, which will be rewritten. A card meant for sharing would be
 written again from the image, not passed on after a boot.
+
+## 2026-11-01 — the wsegl fdfix, from the vendor image to a card (fix 21)
+
+- **The vendor image's library is the stock build.** The image at the vendor pin
+  (`pc/pyra-vendor-image.sh`), its rootfs mounted read-only as user:
+  `/usr/lib/libpvrDRI3WSEGL.so` is 67016 bytes, sha256 `d852ce4d…6daa0`
+  (`SHA_STOCK` in `device/pyra-wsegl-fdfix.sh`), bytes `ff f7 0c ef` at
+  `0x1548`; dpkg status says `dri3wsegl-pyra` 0.4. The trixie 0.4 deb carries the
+  same file. The release card (written from a `--release` image, R42) read the
+  same hash, and dpkg owns the path (`dpkg -S`; `/lib` links to `usr/lib`).
+- **The script on the card** (the `--root` version, run with `sh`, which is dash
+  there): `status` read `stock` and exited 0. `install` patched it and
+  `status` then read `fixed` with `.stock: stock`. The hashes were
+  `e431a307…3f90` and `d852ce4d…6daa0`, both files 0644 root:root. A second
+  `install` said `already patched`. `rollback` restored the stock file, and
+  `--root / status` gave the same answer as `status`. The card was left as found:
+  the stock library and no `.stock` copy.
+- **Not checked on the card:** a GLES program drawing with the patched library.
+  The package's `dri3test` stopped at `Error creating gpu or npu` (as root, on
+  `:0`, lightdm's X authority), once with the patched library and once with the
+  stock one; the cause was not looked at. The patch's
+  effect on a running game is in Shipwright report 10 §10.7: Ship of Harkinian
+  kept its log open and held a flat descriptor count.

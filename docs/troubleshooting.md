@@ -1328,6 +1328,22 @@ installed, run `device/pyra-install-helpers.sh`. Every
 other cause (routes off, the greeter holding the card) is in `audio.md`,
 *Diagnosing silence*.
 
+## A game's log dies with `Bad file descriptor`, or a save holds log lines
+
+A GLES program lost a file to the SGX window system's double close, which fix
+21 patches out (`fixes.md`). Check which library build is in place:
+
+    sudo pyra-wsegl-fdfix.sh status     # "/usr/lib/libpvrDRI3WSEGL.so: fixed"
+
+`stock` means it was never patched, or a package run (`apt install --reinstall
+dri3wsegl-pyra`) put the vendor's file back: `sudo pyra-wsegl-fdfix.sh install`,
+then restart the program (or the desktop session, for programs already
+running). `unknown` is a package version the script does not know; it will
+not patch it. Back up saves first: a damaged save is not repaired by the fix.
+
+If a program misbehaves with the patched library, `sudo pyra-wsegl-fdfix.sh
+rollback` puts the stock file back, checked against its SHA-256.
+
 ## The screen never dims, and MATE's setting for it does nothing
 
 **It dims the keyboard instead.** `mate-power-backlight-helper` searches

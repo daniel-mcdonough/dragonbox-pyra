@@ -1,4 +1,4 @@
-# The twenty fixes, and what they actually do
+# The twenty-one fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -1299,6 +1299,60 @@ be `pyra-idle-dim`'s job (the `pyra-backlight` package), not a setting.
 Not done: `kbd-brightness-dim-by-on-idle 0`. It stops only the dim. The touch
 would still put MATE's 50 % back, and so would every power change. The upstream
 side is in `reports/pyra-kernel-kbd-backlight.md`.
+
+## Fix 21 — the SGX window system closes a descriptor it no longer owns
+
+Every program that draws with GLES on the desktop goes through
+`/usr/lib/libpvrDRI3WSEGL.so` (`dri3wsegl-pyra` 0.4), the SGX driver's X11
+window system. It can lose any file it has open: a log, a config file, a save.
+In Ship of Harkinian the log went dead (`Failed flush to file ...: Bad file
+descriptor`) in 54 of 63 benchmark runs, mostly within seconds of launch, and
+once a log record was written into a save file.
+
+The cause is a double close. When it creates a buffer, the library exports it
+as a dma-buf, keeps the descriptor number and passes the descriptor to
+`xcb_dri3_pixmap_from_buffer_checked`; libxcb owns a descriptor passed that
+way, sends it to X and closes it. When the buffer is destroyed, the library
+calls `close()` on the stored number again (`destroy_buffer`, `dri3_ws.c:324`
+in the 0.4 source; the `blx close@plt` at file offset `0x1548`). By then the
+number has usually gone to the next file the program opened, and that file
+loses its descriptor. Buffers are rebuilt when a client sets its swap
+interval, so it happens early, just after a program opens its own files. An
+`LD_PRELOAD` shim caught the library closing the game's log from
+`+0x154d`, the return address of that call.
+
+Fix 21 runs `device/pyra-wsegl-fdfix.sh --root` on the image. It turns the
+second `close()` into two Thumb NOPs (`ff f7 0c ef` to `00 bf 00 bf`; the
+result was unused). It touches only a file whose SHA-256 is the known stock
+build and checks the four bytes before it writes. The patched file must match
+the known fixed SHA-256. The stock file is kept as
+`/usr/lib/libpvrDRI3WSEGL.so.stock`. The library is replaced by rename, never
+written in place, and a symlink at any of its paths is refused, so nothing is
+written off the image. Prep checks the library before fix 1 writes anything
+and stops on any other build. A second run reports it already patched. The
+script also goes onto the card as `/usr/local/sbin/pyra-wsegl-fdfix.sh`:
+`status` says which build is in place, and `sudo pyra-wsegl-fdfix.sh rollback`
+puts the stock one back. On a card that was not prepared, `sudo
+./pyra-wsegl-fdfix.sh install` from `device/` applies the same patch.
+
+The vendor image carries the stock build (checked 2026-11-01 on the image at
+the vendor pin, and the trixie 0.4 deb has the same file). With the patch, the
+same game run had no `Bad file descriptor`, kept its log open until its own
+`fclose` at quit, and held a flat descriptor count with no dma-buf descriptors
+left open (Shipwright report 10 §10.7).
+
+What it does not cover:
+
+- `dri3wsegl-pyra` owns the file, so `dpkg --verify dri3wsegl-pyra` reports it
+  changed, and `apt install --reinstall dri3wsegl-pyra` puts the stock build
+  back without a word. A newer package version is a build the script does not
+  know: it refuses to patch it, and prep stops on it. Nothing watches the file
+  after a package run, as `pyra-thermal-guard` does for fixes 6 and 7.
+- The fix belongs in the source: drop the `close()` at `dri3_ws.c:324`. 0.5
+  (bullseye, bookworm) and TI's upstream have the same code
+  (`reports/pyra-ddk-dri3-wsegl-double-close.md`).
+- A prepared image therefore ships a modified binary of an MIT package. The
+  package's licence stays in `/usr/share/doc/dri3wsegl-pyra/copyright`.
 
 ## Fixes 6, 7 and 12 as a package
 

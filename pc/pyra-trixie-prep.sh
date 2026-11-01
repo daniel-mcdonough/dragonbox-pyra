@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-one known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -38,6 +38,10 @@
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
+#
+# Fix 21 patches the SGX driver's /usr/lib/libpvrDRI3WSEGL.so (a double close
+# that corrupts game saves) and refuses an image whose copy is not the known
+# stock build, before anything is written.
 #
 # Fixes 5 and 6 use files that live in device/ in the repository, so run this
 # from a checkout rather than copying the script somewhere on its own.
@@ -186,6 +190,16 @@ KBDMATE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_kbdlight.gschema.override
 [[ -r $KBDMATE_SRC ]] || die "fix20: 99_pyra_kbdlight.gschema.override not found (looked in $PAYLOADS)"
 [[ -e $ROOT/$SCHEMA_DIR/org.mate.power-manager.gschema.xml ]] ||
     die "fix20: the image has no org.mate.power-manager schema (mate-power-manager)"
+# Fix 21 runs the device script on the image, so the patch has one
+# implementation. A library it doesn't know stops prep here, before fix 1.
+WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
+[[ -x $WSEGL_FIX ]] || die "fix21: pyra-wsegl-fdfix.sh not found or not executable (looked in $PAYLOADS)"
+WSEGL_STATE=$("$WSEGL_FIX" --root "$ROOT" status 2>&1 | head -1) || true
+case ${WSEGL_STATE##*: } in
+stock|fixed) ;;
+*) die "fix21: $WSEGL_STATE
+       Fix 21 patches only the known stock build of dri3wsegl-pyra 0.4; start from the vendor image" ;;
+esac
 # --release installs the unit that makes the host keys on the first boot.
 HOSTKEYS_UNIT_SRC=$PAYLOADS/pyra-ssh-hostkeys.service
 [[ $RELEASE == no || -r $HOSTKEYS_UNIT_SRC ]] ||
@@ -1470,6 +1484,36 @@ KBDMATE_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
 [[ $KBDMATE_VAL == false ]] ||
     die "fix20: kbd-backlight-battery-reduce reads '$KBDMATE_VAL' after the override, not false"
 ok "fix20: MATE leaves the keyboard light alone on battery (kbd-backlight-battery-reduce false)"
+
+# ---------------------------------------------------------------------- fix 21
+#
+# The SGX driver's X11 window system closes each buffer's dma-buf descriptor
+# twice: libxcb closes it after sending it to X, and buffer destruction closes
+# the stored number again. Whatever file got that number in between loses its
+# descriptor; in Ship of Harkinian that was the log in nearly every run and once
+# a save file. pyra-wsegl-fdfix.sh turns the second close() into two Thumb NOPs,
+# checked against the stock and fixed SHA-256s, keeps the stock file as
+# libpvrDRI3WSEGL.so.stock and replaces the library by rename. It goes onto
+# the card too, for its status and rollback.
+
+if out=$("$WSEGL_FIX" --root "$ROOT" install 2>&1); then
+    case $out in
+    already*) ok "fix21: /usr/lib/libpvrDRI3WSEGL.so already patched" ;;
+    *)        ok "fix21: patched /usr/lib/libpvrDRI3WSEGL.so (no double close); stock kept as libpvrDRI3WSEGL.so.stock" ;;
+    esac
+else
+    die "fix21: pyra-wsegl-fdfix.sh could not patch the library:
+$out"
+fi
+WSEGL_DST=$ROOT/usr/local/sbin/pyra-wsegl-fdfix.sh
+if [[ -e $WSEGL_DST ]] && cmp -s "$WSEGL_FIX" "$WSEGL_DST"; then
+    ok "fix21: ${WSEGL_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $WSEGL_DST ]] && echo updated || echo installed)
+    install -d -m 0755 "$ROOT/usr/local/sbin"
+    install -m 0755 -o 0 -g 0 "$WSEGL_FIX" "$WSEGL_DST"
+    ok "fix21: $VERB ${WSEGL_DST#$ROOT}"
+fi
 
 # ------------------------------------------------------------------- release
 #

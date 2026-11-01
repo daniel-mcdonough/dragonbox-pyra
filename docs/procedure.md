@@ -13,7 +13,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Twenty fixes are needed, and `fixes.md` explains each one. Most of them are not
+Twenty-one fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -25,16 +25,17 @@ root mounting a minute or two late, fix 15 makes the Fn keyboard-light keys
 work on the shipped kernel, fix 16 sets the measured governor tunable at
 boot, fix 17 gives PulseAudio the script that matches the kernel's audio
 path at each boot, fix 18 puts the keyboard's manual rescue on the path, and
-fix 19 installs the shipped kernel and makes it what the card boots, and fix
-20 keeps MATE from taking the keyboard light over on battery.
+fix 19 installs the shipped kernel and makes it what the card boots, fix 20
+keeps MATE from taking the keyboard light over on battery, and fix 21 stops the
+SGX driver closing a descriptor twice, which can corrupt a game's saves.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-one fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fixes 14, 19 and 20 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 20 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 21 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -311,6 +312,13 @@ version`, and nothing else. A `(kernel)` time near a minute or more is the late
 root mount fix 14 is for (`troubleshooting.md`, "Root mounts a minute or two
 late").
 
+    # the SGX window system no longer closes a descriptor twice (fix 21)
+    sudo pyra-wsegl-fdfix.sh status          # /usr/lib/libpvrDRI3WSEGL.so: fixed
+
+The second line, `/usr/lib/libpvrDRI3WSEGL.so.stock: stock`, is the vendor's
+file, kept for `sudo pyra-wsegl-fdfix.sh rollback`. `stock` on the first line
+means a package run put the vendor's file back (`fixes.md`, fix 21).
+
     # nubs, keyboard, gamepad
     systemctl status pyrainput
     grep -h pyraInput /sys/class/input/input*/name
@@ -578,7 +586,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the twenty fixes it applies only 13 to 18 and 20, whose files it shares
+and of the twenty-one fixes it applies only 13 to 18 and 20, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path.
@@ -603,6 +611,7 @@ from `device/`, with `--check` first if you want to see the state:
 | 16 | `pyra-governor-tune.sh` or its unit | step 2 | updated by step 2, which restarts the unit, so the value is re-applied |
 | 17 | `pyra-audio-select.sh`, its unit or a `pulse/` file | step 2 | updated by step 2, which also makes the `daemon.conf.d` link and restarts the unit; a running PulseAudio keeps its script until `systemctl --user restart pulseaudio.service` |
 | 18 | `pyra-keypad-rescue` | step 2 | updated by step 2, which installs it at the same path |
+| 21 | `pyra-wsegl-fdfix.sh` | `sudo ./pyra-wsegl-fdfix.sh install`, then `sudo install -m 0755 pyra-wsegl-fdfix.sh /usr/local/sbin/` | says `already patched` once applied; a new patch would come with new SHA-256s |
 
 Fixes 8 to 12 write their files through the same function that prep's
 `--emit-into` uses. Re-running one replaces its files with the current

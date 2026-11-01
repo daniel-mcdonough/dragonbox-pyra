@@ -14,12 +14,28 @@
 #   sudo pyra-wsegl-fdfix.sh install     patch, keeping the stock file as libpvrDRI3WSEGL.so.stock
 #   sudo pyra-wsegl-fdfix.sh rollback    put the stock file back
 #   pyra-wsegl-fdfix.sh status
+#   pyra-wsegl-fdfix.sh --root DIR ...   the same, on the image mounted at DIR (prep's fix 21)
 #
 # The file is replaced by rename, never written in place: running programs have it mapped. Programs
 # started afterwards get the fix; restart the desktop session (or reboot) for the ones already running.
+#
+# The path is dpkg's (dri3wsegl-pyra 0.4); /lib links to usr/lib. Under --root the file is taken
+# from DIR/usr/lib, never through DIR/lib, and a symlink is refused: either could lead off the image.
 set -eu
-LIB=/lib/libpvrDRI3WSEGL.so
+ROOT=
+if [ "${1:-}" = --root ]; then
+    [ $# -ge 2 ] || { echo "--root needs a directory" >&2; exit 2; }
+    ROOT=${2%/}
+    shift 2
+    [ -d "$ROOT/usr/lib" ] || { echo "$ROOT/usr/lib is not a directory; is the image mounted there?" >&2; exit 2; }
+fi
+NAME=/usr/lib/libpvrDRI3WSEGL.so
+LIB=$ROOT$NAME
 STOCK=$LIB.stock
+for f in "$LIB" "$STOCK" "$LIB.fdfix.tmp" "$LIB.rollback.tmp"; do
+    [ ! -L "$f" ] || { echo "${f#"$ROOT"} is a symlink; not touching it" >&2; exit 1; }
+done
+[ -f "$LIB" ] || { echo "no $NAME${ROOT:+ under $ROOT}" >&2; exit 1; }
 SHA_STOCK=d852ce4d093ac6e80c7f9b2d9468a1a46e13b2a8de6d59075e0707884ee6daa0
 SHA_FIXED=e431a3071009ae3022a07d7df6346ea31de1a27bdc02bd5263505d90b21b3f90
 
@@ -35,13 +51,15 @@ state() {
 
 case "${1:-status}" in
 status)
-    echo "$LIB: $(state)"
-    [ -e "$STOCK" ] && echo "$STOCK: $( [ "$(sha "$STOCK")" = "$SHA_STOCK" ] && echo stock || echo unknown)"
+    echo "$NAME: $(state)"
+    if [ -e "$STOCK" ]; then
+        echo "$NAME.stock: $( [ "$(sha "$STOCK")" = "$SHA_STOCK" ] && echo stock || echo unknown)"
+    fi
     ;;
 install)
     s=$(state)
     [ "$s" = fixed ] && { echo "already patched"; exit 0; }
-    [ "$s" = stock ] || { echo "$LIB is not the known stock build (sha256 $(sha "$LIB")); not touching it" >&2; exit 1; }
+    [ "$s" = stock ] || { echo "$NAME is not the known stock build (sha256 $(sha "$LIB")); not touching it" >&2; exit 1; }
     [ -e "$STOCK" ] || cp -p "$LIB" "$STOCK"
     tmp=$LIB.fdfix.tmp
     cp -p "$LIB" "$tmp"
@@ -50,16 +68,16 @@ install)
     printf '\000\277\000\277' | dd of="$tmp" bs=1 seek=$((0x1548)) conv=notrunc status=none
     [ "$(sha "$tmp")" = "$SHA_FIXED" ] || { rm -f "$tmp"; echo "patched file has the wrong sha256" >&2; exit 1; }
     mv "$tmp" "$LIB"
-    echo "patched; stock kept as $STOCK. Programs started from now on get the fix."
+    echo "patched; stock kept as $NAME.stock. Programs started from now on get the fix."
     ;;
 rollback)
-    [ -e "$STOCK" ] && [ "$(sha "$STOCK")" = "$SHA_STOCK" ] || { echo "no verified $STOCK" >&2; exit 1; }
+    [ -e "$STOCK" ] && [ "$(sha "$STOCK")" = "$SHA_STOCK" ] || { echo "no verified $NAME.stock" >&2; exit 1; }
     cp -p "$STOCK" "$LIB.rollback.tmp"
     mv "$LIB.rollback.tmp" "$LIB"
     echo "stock restored"
     ;;
 *)
-    echo "usage: $0 install|rollback|status" >&2
+    echo "usage: $0 [--root DIR] install|rollback|status" >&2
     exit 2
     ;;
 esac
