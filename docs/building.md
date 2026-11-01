@@ -986,6 +986,15 @@ plain shell with `$WORK` as their tree. To run them unchanged on a PC, point
 `GITHUB_ENV` to a scratch file, and run each step's `run:` text with `bash -e`.
 GitHub runs `run:` steps on Linux the same way.
 
+Done on 2026-11-01 at the workflow's first commit (measured on the build PC,
+16 threads). The build took about three minutes and ended with fsck clean and
+no prep warnings. `xz` took about another two minutes. The `.xz` (936 MB)
+passed `sha256sum -c` against its `.sha256`, and the unpacked image matched the
+build script's `.sha256`. Over the same image, `zstd -T0 -19` came out larger
+(993 MB) and slower (161 s against xz's 90 s), so the workflow uses xz. A
+hosted runner has 4 vCPUs, so expect the qemu steps there to take several
+times longer.
+
 ## Backups
 
 Taken 2026-09-10, before anything was installed. Two copies, because a card
