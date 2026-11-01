@@ -5,6 +5,47 @@
 The procedure that applies them is `procedure.md`. The dated record of each one
 being checked against the image and the hardware is `verification-log.md`.
 
+## Which fixes are temporary
+
+Most of these stand in for a change that belongs in someone else's package,
+image or kernel. The table says which, what the proper fix is, and what lets the
+fix be dropped. The kinds:
+
+- **workaround**: avoids or undoes a fault that should be fixed where it lives;
+- **package fix**: the proper fix, applied in place to a package this project
+  doesn't own, with the patch in `patches/userspace/`;
+- **restores**: puts back something the image or a package leaves out;
+- **stock-kernel rescue**: needed only on the stock `5.6.19-pyradef`, whose fault
+  the shipped kernel fixes with a patch;
+- **setting** and **project choice**: meant to stay.
+
+The reports named are drafts in `reports/`, not sent yet; the public copy leaves
+them out.
+
+| Fix | Kind | The proper fix | Drop it when | Draft report |
+| --- | --- | --- | --- | --- |
+| 1 | superseded by 4 | — | prep already removes it | — |
+| 2 | workaround | `pyra-first-run.sh` treats any dialog failure as "Shutdown" | the image's wizard handles a failed dialog | `pyra-image-first-run-wizard-shutdown.md` |
+| 3 | restores | the trixie `funkeymonkey-pyrainput` 0.1.19 package lacks `pyrainput.service` | the trixie package ships the unit | `pyra-funkeymonkey-missing-unit.md` |
+| 4 | workaround | Xorg crashes after the AIGLX probe fails; GLX is turned off to avoid it | Xorg or Mesa's software-GLX fallback is fixed | `xorg-aiglx-dri2-null-deref.md`, `mesa-dril-omapdrm-no-fallback.md` |
+| 5 | workaround | the usb3503 driver or device tree should reset the hub on every boot | the kernel resets the hub itself (no patch yet) | `kernel-usb3503-warm-reboot-no-reset.md` (on hold) |
+| 6 | package fix | `pyra-hacks`: set the ceiling through sysfs, not `cpufreq-set` | `pyra-hacks` takes the patch, or the `0.38+pyra1` deb is installed | `pyra-hacks-thermal-daemon.md` |
+| 7 | package fix | `pyra-hacks`: the ladder's five decision faults | as fix 6 | `pyra-hacks-thermal-ladder.md` |
+| 8 | restores | nothing in the image sets the charger's input limit | `pyra-hacks` (or another package) sets it | `pyra-hacks-charge-current.md` |
+| 9 | restores | the image ships no `asound.state`, so the codec routes are off | the image ships one | `pyra-image-asound-state-all-off.md` |
+| 10 | workaround | the greeter shouldn't run PulseAudio | the image keeps PulseAudio out of the greeter | `pyra-image-greeter-pulseaudio.md` |
+| 11 | workaround | the DDK starts `pvrsrvctl` before the GPU's DRM card exists | the DDK's udev rule waits for the card | `pyra-ddk-services-udev-race.md` |
+| 12 | package fix | `pyra-hacks`: read the wheel through its measured taper | as fix 6 | `pyra-hacks-volumed-taper.md` |
+| 13 | workaround | the DDK has no glvnd vendor; `pyra-gles` puts the blob in front per program | the DDK ships a glvnd vendor | `pyra-ddk-no-glvnd-vendor.md` |
+| 14 | stock-kernel rescue | `patches/0048`-`0049`, and firmware fallback off in the shipped kernel's config | the card no longer keeps the stock kernel, or it takes the backport | `kernel-fsnotify-delete-before-d-delete.md` |
+| 15 | workaround | `funkeymonkey-pyrainput` reads its config before setting defaults; the patch is in `patches/userspace/` | funkeymonkey takes the patch | `pyra-funkeymonkey-pyrainput-brightness-order.md`, `pyra-funkeymonkey-early-signals.md` |
+| 16 | setting | — (a measured governor setting) | — | — |
+| 17 | project choice | — (each kernel needs its own audio script) | the card stops carrying two kernels | — |
+| 18 | stock-kernel rescue | `patches/0006` in the shipped kernel | as fix 14 | `kernel-input-tca8418-lost-interrupt.md` |
+| 19 | project choice | — (the card boots the kernel built here) | the vendor's kernel carries these patches | the kernel reports |
+| 20 | setting | — (MATE's battery dimming fights the Fn keys) | — | — |
+| 21 | workaround | `dri3wsegl-pyra` closes a descriptor twice; a four-byte binary patch removes the second close | the package drops the `close()` at `dri3_ws.c:324` | `pyra-ddk-dri3-wsegl-double-close.md` |
+
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
 
@@ -1029,8 +1070,9 @@ The journal shows the result at each start:
 N ms)`, or a line saying why it didn't. `pyra-install-helpers.sh` installs the
 same drop-in, and still reloads the running daemon itself. The real fix
 belongs upstream: set the four defaults before `loadConfig()` in `init()`
-(drafted with a patch in `reports/pyra-funkeymonkey-pyrainput-brightness-order.md`;
-the start-up signal windows are in `reports/pyra-funkeymonkey-early-signals.md`).
+(the patch is `patches/userspace/funkeymonkey-pyrainput/`, drafted for upstream in
+`reports/pyra-funkeymonkey-pyrainput-brightness-order.md`; the start-up signal windows
+are in `reports/pyra-funkeymonkey-early-signals.md`).
 
 Checked 2026-10-31 on the fix 19 card (`verification-log.md`): two cold boots
 each logged the reload at about 23 s, the handler up 300 and 100 ms after
@@ -1391,12 +1433,19 @@ What it does not cover:
 ## Fixes 6, 7 and 12 as a package
 
 All three change files that `pyra-hacks` owns, so the prep script and the
-device scripts patch or override that package in place. The packaged form is
-`../pyra-hacks-pyra`: `main` is the package's release history rebuilt from
-the source packages (upstream's repository is not public), each fix is a
-branch off it (`feature/thermal-cap`, `feature/thermal-ladder`,
-`feature/volumed-taper`), and `pyra` merges them with a `0.38+pyra1`
-version. `git diff main...feature/<name>` is the patch to send upstream.
+device scripts patch or override that package in place. The same three changes
+as patches against pyra-hacks 0.38, in the form sent upstream, are in
+`patches/userspace/pyra-hacks-thermal/` (fixes 6 and 7, a two-patch series)
+and `patches/userspace/pyra-hacks-volumed/` (fix 12). Each applies with `git am`.
+
+The packaged form is a separate repository, pyra-hacks-pyra: `main` is the
+package's release history rebuilt from the source packages (upstream's
+repository is not public), each fix is a branch off it (`feature/thermal-cap`,
+`feature/thermal-ladder`, `feature/volumed-taper`), and `pyra` merges them with
+a `0.38+pyra1` version. The patches above are `git format-patch` output from
+those branches. That repository is not published yet. Until it is, the patches
+are the source of record, and the deb can only be built by someone who has it,
+checked out beside this one as `../pyra-hacks-pyra`:
 
     ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra1_armhf.deb
 
