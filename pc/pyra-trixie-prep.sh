@@ -5,7 +5,8 @@
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
 #   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] [--set-password]
-#                              [--ssh-key FILE.pub] [--grow-on-boot] /mnt [username]
+#                              [--ssh-key FILE.pub] [--grow-on-boot] [--release]
+#                              /mnt [username]
 #
 # Fix 2 creates the user and asks for its password. A user the image already
 # has keeps its password unless --set-password is given: the vendor image ships
@@ -21,6 +22,16 @@
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
+#
+# --release makes an image to share rather than a card of your own, and asks
+# nothing. The user 'pyra' gets the password 'pyra', which must be changed at
+# the first login. The ssh host keys, the machine-id, systemd's random seed and
+# credential secret are removed, so no two cards share them; a unit makes the
+# host keys on the first boot, before sshd starts. It refuses --set-password,
+# --ssh-key, another username, an authorised ssh key on the image or a
+# NOPASSWD sudo rule for all commands: start from the vendor image instead.
+# (The vendor's own rule for pyrainputctl alone stays.) It masks
+# systemd-firstboot, which the empty machine-id would otherwise start.
 #
 # Fixes 14, 19 and 20 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
@@ -43,6 +54,7 @@ KERNEL_FILE=
 SET_PASSWORD=no
 SSH_KEY=
 GROW_ON_BOOT=no
+RELEASE=no
 ARGS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -55,6 +67,7 @@ while [[ $# -gt 0 ]]; do
                  SSH_KEY=$2; shift 2 ;;
     --ssh-key=*) SSH_KEY=${1#--ssh-key=}; shift ;;
     --grow-on-boot) GROW_ON_BOOT=yes; shift ;;
+    --release)   RELEASE=yes; shift ;;
     -*)          die "unknown option: $1" ;;
     *)           ARGS+=("$1"); shift ;;
     esac
@@ -63,7 +76,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -93,6 +106,30 @@ if [[ -r $ROOT/etc/os-release ]]; then
 fi
 DRIDIR=$ROOT/usr/lib/arm-linux-gnueabihf/dri
 [[ -d $DRIDIR ]] || die "no $DRIDIR — is this an armhf rootfs?"
+
+# --release: everything it refuses is checked here, before anything is written.
+# A shared image must carry nobody's access, so an image that already has some
+# is refused rather than cleaned: what else it carries is unknown.
+if [[ $RELEASE == yes ]]; then
+    [[ $SET_PASSWORD == no ]] || die "release: --set-password conflicts with --release (the password is 'pyra')"
+    [[ -z $SSH_KEY ]] || die "release: --ssh-key conflicts with --release (a shared image authorises no key)"
+    [[ $USERNAME == pyra ]] || die "release: the release image's user is 'pyra', not '$USERNAME'"
+    for h in "$(awk -F: '$1=="pyra"{print $6}' "$ROOT/etc/passwd")" /root; do
+        [[ -n $h && -s $ROOT$h/.ssh/authorized_keys ]] &&
+            die "release: $h/.ssh/authorized_keys exists in the image; start from the vendor image"
+    done
+    [[ -e $ROOT/etc/sudoers.d/90-pyra-nopasswd ]] &&
+        die "release: /etc/sudoers.d/90-pyra-nopasswd exists in the image; start from the vendor image"
+    # The vendor's /etc/sudoers.d/pyrainput allows one command without a
+    # password and stays; a rule for every command is passwordless root.
+    if NOPW=$(grep -sHnE '^[^#]*NOPASSWD:.*\<ALL\>' "$ROOT/etc/sudoers" "$ROOT"/etc/sudoers.d/*); then
+        die "release: the image has a NOPASSWD sudo rule for all commands; start from the vendor image:
+${NOPW//$ROOT/}"
+    fi
+    [[ -x $ROOT/usr/bin/ssh-keygen ]] || die "release: the image has no /usr/bin/ssh-keygen to make host keys on the first boot"
+    command -v chage >/dev/null || die "release: no chage on this host; install shadow-utils"
+    info "release: making an image to share; prep asks nothing"
+fi
 
 # Fix 5 copies these rather than embedding them, so the repository stays the
 # single source of truth for the rescue logic. Check them here, before anything
@@ -149,6 +186,10 @@ KBDMATE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_kbdlight.gschema.override
 [[ -r $KBDMATE_SRC ]] || die "fix20: 99_pyra_kbdlight.gschema.override not found (looked in $PAYLOADS)"
 [[ -e $ROOT/$SCHEMA_DIR/org.mate.power-manager.gschema.xml ]] ||
     die "fix20: the image has no org.mate.power-manager schema (mate-power-manager)"
+# --release installs the unit that makes the host keys on the first boot.
+HOSTKEYS_UNIT_SRC=$PAYLOADS/pyra-ssh-hostkeys.service
+[[ $RELEASE == no || -r $HOSTKEYS_UNIT_SRC ]] ||
+    die "release: pyra-ssh-hostkeys.service not found (looked in $PAYLOADS)"
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -252,7 +293,7 @@ if [[ $KERNEL_MODE == ask ]]; then
         die "fix19: no kernel to install; nothing has been written"
     fi
     ans=y
-    if [[ -t 0 ]]; then
+    if [[ -t 0 && $RELEASE == no ]]; then
         printf 'Download the shipped kernel (%s, release %s) from\n  %s\nand install it? [Y/n] ' \
             "$KERNEL_REL" "$KERNEL_TAG" "$KERNEL_URL" >&2
         read -r ans || ans=n
@@ -409,9 +450,28 @@ ask_password() {
     printf '%s:%s\n' "$USERNAME" "$HASH" | chpasswd -e -R "$ROOT"
     unset HASH
 }
+# --release: the documented password 'pyra', expired, so the first login (the
+# greeter, a console or ssh) makes the user choose their own before going on.
+# A hash that already is 'pyra' and already expired is left alone, so a rerun
+# writes nothing.
+release_password() {
+    local hash salt
+    hash=$(awk -F: -v u="$USERNAME" '$1==u{print $2}' "$ROOT/etc/shadow")
+    salt=$(cut -d'$' -f3 <<<"$hash")
+    if [[ $hash == '$6$'* && $(openssl passwd -6 -salt "$salt" pyra) == "$hash" &&
+          $(awk -F: -v u="$USERNAME" '$1==u{print $3}' "$ROOT/etc/shadow") == 0 ]]; then
+        ok "release: '$USERNAME' already has the password 'pyra', to be changed at the first login"
+        return
+    fi
+    printf '%s:%s\n' "$USERNAME" "$(openssl passwd -6 pyra)" | chpasswd -e -R "$ROOT"
+    chage -R "$ROOT" -d 0 "$USERNAME"
+    ok "release: '$USERNAME' has the password 'pyra', to be changed at the first login"
+}
 if grep -q "^${USERNAME}:" "$ROOT/etc/passwd"; then
     ok "fix2: user '$USERNAME' already exists"
-    if [[ $SET_PASSWORD == yes ]]; then
+    if [[ $RELEASE == yes ]]; then
+        release_password
+    elif [[ $SET_PASSWORD == yes ]]; then
         ask_password "the password is unchanged"
         ok "fix2: password set for '$USERNAME'"
     else
@@ -428,8 +488,12 @@ else
         die "fix2: no useradd with --root support on this host; install shadow-utils"
     fi
 
-    ask_password "user has NO password set"
-    ok "fix2: password set for '$USERNAME'"
+    if [[ $RELEASE == yes ]]; then
+        release_password
+    else
+        ask_password "user has NO password set"
+        ok "fix2: password set for '$USERNAME'"
+    fi
 fi
 
 # --- an ssh key, if one was given -------------------------------------------
@@ -1406,6 +1470,81 @@ KBDMATE_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
 [[ $KBDMATE_VAL == false ]] ||
     die "fix20: kbd-backlight-battery-reduce reads '$KBDMATE_VAL' after the override, not false"
 ok "fix20: MATE leaves the keyboard light alone on battery (kbd-backlight-battery-reduce false)"
+
+# ------------------------------------------------------------------- release
+#
+# Last, so nothing after it can bring back what it removes. The vendor image
+# ships its ssh host keys, the same on every card written from it, so anyone
+# holding one can pose as any other. Debian's ssh.service does not make keys:
+# its `sshd -t` fails with none. pyra-ssh-hostkeys.service runs ssh-keygen -A
+# before sshd on a card with no host key. An empty /etc/machine-id makes
+# systemd write a new one on the first boot (and treat that boot as the first:
+# it applies unit presets, enable-only). That also starts the image's
+# systemd-firstboot.service, which prompts on tty1 before sysinit.target for
+# whatever of locale, keymap, timezone and root password it finds unset; a
+# vendor card never runs it (its machine-id is set), so it is masked. The
+# random seed and the credential secret would also be the same on every card;
+# systemd makes them when missing.
+
+if [[ $RELEASE == yes ]]; then
+    HOSTKEYS_UNIT=$ROOT/etc/systemd/system/pyra-ssh-hostkeys.service
+    if [[ -e $HOSTKEYS_UNIT ]] && cmp -s "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"; then
+        ok "release: ${HOSTKEYS_UNIT#$ROOT} already up to date"
+    else
+        install -m 0644 -o 0 -g 0 "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"
+        ok "release: installed ${HOSTKEYS_UNIT#$ROOT}"
+    fi
+    if [[ -L $WANTS/pyra-ssh-hostkeys.service ]]; then
+        ok "release: pyra-ssh-hostkeys.service already enabled in multi-user.target"
+    else
+        ln -sf /etc/systemd/system/pyra-ssh-hostkeys.service "$WANTS/pyra-ssh-hostkeys.service"
+        ok "release: enabled pyra-ssh-hostkeys.service in multi-user.target"
+    fi
+
+    KEYS=$(compgen -G "$ROOT/etc/ssh/ssh_host_*" || true)
+    if [[ -n $KEYS ]]; then
+        rm -f -- $KEYS
+        ok "release: removed $(wc -l <<<"$KEYS") ssh host key files; the first boot makes new ones"
+    else
+        ok "release: no ssh host keys in the image"
+    fi
+
+    MID=$ROOT/etc/machine-id
+    if [[ -f $MID && ! -s $MID ]]; then
+        ok "release: /etc/machine-id already empty"
+    else
+        rm -f -- "$MID"
+        install -m 0444 -o 0 -g 0 /dev/null "$MID"
+        ok "release: emptied /etc/machine-id; the first boot writes a new one"
+    fi
+    # D-Bus reads its own copy if there is one; Debian makes it a link.
+    DMID=$ROOT/var/lib/dbus/machine-id
+    if [[ -e $DMID && ! -L $DMID ]]; then
+        rm -f -- "$DMID"
+        ln -s /etc/machine-id "$DMID"
+        ok "release: /var/lib/dbus/machine-id is now a link to /etc/machine-id"
+    else
+        ok "release: /var/lib/dbus/machine-id is $([[ -L $DMID ]] && echo "a link to $(readlink "$DMID")" || echo absent)"
+    fi
+
+    FB=$ROOT/etc/systemd/system/systemd-firstboot.service
+    if [[ $(readlink "$FB" 2>/dev/null) == /dev/null ]]; then
+        ok "release: systemd-firstboot.service already masked"
+    else
+        rm -f -- "$FB"
+        ln -s /dev/null "$FB"
+        ok "release: masked systemd-firstboot.service, so the first boot asks nothing on the console"
+    fi
+
+    for f in /var/lib/systemd/random-seed /var/lib/systemd/credential.secret; do
+        if [[ -e $ROOT$f ]]; then
+            rm -f -- "$ROOT$f"
+            ok "release: removed $f"
+        else
+            ok "release: no $f in the image"
+        fi
+    done
+fi
 
 echo
 sync

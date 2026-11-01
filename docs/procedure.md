@@ -170,6 +170,9 @@ another machine, the one with the reader.
   never starts from an image that was mounted or booted. By default it runs prep
   with `--grow-on-boot --set-password --kernel <m4-kbdled tarball>` for the
   `pyra` user, which asks for the password. Options after `--` replace those.
+  An image to share is
+  `sudo ./pc/pyra-image-build.sh -- --release --grow-on-boot --kernel <tarball>`
+  (section 4, "An image to share").
   Output goes to `../dragonbox-pyra-build/images/`: the image, a `.sha256`, and
   an `.info` with the repository commit and prep options.
 - **Push.** `pyra-image-push.sh` rsyncs the image to `PYRA_WRITER` (or the host
@@ -214,6 +217,33 @@ comment). It refuses a private key. Both options are off unless you ask.
 to fill itself on its first boot, from the initramfs, after a capacity check and
 a read-only fsck. Without it, grow the card from the PC afterwards, as below.
 It takes about 10 minutes on a 256 GB card; do not switch off. `grow-rootfs.md` has the details.
+
+**An image to share (`--release`).** `--release` prepares an image to give to
+other people rather than a card of your own, and asks nothing. The `pyra` user
+gets the password `pyra`, expired, so the first login (the greeter, a console or
+ssh) makes the user choose a new one before going on. It removes the ssh host
+keys, empties `/etc/machine-id`, and deletes systemd's random seed and
+credential secret, so no two cards written from the image share them; systemd
+makes a new machine-id on the first boot, and `pyra-ssh-hostkeys.service` runs
+`ssh-keygen -A` before sshd starts (Debian's `ssh.service` makes no keys: its
+`sshd -t` fails without one). The empty machine-id makes systemd treat the
+first boot as a first boot, which would start the image's `systemd-firstboot`
+and its console prompts before the desktop; release mode masks it (a vendor
+card never runs it). It refuses `--set-password`, `--ssh-key`, a user other
+than `pyra`, and an image that already has an authorised ssh key or a
+`NOPASSWD` sudo rule for all commands: start from the vendor image. The
+vendor's own `/etc/sudoers.d/pyrainput` (`pyrainputctl` without a password, for
+the `sudo` group) stays. Asserted by
+`pc/pyra-prep-selftest.sh`; not yet booted on a Pyra.
+
+**The vendor image's ssh host keys.** The vendor image ships its host keys, so
+every card written from it has the same ones, and anyone with another card can
+pose as yours on the network. Only `--release` replaces them. On a card of your
+own, make new ones once it is up:
+
+    sudo rm /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh
+
+Your PC will then warn that the card's host key changed, once; that is expected.
 
 **The kernel (fix 19).** The script offers to download the shipped kernel,
 `m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it

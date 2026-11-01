@@ -1539,3 +1539,35 @@ override matches the repository and is 0644 root:root, `gschemas.compiled` is
 rebuilt, three keys default to false, and run 2 reports it up to date). So none
 of the earlier passes depended on what the old image had been given. Fix 20's
 `glib-compile-schemas` and `gsettings` run cleanly in the qemu chroot.
+
+## 2026-10-31 — prep `--release`, the image to share (self-test)
+
+What the vendor image carries that no two cards should share, read from the
+self-test's first snapshot of the pinned vendor image: six ssh host key files,
+an `/etc/machine-id` of 33 bytes (a set ID), and `/var/lib/dbus/machine-id` as
+a file of its own; no `random-seed` or `credential.secret`. Its `ssh.service`
+runs `sshd -t` before sshd and makes no keys, and in the qemu chroot the
+image's `sshd -t` with no host key prints `sshd: no hostkeys available --
+exiting.` and fails. After `ssh-keygen -A` (RSA, ECDSA, ED25519) it passes.
+ssh is enabled from `multi-user.target`. The image has
+`systemd-firstboot.service` (`ConditionFirstBoot=yes`, prompts on tty1 for
+locale, keymap, timezone and root password, before `sysinit.target`), which an
+empty machine-id would start; release mode masks it. The image's
+`/etc/sudoers.d/pyrainput` lets the `sudo` group run `pyrainputctl` without a
+password; that rule stays.
+
+`sudo pc/pyra-prep-selftest.sh`, with the cross-build's m4-kbdled tarball:
+**206 passed, 0 failed, 0 skipped**. The new 30 checks: `--release` refuses
+`--set-password`, `--ssh-key`, another user, an image with an authorised key,
+with `90-pyra-nopasswd`, or with any NOPASSWD rule for all commands, each
+writing nothing. With stdin closed, a release run exits 0 and prompts for
+nothing. Afterwards `pyra`'s hash is `pyra` with last change 0, there are no host
+keys, `pyra-ssh-hostkeys.service` matches the repository and is enabled, the
+machine-id is empty, D-Bus's copy is a link, and `systemd-firstboot` is masked.
+A second release run changes nothing. The session's first self-test run failed
+there: release mode then refused any NOPASSWD rule and so refused the vendor's
+`pyrainput` one. It was narrowed to rules for all commands.
+
+Not booted: no card has been written from a release image, so the greeter's
+handling of the expired password and the first-boot key generation are
+untested on a Pyra.

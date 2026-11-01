@@ -12,8 +12,11 @@
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
 # the end state of fixes 1 to 8 and 13 to 20 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
-# filesystem to be unchanged, and finally checks that a missing fix 5 payload
-# aborts before fix 1 writes anything.
+# filesystem to be unchanged, checks that a missing fix 5 payload aborts
+# before fix 1 writes anything, and finally runs --release twice on the same
+# image: what it refuses (writing nothing), the release end state (password
+# 'pyra' expired, no host keys, empty machine-id, no prompts, no NOPASSWD
+# rule for all commands, systemd-firstboot masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
 #
 # Fix 19 installs the shipped kernel from a tarball. The image carries only the
 # stock kernel, so the test hands prep the cross-build's output
@@ -858,6 +861,124 @@ else
 fi
 rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 rm -rf "$STAGE"
+
+########################################################################
+i "release mode — prep --release"
+########################################################################
+# On top of runs 1 and 2: the same image, which also lets it check the
+# refusals, since run 1 left an authorised key. Release mode changes only
+# fix 2's password and what its own section removes, so on a vendor image the
+# result is the same.
+HK=pyra-ssh-hostkeys.service
+# What the vendor image had, from the first snapshot.
+i "vendor image: $(grep -c ' etc/ssh/ssh_host_' "$OUT/rootfs-before.txt") ssh host key files, /etc/machine-id $(awk '$6=="etc/machine-id"{print $5" bytes"}' "$OUT/rootfs-before.txt"), random-seed $(grep -q ' var/lib/systemd/random-seed ' "$OUT/rootfs-before.txt" && echo present || echo absent), credential.secret $(grep -q ' var/lib/systemd/credential.secret ' "$OUT/rootfs-before.txt" && echo present || echo absent)"
+for u in "$MNT"/usr/lib/systemd/system/ssh.service "$MNT"/lib/systemd/system/ssh.service; do
+    [[ -e $u ]] && { i "image ssh.service: $(grep -E '^Exec' "$u" | tr '\n' ' ')"; break; }
+done
+i "ssh enabled by: $(cd "$MNT/etc/systemd/system" && ls -d -- */ssh.service */ssh.socket 2>/dev/null | tr '\n' ' ')"
+i "systemd-firstboot.service: $(compgen -G "$MNT/usr/lib/systemd/system/systemd-firstboot.service" >/dev/null && echo present || echo absent)"
+
+refused() {     # refused LABEL MESSAGE PREP-ARGS... : must fail, say MESSAGE, write nothing
+    local label=$1 msg=$2 out rc; shift 2
+    snapshot > "$OUT/.rb"
+    disarm; set +e
+    out=$("$PREP" "$@" 2>&1 </dev/null); rc=$?
+    set -e; arm
+    snapshot > "$OUT/.ra"
+    if [[ $rc -ne 0 ]] && grep -qF -- "$msg" <<<"$out" && cmp -s "$OUT/.rb" "$OUT/.ra"; then
+        p "release: refuses $label and writes nothing"
+    else
+        f "release: $label: exit $rc, $(grep -cF -- "$msg" <<<"$out") matching lines, filesystem $(cmp -s "$OUT/.rb" "$OUT/.ra" && echo unchanged || echo changed)"
+        tail -3 <<<"$out" | sed 's/^/      /'
+    fi
+    rm -f "$OUT/.rb" "$OUT/.ra"
+}
+refused "--set-password" "--set-password conflicts with --release" "${KARGS[@]}" --release --set-password "$MNT" pyra
+refused "--ssh-key" "--ssh-key conflicts with --release" "${KARGS[@]}" --release --ssh-key "$OUT/testkey.pub" "$MNT" pyra
+refused "another username" "the release image's user is 'pyra'" "${KARGS[@]}" --release "$MNT" someone
+refused "an image with an authorised key" "authorized_keys exists in the image" "${KARGS[@]}" --release "$MNT" pyra
+rm -f "$AK"
+printf 'pyra ALL=(ALL) NOPASSWD: ALL\n' > "$MNT/etc/sudoers.d/90-pyra-nopasswd"; chmod 0440 "$MNT/etc/sudoers.d/90-pyra-nopasswd"
+refused "an image with 90-pyra-nopasswd" "90-pyra-nopasswd exists in the image" "${KARGS[@]}" --release "$MNT" pyra
+mv "$MNT/etc/sudoers.d/90-pyra-nopasswd" "$MNT/etc/sudoers.d/50-selftest"
+refused "an image with a NOPASSWD rule for all commands" "the image has a NOPASSWD sudo rule for all commands" "${KARGS[@]}" --release "$MNT" pyra
+rm -f "$MNT/etc/sudoers.d/50-selftest"
+
+# Run 3, stdin closed: a prompt would read EOF and stop the run.
+disarm; set +e
+"$PREP" "${KARGS[@]}" --release --grow-on-boot "$MNT" pyra </dev/null 2>&1 | tee "$OUT/prep-run3.log"
+RC3=${PIPESTATUS[0]}
+set -e; arm
+[[ $RC3 -eq 0 ]] && p "release: run 3 exited 0 with stdin closed" || f "release: run 3 exited $RC3"
+grep -qE 'Password for|\[Y/n\]' "$OUT/prep-run3.log" && f "release: run 3 prompted" || p "release: run 3 asked nothing"
+
+HASH=$(awk -F: '$1=="pyra"{print $2}' "$MNT/etc/shadow")
+SALT=$(cut -d'$' -f3 <<<"$HASH")
+[[ $HASH == '$6$'* && $(openssl passwd -6 -salt "$SALT" pyra) == "$HASH" ]] \
+    && p "release: pyra's password is 'pyra'" || f "release: pyra's shadow hash is not 'pyra'"
+LASTCHG=$(awk -F: '$1=="pyra"{print $3}' "$MNT/etc/shadow")
+[[ $LASTCHG == 0 ]] && p "release: pyra must change it at the first login (last change 0)" || f "release: pyra's last change is '$LASTCHG', not 0"
+compgen -G "$MNT/etc/ssh/ssh_host_*" >/dev/null && f "release: ssh host keys left: $(cd "$MNT/etc/ssh" && ls ssh_host_* | tr '\n' ' ')" || p "release: no ssh host keys"
+U=$MNT/etc/systemd/system/$HK
+cmp -s "$PAYLOADS/$HK" "$U" && p "release: /etc/systemd/system/$HK matches repo" || f "release: $HK missing or differs from repo"
+[[ $(stat -c '%a %u:%g' "$U" 2>/dev/null) == "644 0:0" ]] && p "release: $HK is 0644 root:root" || f "release: $HK mode is $(stat -c '%a %u:%g' "$U" 2>/dev/null)"
+[[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/$HK") == /etc/systemd/system/$HK ]] \
+    && p "release: $HK enabled in multi-user.target" || f "release: $HK not enabled"
+grep -qx 'Before=ssh.service ssh.socket' "$U" && grep -qx 'ExecStart=/usr/bin/ssh-keygen -A' "$U" \
+    && p "release: $HK runs ssh-keygen -A before ssh" || f "release: $HK is not ordered before ssh or does not run ssh-keygen -A"
+[[ -f $MNT/etc/machine-id && ! -s $MNT/etc/machine-id ]] && p "release: /etc/machine-id is an empty file" || f "release: /etc/machine-id is missing or not empty"
+DMID=$MNT/var/lib/dbus/machine-id
+[[ ! -e $DMID && ! -L $DMID ]] || [[ $(readlink "$DMID") == /etc/machine-id ]] \
+    && p "release: /var/lib/dbus/machine-id is absent or a link to /etc/machine-id" || f "release: /var/lib/dbus/machine-id is its own file"
+for x in /var/lib/systemd/random-seed /var/lib/systemd/credential.secret; do
+    [[ ! -e $MNT$x ]] && p "release: no $x" || f "release: $x is still there"
+done
+[[ ! -e $MNT/etc/sudoers.d/90-pyra-nopasswd ]] && p "release: no /etc/sudoers.d/90-pyra-nopasswd" || f "release: /etc/sudoers.d/90-pyra-nopasswd is there"
+grep -sqE '^[^#]*NOPASSWD:.*\<ALL\>' "$MNT/etc/sudoers" "$MNT"/etc/sudoers.d/* && f "release: a NOPASSWD sudo rule for all commands is there" || p "release: no NOPASSWD sudo rule for all commands"
+i "release: NOPASSWD rules left (the vendor's, one command each): $(grep -shE '^[^#]*NOPASSWD' "$MNT/etc/sudoers" "$MNT"/etc/sudoers.d/* | tr -s ' ' | tr '\n' ';')"
+[[ $(readlink "$MNT/etc/systemd/system/systemd-firstboot.service") == /dev/null ]] \
+    && p "release: systemd-firstboot.service masked" || f "release: systemd-firstboot.service not masked"
+[[ ! -e $AK && ! -e $MNT/root/.ssh/authorized_keys ]] && p "release: no authorized_keys for pyra or root" || f "release: an authorized_keys file is there"
+
+# Run 4: release mode is idempotent too.
+snapshot > "$OUT/rootfs-after3.txt"
+disarm; set +e
+"$PREP" "${KARGS[@]}" --release --grow-on-boot "$MNT" pyra </dev/null 2>&1 | tee "$OUT/prep-run4.log"
+RC4=${PIPESTATUS[0]}
+set -e; arm
+[[ $RC4 -eq 0 ]] && p "release: run 4 exited 0" || f "release: run 4 exited $RC4"
+snapshot > "$OUT/rootfs-after4.txt"
+if diff -u "$OUT/rootfs-after3.txt" "$OUT/rootfs-after4.txt" > "$OUT/rootfs-diff4.txt"; then
+    p "release: run 4 changed nothing on disk"
+else
+    f "release: run 4 changed the filesystem:"
+    { grep -E '^[+-][^+-]' "$OUT/rootfs-diff4.txt" || true; } | sed -n '1,20p' | sed 's/^/      /'
+fi
+grep -q "release: 'pyra' already has the password 'pyra'" "$OUT/prep-run4.log" \
+    && p "release: run 4 left the expired password alone" || f "release: run 4 did not report the password already set"
+[[ $(grep -cE 'release: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run4.log") -eq 4 ]] \
+    && p "release: run 4 reported the unit, its link, the machine-id and the mask already in place" || f "release: run 4 did not report the unit, link, machine-id and mask in place"
+
+# The first boot, as far as a chroot shows it: without keys the image's own
+# `sshd -t` (ssh.service's ExecStartPre) fails, and after the unit's command
+# it passes. The keys are removed again afterwards.
+for d in proc sys dev; do mount --bind "/$d" "$MNT/$d"; done
+MADE_RUN=no
+[[ -d $MNT/run/sshd ]] || { mkdir -p "$MNT/run/sshd"; MADE_RUN=yes; }
+disarm; set +e
+T0=$(in_chroot /usr/sbin/sshd -t 2>&1); T0RC=$?
+G=$(in_chroot /usr/bin/ssh-keygen -A 2>&1); GRC=$?
+T1=$(in_chroot /usr/sbin/sshd -t 2>&1); T1RC=$?
+set -e; arm
+[[ $T0RC -ne 0 ]] && p "release: without host keys the image's sshd -t fails ($(head -1 <<<"$T0"))" || f "release: sshd -t passed with no host keys"
+[[ $GRC -eq 0 && $T1RC -eq 0 ]] && p "release: after ssh-keygen -A ($(sed -n 's/.*generating new host keys: //p' <<<"$G")) sshd -t passes" \
+    || { f "release: ssh-keygen -A exit $GRC, then sshd -t exit $T1RC"; printf '%s\n%s\n' "$G" "$T1" | sed 's/^/      /'; }
+rm -f "$MNT"/etc/ssh/ssh_host_*
+[[ $MADE_RUN == yes ]] && rm -rf "$MNT/run/sshd"
+for d in dev sys proc; do umount "$MNT/$d"; done
+snapshot > "$OUT/rootfs-after-keygen.txt"
+cmp -s "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-keygen.txt" && p "release: the chroot check left the image as run 4 did" \
+    || { f "release: the chroot check changed the image:"; { diff "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-keygen.txt" || true; } | sed -n '1,10p' | sed 's/^/      /'; }
 
 ########################################################################
 sync
