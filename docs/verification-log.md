@@ -1665,3 +1665,20 @@ written again from the image, not passed on after a boot.
 - **Prep selftest:** 236 passed, 0 failed, 0 skipped, with the real 0.4 deb
   reinstalled by the image's dpkg in the qemu chroot (re-patched; rolled-back
   image stayed stock; unknown build warned, unchanged, dpkg exit 0).
+
+## 2026-11-01 — the grow lock's initrd on a Pyra (R45)
+
+- **On the Pyra** (the R42 release card, already grown to 238 GiB), the new
+  `pyra-grow-root` and its hook installed by hand into the paths prep's
+  `--grow-on-boot` uses, then `update-initramfs -u -k 5.6.19-m4-kbdled` (the
+  stock kernel's initrd left alone; the old initrd, script and hook kept under
+  `/root/*.pre-r45`).
+- **Before:** the initrd had `60-block.rules` and no `flock`; its busybox has
+  no `flock` applet.
+- **After:** `lsinitramfs` lists `usr/bin/flock` (util-linux 2.41, runs in the
+  unpacked tree), `usr/lib/udev/rules.d/60-block.rules` (`OPTIONS+="watch"`)
+  and `usr/sbin/pyra-grow-root` (identical to the repo copy).
+- **Next boot** (`l5`, m4-kbdled): `/run/initramfs/pyra-grow-root.log` says
+  `nothing to do: disk 500006912, partition 499480576, filesystem 499349504
+  sectors`; root mounted at 7.19 s (dmesg).
+- **Not run:** a grow with the lock on a Pyra (`grow-rootfs.md`).

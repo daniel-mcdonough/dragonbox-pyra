@@ -126,6 +126,24 @@ The selftest forces both shapes through a test hook in the script
 `partx -u`): back after 3 s (the grow must finish), and never back (exit 1,
 then the next run finishes).
 
+**What a Pyra initrd carries** (the R42 release card, 2026-11-01, trixie,
+`update-initramfs -u -k 5.6.19-m4-kbdled` after installing this script and
+hook, inspected with `lsinitramfs` and `unmkinitramfs`):
+- `usr/bin/flock`, util-linux 2.41, runs in the unpacked initrd. Before the new
+  hook the initrd had none: busybox there has no `flock` applet, so `flock`
+  is present only because the hook copies it.
+- `usr/lib/udev/rules.d/60-block.rules` with `OPTIONS+="watch"` on line 13.
+  The vendor's udev hook copies it, so it was there before the change too.
+  udevd starts in `init-top` and is stopped in `init-bottom`, so it's still running
+  at `local-premount`, where the grow runs. The re-read that the lock guards
+  against can happen on a Pyra as well as on a PC.
+- `usr/sbin/pyra-grow-root`, byte-identical to this script.
+
+The boot after the rebuild (already grown, from `l5`) logged
+`nothing to do: disk 500006912, partition 499480576, filesystem 499349504
+sectors`, and root mounted at 7.2 s (dmesg). A grow on a Pyra with the lock has
+not been run yet.
+
 **Booted on a Pyra twice.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
