@@ -65,8 +65,11 @@ that is not as expected:
 
 The screen says what is happening, and not to switch off during step 5.
 Measured 2026-10-31 on a 256 GB SanDisk (SA256): capacity check 931 samples,
-about 8 s; each fsck dry run 68 s; `resize.f2fs` 513 s; about 11 minutes in all,
-once. Root came up at 239 G with 234 G free.
+about 8 s; each fsck dry run 68 s; `resize.f2fs` 513 s; about 11 minutes in all.
+Root came up at 239 G with 234 G free. A 256 GB card from the release image
+(2026-11-01) took 64 s and 67 s for the fsck runs and 486 s for the resize. That
+card's userspace, the greeter included, started about 11 minutes after the
+kernel.
 
 The first mount after the grow logs `F2FS-fs (mmcblk1p2): invalid crc_offset: 0`
 once. That is expected, not damage. `resize.f2fs` writes its new checkpoint into
@@ -96,10 +99,12 @@ throwaway loop-device cards:
 
 A refused card must come back byte-identical.
 
-**Booted on a Pyra once** (2026-10-31, the card above, through
+**Booted on a Pyra twice.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
-mounted at 8.2 s on the next one (serial console, 2026-11-01).
+mounted at 8.2 s on the next one (serial console, 2026-11-01). Then on
+2026-11-01, from a `--release` image: the grow ran on the first boot, with no
+reboot, and ended `done: the root filesystem is now 238 GiB` (`verification-log.md`).
 
 ---
 

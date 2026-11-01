@@ -172,7 +172,8 @@ another machine, the one with the reader.
   `pyra` user, which asks for the password. Options after `--` replace those.
   An image to share is
   `sudo ./pc/pyra-image-build.sh -- --release --grow-on-boot --kernel <tarball>`
-  (section 4, "An image to share").
+  (section 4, "An image to share"). One built that way was written and booted
+  on a Pyra on 2026-11-01.
   Output goes to `../dragonbox-pyra-build/images/`: the image, a `.sha256`, and
   an `.info` with the repository commit and prep options.
 - **Push.** `pyra-image-push.sh` rsyncs the image to `PYRA_WRITER` (or the host
