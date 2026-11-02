@@ -1736,3 +1736,27 @@ Done by hand on the device and reported by the owner, with no log captured.
   `aess` on its own.
 
 So the unplug half comes late but needs nothing from the user.
+
+## 2026-11-02 — root fsck on the X220's built-in slot
+
+The card that held the speaker and jack checks the day before (the R46 release
+card, grown on first boot to 238 GiB), shut down with `poweroff` and read in
+the X220's built-in SD slot (`/dev/mmcblk0`), not a USB reader. Run by the
+owner:
+
+    echo n | sudo fsck.f2fs -f --dry-run /dev/mmcblk0p2
+
+- **Clean, exit 0.** Checkpoint `435f64ba`, state `nat_bits crc unmount`;
+  149639 nodes; every check `[Ok..]` (unreachable NAT entries 0, SIT bitmap,
+  hard links, block, node and inode counts against the checkpoint, free
+  segments, next block offset, other corrupted bugs). Free space 239566 MB of
+  243823 MB.
+- The run printed `fixing SIT types`. `-f` prints it unconditionally, and
+  `--dry-run` drops every write, so it reports no damage.
+- 95 s through that slot (measured, fsck's own `Done:` line). The first-boot
+  grow's fsck of the same size took 64 s on the Pyra.
+
+So a card that boots the shipped kernel, plays sound and powers off leaves a
+clean root filesystem. The damage the USB reader reported on 2026-10-29 and
+2026-10-30 was not seen through the built-in slot (`troubleshooting.md`, "fsck
+finds damage before the grow").
