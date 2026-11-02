@@ -1265,7 +1265,8 @@ which is the state prep's fix 17 writes:
   hw_ptr 50387 → 78317 in 0.3 s; `Handsfree Left Playback` `HF DAC` (fix 9).
   The next boot returned to `l5` and `aess`.
 - The data reached the codec on both kernels. Whether it was audible was not
-  checked (no one listening).
+  checked (no one listening). On m4-kbdled it was: the speakers and the
+  headphones on 2026-11-01 (below). pyradef's has still not been listened to.
 - Prep's fix 17 block alone, run twice against a scratch root on the PC under
   `unshare -r`: it installed the seven files with their modes, made the link and
   the `multi-user.target.wants` link, then reported every file up to date, the
@@ -1728,5 +1729,10 @@ Done by hand on the device and reported by the owner, with no log captured.
   own. Until now, only the case where someone picked Speakers by hand had been
   seen (`experiments/jack-detect/amp-blinds-removal-20261024.log`). Over ssh
   afterwards, `aess` was on `pyra-speaker`.
+
+- **Audible:** both the headphones and the speakers, through the `aess`
+  sink. This is the first listen on `5.6.19-m4-kbdled`. It is also the first
+  card built by prep with fix 17 that got as far as sound: the card chose
+  `aess` on its own.
 
 So the unplug half comes late but needs nothing from the user.

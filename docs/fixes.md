@@ -1188,8 +1188,9 @@ sinks` shows `aess`. On pyradef it reads `path direct` and names the packaged
 `/etc/pulse/pyra.pa`. On 2026-10-29 the trixie card, whose files match what
 prep writes, chose `aess` on m4-kbdled and `direct` on pyradef, and a stream
 ran through the `aess` sink and through the packaged `speakers` sink
-respectively. Whether it was audible was not checked, and a freshly prepared
-card has not been booted with this fix (`verification-log.md`).
+respectively. On 2026-11-01 the release card, freshly prepared with this fix,
+chose `aess` on m4-kbdled, and the speakers and the headphones were both
+audible. Nobody has listened on pyradef yet (`verification-log.md`).
 
 ## Fix 18 — the built-in keyboard goes dead, with nothing logged, on the stock kernel
 
