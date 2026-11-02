@@ -1,3 +1,5 @@
+# Determining why the Pegasus game launcher consumed so much CPU at dile
+
 # Result: the theme is a third of it, and one environment variable is another third
 
 Measured on a Pyra V5.3 on 2026-09-18, on `5.6.19-freq`, with Pegasus at commit
