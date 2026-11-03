@@ -30,13 +30,13 @@ keeps MATE from taking the keyboard light over on battery, fix 21 stops the
 SGX driver closing a descriptor twice, which can corrupt a game's saves, and
 fix 22 installs a brightness applet and an idle dimmer that reach the screen.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-two fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-three fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fixes 14, 19, 20 and 22 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 22 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 23 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -229,15 +229,10 @@ It takes about 10 minutes on a 256 GB card; do not switch off. `grow-rootfs.md` 
 **An image to share (`--release`).** `--release` prepares an image to give to
 other people rather than a card of your own, and asks nothing. The `pyra` user
 gets the password `pyra`, expired, so the first login (the greeter, a console or
-ssh) makes the user choose a new one before going on. It removes the ssh host
-keys, empties `/etc/machine-id`, and deletes systemd's random seed and
-credential secret, so no two cards written from the image share them; systemd
-makes a new machine-id on the first boot, and `pyra-ssh-hostkeys.service` runs
-`ssh-keygen -A` before sshd starts (Debian's `ssh.service` makes no keys: its
-`sshd -t` fails without one). The empty machine-id makes systemd treat the
-first boot as a first boot, which would start the image's `systemd-firstboot`
-and its console prompts before the desktop; release mode masks it (a vendor
-card never runs it). It refuses `--set-password`, `--ssh-key`, a user other
+ssh) makes the user choose a new one before going on. Fix 23 removes the ssh
+host keys and empties `/etc/machine-id` whatever they are, not only the
+vendor's, and release mode also deletes systemd's random seed and credential
+secret, so no two cards written from the image share them. It refuses `--set-password`, `--ssh-key`, a user other
 than `pyra`, and an image that already has an authorised ssh key or a
 `NOPASSWD` sudo rule for all commands: start from the vendor image. The
 vendor's own `/etc/sudoers.d/pyrainput` (`pyrainputctl` without a password, for
@@ -249,14 +244,20 @@ and over ssh. A key login still has to change the password, so it needs
 `ssh -t`: without a terminal, sshd refuses with `Password change required but no
 TTY available`.
 
-**The vendor image's ssh host keys.** The vendor image ships its host keys, so
-every card written from it has the same ones, and anyone with another card can
-pose as yours on the network. Only `--release` replaces them. On a card of your
-own, make new ones once it is up:
+**The vendor image's ssh host keys (fix 23).** The vendor image ships its ssh
+host keys and machine-id, the same on every card written from it, so anyone
+with another card could pose as yours on the network. Prep removes them, and
+the card makes its own on its first boot: `pyra-ssh-hostkeys.service` runs
+`ssh-keygen -A` before sshd, and systemd writes a new machine-id. It masks
+`systemd-firstboot`, which the empty machine-id would otherwise start with
+console prompts. Prep removes only the vendor's, so re-running it on a card
+that has booted keeps the card's own. If your PC has talked to another Pyra at
+the same address, it warns once that the host key changed; that is expected.
+
+A card prepared before fix 23 still has the vendor's. Make new ones once it is
+up:
 
     sudo rm /etc/ssh/ssh_host_* && sudo ssh-keygen -A && sudo systemctl restart ssh
-
-Your PC will then warn that the card's host key changed, once; that is expected.
 
 **The kernel (fix 19).** The script offers to download the shipped kernel,
 `m4-kbdled-kernel.tar.gz` from the project's `kernel-*` release, and installs it
@@ -622,7 +623,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the twenty-two fixes it applies only 13 to 18 and 20, whose files it shares
+and of the twenty-three fixes it applies only 13 to 18 and 20, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

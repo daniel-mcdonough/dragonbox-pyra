@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-two known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-three known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -33,19 +33,23 @@
 #
 # --release makes an image to share rather than a card of your own, and asks
 # nothing. The user 'pyra' gets the password 'pyra', which must be changed at
-# the first login. The ssh host keys, the machine-id, systemd's random seed and
-# credential secret are removed, so no two cards share them; a unit makes the
-# host keys on the first boot, before sshd starts. It refuses --set-password,
+# the first login. Fix 23 then removes the ssh host keys and the machine-id
+# whatever they are, not only the vendor's, and systemd's random seed and
+# credential secret go too, so no two cards share them. It refuses --set-password,
 # --ssh-key, another username, an authorised ssh key on the image or a
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
-# (The vendor's own rule for pyrainputctl alone stays.) It masks
-# systemd-firstboot, which the empty machine-id would otherwise start.
+# (The vendor's own rule for pyrainputctl alone stays.)
 #
 # Fixes 14, 19, 20 and 22 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
+#
+# Fix 23 removes the vendor image's ssh host keys and machine-id, which every
+# card written from it shares; the card makes its own on its first boot. A
+# card's own (one that has booted since) are kept, so a re-run doesn't change
+# them.
 #
 # Fix 21 patches the SGX driver's /usr/lib/libpvrDRI3WSEGL.so (a double close
 # that corrupts game saves) and refuses an image whose copy is not the known
@@ -145,7 +149,6 @@ if [[ $RELEASE == yes ]]; then
         die "release: the image has a NOPASSWD sudo rule for all commands; start from the vendor image:
 ${NOPW//$ROOT/}"
     fi
-    [[ -x $ROOT/usr/bin/ssh-keygen ]] || die "release: the image has no /usr/bin/ssh-keygen to make host keys on the first boot"
     command -v chage >/dev/null || die "release: no chage on this host; install shadow-utils"
     info "release: making an image to share; prep asks nothing"
 fi
@@ -218,10 +221,10 @@ stock|fixed) ;;
 *) die "fix21: $WSEGL_STATE
        Fix 21 patches only the known stock build of dri3wsegl-pyra 0.4; start from the vendor image" ;;
 esac
-# --release installs the unit that makes the host keys on the first boot.
+# Fix 23's unit makes the host keys on the first boot, with the image's ssh-keygen.
 HOSTKEYS_UNIT_SRC=$PAYLOADS/pyra-ssh-hostkeys.service
-[[ $RELEASE == no || -r $HOSTKEYS_UNIT_SRC ]] ||
-    die "release: pyra-ssh-hostkeys.service not found (looked in $PAYLOADS)"
+[[ -r $HOSTKEYS_UNIT_SRC ]] || die "fix23: pyra-ssh-hostkeys.service not found (looked in $PAYLOADS)"
+[[ -x $ROOT/usr/bin/ssh-keygen ]] || die "fix23: the image has no /usr/bin/ssh-keygen to make host keys on the first boot"
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -1712,71 +1715,107 @@ else
     warn "fix22: pyra-backlight not installed; no brightness applet or idle dimmer"
 fi
 
+# ---------------------------------------------------------------------- fix 23
+#
+# The vendor image ships its ssh host keys and its machine-id, the same on
+# every card written from it: anyone holding one card's private keys can pose
+# as any other, and the machine-id (which network stacks can derive a DHCP
+# client ID from) is the same on every card on a network. Fix 23 removes the
+# vendor's and lets the first boot make the card's own. Debian's ssh.service
+# does not make keys: its `sshd -t` fails with none. pyra-ssh-hostkeys.service
+# runs ssh-keygen -A before sshd on a card with no host key. An empty
+# /etc/machine-id makes systemd write a new one on the first boot (and treat
+# that boot as the first: it applies unit presets, enable-only). That also
+# starts the image's systemd-firstboot.service, which prompts on tty1 before
+# sysinit.target for whatever of locale, keymap, timezone and root password it
+# finds unset; a vendor card never runs it (its machine-id is set), so it is
+# masked.
+#
+# Only the vendor's are removed, recognised by the pins below (the SHA-256 of
+# each public key's blob, and the machine-id itself), so a card that has booted
+# since keeps its own across a re-run. --release removes whatever is there.
+# After a card's first boot its host key differs from any other vendor card's
+# at the same address, so ssh warns once (procedure.md section 4).
+# Runs after fixes 19, 20 and 22, whose chroot runs could make keys.
+
+VENDOR_HOSTKEY_SHA256=(
+    8afea21d337129e9dd867412655b2ae64b77e31902ac828a586563e196d23adc   # rsa
+    a8f167d3f1130406814faf10587f05e39cf4ab1bb822c7d15e80775f3071b560   # ecdsa
+    945bc5a69d4c491903bd749a9e2455d9ee0cb1dcd1a237a0c60324757067abbe   # ed25519
+)
+VENDOR_MACHINE_ID=79a963ec48d841ac8059acf6d6c75649
+
+HOSTKEYS_UNIT=$ROOT/etc/systemd/system/pyra-ssh-hostkeys.service
+if [[ -e $HOSTKEYS_UNIT ]] && cmp -s "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"; then
+    ok "fix23: ${HOSTKEYS_UNIT#$ROOT} already up to date"
+else
+    install -m 0644 -o 0 -g 0 "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"
+    ok "fix23: installed ${HOSTKEYS_UNIT#$ROOT}"
+fi
+if [[ -L $WANTS/pyra-ssh-hostkeys.service ]]; then
+    ok "fix23: pyra-ssh-hostkeys.service already enabled in multi-user.target"
+else
+    ln -sf /etc/systemd/system/pyra-ssh-hostkeys.service "$WANTS/pyra-ssh-hostkeys.service"
+    ok "fix23: enabled pyra-ssh-hostkeys.service in multi-user.target"
+fi
+
+KEYS=$(compgen -G "$ROOT/etc/ssh/ssh_host_*" || true)
+VENDOR_KEYS=no
+for pub in "$ROOT"/etc/ssh/ssh_host_*_key.pub; do
+    [[ -f $pub ]] || continue
+    blob=$(awk '{print $2; exit}' "$pub" | base64 -d 2>/dev/null | sha256sum | cut -d' ' -f1)
+    [[ " ${VENDOR_HOSTKEY_SHA256[*]} " == *" $blob "* ]] && VENDOR_KEYS=yes
+done
+if [[ -z $KEYS ]]; then
+    ok "fix23: no ssh host keys in the image; the first boot makes them"
+elif [[ $VENDOR_KEYS == yes || $RELEASE == yes ]]; then
+    rm -f -- $KEYS
+    ok "fix23: removed $(wc -l <<<"$KEYS") ssh host key files ($([[ $VENDOR_KEYS == yes ]] && echo "the vendor's, shared by every card" || echo "--release")); the first boot makes new ones"
+else
+    ok "fix23: the ssh host keys are this card's own, not the vendor's; kept"
+fi
+
+MID=$ROOT/etc/machine-id
+MID_NOW=$(cat "$MID" 2>/dev/null || true)
+if [[ -f $MID && -z $MID_NOW ]]; then
+    ok "fix23: /etc/machine-id already empty"
+elif [[ $MID_NOW == "$VENDOR_MACHINE_ID" || $RELEASE == yes ]]; then
+    rm -f -- "$MID"
+    install -m 0444 -o 0 -g 0 /dev/null "$MID"
+    ok "fix23: emptied /etc/machine-id ($([[ $MID_NOW == "$VENDOR_MACHINE_ID" ]] && echo "the vendor's" || echo "--release")); the first boot writes a new one"
+else
+    ok "fix23: /etc/machine-id is this card's own, not the vendor's; kept"
+fi
+# D-Bus reads its own copy if there is one; Debian makes it a link. The
+# vendor's is a file with the vendor's id. A card's own copy is left alone.
+DMID=$ROOT/var/lib/dbus/machine-id
+if [[ -e $DMID && ! -L $DMID ]] &&
+   [[ $(cat "$DMID") == "$VENDOR_MACHINE_ID" || $RELEASE == yes || ! -s $MID ]]; then
+    rm -f -- "$DMID"
+    ln -s /etc/machine-id "$DMID"
+    ok "fix23: /var/lib/dbus/machine-id is now a link to /etc/machine-id"
+else
+    ok "fix23: /var/lib/dbus/machine-id is $([[ -L $DMID ]] && echo "a link to $(readlink "$DMID")" || { [[ -e $DMID ]] && echo "this card's own" || echo absent; })"
+fi
+
+FB=$ROOT/etc/systemd/system/systemd-firstboot.service
+if [[ $(readlink "$FB" 2>/dev/null) == /dev/null ]]; then
+    ok "fix23: systemd-firstboot.service already masked"
+else
+    rm -f -- "$FB"
+    ln -s /dev/null "$FB"
+    ok "fix23: masked systemd-firstboot.service, so the first boot asks nothing on the console"
+fi
+
 # ------------------------------------------------------------------- release
 #
-# Last, so nothing after it can bring back what it removes. The vendor image
-# ships its ssh host keys, the same on every card written from it, so anyone
-# holding one can pose as any other. Debian's ssh.service does not make keys:
-# its `sshd -t` fails with none. pyra-ssh-hostkeys.service runs ssh-keygen -A
-# before sshd on a card with no host key. An empty /etc/machine-id makes
-# systemd write a new one on the first boot (and treat that boot as the first:
-# it applies unit presets, enable-only). That also starts the image's
-# systemd-firstboot.service, which prompts on tty1 before sysinit.target for
-# whatever of locale, keymap, timezone and root password it finds unset; a
-# vendor card never runs it (its machine-id is set), so it is masked. The
-# random seed and the credential secret would also be the same on every card;
-# systemd makes them when missing.
+# Last, so nothing after it can bring back what it removes. Fix 23 has removed
+# the host keys and the machine-id. The random seed and the credential secret
+# would also be the same on every card written from the image; systemd makes
+# them when missing. (The vendor image has neither; a card that has booted has
+# both.)
 
 if [[ $RELEASE == yes ]]; then
-    HOSTKEYS_UNIT=$ROOT/etc/systemd/system/pyra-ssh-hostkeys.service
-    if [[ -e $HOSTKEYS_UNIT ]] && cmp -s "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"; then
-        ok "release: ${HOSTKEYS_UNIT#$ROOT} already up to date"
-    else
-        install -m 0644 -o 0 -g 0 "$HOSTKEYS_UNIT_SRC" "$HOSTKEYS_UNIT"
-        ok "release: installed ${HOSTKEYS_UNIT#$ROOT}"
-    fi
-    if [[ -L $WANTS/pyra-ssh-hostkeys.service ]]; then
-        ok "release: pyra-ssh-hostkeys.service already enabled in multi-user.target"
-    else
-        ln -sf /etc/systemd/system/pyra-ssh-hostkeys.service "$WANTS/pyra-ssh-hostkeys.service"
-        ok "release: enabled pyra-ssh-hostkeys.service in multi-user.target"
-    fi
-
-    KEYS=$(compgen -G "$ROOT/etc/ssh/ssh_host_*" || true)
-    if [[ -n $KEYS ]]; then
-        rm -f -- $KEYS
-        ok "release: removed $(wc -l <<<"$KEYS") ssh host key files; the first boot makes new ones"
-    else
-        ok "release: no ssh host keys in the image"
-    fi
-
-    MID=$ROOT/etc/machine-id
-    if [[ -f $MID && ! -s $MID ]]; then
-        ok "release: /etc/machine-id already empty"
-    else
-        rm -f -- "$MID"
-        install -m 0444 -o 0 -g 0 /dev/null "$MID"
-        ok "release: emptied /etc/machine-id; the first boot writes a new one"
-    fi
-    # D-Bus reads its own copy if there is one; Debian makes it a link.
-    DMID=$ROOT/var/lib/dbus/machine-id
-    if [[ -e $DMID && ! -L $DMID ]]; then
-        rm -f -- "$DMID"
-        ln -s /etc/machine-id "$DMID"
-        ok "release: /var/lib/dbus/machine-id is now a link to /etc/machine-id"
-    else
-        ok "release: /var/lib/dbus/machine-id is $([[ -L $DMID ]] && echo "a link to $(readlink "$DMID")" || echo absent)"
-    fi
-
-    FB=$ROOT/etc/systemd/system/systemd-firstboot.service
-    if [[ $(readlink "$FB" 2>/dev/null) == /dev/null ]]; then
-        ok "release: systemd-firstboot.service already masked"
-    else
-        rm -f -- "$FB"
-        ln -s /dev/null "$FB"
-        ok "release: masked systemd-firstboot.service, so the first boot asks nothing on the console"
-    fi
-
     for f in /var/lib/systemd/random-seed /var/lib/systemd/credential.secret; do
         if [[ -e $ROOT$f ]]; then
             rm -f -- "$ROOT$f"

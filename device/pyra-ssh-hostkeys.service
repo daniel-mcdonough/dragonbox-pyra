@@ -1,7 +1,7 @@
-# Installed by pyra-trixie-prep.sh --release. A release image ships no ssh host
-# keys, so that no two cards share them, and Debian's ssh.service does not make
-# them: its `sshd -t` fails with no host key. This makes them once, before
-# sshd starts, on a card that has none.
+# Installed by pyra-trixie-prep.sh (fix 23). Prep removes the vendor image's ssh
+# host keys, which every card written from it shares, and Debian's ssh.service
+# does not make new ones: its `sshd -t` fails with no host key. This makes them
+# once, before sshd starts, on a card that has none.
 [Unit]
 Description=Generate this card's SSH host keys
 ConditionPathExistsGlob=!/etc/ssh/ssh_host_*_key

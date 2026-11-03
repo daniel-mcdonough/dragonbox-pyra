@@ -1,4 +1,4 @@
-# The twenty-two fixes, and what they actually do
+# The twenty-three fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -46,6 +46,7 @@ them out.
 | 20 | setting | — (MATE's battery dimming fights the Fn keys) | — | — |
 | 21 | workaround | `dri3wsegl-pyra` closes a descriptor twice; a four-byte binary patch removes the second close | the package drops the `close()` at `dri3_ws.c:324` | `pyra-ddk-dri3-wsegl-double-close.md` |
 | 22 | restores | MATE's backlight helper takes the first device it finds, the keyboard light on the stock kernel, so the image ships MATE's screen dimming off and no brightness slider | MATE picks the panel by itself and the image turns its dimming back on | — |
+| 23 | workaround | the vendor image ships its ssh host keys and machine-id, the same on every card; an image should make them on the first boot | the vendor image ships without them | — (none drafted yet) |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1485,6 +1486,46 @@ that repository's release workflow, so it differs from a local `./build-deb.sh`
 build in the gzipped man page's timestamp and nothing else). A `.deb` given with
 `--backlight` that matches the pin is reported as the release; any other is
 installed as given. `--no-backlight` leaves it out.
+
+## Fix 23 — every card has the same ssh host keys and machine-id
+
+**Symptom.** Every card written from the vendor image has the same six ssh host
+key files and the same `/etc/machine-id` (`79a963ec…`). Found on 2026-10-31,
+when a freshly written card matched another card's entry in the PC's
+`known_hosts`.
+
+**Why it matters.** The private host keys are on every card, so anyone with a
+Pyra card can pose as yours to an ssh client that trusts it, and sit in the
+middle of its sessions. The machine-id is meant to be unique too: programs use
+it as a per-machine identifier, and network stacks can derive a DHCP client
+identifier from it.
+
+**The fix.** Prep removes them and the card makes its own on its first boot:
+
+- the ssh host keys are removed, and `pyra-ssh-hostkeys.service`
+  (`device/`) runs `ssh-keygen -A` before sshd on a card with none. Debian's
+  `ssh.service` makes no keys; its `sshd -t` fails without one;
+- `/etc/machine-id` is emptied, so systemd writes a new one on the first boot;
+  `/var/lib/dbus/machine-id`, a file in the vendor image, becomes a link to it;
+- `systemd-firstboot.service` is masked. The empty machine-id makes systemd
+  treat the boot as a first boot, which would start it, and it prompts on tty1
+  for whatever of locale, keymap, timezone and root password it finds unset.
+
+Prep knows the vendor's by pins in the script: the SHA-256 of each public
+key's blob and the machine-id itself. It removes only those, so a re-run on a
+card that has booted since keeps the card's own. One vendor key among them is
+enough to remove them all. `--release` removes whatever is there, and also
+systemd's random seed and credential secret (`procedure.md` section 4).
+
+**What you see.** If your PC has talked to another Pyra at the same address,
+ssh warns once that the host key changed. Remove the old entry with
+`ssh-keygen -R <address>` after checking you are talking to your own card.
+
+**Checked.** The selftest asserts the vendor's are removed, a card's own are
+kept, and a mixed set is removed (`pc/pyra-prep-selftest.sh`). The same steps
+as `--release` booted on a Pyra on 2026-11-01 (`verification-log.md`, R42): new
+host keys in about 13 s, sshd up after them, a new machine-id, no console
+prompt.
 
 ## Fixes 6, 7 and 12 as a package
 

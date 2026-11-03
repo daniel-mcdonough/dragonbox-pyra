@@ -10,16 +10,18 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 22 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 23 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
-# filesystem to be unchanged, checks that a missing fix 5 payload and an
+# filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
+# and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
 # unknown driver library (fix 21) each abort before fix 1 writes anything,
 # fires fix 21's dpkg guard with the image's own dpkg (it must re-patch after a
 # reinstall, leave a rolled-back card stock, and warn about an unknown build
 # without touching it), and finally runs --release twice on the same
 # image: what it refuses (writing nothing), the release end state (password
-# 'pyra' expired, no host keys, empty machine-id, no prompts, no NOPASSWD
-# rule for all commands, systemd-firstboot masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
+# 'pyra' expired, no host keys and an empty machine-id even where the card's
+# own were kept, no prompts, no NOPASSWD rule for all commands, systemd-firstboot
+# masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
 #
 # Fix 19 installs the shipped kernel from a tarball. The image carries only the
 # stock kernel, so the test hands prep the cross-build's output
@@ -204,6 +206,8 @@ i "run 1 of pyra-trixie-prep.sh"
 # existing pyra user, fed a test password on stdin, and --ssh-key with a key
 # made for this run (its comment must not reach the card).
 TESTPW=selftest-not-a-real-password
+# Fix 23 removes the vendor's host keys; one public key is kept for its mixed test.
+cp "$MNT/etc/ssh/ssh_host_rsa_key.pub" "$OUT/vendor-rsa.pub"
 ssh-keygen -q -t ed25519 -N '' -C 'comment-that-must-not-land@example.invalid' -f "$OUT/testkey"
 disarm; set +e
 "$PREP" "${KARGS[@]}" --set-password --ssh-key "$OUT/testkey.pub" --grow-on-boot "$MNT" pyra \
@@ -874,6 +878,26 @@ fi
 compgen -G "$MNT/var/tmp/pyra-prep-*.deb" >/dev/null && f "fix22: a staged .deb is still in /var/tmp" || p "fix22: no staged .deb left in /var/tmp"
 
 ########################################################################
+i "assert fix 23 — the vendor's shared host keys and machine-id"
+########################################################################
+HK=pyra-ssh-hostkeys.service
+[[ $(grep -c ' etc/ssh/ssh_host_' "$OUT/rootfs-before.txt") -eq 6 ]] && p "fix23: the vendor image had six host key files" || f "fix23: the vendor image had $(grep -c ' etc/ssh/ssh_host_' "$OUT/rootfs-before.txt") host key files, not six"
+grep -q "fix23: removed 6 ssh host key files (the vendor's" "$OUT/prep-run1.log" && p "fix23: run 1 recognised the vendor's six host key files and removed them" || f "fix23: run 1 did not report removing the vendor's host keys"
+compgen -G "$MNT/etc/ssh/ssh_host_*" >/dev/null && f "fix23: ssh host keys left: $(cd "$MNT/etc/ssh" && ls ssh_host_* | tr '\n' ' ')" || p "fix23: no ssh host keys"
+grep -q "fix23: emptied /etc/machine-id (the vendor's)" "$OUT/prep-run1.log" && p "fix23: run 1 recognised the vendor's machine-id" || f "fix23: run 1 did not report emptying the vendor's machine-id"
+[[ -f $MNT/etc/machine-id && ! -s $MNT/etc/machine-id ]] && p "fix23: /etc/machine-id is an empty file" || f "fix23: /etc/machine-id is missing or not empty"
+[[ $(readlink "$MNT/var/lib/dbus/machine-id") == /etc/machine-id ]] && p "fix23: /var/lib/dbus/machine-id is a link to /etc/machine-id" || f "fix23: /var/lib/dbus/machine-id is not a link to /etc/machine-id"
+U=$MNT/etc/systemd/system/$HK
+cmp -s "$PAYLOADS/$HK" "$U" && p "fix23: /etc/systemd/system/$HK matches repo" || f "fix23: $HK missing or differs from repo"
+[[ $(stat -c '%a %u:%g' "$U" 2>/dev/null) == "644 0:0" ]] && p "fix23: $HK is 0644 root:root" || f "fix23: $HK mode is $(stat -c '%a %u:%g' "$U" 2>/dev/null)"
+[[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/$HK") == /etc/systemd/system/$HK ]] \
+    && p "fix23: $HK enabled in multi-user.target" || f "fix23: $HK not enabled"
+grep -qx 'Before=ssh.service ssh.socket' "$U" && grep -qx 'ExecStart=/usr/bin/ssh-keygen -A' "$U" \
+    && p "fix23: $HK runs ssh-keygen -A before ssh" || f "fix23: $HK is not ordered before ssh or does not run ssh-keygen -A"
+[[ $(readlink "$MNT/etc/systemd/system/systemd-firstboot.service") == /dev/null ]] \
+    && p "fix23: systemd-firstboot.service masked" || f "fix23: systemd-firstboot.service not masked"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -924,6 +948,8 @@ fi
 for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; do
     grep -qE "fix21: .*$x already up to date" "$OUT/prep-run2.log" && p "run 2 reported fix21's $x up to date" || f "run 2 did not report fix21's $x up to date"
 done
+[[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run2.log") -eq 4 ]] \
+    && p "run 2 reported fix23's unit, its link, the machine-id and the mask already in place" || f "run 2 did not report fix23's unit, link, machine-id and mask in place"
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.
@@ -938,6 +964,45 @@ if grep -qx 'KERNEL_URL=' "$PREP"; then
 else
     i "a release is pinned in prep; not testing the download here"
 fi
+
+########################################################################
+i "fix 23 — a card's own host keys and machine-id are kept"
+########################################################################
+# As on a card that has booted since prep: keys made here, a machine-id of its
+# own and D-Bus's copy as a file. A re-run must keep all of it. Then one of
+# the vendor's public keys among them: that makes them the vendor's set again.
+# The card's own identity is left in place for --release (run 3) to remove.
+VENDOR_MID=$(sed -n 's/^VENDOR_MACHINE_ID=//p' "$PREP")
+OWN_MID=$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')
+ssh-keygen -q -t ed25519 -N '' -C '' -f "$MNT/etc/ssh/ssh_host_ed25519_key"
+printf '%s\n' "$OWN_MID" > "$MNT/etc/machine-id"
+rm -f "$MNT/var/lib/dbus/machine-id"; printf '%s\n' "$OWN_MID" > "$MNT/var/lib/dbus/machine-id"
+OWN_PUB=$(cat "$MNT/etc/ssh/ssh_host_ed25519_key.pub")
+snapshot > "$OUT/rootfs-own-before.txt"
+disarm; set +e
+"$PREP" "${KARGS[@]}" --grow-on-boot "$MNT" pyra </dev/null > "$OUT/prep-run-own.log" 2>&1; ORC=$?
+set -e; arm
+[[ $ORC -eq 0 ]] && p "fix23: the run on a card with its own identity exited 0" || f "fix23: the run on a card with its own identity exited $ORC"
+snapshot > "$OUT/rootfs-own-after.txt"
+cmp -s "$OUT/rootfs-own-before.txt" "$OUT/rootfs-own-after.txt" && p "fix23: and changed nothing on disk" || f "fix23: the run on a card with its own identity changed the filesystem"
+[[ $(cat "$MNT/etc/ssh/ssh_host_ed25519_key.pub") == "$OWN_PUB" ]] && grep -q "fix23: the ssh host keys are this card's own" "$OUT/prep-run-own.log" \
+    && p "fix23: the card's own host key is kept" || f "fix23: the card's own host key was not kept"
+[[ $(cat "$MNT/etc/machine-id") == "$OWN_MID" && $(cat "$MNT/var/lib/dbus/machine-id") == "$OWN_MID" ]] && grep -q "fix23: /etc/machine-id is this card's own" "$OUT/prep-run-own.log" \
+    && p "fix23: the card's own machine-id and D-Bus's copy are kept" || f "fix23: the card's own machine-id was not kept"
+[[ -n $VENDOR_MID && $VENDOR_MID != "$OWN_MID" ]] || f "fix23: could not read VENDOR_MACHINE_ID from prep"
+# One vendor public key (rsa, saved before run 1) beside the card's own.
+cp "$MNT/etc/ssh/ssh_host_ed25519_key" "$OUT/own-hostkey"; cp "$MNT/etc/ssh/ssh_host_ed25519_key.pub" "$OUT/own-hostkey.pub"
+cp "$OUT/vendor-rsa.pub" "$MNT/etc/ssh/ssh_host_rsa_key.pub"
+disarm; set +e
+"$PREP" "${KARGS[@]}" --grow-on-boot "$MNT" pyra </dev/null > "$OUT/prep-run-mixed.log" 2>&1; MRC=$?
+set -e; arm
+[[ $MRC -eq 0 ]] && ! compgen -G "$MNT/etc/ssh/ssh_host_*" >/dev/null && grep -q "fix23: removed 3 ssh host key files (the vendor's" "$OUT/prep-run-mixed.log" \
+    && p "fix23: one vendor key among the card's own makes prep remove them all" || f "fix23: a vendor key among the card's own: exit $MRC, keys left: $(cd "$MNT/etc/ssh" && ls ssh_host_* 2>/dev/null | tr '\n' ' ')"
+[[ $(cat "$MNT/etc/machine-id") == "$OWN_MID" ]] && p "fix23: the machine-id, the card's own, is still kept" || f "fix23: the machine-id changed with the host keys"
+# Put the card's own key back for run 3.
+install -m 0600 "$OUT/own-hostkey" "$MNT/etc/ssh/ssh_host_ed25519_key"
+install -m 0644 "$OUT/own-hostkey.pub" "$MNT/etc/ssh/ssh_host_ed25519_key.pub"
+rm -f "$OUT/own-hostkey" "$OUT/own-hostkey.pub"
 
 ########################################################################
 i "missing-payload abort — must die before fix 1 writes"
@@ -1097,10 +1162,10 @@ for d in dev sys proc; do umount "$MNT/$d"; done
 i "release mode — prep --release"
 ########################################################################
 # On top of runs 1 and 2: the same image, which also lets it check the
-# refusals, since run 1 left an authorised key. Release mode changes only
-# fix 2's password and what its own section removes, so on a vendor image the
-# result is the same.
-HK=pyra-ssh-hostkeys.service
+# refusals, since run 1 left an authorised key, and fix 23's --release case,
+# since the card now has its own host key and machine-id. Release mode changes
+# fix 2's password, removes those whatever they are, and removes what its own
+# section does, so on a vendor image the result is the same.
 # What the vendor image had, from the first snapshot.
 i "vendor image: $(grep -c ' etc/ssh/ssh_host_' "$OUT/rootfs-before.txt") ssh host key files, /etc/machine-id $(awk '$6=="etc/machine-id"{print $5" bytes"}' "$OUT/rootfs-before.txt"), random-seed $(grep -q ' var/lib/systemd/random-seed ' "$OUT/rootfs-before.txt" && echo present || echo absent), credential.secret $(grep -q ' var/lib/systemd/credential.secret ' "$OUT/rootfs-before.txt" && echo present || echo absent)"
 for u in "$MNT"/usr/lib/systemd/system/ssh.service "$MNT"/lib/systemd/system/ssh.service; do
@@ -1150,13 +1215,10 @@ SALT=$(cut -d'$' -f3 <<<"$HASH")
 LASTCHG=$(awk -F: '$1=="pyra"{print $3}' "$MNT/etc/shadow")
 [[ $LASTCHG == 0 ]] && p "release: pyra must change it at the first login (last change 0)" || f "release: pyra's last change is '$LASTCHG', not 0"
 compgen -G "$MNT/etc/ssh/ssh_host_*" >/dev/null && f "release: ssh host keys left: $(cd "$MNT/etc/ssh" && ls ssh_host_* | tr '\n' ' ')" || p "release: no ssh host keys"
-U=$MNT/etc/systemd/system/$HK
-cmp -s "$PAYLOADS/$HK" "$U" && p "release: /etc/systemd/system/$HK matches repo" || f "release: $HK missing or differs from repo"
-[[ $(stat -c '%a %u:%g' "$U" 2>/dev/null) == "644 0:0" ]] && p "release: $HK is 0644 root:root" || f "release: $HK mode is $(stat -c '%a %u:%g' "$U" 2>/dev/null)"
+grep -q 'fix23: removed 2 ssh host key files (--release)' "$OUT/prep-run3.log" && grep -q 'fix23: emptied /etc/machine-id (--release)' "$OUT/prep-run3.log" \
+    && p "release: it removed the card's own host key and machine-id, which a plain run keeps" || f "release: run 3 did not report removing the card's own host key and machine-id"
 [[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/$HK") == /etc/systemd/system/$HK ]] \
     && p "release: $HK enabled in multi-user.target" || f "release: $HK not enabled"
-grep -qx 'Before=ssh.service ssh.socket' "$U" && grep -qx 'ExecStart=/usr/bin/ssh-keygen -A' "$U" \
-    && p "release: $HK runs ssh-keygen -A before ssh" || f "release: $HK is not ordered before ssh or does not run ssh-keygen -A"
 [[ -f $MNT/etc/machine-id && ! -s $MNT/etc/machine-id ]] && p "release: /etc/machine-id is an empty file" || f "release: /etc/machine-id is missing or not empty"
 DMID=$MNT/var/lib/dbus/machine-id
 [[ ! -e $DMID && ! -L $DMID ]] || [[ $(readlink "$DMID") == /etc/machine-id ]] \
@@ -1189,7 +1251,7 @@ else
 fi
 grep -q "release: 'pyra' already has the password 'pyra'" "$OUT/prep-run4.log" \
     && p "release: run 4 left the expired password alone" || f "release: run 4 did not report the password already set"
-[[ $(grep -cE 'release: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run4.log") -eq 4 ]] \
+[[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run4.log") -eq 4 ]] \
     && p "release: run 4 reported the unit, its link, the machine-id and the mask already in place" || f "release: run 4 did not report the unit, link, machine-id and mask in place"
 
 # The first boot, as far as a chroot shows it: without keys the image's own
