@@ -1445,7 +1445,7 @@ switching MATE's backlight control off (`org.mate.power-manager
 backlight-enable false`), which leaves no brightness control at all.
 
 **Fix.** Prep installs `pyra-backlight`, a separate package from its own
-repository. It names each device itself and sets it through logind, so no
+repository (https://github.com/daniel-mcdonough/pyra-backlight). It names each device itself and sets it through logind, so no
 root is needed, and it also drives a keyboard light that the kernel declares as
 an LED (`*::kbd_backlight`, as on `5.6.19-m4-kbdled`). It carries:
 
@@ -1477,10 +1477,12 @@ does nothing. (Found by the selftest, 2026-11-02: a card where the package had
 been installed by hand had the bindings, and the vendor image does not.)
 
 The `.deb` comes from `--backlight FILE`, or by default from pyra-backlight's
-release, checked against `BACKLIGHT_SHA256` in the script. Until a release is
-pinned there, a run with neither option warns and installs nothing, and the rest
-of the card is prepared as usual; `--no-backlight` leaves it out without the
-warning.
+release, checked against `BACKLIGHT_SHA256` in the script: v0.2's
+`pyra-backlight_0.2_all.deb`, SHA-256 `d6e1ae62…9d10` as published (built by
+that repository's release workflow, so it differs from a local `./build-deb.sh`
+build in the gzipped man page's timestamp and nothing else). A `.deb` given with
+`--backlight` that matches the pin is reported as the release; any other is
+installed as given. `--no-backlight` leaves it out.
 
 ## Fixes 6, 7 and 12 as a package
 

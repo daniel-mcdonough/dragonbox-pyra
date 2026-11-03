@@ -135,9 +135,10 @@ finally removes a fix 5 payload to confirm the script aborts *before* fix 1
 writes anything. For fix 19 it hands prep the cross-build's
 `m4-kbdled-kernel.tar.gz` (`PYRA_KERNEL_TARBALL` names another). Without one it
 runs prep with `--no-kernel`, and the verdict says the kernel install was
-skipped. Fix 22 is the same: it installs `PYRA_BACKLIGHT_DEB` (by default
-`pyra-backlight/dist/pyra-backlight_0.2_all.deb` beside the repository), or runs
-with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
+skipped. For fix 22 it lets prep download the pinned pyra-backlight release
+(network) and checks that the download matched; `PYRA_BACKLIGHT_DEB` names a
+`.deb` to pass with `--backlight` instead, and `PYRA_BACKLIGHT_DEB=none` runs
+prep with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
 package and a `pyra-backlight` with a dependency no image has, and requires
 each to stop prep before fix 1 writes. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
@@ -279,13 +280,12 @@ vendor image lacks one, `gir1.2-matepanelapplet-4.0`: prep adds Debian's build
 of it, pinned by SHA-256, from a copy beside the pyra-backlight `.deb` or else
 from `deb.debian.org` (`fixes.md`, fix 22). With no option it
 downloads the `.deb` from pyra-backlight's release and installs it only if it
-matches the SHA-256 pinned in the script. Until one is pinned there is nothing
-to download: the script warns and the card goes without. To install it anyway,
-build the `.deb` with pyra-backlight's `./build-deb.sh` and name it:
+matches the SHA-256 pinned in the script (v0.2). To use a `.deb` you already
+have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
 
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz --backlight pyra-backlight_0.2_all.deb /mnt/pyra yourusername
 
-`--no-backlight` leaves it out without the warning.
+`--no-backlight` leaves it out.
 
 ---
 
@@ -538,7 +538,7 @@ off (`org.mate.power-manager backlight-enable false`), because on the stock
 `/sys/class/backlight` holds only the panel, and switching the setting on set
 the panel to MATE's 30 % idle level within a second (measured 2026-10-29). The
 documented path is still `pyra-idle-dim`, in the `pyra-backlight` package,
-which lives in its own repository and also carries a panel applet for the
+which lives in its own repository (https://github.com/daniel-mcdonough/pyra-backlight) and also carries a panel applet for the
 screen and keyboard backlights. Prep installs it (fix 22, step 4), with
 `pyra-idle-dim.service` enabled for every user; add the applet with
 right-click on the panel, *Add to Panel…*, *Pyra Brightness*. Set how long
@@ -546,11 +546,18 @@ before it dims:
 
     gsettings set org.mate.session idle-delay 5      # minutes before it dims
 
-On a card prepared without it, build it on the PC from a checkout of
-pyra-backlight and install it on the Pyra:
+On a card prepared without it, download the `.deb` from its release on the
+Pyra and install it:
 
-    ./build-deb.sh                                   # on the PC, in the pyra-backlight checkout
-    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
+    wget https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.2/pyra-backlight_0.2_all.deb
+    sudo apt install ./pyra-backlight_0.2_all.deb
+    systemctl --user start pyra-idle-dim.service     # or log out and in
+
+or build it yourself on the PC:
+
+    git clone https://github.com/daniel-mcdonough/pyra-backlight.git
+    cd pyra-backlight && ./build-deb.sh              # makes dist/pyra-backlight_0.2_all.deb
+    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra, after copying it over
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
 The service takes its timing from `idle-delay` and has no timer of its own, so

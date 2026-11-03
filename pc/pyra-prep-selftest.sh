@@ -28,9 +28,10 @@
 # Without one, it runs prep with --no-kernel and says so in the verdict: a SKIP
 # is counted and printed, never a silent pass.
 #
-# Fix 22 installs pyra-backlight from a .deb: PYRA_BACKLIGHT_DEB, by default
-# pyra-backlight/dist/pyra-backlight_0.2_all.deb beside the repository. Without
-# one, prep runs with --no-backlight and that is a SKIP too. The image lacks
+# Fix 22 installs pyra-backlight: with PYRA_BACKLIGHT_DEB unset, prep downloads
+# the pinned release (network) and the run checks that it matched; a path there
+# is passed as --backlight; PYRA_BACKLIGHT_DEB=none runs prep with
+# --no-backlight, and that is a SKIP too. The image lacks
 # gir1.2-matepanelapplet-4.0, which prep downloads (pinned) unless a copy sits
 # beside that .deb. A .deb that is not
 # pyra-backlight, and one whose dependency the image lacks, are made here and
@@ -65,7 +66,7 @@ BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$ROOT/.." && pwd)/dragonbox-pyra-build}
 KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
 KREL=5.6.19-m4-kbdled
 KSLOT=l5
-BDEB=${PYRA_BACKLIGHT_DEB:-$(cd -- "$ROOT/.." && pwd)/pyra-backlight/dist/pyra-backlight_0.2_all.deb}
+BDEB=${PYRA_BACKLIGHT_DEB:-}
 
 PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
 SKIPPED=()
@@ -141,13 +142,16 @@ else
     SKIP=$((SKIP+1)); SKIPPED+=("fix 19 installed no kernel (no tarball at $KTAR)")
     printf '\e[33mSKIP\e[0m  fix19: no kernel tarball at %s; prep runs with --no-kernel\n' "$KTAR"
 fi
-if [[ -r $BDEB ]]; then
+if [[ $BDEB == none ]]; then
+    KARGS+=(--no-backlight)
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 22 installed no pyra-backlight (PYRA_BACKLIGHT_DEB=none)")
+    printf '\e[33mSKIP\e[0m  fix22: PYRA_BACKLIGHT_DEB=none; prep runs with --no-backlight\n'
+elif [[ -n $BDEB ]]; then
+    [[ -r $BDEB ]] || { echo "PYRA_BACKLIGHT_DEB=$BDEB is not readable" >&2; exit 2; }
     KARGS+=(--backlight "$BDEB")
     i "fix 22 installs $BDEB"
 else
-    KARGS+=(--no-backlight)
-    SKIP=$((SKIP+1)); SKIPPED+=("fix 22 installed no pyra-backlight (no .deb at $BDEB)")
-    printf '\e[33mSKIP\e[0m  fix22: no pyra-backlight .deb at %s; prep runs with --no-backlight\n' "$BDEB"
+    i "fix 22: prep downloads the pinned pyra-backlight release (network)"
 fi
 
 ########################################################################
@@ -839,8 +843,14 @@ WST=$(in_chroot /usr/local/sbin/pyra-wsegl-fdfix.sh status 2>&1 || true)
 ########################################################################
 i "assert fix 22 — pyra-backlight, installed by the image's dpkg"
 ########################################################################
-if [[ ${KARGS[*]} == *--backlight\ * ]]; then
-    BVER=$(bsdtar -xOf "$BDEB" 'control.tar.*' | bsdtar -xOf - ./control | awk '/^Version:/{print $2}')
+if [[ ${KARGS[*]} != *--no-backlight* ]]; then
+    if [[ -n $BDEB ]]; then
+        BVER=$(bsdtar -xOf "$BDEB" 'control.tar.*' | bsdtar -xOf - ./control | awk '/^Version:/{print $2}')
+    else
+        BVER=$(sed -n 's/^BACKLIGHT_TAG=v//p' "$PREP")
+        grep -qF 'fix22: the download matches the pinned SHA-256' "$OUT/prep-run1.log" \
+            && p "fix22: run 1 downloaded pyra-backlight $BVER and it matched the pin" || f "fix22: run 1 did not report a matching download"
+    fi
     BST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-backlight 2>/dev/null || true)
     [[ $BST == "$BVER ii"* ]] && p "fix22: dpkg has pyra-backlight $BVER installed and configured" || f "fix22: dpkg says '$BST', want $BVER ii"
     GST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' gir1.2-matepanelapplet-4.0 2>/dev/null || true)
@@ -857,7 +867,7 @@ if [[ ${KARGS[*]} == *--backlight\ * ]]; then
     BAUDIT=$(in_chroot dpkg --audit pyra-backlight 2>&1 || true)
     [[ -z $BAUDIT ]] && p "fix22: dpkg --audit finds nothing wrong with pyra-backlight" || f "fix22: dpkg --audit: $(head -3 <<<"$BAUDIT" | tr '\n' ' ')"
 else
-    printf '\e[33mSKIP\e[0m  fix22: assertions (no .deb at %s)\n' "$BDEB"
+    printf '\e[33mSKIP\e[0m  fix22: assertions (PYRA_BACKLIGHT_DEB=none)\n'
     in_chroot dpkg-query -W pyra-backlight >/dev/null 2>&1 \
         && f "fix22: --no-backlight installed pyra-backlight" || p "fix22: with --no-backlight pyra-backlight is not installed"
 fi
@@ -908,7 +918,7 @@ if [[ ${KARGS[0]} == --kernel ]]; then
 fi
 grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix20 already up to date" || f "run 2 did not report fix20 already up to date"
 grep -qE 'fix21: .*libpvrDRI3WSEGL.so already patched' "$OUT/prep-run2.log" && p "run 2 reported the library already patched" || f "run 2 did not report the library already patched"
-if [[ ${KARGS[*]} == *--backlight\ * ]]; then
+if [[ ${KARGS[*]} != *--no-backlight* ]]; then
     grep -qE 'fix22: pyra-backlight .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-backlight already installed" || f "run 2 did not report pyra-backlight already installed"
 fi
 for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; do

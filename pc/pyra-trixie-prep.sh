@@ -23,7 +23,7 @@
 # Fix 22 installs pyra-backlight (a brightness applet for the screen and the
 # keyboard light, and pyra-idle-dim) with the image's own dpkg. With no option
 # it downloads the published .deb and checks it against the SHA-256 pinned
-# below; until one is pinned it warns and installs nothing. --backlight FILE
+# below. --backlight FILE
 # uses a .deb you have (pyra-backlight's ./build-deb.sh makes one);
 # --no-backlight leaves it out.
 #
@@ -310,11 +310,11 @@ KERNEL_URL=
 KERNEL_SHA256=
 KERNEL_TMP=
 STAGED_KERNEL=$ROOT/var/tmp/pyra-prep-kernel.tar.gz
-# Fix 22's published .deb, the same way: empty until pyra-backlight's release
-# is pinned, and all three filled in together.
-BACKLIGHT_TAG=
-BACKLIGHT_URL=
-BACKLIGHT_SHA256=
+# Fix 22's published .deb, the same way: pyra-backlight's v0.2 release asset,
+# the SHA-256 of the file as published. All three change together.
+BACKLIGHT_TAG=v0.2
+BACKLIGHT_URL=https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.2/pyra-backlight_0.2_all.deb
+BACKLIGHT_SHA256=d6e1ae62ce5ae1310e88c6719b6152ddc04c5241503933e535e79c9508999d10
 BACKLIGHT_TMP=
 STAGED_BACKLIGHT=$ROOT/var/tmp/pyra-prep-backlight.deb
 # The one package pyra-backlight needs that the vendor image lacks: the MATE

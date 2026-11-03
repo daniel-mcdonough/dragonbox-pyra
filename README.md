@@ -114,9 +114,9 @@ pass it in. `--no-kernel` keeps the stock `5.6.19-pyradef`.
 
 It also installs `pyra-backlight` (fix 22): a panel applet with sliders for the
 screen and the keyboard light, and `pyra-idle-dim`, which dims the screen when
-the session goes idle. The same way, it will download the package from its
-release against a pinned hash. Until that is pinned, pass a `.deb` you built with
-`--backlight FILE`, or the card goes without it and prep says so.
+the session goes idle. The same way, it downloads the package from its
+[release](https://github.com/daniel-mcdonough/pyra-backlight/releases/tag/v0.2) and checks it against a pinned hash;
+`--backlight FILE` takes a `.deb` you have, and `--no-backlight` leaves it out.
 
 ## Do these after the first boot
 
