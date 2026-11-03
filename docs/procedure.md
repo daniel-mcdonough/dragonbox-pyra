@@ -562,7 +562,9 @@ or build it yourself on the PC:
 
 The service takes its timing from `idle-delay` and has no timer of its own, so
 that one setting controls it. Leave `org.mate.power-manager backlight-enable`
-false, or the two dim the panel at once.
+false, or the two dim the panel at once. With it false, the brightness slider in
+*Power Management Preferences* and MATE's own *Brightness Applet* do nothing;
+use the Pyra Brightness applet instead.
 
 **The keyboard light on `5.6.19-m4-kbdled`.** MATE's power manager drives it
 through UPower, and with MATE's defaults it takes it over on battery: at each

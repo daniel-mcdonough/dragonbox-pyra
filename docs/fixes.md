@@ -1457,7 +1457,9 @@ an LED (`*::kbd_backlight`, as on `5.6.19-m4-kbdled`). It carries:
   postinst enables it for every user (`/etc/systemd/user/default.target.wants`).
 
 MATE's `backlight-enable` stays false, or the two would dim the panel at once
-(`procedure.md` §8).
+(`procedure.md` §8). So MATE's own brightness controls do nothing: the slider in
+*Power Management Preferences* and mate-power-manager's *Brightness Applet*.
+The Pyra Brightness applet replaces both (owner, 2026-11-03).
 
 **How prep installs it.** With the image's own `dpkg -i`, in the chroot, not
 apt, so nothing comes from a mirror unpinned. Before writing anything it reads

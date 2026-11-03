@@ -1779,3 +1779,35 @@ So `fixes.md` fix 22's "add it from Add to Panel" works with the packages prep
 installs, at the same versions. Still unchecked: a card prepared with fix 22,
 which is what the next release image is, and whether `pyra-idle-dim` actually
 dims the panel after `idle-delay`.
+
+## 2026-11-03 — pyra-idle-dim dims and restores the panel
+
+The same card and session as the entry above (`5.6.19-m4-kbdled`,
+pyra-backlight 0.2 installed by hand, on AC). `org.mate.session idle-delay` set
+to 1 for the test, then put back to 30. Watched over ssh with `dbus-monitor` on
+the session bus (`StatusChanged`, `org.mate.ScreenSaver`), the service's
+journal, and `/sys/class/backlight/backlight/brightness` every 5 s.
+
+    06:32:23  StatusChanged 0 (a key)   awake: restoring 11
+    06:33:24  StatusChanged 3 (idle)    idle: 11 -> 3
+    06:33:59  StatusChanged 0           awake: restoring 11
+    06:34:59  StatusChanged 3           idle: 11 -> 3
+
+- **Dims 60 s after the last input and comes back on a key**, both twice
+  (measured, the timestamps above; the owner saw the dim). Brightness 3 is
+  20 % of 15, the service's default.
+- **MATE's own brightness controls do nothing,** by design: the slider in
+  *Power Management Preferences* stays inert because `backlight-enable` is
+  false (`fixes.md`, fix 22). The Pyra Brightness applet's sliders work
+  (owner).
+- **One earlier run did not match** and is not explained. Right after the delay
+  was changed from 30 to 1, the screen blanked (mate-screensaver, `blank-only`)
+  at about a minute, while presence sent no `StatusChanged` for 11 minutes
+  (`gdbus monitor` on the Presence object). The first dim came at 06:29:53,
+  presumably a minute after the owner woke the screen. During the two cycles
+  above the screen did not blank at all.
+- The dim and the screensaver's blank both key off `idle-delay`, so on a card
+  that still blanks, the dim cannot be seen first. With blanking off, as the
+  README's first-boot steps advise, the dim is what idle looks like.
+
+Still not seen: the same on a card prepared with fix 22.
