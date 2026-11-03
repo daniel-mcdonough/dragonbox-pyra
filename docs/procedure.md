@@ -13,7 +13,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Twenty-one fixes are needed, and `fixes.md` explains each one. Most of them are not
+Twenty-two fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -26,16 +26,17 @@ work on the shipped kernel, fix 16 sets the measured governor tunable at
 boot, fix 17 gives PulseAudio the script that matches the kernel's audio
 path at each boot, fix 18 puts the keyboard's manual rescue on the path, and
 fix 19 installs the shipped kernel and makes it what the card boots, fix 20
-keeps MATE from taking the keyboard light over on battery, and fix 21 stops the
-SGX driver closing a descriptor twice, which can corrupt a game's saves.
+keeps MATE from taking the keyboard light over on battery, fix 21 stops the
+SGX driver closing a descriptor twice, which can corrupt a game's saves, and
+fix 22 installs a brightness applet and an idle dimmer that reach the screen.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-one fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-two fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
-armhf, qemu-user with binfmt: fixes 14, 19 and 20 run the image's own tools in a
+armhf, qemu-user with binfmt: fixes 14, 19, 20 and 22 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 21 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 22 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -134,7 +135,11 @@ finally removes a fix 5 payload to confirm the script aborts *before* fix 1
 writes anything. For fix 19 it hands prep the cross-build's
 `m4-kbdled-kernel.tar.gz` (`PYRA_KERNEL_TARBALL` names another). Without one it
 runs prep with `--no-kernel`, and the verdict says the kernel install was
-skipped. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
+skipped. Fix 22 is the same: it installs `PYRA_BACKLIGHT_DEB` (by default
+`pyra-backlight/dist/pyra-backlight_0.2_all.deb` beside the repository), or runs
+with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
+package and a `pyra-backlight` with a dependency no image has, and requires
+each to stop prep before fix 1 writes. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
 Note: if you ran the prep script by hand above, the image file itself is now
 prepared, with the user you named and the initrds rebuilt. You can `dd` *that*
@@ -266,6 +271,21 @@ that boots the stock `5.6.19-pyradef`, with every other fix in place. The card
 boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
 not come up on the new kernel, `troubleshooting.md`, "The card does not boot
 after prep installed the kernel", switches it back from the PC.
+
+**Brightness (fix 22).** The script installs `pyra-backlight`, the brightness
+applet and idle dimmer (§8), with the image's own `dpkg`. Before writing
+anything it checks that the image has every package the `.deb` depends on. The
+vendor image lacks one, `gir1.2-matepanelapplet-4.0`: prep adds Debian's build
+of it, pinned by SHA-256, from a copy beside the pyra-backlight `.deb` or else
+from `deb.debian.org` (`fixes.md`, fix 22). With no option it
+downloads the `.deb` from pyra-backlight's release and installs it only if it
+matches the SHA-256 pinned in the script. Until one is pinned there is nothing
+to download: the script warns and the card goes without. To install it anyway,
+build the `.deb` with pyra-backlight's `./build-deb.sh` and name it:
+
+    sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz --backlight pyra-backlight_0.2_all.deb /mnt/pyra yourusername
+
+`--no-backlight` leaves it out without the warning.
 
 ---
 
@@ -519,13 +539,19 @@ off (`org.mate.power-manager backlight-enable false`), because on the stock
 the panel to MATE's 30 % idle level within a second (measured 2026-10-29). The
 documented path is still `pyra-idle-dim`, in the `pyra-backlight` package,
 which lives in its own repository and also carries a panel applet for the
-screen and keyboard backlights. Build and install it:
-
-    ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
-    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
-    systemctl --user start pyra-idle-dim.service     # or log out and in
+screen and keyboard backlights. Prep installs it (fix 22, step 4), with
+`pyra-idle-dim.service` enabled for every user; add the applet with
+right-click on the panel, *Add to Panel…*, *Pyra Brightness*. Set how long
+before it dims:
 
     gsettings set org.mate.session idle-delay 5      # minutes before it dims
+
+On a card prepared without it, build it on the PC from a checkout of
+pyra-backlight and install it on the Pyra:
+
+    ./build-deb.sh                                   # on the PC, in the pyra-backlight checkout
+    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
+    systemctl --user start pyra-idle-dim.service     # or log out and in
 
 The service takes its timing from `idle-delay` and has no timer of its own, so
 that one setting controls it. Leave `org.mate.power-manager backlight-enable`
@@ -587,7 +613,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the twenty-one fixes it applies only 13 to 18 and 20, whose files it shares
+and of the twenty-two fixes it applies only 13 to 18 and 20, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

@@ -131,6 +131,8 @@ done
     for a in "${PREP_ARGS[@]}"; do
         if [[ -f $a && $a == *.tar.gz ]]; then
             echo "kernel_tarball=$(basename "$a") sha256=$(sha256sum < "$a" | cut -d' ' -f1)"
+        elif [[ -f $a && $a == *.deb ]]; then
+            echo "backlight_deb=$(basename "$a") sha256=$(sha256sum < "$a" | cut -d' ' -f1)"
         fi
     done
 } > "$BASE.info"

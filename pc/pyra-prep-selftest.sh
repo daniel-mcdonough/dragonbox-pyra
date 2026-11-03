@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 21 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 22 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that a missing fix 5 payload and an
 # unknown driver library (fix 21) each abort before fix 1 writes anything,
@@ -27,6 +27,14 @@
 # dragonbox-pyra-build beside the repository; PYRA_KERNEL_TARBALL names another).
 # Without one, it runs prep with --no-kernel and says so in the verdict: a SKIP
 # is counted and printed, never a silent pass.
+#
+# Fix 22 installs pyra-backlight from a .deb: PYRA_BACKLIGHT_DEB, by default
+# pyra-backlight/dist/pyra-backlight_0.2_all.deb beside the repository. Without
+# one, prep runs with --no-backlight and that is a SKIP too. The image lacks
+# gir1.2-matepanelapplet-4.0, which prep downloads (pinned) unless a copy sits
+# beside that .deb. A .deb that is not
+# pyra-backlight, and one whose dependency the image lacks, are made here and
+# must each stop prep before fix 1 writes anything.
 #
 # Fix 21's guard is fired by a real reinstall of the vendor's dri3wsegl-pyra 0.4
 # deb when PYRA_WSEGL_DEB (by default the package archive beside the
@@ -57,8 +65,10 @@ BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$ROOT/.." && pwd)/dragonbox-pyra-build}
 KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
 KREL=5.6.19-m4-kbdled
 KSLOT=l5
+BDEB=${PYRA_BACKLIGHT_DEB:-$(cd -- "$ROOT/.." && pwd)/pyra-backlight/dist/pyra-backlight_0.2_all.deb}
 
 PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
+SKIPPED=()
 p() { printf '\e[32mPASS\e[0m  %s\n' "$*"; PASS=$((PASS+1)); }
 f() { printf '\e[31mFAIL\e[0m  %s\n' "$*"; FAIL=$((FAIL+1)); }
 i() { printf '\e[36m----\e[0m  %s\n' "$*"; }
@@ -93,7 +103,7 @@ finish() {
     echo
     [[ -n $OUT ]] && printf '\e[36m----\e[0m  logs, snapshots and diffs in %s\n' "$OUT"
     printf '\e[1m%d passed, %d failed, %d skipped\e[0m\n' "$PASS" "$FAIL" "$SKIP"
-    [[ $SKIP -eq 0 ]] || printf '      skipped: fix 19 installed no kernel (no tarball at %s)\n' "$KTAR"
+    for r in "${SKIPPED[@]}"; do printf '      skipped: %s\n' "$r"; done
     if [[ $ABORTED -eq 1 ]]; then
         echo "TEST COMPLETE: FAIL (harness aborted before finishing)"
     elif [[ $rc -ne 0 && $FAIL -eq 0 ]]; then
@@ -101,7 +111,7 @@ finish() {
     elif [[ $FAIL -gt 0 ]]; then
         echo "TEST COMPLETE: FAIL"
     elif [[ $SKIP -gt 0 ]]; then
-        echo "TEST COMPLETE: PASS, WITH FIX 19'S KERNEL INSTALL SKIPPED"
+        echo "TEST COMPLETE: PASS, WITH THE SKIPS ABOVE"
     else
         echo "TEST COMPLETE: PASS"
     fi
@@ -128,8 +138,16 @@ if [[ -r $KTAR ]]; then
     i "fix 19 installs $KTAR"
 else
     KARGS=(--no-kernel)
-    SKIP=$((SKIP+1))
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 19 installed no kernel (no tarball at $KTAR)")
     printf '\e[33mSKIP\e[0m  fix19: no kernel tarball at %s; prep runs with --no-kernel\n' "$KTAR"
+fi
+if [[ -r $BDEB ]]; then
+    KARGS+=(--backlight "$BDEB")
+    i "fix 22 installs $BDEB"
+else
+    KARGS+=(--no-backlight)
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 22 installed no pyra-backlight (no .deb at $BDEB)")
+    printf '\e[33mSKIP\e[0m  fix22: no pyra-backlight .deb at %s; prep runs with --no-backlight\n' "$BDEB"
 fi
 
 ########################################################################
@@ -819,6 +837,33 @@ WST=$(in_chroot /usr/local/sbin/pyra-wsegl-fdfix.sh status 2>&1 || true)
     && p "fix21: on the card, pyra-wsegl-fdfix.sh status reads fixed, with the stock copy" || f "fix21: on the card, status says: ${WST//$'\n'/; }"
 
 ########################################################################
+i "assert fix 22 — pyra-backlight, installed by the image's dpkg"
+########################################################################
+if [[ ${KARGS[*]} == *--backlight\ * ]]; then
+    BVER=$(bsdtar -xOf "$BDEB" 'control.tar.*' | bsdtar -xOf - ./control | awk '/^Version:/{print $2}')
+    BST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-backlight 2>/dev/null || true)
+    [[ $BST == "$BVER ii"* ]] && p "fix22: dpkg has pyra-backlight $BVER installed and configured" || f "fix22: dpkg says '$BST', want $BVER ii"
+    GST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' gir1.2-matepanelapplet-4.0 2>/dev/null || true)
+    [[ $GST == "1.27.1-4.1 ii"* ]] && p "fix22: the vendor image's missing gir1.2-matepanelapplet-4.0 1.27.1-4.1 is installed" || f "fix22: gir1.2-matepanelapplet-4.0 is '$GST'"
+    for x in /usr/bin/pyra-idle-dim /usr/libexec/pyra-brightness-applet; do
+        [[ -x $MNT$x ]] && p "fix22: $x is installed" || f "fix22: no executable $x"
+    done
+    for x in /usr/share/mate-panel/applets/org.pyra.BrightnessApplet.mate-panel-applet \
+             /usr/share/dbus-1/services/org.mate.panel.applet.PyraBrightnessAppletFactory.service; do
+        [[ -f $MNT$x ]] && p "fix22: $(basename "$x") is installed" || f "fix22: no $x"
+    done
+    [[ $(readlink "$MNT/etc/systemd/user/default.target.wants/pyra-idle-dim.service") == */pyra-idle-dim.service ]] \
+        && p "fix22: pyra-idle-dim.service is enabled for every user" || f "fix22: pyra-idle-dim.service is not enabled in /etc/systemd/user"
+    BAUDIT=$(in_chroot dpkg --audit pyra-backlight 2>&1 || true)
+    [[ -z $BAUDIT ]] && p "fix22: dpkg --audit finds nothing wrong with pyra-backlight" || f "fix22: dpkg --audit: $(head -3 <<<"$BAUDIT" | tr '\n' ' ')"
+else
+    printf '\e[33mSKIP\e[0m  fix22: assertions (no .deb at %s)\n' "$BDEB"
+    in_chroot dpkg-query -W pyra-backlight >/dev/null 2>&1 \
+        && f "fix22: --no-backlight installed pyra-backlight" || p "fix22: with --no-backlight pyra-backlight is not installed"
+fi
+compgen -G "$MNT/var/tmp/pyra-prep-*.deb" >/dev/null && f "fix22: a staged .deb is still in /var/tmp" || p "fix22: no staged .deb left in /var/tmp"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -863,6 +908,9 @@ if [[ ${KARGS[0]} == --kernel ]]; then
 fi
 grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix20 already up to date" || f "run 2 did not report fix20 already up to date"
 grep -qE 'fix21: .*libpvrDRI3WSEGL.so already patched' "$OUT/prep-run2.log" && p "run 2 reported the library already patched" || f "run 2 did not report the library already patched"
+if [[ ${KARGS[*]} == *--backlight\ * ]]; then
+    grep -qE 'fix22: pyra-backlight .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-backlight already installed" || f "run 2 did not report pyra-backlight already installed"
+fi
 for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; do
     grep -qE "fix21: .*$x already up to date" "$OUT/prep-run2.log" && p "run 2 reported fix21's $x up to date" || f "run 2 did not report fix21's $x up to date"
 done
@@ -926,6 +974,41 @@ fi
 [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "and it stopped before fix 1 wrote anything" || f "an unknown library let fix 1 run first"
 rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 mv "$WL.selftest-keep" "$WL"
+
+########################################################################
+i "fix 22 — a wrong .deb and a missing dependency stop prep before fix 1 writes"
+########################################################################
+# Two minimal .debs, made with ar and tar: another package, and a pyra-backlight
+# that depends on a package no image has. The same canary as above.
+mkdeb() {   # OUT.deb PACKAGE DEPENDS
+    local d; d=$(mktemp -d)
+    printf 'Package: %s\nVersion: 0.0selftest\nArchitecture: all\nMaintainer: selftest <selftest@example.invalid>\nDepends: %s\nDescription: prep selftest\n' \
+        "$2" "$3" > "$d/control"
+    tar -czf "$d/control.tar.gz" -C "$d" ./control
+    mkdir "$d/data"; tar -czf "$d/data.tar.gz" -C "$d/data" .
+    printf '2.0\n' > "$d/debian-binary"
+    rm -f "$1"; (cd "$d" && ar rc "$1" debian-binary control.tar.gz data.tar.gz)
+    rm -rf "$d"
+}
+for c in "other-package|python3|is the package 'other-package', not pyra-backlight" \
+         "pyra-backlight|python3, pyra-selftest-no-such-package (>= 1)|lacks what pyra-backlight 0.0selftest depends on"; do
+    IFS='|' read -r bpkg bdeps bwant <<<"$c"
+    mkdeb "$OUT/selftest-$bpkg.deb" "$bpkg" "$bdeps"
+    ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+    ARC=0
+    disarm
+    ABORT=$("$PREP" --no-kernel --backlight "$OUT/selftest-$bpkg.deb" "$MNT" pyra 2>&1 </dev/null) || ARC=$?
+    arm
+    if [[ $ARC -ne 0 ]] && grep -qF "$bwant" <<<"$ABORT"; then
+        p "fix22: a .deb that $bwant stops prep (exit $ARC)"
+    else
+        f "fix22: a .deb that $bwant: exit $ARC:"; tail -3 <<<"$ABORT" | sed 's/^/      /'
+    fi
+    [[ $bpkg == pyra-backlight ]] && { grep -q 'pyra-selftest-no-such-package' <<<"$ABORT" && p "fix22: it names the missing dependency" || f "fix22: it did not name the missing dependency"; }
+    [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "fix22: and it stopped before fix 1 wrote anything" || f "fix22: fix 1 ran before the .deb was refused"
+    [[ ! -e $MNT/var/tmp/pyra-prep-backlight.deb ]] && p "fix22: and removed the staged .deb" || f "fix22: the staged .deb was left in /var/tmp"
+    rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+done
 
 ########################################################################
 i "fix 21's guard — a package run that puts the stock library back"

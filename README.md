@@ -112,6 +112,12 @@ it against a pinned hash, or takes a tarball you name with `--kernel FILE`. No
 release is pinned yet, so for now build the tarball yourself (see below) and
 pass it in. `--no-kernel` keeps the stock `5.6.19-pyradef`.
 
+It also installs `pyra-backlight` (fix 22): a panel applet with sliders for the
+screen and the keyboard light, and `pyra-idle-dim`, which dims the screen when
+the session goes idle. The same way, it will download the package from its
+release against a pinned hash. Until that is pinned, pass a `.deb` you built with
+`--backlight FILE`, or the card goes without it and prep says so.
+
 ## Do these after the first boot
 
 **Turn off suspend.** On the stock kernel it never completes, and a failed
@@ -129,8 +135,10 @@ core spins at 100% and only a reboot recovers it. The workaround is to stop the
 screen blanking; [docs/troubleshooting.md](docs/troubleshooting.md) has the
 three settings. A fix has been written but is not yet confirmed.
 
-For a screen that dims when idle (MATE's own dimming adjusts the keyboard light
-instead), install the separate `pyra-backlight` package. Section 8 of
+**Brightness.** A prepared card has `pyra-backlight` (fix 22). Add its slider
+with right-click on the panel, *Add to Panel…*, *Pyra Brightness*. Its
+`pyra-idle-dim` dims the screen after MATE's idle delay
+(`gsettings set org.mate.session idle-delay 5`, in minutes). Section 8 of
 `docs/procedure.md` has both of these in full.
 
 ## If something goes wrong
@@ -187,7 +195,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card, which must be done on a PC. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card in ten minutes, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twenty-one fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The twenty-two fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

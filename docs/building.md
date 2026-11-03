@@ -953,6 +953,11 @@ and the prep and fsck logs. On 2026-11-01, `xz -T0 -6` brought a 6 GiB release
 image to 936 MB in 90 s on the build PC (measured). That is under GitHub's
 2 GiB limit for a release asset, so the image is hosted as a GitHub release.
 
+Until pyra-backlight's release is pinned in prep, the workflow passes no
+`--backlight`, so prep warns and the CI image has no brightness applet or idle
+dimmer (fix 22). Pinning it fixes that with no change here: prep then downloads
+it by default.
+
 **Publishing it.** Give the run a second input, `release_tag`, named
 `image-<name>` (for example `image-2026.11-r1`):
 

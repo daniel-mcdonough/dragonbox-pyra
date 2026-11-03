@@ -1,4 +1,4 @@
-# The twenty-one fixes, and what they actually do
+# The twenty-two fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -45,6 +45,7 @@ them out.
 | 19 | project choice | — (the card boots the kernel built here) | the vendor's kernel carries these patches | the kernel reports |
 | 20 | setting | — (MATE's battery dimming fights the Fn keys) | — | — |
 | 21 | workaround | `dri3wsegl-pyra` closes a descriptor twice; a four-byte binary patch removes the second close | the package drops the `close()` at `dri3_ws.c:324` | `pyra-ddk-dri3-wsegl-double-close.md` |
+| 22 | restores | MATE's backlight helper takes the first device it finds, the keyboard light on the stock kernel, so the image ships MATE's screen dimming off and no brightness slider | MATE picks the panel by itself and the image turns its dimming back on | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1430,6 +1431,56 @@ What it does not cover:
   (`reports/pyra-ddk-dri3-wsegl-double-close.md`).
 - A prepared image therefore ships a modified binary of an MIT package. The
   package's licence stays in `/usr/share/doc/dri3wsegl-pyra/copyright`.
+
+## Fix 22 — no brightness slider, and the screen never dims
+
+**Symptom.** The image has no way to set the screen's brightness from the
+desktop, and the screen does not dim when the session goes idle.
+
+**Cause.** MATE's backlight helper does not recognise either of the Pyra's
+backlight names and takes the first device in `/sys/class/backlight`. On the
+stock `5.6.19-pyradef` that is the keyboard light, so MATE's brightness applet
+and its idle dimming both adjust the keyboard. The image works around that by
+switching MATE's backlight control off (`org.mate.power-manager
+backlight-enable false`), which leaves no brightness control at all.
+
+**Fix.** Prep installs `pyra-backlight`, a separate package from its own
+repository. It names each device itself and sets it through logind, so no
+root is needed, and it also drives a keyboard light that the kernel declares as
+an LED (`*::kbd_backlight`, as on `5.6.19-m4-kbdled`). It carries:
+
+- `pyra-brightness-applet`, a MATE panel applet with a slider for the screen
+  and one for the keyboard light. It is not on the panel by default: add it
+  with right-click, *Add to Panel…*, *Pyra Brightness*.
+- `pyra-idle-dim`, a user service that dims the screen after
+  `org.mate.session idle-delay` and brings it back on wake. The package's
+  postinst enables it for every user (`/etc/systemd/user/default.target.wants`).
+
+MATE's `backlight-enable` stays false, or the two would dim the panel at once
+(`procedure.md` §8).
+
+**How prep installs it.** With the image's own `dpkg -i`, in the chroot, not
+apt, so nothing comes from a mirror unpinned. Before writing anything it reads
+the `.deb` with the image's `dpkg-deb`, refuses any package that is not
+`pyra-backlight`, and checks every `Depends` entry against the image's dpkg
+database, versions and virtual packages included. The vendor image has all of
+them but one: `gir1.2-matepanelapplet-4.0`, the MATE panel applet's GObject
+bindings, which the applet imports. Prep adds Debian trixie's
+`gir1.2-matepanelapplet-4.0_1.27.1-4.1_armhf.deb` (22 KB), pinned by SHA-256 in
+the script. It uses a copy beside the pyra-backlight `.deb` if there is one,
+and otherwise downloads it from `deb.debian.org`, then from
+`snapshot.debian.org` by hash, which keeps it after the pool has moved on. Its
+own dependencies are checked the same way, and both go in with one `dpkg -i`.
+The `dpkg` run fires the post-invoke hooks of fixes 6, 7 and 21, which find
+nothing to do. A second run sees that version installed and configured and
+does nothing. (Found by the selftest, 2026-11-02: a card where the package had
+been installed by hand had the bindings, and the vendor image does not.)
+
+The `.deb` comes from `--backlight FILE`, or by default from pyra-backlight's
+release, checked against `BACKLIGHT_SHA256` in the script. Until a release is
+pinned there, a run with neither option warns and installs nothing, and the rest
+of the card is prepared as usual; `--no-backlight` leaves it out without the
+warning.
 
 ## Fixes 6, 7 and 12 as a package
 

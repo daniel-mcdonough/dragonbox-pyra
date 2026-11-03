@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Apply the twenty-one known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-two known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
-#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel] [--set-password]
+#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel]
+#                              [--backlight FILE | --no-backlight] [--set-password]
 #                              [--ssh-key FILE.pub] [--grow-on-boot] [--release]
 #                              /mnt [username]
 #
@@ -18,6 +19,13 @@
 # and checks it against the SHA-256 pinned below; --kernel FILE uses a tarball
 # you already have (a download, or ./pc/pyra-crossbuild.sh kernel-m4-kbdled);
 # --no-kernel leaves the card on the stock 5.6.19-pyradef.
+#
+# Fix 22 installs pyra-backlight (a brightness applet for the screen and the
+# keyboard light, and pyra-idle-dim) with the image's own dpkg. With no option
+# it downloads the published .deb and checks it against the SHA-256 pinned
+# below; until one is pinned it warns and installs nothing. --backlight FILE
+# uses a .deb you have (pyra-backlight's ./build-deb.sh makes one);
+# --no-backlight leaves it out.
 #
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
@@ -33,7 +41,7 @@
 # (The vendor's own rule for pyrainputctl alone stays.) It masks
 # systemd-firstboot, which the empty machine-id would otherwise start.
 #
-# Fixes 14, 19 and 20 run the image's own tools in a chroot, so a PC that is not
+# Fixes 14, 19, 20 and 22 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -56,6 +64,8 @@ info() { printf '\e[36mINFO\e[0m   %s\n' "$*"; }
 
 KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-kernel
 KERNEL_FILE=
+BACKLIGHT_MODE=auto     # auto: the pinned download if there is one; file: --backlight; none: --no-backlight
+BACKLIGHT_FILE=
 SET_PASSWORD=no
 SSH_KEY=
 GROW_ON_BOOT=no
@@ -67,6 +77,10 @@ while [[ $# -gt 0 ]]; do
                  KERNEL_MODE=file; KERNEL_FILE=$2; shift 2 ;;
     --kernel=*)  KERNEL_MODE=file; KERNEL_FILE=${1#--kernel=}; shift ;;
     --no-kernel) KERNEL_MODE=none; shift ;;
+    --backlight) [[ $# -ge 2 ]] || die "--backlight needs a .deb"
+                 BACKLIGHT_MODE=file; BACKLIGHT_FILE=$2; shift 2 ;;
+    --backlight=*) BACKLIGHT_MODE=file; BACKLIGHT_FILE=${1#--backlight=}; shift ;;
+    --no-backlight) BACKLIGHT_MODE=none; shift ;;
     --set-password) SET_PASSWORD=yes; shift ;;
     --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
                  SSH_KEY=$2; shift 2 ;;
@@ -81,7 +95,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--backlight FILE | --no-backlight] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -296,10 +310,29 @@ KERNEL_URL=
 KERNEL_SHA256=
 KERNEL_TMP=
 STAGED_KERNEL=$ROOT/var/tmp/pyra-prep-kernel.tar.gz
+# Fix 22's published .deb, the same way: empty until pyra-backlight's release
+# is pinned, and all three filled in together.
+BACKLIGHT_TAG=
+BACKLIGHT_URL=
+BACKLIGHT_SHA256=
+BACKLIGHT_TMP=
+STAGED_BACKLIGHT=$ROOT/var/tmp/pyra-prep-backlight.deb
+# The one package pyra-backlight needs that the vendor image lacks: the MATE
+# panel applet's GObject bindings, Debian trixie's build, pinned by SHA-256.
+# The pool drops it if a point release replaces mate-panel; snapshot.debian.org
+# keeps it by its SHA-1 for good. A copy beside the pyra-backlight .deb is used
+# instead, so a run can be offline.
+GIR_PKG=gir1.2-matepanelapplet-4.0
+GIR_DEB=gir1.2-matepanelapplet-4.0_1.27.1-4.1_armhf.deb
+GIR_SHA256=5c75b6aae0881990a2555c83502d93d22fd3700265ba9eebaa5841de05dd5684
+GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
+          https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
+STAGED_GIR=
 cleanup() {
     [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
     [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
-    rm -f -- "$STAGED_KERNEL"
+    [[ -n $BACKLIGHT_TMP ]] && rm -rf -- "$BACKLIGHT_TMP"
+    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" ${STAGED_GIR:+"$STAGED_GIR"}
 }
 trap cleanup EXIT
 
@@ -351,6 +384,123 @@ if [[ $KERNEL_MODE == file ]]; then
     fi
 elif [[ $KERNEL_MODE == none ]]; then
     warn "fix19: no kernel will be installed; this card will boot the stock 5.6.19-pyradef"
+fi
+
+# Fix 22 installs a .deb with the image's dpkg, without apt: the vendor image
+# has everything the package depends on except gir1.2-matepanelapplet-4.0,
+# which is fetched pinned (GIR_* above) and installed with it. The .deb is
+# found, downloaded and checked now,
+# and its dependencies are looked up in the image, so a wrong file or a missing
+# dependency stops prep before fix 1 has written anything. It is staged in the
+# image's /var/tmp for the chroot's dpkg-deb, and removed on the way out.
+# Prints each Depends entry of the .deb in $1 that the image does not satisfy.
+# Packages named after it are being installed alongside, so they count as
+# there. A virtual package counts when an installed package provides it.
+# shellcheck disable=SC2016  # expanded by the chroot's sh, not here
+BACKLIGHT_DEPCHECK='
+deb=$1; shift
+provided=$(dpkg-query -W -f="\${db:Status-Abbrev}|\${Provides}\n" | sed -n "s/^ii[^|]*|//p" |
+    tr "," "\n" | sed "s/(.*//; s/[[:space:]]//g" | sort -u)
+dpkg-deb -f "$deb" Depends | tr "," "\n" | while IFS= read -r dep; do
+    dep=$(printf %s "$dep" | sed "s/^[[:space:]]*//; s/[[:space:]]*$//")
+    [ -n "$dep" ] || continue
+    met=no
+    for alt in $(printf %s "$dep" | sed "s/[[:space:]]//g" | tr "|" " "); do
+        name=${alt%%(*}; name=${name%%:*}
+        for x in "$@"; do [ "$x" = "$name" ] && { met=yes; break; }; done
+        [ "$met" = yes ] && break
+        st=$(dpkg-query -W -f="\${db:Status-Abbrev}" "$name" 2>/dev/null) || st=
+        case $st in
+        ii*) ;;
+        *) printf "%s\n" "$provided" | grep -qx "$name" && { met=yes; break; }; continue ;;
+        esac
+        c=$(printf %s "$alt" | sed -n "s/.*(\(.*\))$/\1/p")
+        if [ -n "$c" ]; then
+            op=$(printf %s "$c" | sed "s/[^<>=].*//"); ver=${c#"$op"}
+            have=$(dpkg-query -W -f="\${Version}" "$name")
+            dpkg --compare-versions "$have" "$op" "$ver" || continue
+        fi
+        met=yes; break
+    done
+    [ "$met" = yes ] || echo "  $dep"
+done'
+if [[ $BACKLIGHT_MODE == auto ]]; then
+    if [[ -z $BACKLIGHT_URL || -z $BACKLIGHT_SHA256 ]]; then
+        warn "fix22: no pyra-backlight release is pinned yet, so there is nothing to download, and
+       the card gets no brightness applet or idle dimmer. Pass --backlight FILE
+       (pyra-backlight's ./build-deb.sh builds one), or --no-backlight to leave it out."
+        BACKLIGHT_MODE=none
+    else
+        command -v curl >/dev/null || die "fix22: the download needs curl on this PC"
+        BACKLIGHT_TMP=$(mktemp -d)
+        BACKLIGHT_FILE=$BACKLIGHT_TMP/pyra-backlight.deb
+        info "fix22: downloading $BACKLIGHT_URL"
+        curl -fL --proto '=https' --tlsv1.2 -o "$BACKLIGHT_FILE" "$BACKLIGHT_URL" ||
+            die "fix22: the download failed; nothing has been written"
+        sum=$(sha256sum "$BACKLIGHT_FILE" | cut -d' ' -f1)
+        [[ $sum == "$BACKLIGHT_SHA256" ]] ||
+            die "fix22: the download's SHA-256 is $sum, not the pinned $BACKLIGHT_SHA256. Not installing it."
+        ok "fix22: the download matches the pinned SHA-256"
+        BACKLIGHT_MODE=file
+    fi
+elif [[ $BACKLIGHT_MODE == none ]]; then
+    warn "fix22: --no-backlight: pyra-backlight will not be installed"
+fi
+if [[ $BACKLIGHT_MODE == file ]]; then
+    [[ -r $BACKLIGHT_FILE ]] || die "fix22: no .deb at $BACKLIGHT_FILE"
+    if [[ -z $BACKLIGHT_TMP ]]; then
+        sum=$(sha256sum "$BACKLIGHT_FILE" | cut -d' ' -f1)
+        if [[ -n $BACKLIGHT_SHA256 && $sum == "$BACKLIGHT_SHA256" ]]; then
+            ok "fix22: $BACKLIGHT_FILE is the published release $BACKLIGHT_TAG"
+        else
+            info "fix22: $BACKLIGHT_FILE is not the published release (a local build?); installing it as given"
+        fi
+    fi
+    install -m 0644 -o 0 -g 0 "$BACKLIGHT_FILE" "$STAGED_BACKLIGHT"
+    BL_DEB=${STAGED_BACKLIGHT#$ROOT}
+    BL_PKG=$(in_chroot dpkg-deb -f "$BL_DEB" Package 2>/dev/null) ||
+        die "fix22: $BACKLIGHT_FILE is not a .deb the image's dpkg-deb can read; nothing has been written"
+    [[ $BL_PKG == pyra-backlight ]] ||
+        die "fix22: $BACKLIGHT_FILE is the package '$BL_PKG', not pyra-backlight; nothing has been written"
+    BL_VER=$(in_chroot dpkg-deb -f "$BL_DEB" Version)
+    BL_WITH=()
+    if [[ $(in_chroot dpkg-query -W -f='${db:Status-Abbrev}' "$GIR_PKG" 2>/dev/null) == ii* ]]; then
+        ok "fix22: the image already has $GIR_PKG"
+    else
+        gir=$(dirname -- "$BACKLIGHT_FILE")/$GIR_DEB
+        if [[ -r $gir ]]; then
+            info "fix22: using $gir"
+        else
+            command -v curl >/dev/null || die "fix22: the image lacks $GIR_PKG, and fetching it needs curl on this PC"
+            [[ -n $BACKLIGHT_TMP ]] || BACKLIGHT_TMP=$(mktemp -d)
+            gir=$BACKLIGHT_TMP/$GIR_DEB
+            for u in "${GIR_URLS[@]}"; do
+                info "fix22: the image lacks $GIR_PKG; downloading $u"
+                curl -fL --proto '=https' --tlsv1.2 -o "$gir" "$u" && break
+                rm -f -- "$gir"
+            done
+            [[ -s $gir ]] || die "fix22: could not download $GIR_DEB; nothing has been written.
+       Put it beside $BACKLIGHT_FILE to run without the network."
+        fi
+        sum=$(sha256sum "$gir" | cut -d' ' -f1)
+        [[ $sum == "$GIR_SHA256" ]] ||
+            die "fix22: $gir has SHA-256 $sum, not the pinned $GIR_SHA256. Not installing it."
+        ok "fix22: $GIR_DEB matches the pinned SHA-256"
+        STAGED_GIR=$ROOT/var/tmp/pyra-prep-$GIR_DEB
+        install -m 0644 -o 0 -g 0 "$gir" "$STAGED_GIR"
+        GIR_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "${STAGED_GIR#$ROOT}") ||
+            die "fix22: could not read the dependencies of $GIR_DEB"
+        [[ -z $GIR_MISSING ]] || die "fix22: the image lacks what $GIR_PKG depends on:
+$GIR_MISSING
+       Nothing has been written."
+        BL_WITH=("${STAGED_GIR#$ROOT}")
+    fi
+    BL_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "$BL_DEB" "$GIR_PKG") ||
+        die "fix22: could not read the dependencies of $BACKLIGHT_FILE"
+    [[ -z $BL_MISSING ]] || die "fix22: the image lacks what pyra-backlight $BL_VER depends on, and prep adds only $GIR_PKG:
+$BL_MISSING
+       Nothing has been written."
+    ok "fix22: pyra-backlight $BL_VER; the image has everything it depends on${BL_WITH:+, with $GIR_PKG added}"
 fi
 
 
@@ -1528,6 +1678,39 @@ for spec in pyra-wsegl-fdfix.sh:/usr/local/sbin:0755 \
         ok "fix21: $VERB ${dst#$ROOT}"
     fi
 done
+
+# ---------------------------------------------------------------------- fix 22
+#
+# MATE's brightness applet and its idle dimming both find the keyboard light
+# first on the stock kernel, so the image ships MATE's screen dimming off and
+# no brightness slider (procedure.md section 8). pyra-backlight names each
+# device: its applet (added from the panel's "Add to Panel...") sets the screen
+# and keyboard light, and pyra-idle-dim, a user service its postinst enables
+# for every user, dims the screen after org.mate.session idle-delay. The image's
+# dpkg installs it in the chroot; that run fires the dpkg hooks of fixes 6, 7
+# and 21, which find nothing to do. Installed means that version, configured.
+
+if [[ $BACKLIGHT_MODE == file ]]; then
+    have=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-backlight 2>/dev/null || true)
+    if [[ $have == "$BL_VER ii"* ]]; then
+        ok "fix22: pyra-backlight $BL_VER already installed"
+    else
+        chroot_mount
+        info "fix22: installing pyra-backlight $BL_VER${BL_WITH:+ and $GIR_PKG} with the image's dpkg"
+        if ! out=$(in_chroot dpkg -i "${BL_WITH[@]}" "$BL_DEB" 2>&1); then
+            die "fix22: dpkg -i failed in the chroot:
+$out"
+        fi
+        chroot_unmount
+        ok "fix22: installed pyra-backlight $BL_VER (was: ${have:-not installed})"
+    fi
+    rm -f -- "$STAGED_BACKLIGHT" ${STAGED_GIR:+"$STAGED_GIR"}
+    BL_WANTS=$ROOT/etc/systemd/user/default.target.wants/pyra-idle-dim.service
+    [[ -L $BL_WANTS ]] || die "fix22: pyra-idle-dim.service is not enabled for users (no ${BL_WANTS#$ROOT})"
+    ok "fix22: pyra-idle-dim.service is enabled for every user; the applet is in Add to Panel"
+else
+    warn "fix22: pyra-backlight not installed; no brightness applet or idle dimmer"
+fi
 
 # ------------------------------------------------------------------- release
 #
