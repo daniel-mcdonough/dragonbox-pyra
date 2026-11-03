@@ -16,7 +16,7 @@
 #   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED:
 #                                            the shipped kernel. Every other kernel-*
 #                                            target is a developer build
-#   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks-pyra, the pyra
+#   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
 #   ./pyra-crossbuild.sh kernel-jack         stock source plus the jack-detect work and nothing else
@@ -107,11 +107,11 @@ build_ddx() {
 	ls -la "$dir"/*.deb
 }
 
-# pyra-hacks has no public upstream repository; ../pyra-hacks-pyra rebuilds
+# pyra-hacks has no public upstream repository; ../pyra-hacks rebuilds
 # its history from the released source packages and carries each change on a
 # branch (README.pyra.md there). This builds one ref of it as armhf debs. The
 # ref is exported with git archive, so uncommitted edits are not built.
-PYRA_HACKS_REPO=${PYRA_HACKS_REPO:-$SELF_DIR/../../pyra-hacks-pyra}
+PYRA_HACKS_REPO=${PYRA_HACKS_REPO:-$SELF_DIR/../../pyra-hacks}
 build_pyra_hacks() {
 	local ref=${1:-pyra}
 	local dir=$BUILD_DIR/pyra-hacks

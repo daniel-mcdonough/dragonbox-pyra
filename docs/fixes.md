@@ -1439,14 +1439,14 @@ as patches against pyra-hacks 0.38, in the form sent upstream, are in
 `patches/userspace/pyra-hacks-thermal/` (fixes 6 and 7, a two-patch series)
 and `patches/userspace/pyra-hacks-volumed/` (fix 12). Each applies with `git am`.
 
-The packaged form is a separate repository, pyra-hacks-pyra: `main` is the
+The packaged form is a separate repository, pyra-hacks: `main` is the
 package's release history rebuilt from the source packages (upstream's
 repository is not public), each fix is a branch off it (`feature/thermal-cap`,
 `feature/thermal-ladder`, `feature/volumed-taper`), and `pyra` merges them with
 a `0.38+pyra1` version. The patches above are `git format-patch` output from
 those branches. That repository is not published yet. Until it is, the patches
 are the source of record, and the deb can only be built by someone who has it,
-checked out beside this one as `../pyra-hacks-pyra`:
+checked out beside this one as `../pyra-hacks`:
 
     ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra1_armhf.deb
 
