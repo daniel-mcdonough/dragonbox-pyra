@@ -951,8 +951,25 @@ The workflow's result is a workflow artifact. It holds the image compressed with
 `sha256sum -c` after `unxz`), a `.sha256` of the `.xz`, the `.info` manifest,
 and the prep and fsck logs. On 2026-11-01, `xz -T0 -6` brought a 6 GiB release
 image to 936 MB in 90 s on the build PC (measured). That is under GitHub's
-2 GiB limit for a release asset, so a release can host the image. Hosting is
-still undecided.
+2 GiB limit for a release asset, so the image is hosted as a GitHub release.
+
+**Publishing it.** Give the run a second input, `release_tag`, named
+`image-<name>` (for example `image-2026.11-r1`):
+
+    gh workflow run release-image.yml -f kernel_run_id=<ID> -f release_tag=image-<name>
+
+A second job, the only one allowed to write to the repository, checks the
+`.xz` against its `.sha256` again. It then creates a **draft** release for that
+tag at the commit built, with the `.img.xz`, both `.sha256` files and the
+`.info` attached, and the `.info` in the notes. A draft is visible only to the
+repository's maintainers, and the tag does not exist until the draft is
+published. Write the image to a card from the draft and boot it on a Pyra
+(the forced password change, new host keys, the grow). Only then publish the
+draft from the Releases page. The tag is checked before the build starts, so
+a name not starting with `image-` fails at once rather than after an hour. The
+prefix also keeps it clear of `kernel-*`, which starts the Kernel release
+workflow when the tag is created. Without `release_tag`, the workflow publishes
+nothing.
 
 **What the runner must allow, and how the workflow checks it.** The workflow
 has not run on GitHub yet, because the repository has no remote. These are

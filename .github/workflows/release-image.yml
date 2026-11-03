@@ -6,6 +6,11 @@
 # workflow: give that run's ID, and its kernel-m4-kbdled artifact goes into the
 # image. (No kernel-* release is pinned in prep yet; docs/building.md.)
 #
+# With release_tag (image-*) set, the result is also attached to a draft
+# release for that tag at the commit built. A draft is visible only to the
+# repository's maintainers and creates no tag: boot the image on a Pyra, then
+# publish the draft by hand. Without it, nothing is published.
+#
 # The build script checks the vendor archive and the image inside it against
 # the SHA-256s pinned in pc/pyra-vendor-image.sh, so the image cannot be built
 # from anything else. The result is kept as a workflow artifact: the image
@@ -27,6 +32,11 @@ on:
         description: ID of a Kernel release run whose kernel-m4-kbdled artifact goes into the image
         required: true
         type: string
+      release_tag:
+        description: "Optional: image-* tag for a draft release of the result (empty: artifact only)"
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -41,7 +51,18 @@ jobs:
     name: Build the release image
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    outputs:
+      name: ${{ steps.build.outputs.name }}
     steps:
+      # Checked first, so a bad tag fails before an hour of building.
+      - name: Release tag
+        if: inputs.release_tag != ''
+        env:
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          [[ $TAG =~ ^image-[A-Za-z0-9._-]+$ ]] \
+            || { echo "::error::release_tag must look like image-<name>, not '$TAG'"; exit 1; }
+
       - uses: actions/checkout@v4
 
       # Outside the checkout. The runner context is not available to a job's
@@ -109,6 +130,7 @@ jobs:
       # The output directory is made here so that it, and the .xz written into
       # it next, belong to the runner user rather than root.
       - name: Build
+        id: build
         run: |
           name=pyra-trixie-release-${GITHUB_SHA::12}
           mkdir -p "$WORK/image"
@@ -116,6 +138,7 @@ jobs:
             ./pc/pyra-image-build.sh --out "$WORK/image/$name.img" \
             -- --release --grow-on-boot --kernel "$WORK/kernel/m4-kbdled-kernel.tar.gz"
           echo "NAME=$name" >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
 
       - name: Compress
         run: |
@@ -127,7 +150,58 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.NAME }}
+          name: ${{ steps.build.outputs.name }}
           path: ${{ runner.temp }}/pyra/image/
           compression-level: 0
           if-no-files-found: error
+
+  # Its own job, so that only this one can write to the repository. It does not
+  # create the tag: publishing the draft does, at the commit built.
+  release:
+    name: Draft release
+    needs: image
+    if: inputs.release_tag != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.image.outputs.name }}
+          path: dist
+
+      - name: Check and write notes
+        env:
+          NAME: ${{ needs.image.outputs.name }}
+        run: |
+          cd dist
+          sha256sum -c "$NAME.img.xz.sha256"
+          {
+            echo "The release card image, built from ${GITHUB_SHA::12} by \`pc/pyra-image-build.sh\` (prep \`--release --grow-on-boot\`) from the pinned vendor trixie image."
+            echo
+            echo "Check and write it as in the README quick start:"
+            echo
+            echo "    sha256sum -c $NAME.img.xz.sha256"
+            echo "    xzcat $NAME.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync"
+            echo
+            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. \`$NAME.info\` records the commit, the prep options, and the vendor image and kernel checksums."
+            echo
+            echo '```'
+            cat "$NAME.info"
+            echo '```'
+          } > ../notes.md
+          cat ../notes.md
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+          NAME: ${{ needs.image.outputs.name }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Release image $TAG" \
+            --notes-file notes.md \
+            --draft \
+            "dist/$NAME.img.xz" "dist/$NAME.img.xz.sha256" "dist/$NAME.sha256" "dist/$NAME.info"
