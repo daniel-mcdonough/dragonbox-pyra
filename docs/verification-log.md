@@ -1760,3 +1760,22 @@ So a card that boots the shipped kernel, plays sound and powers off leaves a
 clean root filesystem. The damage the USB reader reported on 2026-10-29 and
 2026-10-30 was not seen through the built-in slot (`troubleshooting.md`, "fsck
 finds damage before the grow").
+
+## 2026-11-03 — the pyra-backlight applet added from the panel menu
+
+An older trixie card on `5.6.19-m4-kbdled`, with `pyra-backlight` 0.2 and
+`gir1.2-matepanelapplet-4.0` 1.27.1-4.1 both installed by hand (2026-09-26),
+not by prep's fix 22. The owner added the applet with right-click on the panel,
+*Add to Panel…*, *Pyra Brightness*. Checked over ssh afterwards:
+
+    gsettings get org.mate.panel object-id-list   # ends in 'pyra-brightness'
+    systemctl --user is-active pyra-idle-dim      # active
+
+- **The menu offers it and the panel keeps it:** `pyra-brightness` is in the
+  panel's object list.
+- `pyra-idle-dim` runs in the session.
+
+So `fixes.md` fix 22's "add it from Add to Panel" works with the packages prep
+installs, at the same versions. Still unchecked: a card prepared with fix 22,
+which is what the next release image is, and whether `pyra-idle-dim` actually
+dims the panel after `idle-delay`.
