@@ -1550,9 +1550,11 @@ debs attached. To install 0.38+pyra1 on the Pyra:
     # d46efe8cbef3c3e9ad334a724f70fded76ecebba9d3188676ef7338af3a93269
     sudo apt install ./pyra-hacks_0.38+pyra1_armhf.deb
 
-To build it here instead, check that repository out beside this one as
-`../pyra-hacks`:
+To build it here instead, clone that repository beside this one as
+`../pyra-hacks`, on its `pyra` branch (the GitHub default, `master`, is empty,
+and the build looks for a local `pyra` branch):
 
+    git clone -b pyra https://github.com/daniel-mcdonough/pyra-hacks.git ../pyra-hacks
     ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra1_armhf.deb
 
 Its `pyra-thermal.sh` is byte-identical to what fixes 6 and 7 produce from the
