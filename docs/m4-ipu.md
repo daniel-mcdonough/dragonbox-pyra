@@ -665,7 +665,7 @@ accurate and worth reading for the model.
 
 **Updated 2026-09-20.** The first pass could not reach `git.ti.com` and fell
 back on stale GitHub mirrors. The repositories have since been cloned locally
-to `~/git/dragonbox-pyra-m4-work/`, and they are both newer and more useful
+(not published), and they are both newer and more useful
 than anything the mirrors showed:
 
 | clone | origin | last commit |
@@ -760,7 +760,7 @@ obtain it.
 #### What video decode would actually take (surveyed 2026-09-24)
 
 These repositories are cloned: fifteen MobiAqua repositories plus `yocto` in
-`~/git/dragonbox-pyra-m4-work/mobiaqua/`, alongside the TI clones. Nothing
+a local clone (`mobiaqua/`), alongside the TI clones. Nothing
 below has been run. It comes from reading the source, and from `readelf` and
 `strings` on the firmware binary.
 
@@ -1123,7 +1123,7 @@ are neither:
 - **The clock rates are gate clocks**, not confirmed core rates. See above.
 - **`git.ti.com` still does not respond from here**, so nothing was checked
   against it directly. That gap is now mostly closed a different way: the
-  repositories are cloned under `~/git/dragonbox-pyra-m4-work/` and option 1 is
+  repositories are cloned locally and option 1 is
   written from those working copies, not from mirrors.
 - **Nothing in the TI stack has been built.** Option 1 is read out of
   makefiles, `.bld` files and resource tables. `OMAP54XX_linux_elf` is carried
@@ -1265,7 +1265,7 @@ Other Pyra M4 work:
 
 Firmware:
 
-- `~/git/dragonbox-pyra-m4-work/` — local clones of TI's own `ipcdev`,
+- Local clones (not published) of TI's own `ipcdev`,
   `ipc-examples`, `ipc-metadata`, `ludev` and `luppa` from `git.ti.com`, which
   does not respond from this network. **Start here**, and specifically at
   `ipc-examples/src/examples/templates/ex02_messageq/slave/IpuAmmu_omap5.cfg`

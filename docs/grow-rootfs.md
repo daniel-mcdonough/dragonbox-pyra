@@ -129,7 +129,7 @@ The selftest forces both shapes through a test hook in the script
 `partx -u`): back after 3 s (the grow must finish), and never back (exit 1,
 then the next run finishes).
 
-**What a Pyra initrd carries** (the R42 release card, 2026-11-01, trixie,
+**What a Pyra initrd carries** (the first release-image card, 2026-11-01, trixie,
 `update-initramfs -u -k 5.6.19-m4-kbdled` after installing this script and
 hook, inspected with `lsinitramfs` and `unmkinitramfs`):
 - `usr/bin/flock`, util-linux 2.41, runs in the unpacked initrd. Before the new
@@ -222,7 +222,7 @@ So: power the Pyra down, move the card to a reader on a PC, and run
 
     sudo ./pc/pyra-trixie-grow.sh /dev/sdX
 
-`pyra-trixie-grow.sh`, in the repository root, refuses to touch anything that is not
+`pyra-trixie-grow.sh`, in `pc/`, refuses to touch anything that is not
 a Pyra trixie card. It checks the MBR disk identifier and both partition start
 sectors, refuses a partition or a mounted device, and backs up the first 1 MiB
 and the partition table before it writes. Before any write it runs
@@ -245,7 +245,7 @@ Then put the card back in the **left** slot, cold boot, and check with `df -h /`
 in the first 6 GiB, so the rest of the card is completely untested and a
 capacity-overstating card would not have shown up yet. Resizing onto space that
 is not really there gives you a filesystem that looks healthy and then quietly
-destroys data. `verify-card-capacity.sh`, in the repository root, writes unique
+destroys data. `verify-card-capacity.sh`, in `pc/`, writes unique
 samples across the untested region only, never below the end of the existing
 filesystem, reads them back, and runs a sustained transfer to shake out a flaky
 reader:

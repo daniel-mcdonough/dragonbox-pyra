@@ -1015,7 +1015,7 @@ been measured on the device.** The sources:
   `pyra-packages-archive/packages.pyra-handheld.com/trixie/dri3wsegl-pyra_0.4.tar.xz`.
   The .deb beside it carries the stock sha256 `d852ce4d…`, so this is the code
   that runs. 0.5 differs only in its changelog. TI's upstream, without the Pyra
-  vsync changes, is cloned at `~/git/dragonbox-pyra-repos/dragonbox-pyra-supporing-repos/dri3wsegl`.
+  vsync changes, is cloned locally (`dri3wsegl`).
 - The DDX is the 0.6 source in `dragonbox-pyra-build/ddx/build/src`.
 
 **What a GLES frame under X does:**

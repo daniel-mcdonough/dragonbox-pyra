@@ -111,7 +111,7 @@ why it needs no AMMU programming and how each of its three claims is defended.
 ## What would come next
 
 Nothing past a heartbeat can be tested without a real firmware. TI's own IPC repositories are
-cloned at `~/git/dragonbox-pyra-m4-work/`; `ipcdev` is from 2024, OMAP5 is a
+cloned locally; `ipcdev` is from 2024, OMAP5 is a
 supported platform in it, and `ipc-examples` carries the OMAP5-specific AMMU
 configuration and resource tables. `mobiaqua/ti-ducati-fw` is the easiest way
 to get the toolchain, and the route to take if the goal is video decode rather

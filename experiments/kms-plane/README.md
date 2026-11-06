@@ -1,4 +1,4 @@
-# Can the game reach a scaled display plane outside X? (Shipwright NEXT.md item F)
+# Can the game reach a scaled display plane outside X? (the SoH port's display-plane item)
 
 Shipwright report 08 §8.52 priced the present pass at 0.13-0.16 W and found no plane reachable under X.
 This is the feasibility test for the other road: the game on KMS itself. `kmsprobe.c` (build and run lines
@@ -9,7 +9,7 @@ in its header) runs on the device as root.
 - Mesa's libgbm (what the Pyra DDK package symlinks as `libgbm.so.2`) cannot drive the DDK: its DRI backend
   finds no 3D render driver next to omapdrm ("Error creating gpu or npu") and segfaults.
 - The DDK's `libpvrGBMWSEGL` *is* the `gbm_pvr` backend (it exports `gbm_backend`) for TI's libgbm fork
-  (git.ti.com glsdk/libgbm, a copy in `~/git/dragonbox-pyra-supporing-repos/libgbm`). It must be that repo's
+  (git.ti.com glsdk/libgbm, a local copy (`libgbm`)). It must be that repo's
   **77a737d** layout (12 device functions; HEAD's `surface_import` shifts them) built with a **32-bit
   `struct stat`** (`-U_TIME_BITS -U_FILE_OFFSET_BITS -D_TIME_BITS=32 -D_FILE_OFFSET_BITS=32`): trixie's gcc
   defaults to time64, the frontend copies its larger stat into the device and overwrites the backend's

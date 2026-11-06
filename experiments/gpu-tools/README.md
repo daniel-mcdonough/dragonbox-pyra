@@ -23,7 +23,7 @@ Each frame is two renders, told apart by the call stream in the apitrace capture
 | scene: the 640×360 game framebuffer | **2.64 ms** (2.64, 3.24) | 145 draws, 11 TA kicks spread over the CPU's frame |
 | present: the 1280×720 window | **2.87 ms** (2.81, 4.26) | a colour+depth clear and **one** ImGui quad (`glDrawElements`, 6 indices) sampling the game framebuffer, **alpha blending on** |
 
-Presenting the picture costs the GPU more than drawing the Market. That is Shipwright NEXT.md
+Presenting the picture costs the GPU more than drawing the Market. That is the SoH port's work queue
 item F (let the display controller scale 640×360) and item 4 (the part of the swap that does
 not scale with the game's pixels), now with a number. Candidates, none measured: blending off
 for that quad, and not clearing a colour buffer the quad covers completely.
@@ -55,7 +55,7 @@ rsync -a out/apitrace/ pyra@<host>:apitrace/
 ```
 
 `APITRACE_TAG` (14.0) matches Arch's package, so the trace format is the same at both ends.
-Source is cloned into `~/git/dragonbox-pyra-supporing-repos/apitrace`.
+Source is cloned locally (`apitrace`).
 
 ### Tracing Ship of Harkinian
 
@@ -63,7 +63,7 @@ Shipwright's `bench.sh run` passes any `VAR=VAL` through to the game's environme
 harness change is needed:
 
 ```sh
-cd ~/git/dragonbox-pyra-repos/Shipwright-pyra
+cd Shipwright-pyra    # a checkout of the Ship of Harkinian port
 PYRA_DIR=/home/pyra/soh-bench2 ./scripts/pyra/bench.sh run $MARKET \
     LD_PRELOAD=/home/pyra/apitrace/lib/apitrace/wrappers/egltrace.so \
     TRACE_FILE=/home/pyra/gpu-tools/soh-market.trace SOH_BENCH_UNCAP=0 SOH_BENCH_WARMUP=30 SOH_BENCH_FRAMES=30

@@ -1523,7 +1523,7 @@ ssh warns once that the host key changed. Remove the old entry with
 
 **Checked.** The selftest asserts the vendor's are removed, a card's own are
 kept, and a mixed set is removed (`pc/pyra-prep-selftest.sh`). The same steps
-as `--release` booted on a Pyra on 2026-11-01 (`verification-log.md`, R42): new
+as `--release` booted on a Pyra on 2026-11-01 (`verification-log.md`, 2026-11-01): new
 host keys in about 13 s, sshd up after them, a new machine-id, no console
 prompt.
 

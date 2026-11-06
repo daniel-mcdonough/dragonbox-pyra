@@ -19,7 +19,7 @@ and all 8 +0.087 (t 14.8), so the price is pairs 0-3's (Shipwright TESTING trap 
 pixel count, dominate); the GC320 keeps 27%. Keyboard backlight balanced between arms. Frames: the SGX arm period
 −16 µs (t −0.6, MDE 64); the GC320 arm +69 µs (t 3.0, MDE 55), negligible at the cap.
 
-## 2026-09-29: the present quad (Shipwright NEXT.md item F's prize)
+## 2026-09-29: the present quad (the SoH port's display-plane item's prize)
 
 `./thermcost.sh present` on a benchmark build: 30/750 in `RenderThread` 2 at 870 mV (the shipped state), the
 Market fixture, the game's own harness flipping `gSettings.ProbeSkipFlat` between 0 (the shipped picture) and 1024

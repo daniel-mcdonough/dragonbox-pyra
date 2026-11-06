@@ -3,7 +3,7 @@
 # networking (to get the gauge off USB power) does not stop it. Needs the machine on battery.
 #
 #   ./thermcost.sh [cost]   2026-09-25: idle floor, CPU clock 1000/1500, both backlights (README)
-#   ./thermcost.sh clock    2026-09-26: the lowest clock that holds the game (Shipwright NEXT.md 0T):
+#   ./thermcost.sh clock    2026-09-26: the lowest clock that holds the game (the SoH port's clock item):
 #                           ABBA watts at 30 fps (1000/875/750) and 20 fps (750/625/500), then
 #                           10-minute holds for die temperature
 #   ./thermcost.sh twocore  2026-09-28: Shipwright report 11's GL thread (RenderThread 2) at 30/750
@@ -11,7 +11,7 @@
 #   ./thermcost.sh undervolt 2026-09-28: 30/750 in mode 2 (the build's default), the 750 MHz point at
 #                           its table 950 mV against UV_MV (default 870), one process; needs
 #                           experiments/undervolt's module and undervolt.sh in UV_DIR (~/undervolt)
-#   ./thermcost.sh present  2026-09-29: Shipwright NEXT.md item F's prize, 30/750 in mode 2: the game's
+#   ./thermcost.sh present  2026-09-29: the SoH port's display-plane item's prize, 30/750 in mode 2: the game's
 #                           quad in the present pass drawn or skipped (gSettings.ProbeSkipFlat 1024,
 #                           benchmark builds), ABBA in 60 s segments run by the game's own harness in one
 #                           process; the harness labels each second's row through SOH_BENCH_ARM_FILE
@@ -118,7 +118,7 @@ while [ "$(cat /sys/class/power_supply/bq24297/online)" = 1 ]; do sleep 2; done
 sleep 20
 
 if [ "$MODE" = undervolt ]; then
-  # 2026-09-28, Shipwright NEXT.md 0T (6): the shipped 30/750 in mode 2 with the 750 MHz point
+  # 2026-09-28, the SoH port's clock item (6): the shipped 30/750 in mode 2 with the 750 MHz point
   # undervolted. The voltage changes live (undervolt.sh set steps the CPU to 875 and back, <1 s),
   # so both arms run in one game process: ABBA twice in 60 s blocks, then 10-minute holds
   # stock, undervolted, stock (the second stock hold measures the run's drift).

@@ -337,7 +337,7 @@ the other CPU. A userspace test reproduces it outside boot
 (`experiments/initramfs-wait/inotify-delete-race.c`): on the Pyra, 1964 of
 2000 `IN_DELETE`s with both processes on one CPU still found the file, against
 4 and 83 of 2000 across CPUs. On a 7.2 kernel it was 0 of 6000. (Those cross-CPU
-counts include a test artifact, fixed in R22: with it fixed, 3 and 12.) Mainline
+counts include a test artifact, since fixed: with it fixed, 3 and 12.) Mainline
 introduced this in v5.3 (49246466a989) and fixed it in v5.17 (a37d9a17f099,
 "fsnotify: invalidate dcache before IN_DELETE event"). systemd is not at
 fault. `pyra-settle-nudge` works because its extra delete wakes settle again
@@ -378,10 +378,11 @@ slow boot with no `nudged` line and no `settle exited` line is something else.
 
 ---
 
-## Crashes, freezes or wrong results since 2026-09-29: suspect the undervolt first
+## Crashes, freezes or wrong results with the undervolt installed: suspect it first
 
-The CPU's 750 MHz point runs at 870 mV, not 950, from every boot on 5.6.19-m4-kbdled
-(`device/pyra-undervolt.service`, `experiments/undervolt/README.md`). It passed every 10 mV step to
+Only if you installed the helpers with the undervolt module (`device/pyra-install-helpers.sh`;
+neither prep nor the release image does): the CPU's 750 MHz point then runs at 870 mV, not 950, from
+every boot on 5.6.19-m4-kbdled (`device/pyra-undervolt.service`, `experiments/undervolt/README.md`). It passed every 10 mV step to
 850 mV and a 60-minute `stress-ng --verify` soak, but too little voltage fails as silent wrong results
 first and a crash later, and a crash mid-write can damage the card. So before anything else:
 
@@ -1383,10 +1384,10 @@ root through logind:
 **The fix is `pyra-idle-dim`**, which names the device instead of guessing and
 goes through logind, so it needs no privileges. It ships in the
 `pyra-backlight` package, in its own repository, which enables it as a user
-service for everyone:
+service for everyone. Prep installs it (fix 22); on a card prepped without it:
 
-    ./build-deb.sh                                   # on the PC, in ~/git/pyra-backlight
-    sudo apt install ./pyra-backlight_0.1_all.deb    # on the Pyra
+    ./build-deb.sh                                   # on the PC, in a checkout of pyra-backlight
+    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
 It listens for the session manager's idle signal, so **the delay is whatever

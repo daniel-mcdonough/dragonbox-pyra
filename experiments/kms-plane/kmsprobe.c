@@ -1,4 +1,4 @@
-// kmsprobe: can the game reach a scaled display plane on the Pyra outside X? (Shipwright NEXT.md
+// kmsprobe: can the game reach a scaled display plane on the Pyra outside X? (the SoH port's work queue
 // item F, report 08 §8.52-8.53.) Runs on the device, as root.
 //
 //   kmsprobe egl                  no master needed: GBM + the DDK's EGL, render 640x360, lock the front

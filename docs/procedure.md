@@ -13,7 +13,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Twenty-two fixes are needed, and `fixes.md` explains each one. Most of them are not
+Twenty-three fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -28,7 +28,8 @@ path at each boot, fix 18 puts the keyboard's manual rescue on the path, and
 fix 19 installs the shipped kernel and makes it what the card boots, fix 20
 keeps MATE from taking the keyboard light over on battery, fix 21 stops the
 SGX driver closing a descriptor twice, which can corrupt a game's saves, and
-fix 22 installs a brightness applet and an idle dimmer that reach the screen.
+fix 22 installs a brightness applet and an idle dimmer that reach the screen,
+and fix 23 removes the ssh host keys and machine-id every vendor card shares.
 
 Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-three fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
@@ -60,7 +61,7 @@ Class 10 / U1 or better. Nothing exotic is required.
 
 ## 1. Get the image
 
-    cd ~/git/dragonbox-pyra
+    cd dragonbox-pyra                 # your checkout of this repository
     wget https://packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z
     7z x pyra-trixie-t1-brokenxorg.7z
 
@@ -428,16 +429,13 @@ wants DRM master and fails identically on bookworm when X is running.
 
 ---
 
-
----
-
 ## 7. Optional: set the machine up for development
 
 If you are going to work on this device rather than only use it, three things
 save a lot of time, and one script does all three against the mounted card
 before you ever boot it:
 
-    sudo ./pc/pyra-devsetup.sh /mnt
+    sudo ./pc/pyra-devsetup.sh --user yourusername /mnt/pyra
 
 It authorises your SSH key for the account, grants that account sudo without a
 password, and makes the desktop come up with no login prompt. It also makes
@@ -451,7 +449,7 @@ during this project cost network access to the device for exactly this reason.
 
 Everything it does is reversible:
 
-    sudo ./pc/pyra-devsetup.sh /mnt --undo
+    sudo ./pc/pyra-devsetup.sh --user yourusername /mnt/pyra --undo
 
 **Be clear about the cost.** Passwordless sudo means anything that reaches the
 account is root, including something you ran by accident. Autologin means

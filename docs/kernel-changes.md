@@ -223,7 +223,7 @@ and 1137 unpinned on the unpatched `5.6.19-m4` the same morning. Five warm reboo
 the queue file's one deletion every time (root at 8.26 s on the one boot where it was
 read, 6.58 s on the boot after the card was restored). On one of them (boot 3)
 settle was woken on udevd's CPU and preempted it inside `fsnotify_add_event()`, the
-sequence that left settle asleep twice on R21's stuck boot. This time its lookup found
+sequence that left settle asleep twice on the stuck boot traced in `experiments/initramfs-wait/`. This time its lookup found
 no file and it exited. No new warning at boot, nor after a pty was opened and closed (devpts, 0049). Not
 exercised: the configfs, nfsd and rpc_pipefs paths that 0049 changes.
 
