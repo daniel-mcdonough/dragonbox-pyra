@@ -14,7 +14,8 @@ directory holds what was made of them here:
 
 The two patches are the same frequency table written back into this kernel's
 own device tree source, split so the half that is not overclocking can be built
-on its own. If you build your own kernel, use those and ignore the blob.
+on its own. The shipped kernel already carries `0007`; see "You do not need
+the blob" below.
 
 **The published blob has not been booted on this machine, and neither has
 `0008`.** No default build carries any of it: the two kernel variants that do
@@ -214,58 +215,28 @@ tree fixes that arrived between April 2022 and the image this repository
 builds on. It is the shipped tree with a frequency table and some LED taste
 applied to it.
 
-## The installation instructions do not match this build
+## You do not need the blob
 
-The forum post says to replace the file in
-`/boot/dtb/linux-image-5.6.19-daveiii-pyradef-aufs`. No such directory exists
-here. Trixie names the directories after the kernel packages actually
-installed, and on this machine that is one directory per kernel:
+The post's instructions overwrite the device tree in
+`/boot/dtb/linux-image-5.6.19-daveiii-pyradef-aufs`, a directory that does not
+exist on trixie. You don't need to do that here. Every kernel this repository
+builds compiles its own device trees from source, and the table is already in
+that source:
 
-    /boot/dtb/linux-image-5.6.19-pyradef      the stock kernel
-    /boot/dtb/linux-image-5.6.19-fix          the patched kernel this repository builds
-    /boot/dtb/linux-image-5.6.19-softlockup   the lockup-detector build
+- the shipped kernel, `5.6.19-m4-kbdled`, carries `0007`, so a prepared card
+  already has the five steps below 1.5 GHz, with the voltage fix described
+  above;
+- `./pc/pyra-crossbuild.sh kernel-oc` adds `0008`, the steps up to 2 GHz.
 
-Which matters for more than a path. Each extlinux entry names its own
-`fdtdir`, so the device tree is selected per boot entry, not globally. The post
-treats the device tree as one file to overwrite and back up carefully. Here it
-does not have to be, and overwriting is the wrong way to do it.
+To try `kernel-oc`, install it beside the stock kernel and boot it once with
+`pyra-boot-kernel.sh debug --once`, as in `docs/building.md` ("Boot slots" and
+"Install it beside the stock kernel, not over it"). A kernel that hangs gets
+one boot, and the next boot is back on the default. The new points above
+1.5 GHz do nothing until the thermal daemon's ceiling is raised, so leave it at
+1500 on the first boot and test the tree before anything is overclocked.
 
-## A safer way to try the blob, if you are not building a kernel
-
-Skip this section if you are. Building `kernel-freq` or `kernel-oc` from the
-patches below is both safer and less work, and it survives a rebuild. What
-follows is for running the published blob on a kernel you did not build.
-
-Give the unlocked tree its own directory and its own boot entry, leave every
-existing entry untouched, and boot it once. `device/pyra-boot-kernel.sh`
-already arms a service that puts the default back early in the next boot, so a
-machine that boots at all gets exactly one boot on the unlocked tree and
-returns by itself.
-
-    # a directory of its own, seeded from the patched kernel's
-    sudo cp -a /boot/dtb/linux-image-5.6.19-fix /boot/dtb/linux-image-5.6.19-oc
-    # the .dtb from the post's omap5-letux-cortex15-v5.3+pyra-v5.3.zip
-    sudo cp omap5-letux-cortex15-v5.3+pyra-v5.3.dtb \
-            /boot/dtb/linux-image-5.6.19-oc/
-
-    # a boot entry of its own: copy the l1 block in /boot/extlinux/user.cfg,
-    # rename the label to l2, change only the fdtdir line to
-    #   fdtdir /dtb/linux-image-5.6.19-oc
-
-Then boot it once. Note that `pyra-boot-kernel.sh` has the test label wired to
-`l1`; point `DEBUG_LABEL` at `l2` or make `l2` the default by hand, and arm the
-revert either way.
-
-**Do not raise the thermal ceiling on the first boot.** Leave the stock
-`pyra-thermal.sh` in place, which caps at 1500. The extra steps below 1.5 GHz
-become available, nothing runs faster than it does today, and you find out
-whether the tree boots and whether the finer steps behave before anything is
-overclocked. That is one variable at a time, and it is the boot where a bad
-voltage table shows up.
-
-The recovery story the post describes still applies if you ignore all of the
-above and overwrite the stock file: the machine may not boot, and the fix is
-the card in a PC. This repository's `pc/` scripts are how you would do that.
+Read the warning above and "Result" below before you do: on a stock unit, one
+core at 1.5 GHz already reaches the passive trip.
 
 ## The thermal script has two problems, and one is a safety problem
 
