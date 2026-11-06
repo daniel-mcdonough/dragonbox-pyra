@@ -1,22 +1,24 @@
 # An unlocked device tree: 250 MHz to 2 GHz
 
-Third-party work, published on the Pyra forums and reproduced here with its
-author's warning intact, plus the work that was made of it here.
-**Nothing in this directory has been booted on this machine.** No default
-build carries any of it: the two kernel variants that do have to be asked for
-by name, and nothing in `docs/` depends on them.
+A Pyra owner, Asaggynoodle, published an unlocked device tree for the V5.3 on
+the Pyra forums on 2022-04-03, along with their own `pyra-thermal.sh`:
 
-What arrived, and what was made of it:
+https://pyra-handheld.com/boards/threads/20-c-cooler-and-now-with-water-resistance.99686/post-1706483
 
-    omap5-letux-cortex15-v5.3+pyra-v5.3.dtb   the unlocked device tree, April 2022
-    pyra-thermal.sh                           the author's own thermal script, March 2022
+Both are attachments to that post. They are not copied here, because the post
+states no licence for them. Download them from the post if you want them. This
+directory holds what was made of them here:
+
     0007-arm-dts-omap5-add-the-intermediate-opps.patch   the safe half, as source
     0008-arm-dts-omap5-add-the-overclock-opps.patch      the rest, as source
 
-The blob is what was published. The two patches are the same frequency table
-written back into this kernel's own device tree source, split so the half that
-is not overclocking can be built on its own. If you build your own kernel, use
-those and ignore the blob.
+The two patches are the same frequency table written back into this kernel's
+own device tree source, split so the half that is not overclocking can be built
+on its own. If you build your own kernel, use those and ignore the blob.
+
+**The published blob has not been booted on this machine, and neither has
+`0008`.** No default build carries any of it: the two kernel variants that do
+have to be asked for by name, and nothing in `docs/` depends on them.
 
 ## The measurements behind this table were taken on modified hardware
 
@@ -25,8 +27,9 @@ repository was done, and it is the single most important piece of context for
 reading any of it.** It changes no finding here. It changes how the findings
 should be described to anyone else.
 
-An earlier post by the same author describes the cooling work done to the CPU
-board before the frequency table was tuned:
+The [first post of the same thread](https://pyra-handheld.com/boards/threads/20-c-cooler-and-now-with-water-resistance.99686/),
+from 2022-03-18, describes the cooling work done to the CPU board before the
+frequency table was tuned:
 
 - the CPU board components **conformally coated**, to allow clearances and
   interface materials that would otherwise risk shorting;
@@ -241,6 +244,7 @@ returns by itself.
 
     # a directory of its own, seeded from the patched kernel's
     sudo cp -a /boot/dtb/linux-image-5.6.19-fix /boot/dtb/linux-image-5.6.19-oc
+    # the .dtb from the post's omap5-letux-cortex15-v5.3+pyra-v5.3.zip
     sudo cp omap5-letux-cortex15-v5.3+pyra-v5.3.dtb \
             /boot/dtb/linux-image-5.6.19-oc/
 
@@ -265,9 +269,9 @@ the card in a PC. This repository's `pc/` scripts are how you would do that.
 
 ## The thermal script has two problems, and one is a safety problem
 
-`pyra-thermal.sh` here is the author's, offered as an example rather than as
-something to install, and the post says so. Compared against the script running
-on this device, it raises the default ceiling from 1500 to 1900, and moves the
+The `pyra-thermal.sh` attached to the post is the author's, offered as an
+example rather than as something to install, and the post says so. Compared
+against the script running on this device, it raises the default ceiling from 1500 to 1900, and moves the
 core ladder from throttling at 77°C to throttling at 88°C. Those are choices.
 The following two are not.
 
