@@ -38,16 +38,17 @@ Written on 2026-09-22 against the state of both projects on that date.
 
 `device/pyra-hwreport.sh` collects the static hardware picture into one file.
 
-### Using these as context for an AI assistant
+### Where to start
 
 `hardware-overview.md` plus `known-limitations.md` is the minimum useful pair —
 the first establishes the model, the second prevents re-deriving closed
 questions. Add `gpu-optimization.md` and `rendering-guidelines.md` for anything
-touching a renderer, and `profiling-guide.md` before anything is measured.
+touching a renderer, and `profiling-guide.md` before anything is measured. The
+same set works as context for a code assistant.
 
 The convention throughout is that every claim is marked **Measured**, **Spec**,
-or reasoning, and that corrections are kept visible rather than edited away. An
-assistant reading these should preserve that: do not promote an estimate to a
+or reasoning, and that corrections are kept visible rather than edited away.
+Anyone editing these should keep it that way: do not promote an estimate to a
 fact, and do not delete a superseded number — mark it.
 
 ---
