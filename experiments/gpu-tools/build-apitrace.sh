@@ -6,9 +6,11 @@
 #
 #   ./build-apitrace.sh            configure + build into $SRC/build-pyra
 #   ./build-apitrace.sh install    stage into ./out/apitrace (rsync that to the Pyra)
+#
+# The source is cloned into ./apitrace-src unless APITRACE_SRC names a checkout.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC="${APITRACE_SRC:-$HOME/git/dragonbox-pyra-supporing-repos/apitrace}"
+SRC="${APITRACE_SRC:-$HERE/apitrace-src}"
 APITRACE_TAG=14.0
 IMAGE=soh-pyra-cross
 

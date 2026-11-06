@@ -5,6 +5,8 @@ IRQSTATUS_RAW is read-only-ish: reading it does not clear anything, unlike
 DN_DATA/UP_DATA which pop the FIFO. DN_IRQ_EMPTY means the hardware FIFO ran
 dry -- the transmitter had nothing to send. That is what a steady tone
 breaking up sounds like.
+
+    sudo ./pyra-mcpdm-watch.py [seconds]        default 3
 """
 import mmap, os, struct, sys, time
 BASE = 0x40132000

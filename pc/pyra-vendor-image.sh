@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # The vendor trixie image: where it comes from, its pinned checksums, and how
 # to unpack it. Sourced by pyra-image-build.sh, pyra-prep-selftest.sh and
 # pyra-grow-root-selftest.sh, so the pins live in one place. Not run on its own.

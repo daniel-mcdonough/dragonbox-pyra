@@ -1,0 +1,22 @@
+# Local settings for the scripts that talk to a Pyra or to a card-writing
+# machine. Copy this to pyra-local.conf (which git ignores), fill it in, and
+# source it from the repository root:
+#
+#     cp pyra-local.conf.example pyra-local.conf
+#     . ./pyra-local.conf
+#
+# Anything already set in the environment wins, so a one-off
+# `PYRA_HOST=pyra@<other-address> ./pc/...` still works after sourcing.
+
+# The Pyra, as user@address. Used by pc/pyra-push-kernel.sh,
+# pc/pyra-push-helpers.sh, docs/power-testing.md and the undervolt stepping
+# scripts. A Host entry in ~/.ssh/config works here too, and is the better
+# choice if you swap SD cards: give each card its own HostKeyAlias and the
+# known_hosts check stops failing after every swap.
+: "${PYRA_HOST:=pyra@<address>}"
+
+# The machine with the SD card reader, as user@host, for pc/pyra-image-push.sh.
+# Leave it unset if you write cards on this machine.
+: "${PYRA_WRITER:=}"
+
+export PYRA_HOST PYRA_WRITER

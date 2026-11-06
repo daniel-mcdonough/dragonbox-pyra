@@ -4,6 +4,10 @@
 If the output updates only every 36 McPDM frames, a 20-frame snapshot of the
 downlink FIFO is mostly runs of identical samples. If it updates every frame,
 every sample differs. This distinguishes a fault before DMEM from one after.
+
+    sudo ./pyra-aess-holdcheck.py [snapshots]   default 200
+
+Run it while something plays through the AESS. Read-only.
 """
 import mmap, os, struct, sys, time
 DMEM, OFF, NB = 0x40180000, 0x3800, 480

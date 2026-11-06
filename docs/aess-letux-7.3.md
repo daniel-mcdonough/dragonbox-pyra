@@ -33,25 +33,21 @@ drafts are in `reports/letux-aess-*.md`, starting with `reports/letux-aess-INDEX
 
 | what | where |
 | --- | --- |
-| letux kernel clone | `../dragonbox-pyra-supporing-repos/letux-kernel` (origin = goldelico/letux-kernel) |
+| letux kernel | a clone of `goldelico/letux-kernel` |
 | latest letux kernel | `origin/letux-7.3`, identical to `origin/letux-current` (2026-10-19) |
 | AESS-only merge branch | `origin/omap-aess-7.3` = `letux/aess-v19` + `aess-asoc-fw-v6` + `aess-audio-test-v3` + `aess-abefw-v5` |
 | previous one, what our reports checked | `origin/omap-aess-7.2` (`aess-v17`, `asoc-fw-v5`, `abefw-v4`) |
 | `master` | `letux-6.18.y`, 6.18.56. Its merge commit names `aess-v17`, but that is an older, pre-rebase version of that branch. Not the code to test. |
-| `omap-aess` clone | `../dragonbox-pyra-supporing-repos/omap-aess`, fetched to 7.3 on 2026-10-29. Its `omap-aess-7.3` is the same commit as letux-kernel's, `ccf9ed1222bd2`. |
+| `omap-aess` | its `omap-aess-7.3`, fetched 2026-10-29, is the same commit as letux-kernel's, `ccf9ed1222bd2` |
 | our patches | `experiments/aess/0013`-`0032`, applied by `pc/pyra-crossbuild.sh kernel-m4` on 5.6.19 |
 | driver | `sound/soc/ti/aess/`, `sound/soc/ti/omap-mcpdm.c`, `sound/soc/ti/omap-abe-twl6040.c` |
 | device tree | `arch/arm/boot/dts/ti/omap/omap5-l4-abe.dtsi` (AESS node), `omap5-board-common.dtsi` (sound card, `&aess { status = "okay"; }`) |
 | config | `arch/arm/configs/pyra_defconfig` on 7.3: `SND_SOC_OMAP_AESS=m`, `SND_SOC_OMAP_ABE_TWL6040=m` |
 | firmware build | `Letux/root/build-aess-fw`. Runs on the device, clones the letux branch that matches `uname -r`, builds a topology-format `omap_aess-adfw.bin` |
 
-The letux-kernel clone's local `master` was reset to `origin/master` on
-2026-10-20. Its only local commit was upstream's own, and upstream later
-replaced it. The old tip is kept as branch `backup/pre-reset-2026-10-20`.
-
 To recheck any of this:
 
-    cd ../dragonbox-pyra-supporing-repos/letux-kernel && git fetch origin
+    cd letux-kernel && git fetch origin
     git diff --stat origin/omap-aess-7.2 origin/omap-aess-7.3 -- sound/soc/ti
 
 The log between those two branches is mostly 2012-2023 commits replayed by

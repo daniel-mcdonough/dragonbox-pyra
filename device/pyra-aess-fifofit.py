@@ -4,6 +4,10 @@
 For a pure sine sampled at fs,  x[n+1] - 2x[n] + x[n-1] = -w^2 x[n],
 so w^2 = -sum(d2 * x) / sum(x*x) over the contiguous part of a snapshot.
 Amplitude follows from A^2 = x^2 + (dx/w)^2.
+
+    sudo ./pyra-aess-fifofit.py [snapshots]     default 60
+
+Run it while a steady tone plays through the AESS. Read-only.
 """
 import mmap, os, struct, sys, time, math
 DMEM = 0x40180000

@@ -68,10 +68,10 @@ RULE_PATH=/etc/udev/rules.d/95-pyra-audio-route.rules
 HELPER_PATH=/usr/local/sbin/pyra-audio-route-apply
 CARD=L15
 
-# the floor we put the headphone output at when it is found sitting at zero.
-# 13 of 15 on a -30 dB..0 dB scale in 2 dB steps, so -4 dB: loud enough to be
-# obviously working, short of the clipping the top of the range invites.
-HS_FLOOR=13
+# The helper below lifts the headphone output to 13,13 when it finds it at
+# zero: 13 of 15 on a -30 dB..0 dB scale in 2 dB steps, so -4 dB. Loud enough
+# to be obviously working, short of the clipping the top of the range invites.
+# It is written into the quoted heredoc, so change it there.
 
 emit_helper() {
 	cat <<'EOF'

@@ -55,7 +55,7 @@ rsync -a out/apitrace/ pyra@<host>:apitrace/
 ```
 
 `APITRACE_TAG` (14.0) matches Arch's package, so the trace format is the same at both ends.
-Source is cloned locally (`apitrace`).
+The source is cloned into `apitrace-src/` beside the script; set `APITRACE_SRC` to use a checkout you already have.
 
 ### Tracing Ship of Harkinian
 

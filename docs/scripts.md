@@ -17,6 +17,10 @@ it expects. The scripts that take a device argument write to it, so read the
 header comment before the first run. The measurement tools change nothing and
 need no privileges beyond reading `/proc`.
 
+The scripts that reach the Pyra over ssh read `PYRA_HOST`, and
+`pyra-image-push.sh` reads `PYRA_WRITER`. Set them in the environment, or copy
+`pyra-local.conf.example` to `pyra-local.conf` (git ignores it) and source it.
+
 ## On your computer
 
 | Script | What it does |
