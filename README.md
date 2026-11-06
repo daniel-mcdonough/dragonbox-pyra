@@ -22,14 +22,11 @@ There are two ways to get a card:
 
 ## Quick start: the prebuilt image
 
-> The first image is not published yet. Until it is, use
-> [Build the card yourself](#build-the-card-yourself).
-
 You need a V5.x Pyra and a full-size SDXC card, 16 GB or larger, Class 10 / U1
-or better (a microSD in an adapter is fine). You also need any computer with a
-card reader.
+or better (a microSD in an adapter is fine), and any computer with a card
+reader.
 
-1. Download `pyra-trixie-release-<commit>.img.xz` and its `.img.xz.sha256`
+1. Download the latest `pyra-trixie-release-<commit>.img.xz` and its `.img.xz.sha256`
    from this repository's Releases page, and check it:
 
         sha256sum -c pyra-trixie-release-<commit>.img.xz.sha256
@@ -80,13 +77,13 @@ On the PC:
     7z x pyra-trixie-t1-brokenxorg.7z
 
     lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT          # find the card; get this right
-    sudo ./pc/verify-card-capacity.sh /dev/sdX        # is the card what it claims to be
     sudo dd if=pyra-trixie-t1.img of=/dev/sdX bs=4M status=progress conv=fsync
 
     sudo partprobe /dev/sdX
+    sudo ./pc/verify-card-capacity.sh /dev/sdX        # is the card what it claims to be
     sudo mount /dev/sdX2 /mnt
     sudo mount /dev/sdX1 /mnt/boot
-    sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # applies the fixes; asks for a password
+    sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # your user (not 'pyra'); asks for a password
                                                       # and needs a kernel: see below
     sudo umount /mnt/boot /mnt && sync
 
@@ -196,9 +193,9 @@ not instructions). The logs are listed separately at the end.
 | Document | What it covers |
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Write the card, apply the fixes, boot, verify. **Start here.** |
-| [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. Also the harmless oddities. |
-| [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card, which must be done on a PC. |
-| [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card in ten minutes, and restore it. |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. |
+| [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
+| [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
 | [docs/fixes.md](docs/fixes.md) | The twenty-three fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
@@ -212,7 +209,7 @@ not instructions). The logs are listed separately at the end.
 | Document | What it covers |
 | --- | --- |
 | [docs/optimization-playbook.md](docs/optimization-playbook.md) | **Start here.** Index, and a triage of every optimisation proposed on this hardware so far. |
-| [docs/hardware-overview.md](docs/hardware-overview.md) | What this machine is, the numbers, and the seven ways it differs from anything modern. |
+| [docs/hardware-overview.md](docs/hardware-overview.md) | What this machine is, the numbers, and the ways it differs from anything modern. |
 | [docs/porting-checklist.md](docs/porting-checklist.md) | A phased checklist from "is this feasible" to "confirm it in real play". |
 | [docs/cpu-optimization.md](docs/cpu-optimization.md) | Cortex-A15, NEON, the TLB, the governor, and why the CPU is usually not the problem. |
 | [docs/gpu-optimization.md](docs/gpu-optimization.md) | SGX544MP2: tile-based deferred rendering, the measured GLES2 limits, what costs and what is free. |
@@ -232,7 +229,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/kernel-notes.md](docs/kernel-notes.md) | Kernel tunables worth changing, and the ones to leave alone. |
 | [docs/m4-demo.md](docs/m4-demo.md) | Run the two Cortex-M4s on your own Pyra, on the shipped kernel or a one-boot M4 kernel, and how to undo it. |
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
-| `reports/` | Findings written up for submission upstream. Drafts, not sent, so the public copy leaves them out until they are; the docs still name them where they cite one. |
+| `reports/` | Findings written up for submission upstream. |
 
 ### Logs: history, not instructions
 
@@ -267,19 +264,27 @@ and reproducible from the sources below.
 
 ## Licence
 
-GPL-2.0-only, in `LICENSE`, with one exception. The kernel patches in `patches/` and
+GPL-2.0-only, in `LICENSE`, with the exceptions below. The kernel patches in `patches/` and
 `experiments/` are changes to Linux kernel source and carry its licence, including
 the BSD-3-Clause header that `experiments/m4-ipu/0009-*.patch` adds, since the
 kernel file it touches is BSD-3-Clause upstream. Likewise, the patches in
 `patches/userspace/` carry the licence of the package they change: MIT for
-pyra-hacks, BSD-2-Clause for funkeymonkey-pyrainput.
+pyra-hacks, BSD-2-Clause for funkeymonkey-pyrainput. So does
+`experiments/kms-plane/armsoc-0001-*.patch`: MIT, for xf86-video-armsoc.
 
 The exception is the Cortex-M4 test firmware in `experiments/m4-ipu/firmware/`
 (`Makefile`, `m4.ld`, `main.c`, `resource_table.c`, `start.S`): BSD-3-Clause,
 with the text in that directory's `LICENSE`. Its resource table follows the
 layout of the kernel's BSD-licensed `include/linux/remoteproc.h`, and firmware
 for a remote processor is normally BSD-licensed so it can be built into
-anything. Every other file is GPL-2.0-only.
+anything.
+
+Not ours, and kept under their own terms:
+
+- `experiments/kms-plane/viv2d/*.xml.h`: generated etnaviv register headers,
+  MIT, with their copyright and licence text in each file.
+
+Every other file is GPL-2.0-only.
 
 ## Sources
 
