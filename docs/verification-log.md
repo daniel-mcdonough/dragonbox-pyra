@@ -1575,7 +1575,7 @@ untested on a Pyra.
 
 ## 2026-11-01 — a release image booted on the Pyra (R42)
 
-`pyra-trixie-prepped-20261101-025203.img`, built from 293eb11 with
+`pyra-trixie-prepped-20261101-025203.img`, built from 3383ca2 with
 `--release --grow-on-boot --kernel m4-kbdled-kernel.tar.gz` (`repo_dirty=no`),
 written to a 256 GB card and booted on kernel `5.6.19-m4-kbdled`. Everything
 below is measured, from the card's journal (one boot) and the files themselves.
@@ -1686,7 +1686,7 @@ written again from the image, not passed on after a boot.
 
 ## 2026-11-01 — a first-boot grow with the lock on a Pyra (R46)
 
-`pyra-trixie-prepped-20261101-050948.img`, built from f45b0b9 with
+`pyra-trixie-prepped-20261101-050948.img`, built from e41cf7b with
 `--release --grow-on-boot --kernel m4-kbdled-kernel.tar.gz` (`repo_dirty=no`),
 written to the 256 GB card and booted once on `5.6.19-m4-kbdled`. Read over
 ssh after that boot, with nothing changed on the card except the login

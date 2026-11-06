@@ -147,7 +147,7 @@ The boot after the rebuild (already grown, from `l5`) logged
 sectors`, and root mounted at 7.2 s (dmesg).
 
 **A grow with the lock on a Pyra** (2026-11-01, a `--release` image built
-from f45b0b9, first boot, `verification-log.md`): `done: the root filesystem
+from e41cf7b, first boot, `verification-log.md`): `done: the root filesystem
 is now 238 GiB`, with no wait message and no moved start; root mounted at
 653 s. udev did re-read the table on that boot: 80 times in 6 s, during the
 capacity check, whose one-sector writes each close the disk after writing.
