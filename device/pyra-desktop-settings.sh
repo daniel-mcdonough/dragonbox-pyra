@@ -11,7 +11,7 @@
 # user's ~/.config/dconf/user. Over ssh it finds the session bus itself. The
 # values persist across reboots on their own; this script exists so they also
 # survive a reflash, a new user, or a restore from a backup taken before they
-# were set (the 2026-09-26 card backup predates both).
+# were set.
 #
 # WHAT IT CHANGES, AND WHY
 #
