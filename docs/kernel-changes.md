@@ -55,7 +55,11 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-kbdled-sched` | `5.6.19-m4-kbdled-sched` | The running `5.6.19-m4-kbdled` build (#10, 2026-10-29: same 48 patches, same config, `FW_LOADER_USER_HELPER_FALLBACK` still on) + `SCHEDSTATS` / `SCHED_INFO`, for `/proc/<pid>/task/<tid>/schedstat` (run-queue delay) when measuring games. Config checked against the device's `/boot/config-5.6.19-m4-kbdled`: only those two and the release name differ. Developer build; the undervolt module has its own build for it (`experiments/undervolt/README.md`) |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
-**The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4
+**The device runs `5.6.19-m4-kbdled-sched`** since 2026-11-07, at the owner's request (boot entry l6,
+the base and default: `m4-kbdled` plus schedstat, for measuring games). `5.6.19-m4-kbdled` stays installed
+(l5 and l1) and is still the shipped kernel; `sudo pyra-boot-kernel.sh base l5 && sudo pyra-boot-kernel.sh
+stock` goes back to it. `5.6.19-m4demo` was removed from `/boot` to make room (no boot entry used it;
+`m4demo-kernel.tar.gz` reinstalls it). Before that, the device ran `5.6.19-m4-kbdled` l4
 (`5.6.19-m4`) is the fallback. The undervolt module (below) is installed for m4-kbdled
 only. The 0034 GPU fix is now built into m4-kbdled; on the device it still loads from
 the separately built copy in `updates/` until that kernel is reinstalled. Reinstalled

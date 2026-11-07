@@ -479,8 +479,9 @@ build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
 # The kernel the trixie card runs (5.6.19-m4-kbdled #10, built 2026-10-29,
 # before FW_LOADER_USER_HELPER_FALLBACK went off) plus scheduler statistics,
 # for measuring games: SCHED_INFO gives /proc/<pid>/task/<tid>/schedstat (time
-# on the CPU, run-queue delay, timeslices), and SCHEDSTATS the rest of the
-# accounting, off at runtime until sysctl kernel.sched_schedstats=1. Same
+# on the CPU, run-queue delay, timeslices; always on), and SCHEDSTATS the rest
+# of the accounting, off at runtime: 5.6 has no kernel.sched_schedstats sysctl
+# without SCHED_DEBUG, so it takes the schedstats=enable boot parameter. Same
 # patches and config otherwise, the fallback included, so a game's numbers on it
 # compare with the running kernel's. SCHED_DEBUG stays off as in every variant
 # here. A developer build: the undervolt module needs its own build for it
