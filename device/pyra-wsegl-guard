@@ -35,7 +35,7 @@
 #
 # It never fails the package run: it always exits 0.
 #
-# Why not dpkg-divert: it would keep the patched 0.4 file over any newer vendor
+# Why not dpkg-divert: it would keep the patched file over any newer vendor
 # build, silently. Why not an apt pin: it blocks upstream changes and does
 # nothing for --reinstall.
 #
@@ -85,7 +85,7 @@ case $st in
 "$NAME: stock") ;;
 "$NAME: unknown")
 	warn "$NAME was replaced by a package with a build pyra-wsegl-fdfix.sh does" \
-		"not know (not dri3wsegl-pyra 0.4). Nothing was changed." ;;
+		"not know (it knows dri3wsegl-pyra 0.4 and 0.5). Nothing was changed." ;;
 *)
 	warn "pyra-wsegl-fdfix.sh status failed: $st" ;;
 esac

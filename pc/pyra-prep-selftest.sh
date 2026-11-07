@@ -817,9 +817,10 @@ done
 i "assert fix 21 — the SGX window system no longer closes a descriptor twice"
 ########################################################################
 # The hashes are the device script's own, so test and fix can't disagree on them.
+# The image is trixie, so its row is dri3wsegl-pyra 0.4's.
 WSEGL=$PAYLOADS/pyra-wsegl-fdfix.sh
-SHA_STOCK=$(sed -n 's/^SHA_STOCK=//p' "$WSEGL")
-SHA_FIXED=$(sed -n 's/^SHA_FIXED=//p' "$WSEGL")
+SHA_STOCK=$(awk '$1 == "0.4-trixie" {print $2}' "$WSEGL")
+SHA_FIXED=$(awk '$1 == "0.4-trixie" {print $3}' "$WSEGL")
 WL=$MNT/usr/lib/libpvrDRI3WSEGL.so
 [[ $(sha256sum < "$WL" | cut -d' ' -f1) == "$SHA_FIXED" ]] && p "fix21: /usr/lib/libpvrDRI3WSEGL.so has the fixed SHA-256" || f "fix21: /usr/lib/libpvrDRI3WSEGL.so is not the fixed build"
 [[ $(sha256sum < "$WL.stock" 2>/dev/null | cut -d' ' -f1) == "$SHA_STOCK" ]] && p "fix21: libpvrDRI3WSEGL.so.stock is the vendor's stock build" || f "fix21: libpvrDRI3WSEGL.so.stock is missing or not the stock build"

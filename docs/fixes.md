@@ -1380,6 +1380,17 @@ script also goes onto the card as `/usr/local/sbin/pyra-wsegl-fdfix.sh`:
 puts the stock one back. On a card that was not prepared, `sudo
 ./pyra-wsegl-fdfix.sh install` from `device/` applies the same patch.
 
+The script knows three builds, each disassembled against its `-dbgsym` package
+(the `blx` after `PVRSRVUnmapDmaBuf` in `destroy_buffer`, its stub resolving to
+`close@GLIBC_2.4`, `r0` reloaded right after): trixie's 0.4 at `0x1548`, and
+0.5 for bookworm (`0x165e`, stock `1b3fa326…`) and bullseye (`0x1662`, stock
+`8e37577c…`). The two 0.5 builds come from the same source but differ. So the
+same commands fix a stock bookworm card, and a trixie card whose 0.4 is
+replaced by a 0.5 gets the 0.5 patched by the guard. `.stock` always holds the
+stock copy of the build that is installed: `install` refreshes it when a
+package brought another known build, and `rollback` refuses a `.stock` of a
+different build rather than put a 0.4 library under a 0.5 package.
+
 `dri3wsegl-pyra` owns the file, so `apt install --reinstall dri3wsegl-pyra`
 (or any `dpkg -i` of the deb) writes the stock build back without a word.
 Prep and `pyra-install-helpers.sh` therefore also install a dpkg hook, shaped
