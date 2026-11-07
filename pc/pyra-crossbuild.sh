@@ -16,6 +16,8 @@
 #   ./pyra-crossbuild.sh kernel-m4-kbdled    the same, with the keyboard light as an LED:
 #                                            the shipped kernel. Every other kernel-*
 #                                            target is a developer build
+#   ./pyra-crossbuild.sh kernel-m4-kbdled-sched  the running m4-kbdled build plus
+#                                            scheduler statistics (schedstat)
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
@@ -467,10 +469,25 @@ build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 # upload nobody makes, and the root mount waits behind it (shape B of the late
 # root mount, troubleshooting.md). Fix 14's pyra-fw-nofallback hook sets the
 # same at runtime and stays for the stock kernel.
+M4_KBDLED_PATCHES="$M4_PATCHES $SELF_DIR/../experiments/gpu-power/0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch \
+	 $SELF_DIR/../experiments/kbd-led $SELF_DIR/../experiments/jack-detect"
+M4_KBDLED_CONFIG="$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"
 build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
-	"$M4_PATCHES $SELF_DIR/../experiments/gpu-power/0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch \
-	 $SELF_DIR/../experiments/kbd-led $SELF_DIR/../experiments/jack-detect" src-m4-kbdled \
-	"$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG -FW_LOADER_USER_HELPER_FALLBACK"; }
+	"$M4_KBDLED_PATCHES" src-m4-kbdled \
+	"$M4_KBDLED_CONFIG -FW_LOADER_USER_HELPER_FALLBACK"; }
+
+# The kernel the trixie card runs (5.6.19-m4-kbdled #10, built 2026-10-29,
+# before FW_LOADER_USER_HELPER_FALLBACK went off) plus scheduler statistics,
+# for measuring games: SCHED_INFO gives /proc/<pid>/task/<tid>/schedstat (time
+# on the CPU, run-queue delay, timeslices), and SCHEDSTATS the rest of the
+# accounting, off at runtime until sysctl kernel.sched_schedstats=1. Same
+# patches and config otherwise, the fallback included, so a game's numbers on it
+# compare with the running kernel's. SCHED_DEBUG stays off as in every variant
+# here. A developer build: the undervolt module needs its own build for it
+# (experiments/undervolt/build-module.sh with PYRA_KERNEL_SUFFIX=m4-kbdled-sched).
+build_kernel_m4_kbdled_sched() { build_kernel_variant m4-kbdled-sched \
+	"$M4_KBDLED_PATCHES" src-m4-kbdled-sched \
+	"$M4_KBDLED_CONFIG SCHEDSTATS SCHED_INFO"; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
@@ -485,7 +502,8 @@ case "${1:-}" in
 	kernel-m4-uprobe) shift; build_kernel_m4_uprobe ;;
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
 	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
+	kernel-m4-kbdled-sched) shift; build_kernel_m4_kbdled_sched ;;
 	kernel-m4demo) shift; build_kernel_m4demo ;;
 	kernel-jack)  shift; build_kernel_jack ;;
-	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4demo | kernel-jack" ;;
+	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4-kbdled-sched | kernel-m4demo | kernel-jack" ;;
 esac

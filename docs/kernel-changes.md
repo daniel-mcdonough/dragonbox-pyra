@@ -52,6 +52,7 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
 | `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | **The shipped kernel.** `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
+| `kernel-m4-kbdled-sched` | `5.6.19-m4-kbdled-sched` | The running `5.6.19-m4-kbdled` build (#10, 2026-10-29: same 48 patches, same config, `FW_LOADER_USER_HELPER_FALLBACK` still on) + `SCHEDSTATS` / `SCHED_INFO`, for `/proc/<pid>/task/<tid>/schedstat` (run-queue delay) when measuring games. Config checked against the device's `/boot/config-5.6.19-m4-kbdled`: only those two and the release name differ. Developer build; the undervolt module has its own build for it (`experiments/undervolt/README.md`) |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled`** (boot entries l5, the default, and l1). l4

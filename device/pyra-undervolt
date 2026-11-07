@@ -21,9 +21,12 @@
 #
 # THE MODULE
 #
-# pyra_undervolt.ko is built for one kernel (5.6.19-m4-kbdled). On any other
-# kernel `apply` says so and does nothing, which leaves the l4 fallback entry
-# at stock voltage: booting it is also the way back if a setting is unstable.
+# pyra_undervolt.ko is built for one kernel (5.6.19-m4-kbdled). A developer
+# kernel that should run undervolted too (5.6.19-m4-kbdled-sched) gets its own
+# build in /usr/local/lib/pyra-undervolt/<release>/, which is taken first when
+# it matches the running kernel. On any other kernel `apply` says so and does
+# nothing, which leaves the l4 fallback entry at stock voltage: booting it is
+# also the way back if a setting is unstable.
 #
 # MOVING OFF THE POINT
 #
@@ -37,6 +40,8 @@
 set -eu
 
 MOD=/usr/local/lib/pyra-undervolt/pyra_undervolt.ko
+[ -r "/usr/local/lib/pyra-undervolt/$(uname -r)/pyra_undervolt.ko" ] &&
+	MOD="/usr/local/lib/pyra-undervolt/$(uname -r)/pyra_undervolt.ko"
 PARAM=/sys/module/pyra_undervolt/parameters
 CPU=/sys/devices/system/cpu/cpu0/cpufreq
 POINTS="750000:870000"

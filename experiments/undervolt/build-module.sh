@@ -5,7 +5,10 @@
 # a build for the default kernel is also copied to device/lib/, which
 # pyra-install-helpers.sh installs for pyra-undervolt.service.
 #   ./build-module.sh                                -> pyra_undervolt.ko next to this script
-#   PYRA_KERNEL_SUFFIX=m4 ./build-module.sh           the same, for 5.6.19-m4
+#   PYRA_KERNEL_SUFFIX=m4-kbdled-sched ./build-module.sh
+#       another kernel: built in the build tree (undervolt-<suffix>/), so the default
+#       kernel's module here is left alone, and copied to device/lib/5.6.19-<suffix>/,
+#       which pyra-install-helpers.sh installs where pyra-undervolt looks for that release
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 # Default: dragonbox-pyra-build beside this repository.
@@ -14,7 +17,13 @@ SUFFIX=${PYRA_KERNEL_SUFFIX:-m4-kbdled}
 SRC=src-$SUFFIX
 
 [ -d "$BUILD_DIR/kernel/$SRC" ] || { echo "no $SRC; run pc/pyra-crossbuild.sh kernel-$SUFFIX first"; exit 1; }
-docker run --rm -v "$BUILD_DIR/kernel/$SRC":/src:ro -v "$HERE":/mod -w /mod debian:bookworm bash -euo pipefail -c "
+OUT=$HERE
+if [ "$SUFFIX" != m4-kbdled ]; then
+	OUT=$BUILD_DIR/kernel/undervolt-$SUFFIX
+	mkdir -p "$OUT"
+	cp "$HERE/Kbuild" "$HERE/pyra_undervolt.c" "$OUT/"
+fi
+docker run --rm -v "$BUILD_DIR/kernel/$SRC":/src:ro -v "$OUT":/mod -w /mod debian:bookworm bash -euo pipefail -c "
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update -qq
 	apt-get install -y --no-install-recommends build-essential crossbuild-essential-armhf bc kmod bison flex libssl-dev >/dev/null
@@ -25,5 +34,10 @@ docker run --rm -v "$BUILD_DIR/kernel/$SRC":/src:ro -v "$HERE":/mod -w /mod debi
 	/src/scripts/sign-file sha1 /src/certs/signing_key.pem /src/certs/signing_key.x509 pyra_undervolt.ko
 	modinfo pyra_undervolt.ko | grep -E '^(name|vermagic|sig_key|parm)'
 "
-ls -l "$HERE/pyra_undervolt.ko"
-[ "$SUFFIX" = m4-kbdled ] && cp "$HERE/pyra_undervolt.ko" "$HERE/../../device/lib/" && echo "copied to device/lib/"
+ls -l "$OUT/pyra_undervolt.ko"
+if [ "$SUFFIX" = m4-kbdled ]; then
+	cp "$HERE/pyra_undervolt.ko" "$HERE/../../device/lib/" && echo "copied to device/lib/"
+else
+	mkdir -p "$HERE/../../device/lib/5.6.19-$SUFFIX"
+	cp "$OUT/pyra_undervolt.ko" "$HERE/../../device/lib/5.6.19-$SUFFIX/" && echo "copied to device/lib/5.6.19-$SUFFIX/"
+fi

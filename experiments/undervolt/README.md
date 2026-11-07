@@ -14,6 +14,8 @@ followed, the pin held); `sudo pyra-undervolt off` puts every point back until t
 and `pyra-install-helpers.sh` installs it. **If the Pyra crashes or computes wrong from here on, suspect
 this first.** The 2026-09-26 mechanism check is below the results.
 
+**Other kernels.** `PYRA_KERNEL_SUFFIX=m4-kbdled-sched ./build-module.sh` builds the module for that developer kernel in the build tree (the default kernel's module here is left alone) and copies it to `device/lib/5.6.19-m4-kbdled-sched/`; `pyra-install-helpers.sh` installs it to `/usr/local/lib/pyra-undervolt/<release>/`, which `pyra-undervolt` takes first when it matches `uname -r`. So that kernel runs at the same 870 mV as the shipped one.
+
 ## 2026-09-28: the 750 MHz point (SoH's shipped clock, Shipwright report 11 §11.14)
 
 **Stepping** (`stepping/`, logs in `stepping/results-2026-09-28/`), 5.6.19-m4-kbdled, on the charger,

@@ -283,6 +283,20 @@ else
 	install -m 0644 -o 0 -g 0 "$KO" /usr/local/lib/pyra-undervolt/pyra_undervolt.ko
 	note "module in /usr/local/lib/pyra-undervolt"
 fi
+# Builds for other kernels (build-module.sh with PYRA_KERNEL_SUFFIX) sit in
+# lib/<release>/; pyra-undervolt takes the one matching the running kernel.
+for KO in "$HERE"/lib/*/pyra_undervolt.ko; do
+	[ -r "$KO" ] || continue
+	REL=$(basename "$(dirname "$KO")")
+	if [ "$DRYRUN" = 1 ]; then
+		cmp -s "$KO" "/usr/local/lib/pyra-undervolt/$REL/pyra_undervolt.ko" ||
+			note "would install /usr/local/lib/pyra-undervolt/$REL/pyra_undervolt.ko"
+	else
+		install -d -m 0755 "/usr/local/lib/pyra-undervolt/$REL"
+		install -m 0644 -o 0 -g 0 "$KO" "/usr/local/lib/pyra-undervolt/$REL/pyra_undervolt.ko"
+		note "module for $REL in /usr/local/lib/pyra-undervolt/$REL"
+	fi
+done
 if [ "$DRYRUN" = 1 ]; then
 	note "would enable and restart pyra-undervolt.service"
 else
