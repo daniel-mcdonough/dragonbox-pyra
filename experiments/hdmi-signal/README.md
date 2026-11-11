@@ -63,8 +63,8 @@ and when they differ the driver sets FREQOUT to 0. Each field is decoded below.
   which takes a kernel knob: `drm.edid_firmware` doesn't reach omapdrm on 5.6, because omapdrm reads the
   EDID through its own `read_edid` and never calls `drm_get_edid`.
 - Not tried: **C**, the PHY's `POWER_CTRL[3:0]` LDO field, which the driver sets to 0xB on OMAP4 and
-  leaves at reset on OMAP5 (`ldo_voltage = false`). Its meaning on OMAP5 isn't confirmed. Find it in the
-  OMAP543x TRM before writing it.
+  leaves at reset on OMAP5 (`ldo_voltage = false`). TI's own 3.8 driver says these bits are reserved on
+  OMAP5 (see "TI's vendor kernels" below), so this test is dropped.
 
 ## The PHY registers: what the documentation covers (2026-11-11)
 
@@ -117,12 +117,63 @@ candidates that come from a document or the driver, cheapest first. Each is one 
 and the owner watching (rule 5); none has been tried:
 
 1. **PHY_CLKINEN on after lock:** CONFIGURATION2 `0x00602004` → `0x00606004`, no GO. This is the
-   AM572x's recommended value; the driver leaves it at 0, as DRA7 does, and DRA7 boards run 1080p. So
-   the odds are low, but the bit is documented and costs nothing.
-2. **Test C, POWER_CTRL `[3:0]` = `0xB`:** the OMAP4 driver's "max LDO voltage". Its meaning on OMAP5
-   is still undocumented (TI's own driver drops it for OMAP5), which is why the owner held it back.
-3. Undocumented fields (`POWER_CTRL[31:4]`, PAD_CFG's other bits, `+0x10`-`+0x18`): not without the
-   register descriptions. They need TI's full (NDA) TRM, or someone who has it.
+   AM572x's recommended value, and TI's 3.14 kernel sets it after lock on OMAP5 and DRA7 (below). The
+   driver from 4.4 on leaves it at 0, and DRA7 boards run 1080p on that. So the odds are low, but the
+   bit is documented and costs nothing.
+2. **The PLL operating point TI's 3.8 and 3.14 kernels use at 720p:** M2 = 3, DCO 2227.5 MHz, where
+   5.6 uses M2 = 2, DCO 1485 MHz. The PHY clock (DCO/M2 = 742.5 MHz) stays the same. Details and
+   register values are in the next section.
+3. ~~Test C, POWER_CTRL `[3:0]` = `0xB`~~: dropped. TI's 3.8 driver calls these bits reserved on OMAP5.
+4. Undocumented fields (`POWER_CTRL[31:4]`, PAD_CFG's other bits, `+0x10`-`+0x18`): not without the
+   register descriptions. No TI kernel names or writes them (next section). They need TI's full (NDA)
+   TRM, or someone who has it.
+
+## TI's vendor kernels against 5.6 (2026-11-11)
+
+TI wrote its own kernels with the full TRM, so they might name or set PHY fields that mainline doesn't.
+They don't. No branch names a PHY register or field beyond 5.6's five registers (`TX_CTRL`,
+`DIGITAL_CTRL`, `POWER_CTRL`, `PAD_CFG_CTRL`, `BIST_CONTROL`). None reads or writes `+0x10`-`+0x18`,
+`POWER_CTRL[31:4]` or any drive, swing, pre-emphasis or termination field. No board DT gives the HDMI
+node anything besides `vdda-supply` (omap5-uevm: ldo4, the same rail as the Pyra; dra7-evm: ldo3). What
+differs is how the PLL is set up and which PHY bits the driver sets. Read from the GPL sources with
+`git show BRANCH:path`. Baseline: our 5.6 omapdrm, `drivers/gpu/drm/omapdrm/dss/` (`hdmi_phy.c`,
+`hdmi5.c`, `pll.c`).
+
+**5.6 at 720p** (live values above): N = 8 (Fint 2.4 MHz), M2 = 2, DCO 1485 MHz, SELFREQDCO 2. FREQOUT
+is 0 because DCO ≠ CLKOUT (`hdmi_phy.c:145`). PHY_CLKINEN is cleared before lock and never set again
+(`pll.c:533`, `dss_pll_write_config_type_b`). `POWER_CTRL[3:0]` stays at reset (`hdmi_phy.c:162`).
+PAD_CFG `[30:27]` and `[26:22]` come from the DT lanes, default 0 (`hdmi_phy.c:119-120`).
+
+| Branch (commit) | Files | PHY/PLL differences from 5.6 |
+| --- | --- | --- |
+| `ti-linux-3.8.y` (`4f116c97e84d`, TI's OMAP5 merge) | `drivers/video/omap2/dss/`: `ti_hdmi_4xxx_ip.c` (shared by OMAP4 and OMAP5), `hdmi.c`, `ti_hdmi_5xxx_ip.[ch]`, `dss_features.c` | 1. `POWER_CTRL[3:0]`: "OMAP5 HDMI PHY has these bits reserved" (`ti_hdmi_4xxx_ip.c:363-366`). 2. PAD_CFG bit 27 (lane 0's polarity in 5.6's layout) set to 1 on every SoC (`:369`); 5.6 has 0. 3. LDOON goes in before FREQOUT and DIGITAL_CTRL are written (`:322`); 5.6 goes to LDOON after them. 4. FREQOUT compares the pixel clock in kHz with 1 500 000 (`:312`, `:344-351`), so it is 0 for every mode. 5. PLL: below a 750 MHz bit rate, M2 counts up from 3, otherwise M2 = 1 (`hdmi.c:585-614`). At 720p that gives N = 8, M2 = 3, DCO ≈ 2227.5 MHz. SELFREQDCO stays at 2 (low), because the range test looks at the bit rate, not the DCO (`hdmi.c:583`). PHY_CLKINEN is cleared before lock and never set (`ti_hdmi_4xxx_ip.c:114`). 6. The core's PHY I2C master (`HDMI_CORE_PHY_I2CM_*`, `ti_hdmi_5xxx_ip.h:190-191`) is only touched to set its interrupt masks (`ti_hdmi_5xxx_ip.c:629-630`). Nothing programs a PHY through it. `HDMI_CORE_PHY_MASK0` gets 0x00 (`:628`); 5.6 writes 0xf3 (`hdmi5_core.c:554`). Interrupt masks only. |
+| `ti-linux-3.12.y` (`68f449afccf6`) | `drivers/video/omap2/dss/`: `hdmi_phy.c`, `hdmi_pll.c`, `hdmi5.c` | 1. FREQOUT from the pixel clock: < 75 MHz → 0, < 186 MHz → 1, else 2 (`hdmi_phy.c:61-75`, `:104-110`). At 720p (74.25 MHz) that's 0, as in 5.6. 2. PAD_CFG bit 27 = 1 (`hdmi_phy.c:91`). 3. PLL: M2 = 3 only up to a 65 MHz pixel clock, otherwise 1 (`hdmi_pll.c:73-76`). At 720p that's M2 = 1, DCO 742.5 MHz, below the 750 MHz minimum that 5.6 and TI's own feature table give. PHY_CLKINEN is cleared and never set (`hdmi_pll.c:124`). `POWER_CTRL[3:0]`: not written on OMAP5, as in 5.6. |
+| `ti-linux-3.14.y` (`eda6e65ec037`) | `drivers/video/fbdev/omap2/dss/`: `hdmi_phy.c`, `pll.c` (shared DSI/HDMI PLL code), `hdmi5.c` | 1. FREQOUT: same rule as 3.12, with `<=` 75 MHz (`hdmi_phy.c:152-165`, fixed in `687718b3a1e8` "causes bad freqout to be used for 75MHz pixel clock, leading to sync losts"). At 720p it's 0, as in 5.6. 2. **PHY_CLKINEN set to 1 after lock** (`pll.c:438`, in `pll_set_clock_div`, which `hdmi5.c:172` calls for the HDMI PLL; cleared before lock at `:389`). 5.6's DSI path (`dss_pll_write_config_type_a`, `pll.c:496`) still does this, but its HDMI path doesn't. 3. PLL: N = 16 (Fint 1.2 MHz, `pll.c:248`). M2 = 3 when the bit rate is at or below 750 MHz, otherwise 1 (`pll.c:269-273`). SELFREQDCO is chosen from the DCO (`pll.c:381-386`). At 720p: M2 = 3, DCO 2227.5 MHz, SELFREQDCO 4, SD 9. 4. PAD_CFG bit 27 now comes from the DT lanes (`5349695dd824`, "lane config support", removed the fixed write), as in 5.6. |
+| `ti-linux-4.4.y` (`66080347de72`) | `drivers/gpu/drm/omapdrm/dss/` and the omapfb copy in `drivers/video/fbdev/omap2/omapfb/dss/` | None. `hdmi_phy.c` differs only in where the feature table lives (a static pointer picked by `omapdss_get_version()`). `pll.c`, `hdmi_pll.c` and `hdmi_wp.c` have the same register writes as 5.6. |
+| `ti-linux-4.19.y` (`5a23bc00e08d`) | as 4.4 | None. Same as 4.4. |
+| letux-kernel `master` (`5490f08d098d`) | `drivers/gpu/drm/omapdrm/dss/` | None. `hdmi_phy.c`, `hdmi_pll.c` and `pll.c` differ from 5.6 only in the ioremap helper and a `dss_pll_calc_a` loop guard (`4119bd55e40f`, not the HDMI PLL). Goldelico's own HDMI commits fix register access from the CEC code (hdmi4 and hdmi5) and build warnings. The Pyra DT's HDMI changes all date from 2019, so they are already in 5.6. |
+| ti-omap-encore-kernel (`c9e46445a41`, 2.6.35, OMAP3621) | — | None. It has no OMAP HDMI IP driver, only OMAP4 PRCM/pad defines and an external SiI9022 panel driver. |
+
+What this means:
+
+- At 720p, FREQOUT is 0 in every branch, so it isn't the difference.
+- The LDO field is out. TI's own code says `POWER_CTRL[3:0]` is reserved on OMAP5.
+- **PHY_CLKINEN** is documented twice now: AM572x Table 11-14, and TI's 3.14 driver for OMAP5/DRA7.
+  TI's 4.4 and later dropped it, and DRA7 boards run 1080p on those kernels. That keeps the odds low.
+- **The PLL operating point** has changed across TI's history. At 720p, 3.8 and 3.14 ran M2 = 3 with the
+  DCO at 2227.5 MHz, 3.12 ran M2 = 1 with the DCO at 742.5 MHz, and 4.4 to 5.6 run M2 = 2 with the DCO at
+  1485 MHz. The CLKOUT the PHY takes is 742.5 MHz in all three. 5.6's `dss_pll_calc_b` picks the
+  smallest M2 that keeps the DCO above 750 MHz (`pll.c:283`). Test A moved SELFREQDCO, and B dropped the
+  fraction, but no test has moved M2. The 3.12 point is under the DCO minimum and isn't worth trying. The
+  3.8/3.14 point is within range. The cheap way to try it keeps 5.6's N = 8 and writes, with 720p held:
+  CONFIGURATION1 `0x0004d40e` → `0x0007400e` (M 618 → 928), CONFIGURATION4 `0x000b0000` → `0x000c8000`
+  (M2 3, M.f 0.125), CONFIGURATION3 SD `6` → `9` (`0x00001800` → `0x00002400`), and CONFIGURATION2
+  SELFREQDCO `2` → `4` (`0x00602004` → `0x00602008`), then GO and wait for STATUS 3, the same way as test B.
+  The "before" words are built from the 1280x720 row above (N 8, M 618.75, M2 2, SD 6); no raw 720p dump was kept. The
+  "after" values are computed with 5.6's own SD rule (`pll.c:304`) and haven't been read back.
+- PAD_CFG bit 27 = 1 (3.8/3.12) inverts one lane pair, the clock pair in the DT binding's lane order.
+  640x480 works with it at 0, so the data lanes' polarity is right. A TMDS receiver should lock to either clock
+  polarity, so this isn't proposed.
 
 ## Open
 
