@@ -1235,6 +1235,9 @@ i "release: NOPASSWD rules left (the vendor's, one command each): $(grep -shE '^
 [[ ! -e $AK && ! -e $MNT/root/.ssh/authorized_keys ]] && p "release: no authorized_keys for pyra or root" || f "release: an authorized_keys file is there"
 grep -qE 'fix21: .*already patched' "$OUT/prep-run3.log" && [[ $(sha256sum < "$WL" | cut -d' ' -f1) == "$SHA_FIXED" ]] \
     && p "release: the image carries the patched libpvrDRI3WSEGL.so" || f "release: the library is not the fixed build after run 3"
+APTLEFT=$(find "$MNT/var/lib/apt/lists" "$MNT/var/cache/apt" -maxdepth 2 -type f \( -path '*/lists/*' ! -name lock -o -name '*pkgcache.bin' \) 2>/dev/null | wc -l)
+[[ $APTLEFT -eq 0 && -e $MNT/var/lib/apt/lists/lock && -d $MNT/var/lib/apt/lists/partial ]] && grep -qE 'release: removed [1-9][0-9]* apt package list and cache files' "$OUT/prep-run3.log" \
+    && p "release: the vendor's stale apt package lists are gone; the lock and partial/ stay" || f "release: $APTLEFT apt list or cache files left, or the lock or partial/ removed, or run 3 did not report removing them"
 
 # Run 4: release mode is idempotent too.
 snapshot > "$OUT/rootfs-after3.txt"
@@ -1252,6 +1255,8 @@ else
 fi
 grep -q "release: 'pyra' already has the password 'pyra'" "$OUT/prep-run4.log" \
     && p "release: run 4 left the expired password alone" || f "release: run 4 did not report the password already set"
+grep -q 'release: no apt package lists in the image' "$OUT/prep-run4.log" \
+    && p "release: run 4 found no apt package lists to remove" || f "release: run 4 did not report the apt package lists already gone"
 [[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run4.log") -eq 4 ]] \
     && p "release: run 4 reported the unit, its link, the machine-id and the mask already in place" || f "release: run 4 did not report the unit, link, machine-id and mask in place"
 

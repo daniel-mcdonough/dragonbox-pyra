@@ -234,7 +234,11 @@ gets the password `pyra`, expired, so the first login (the greeter, a console or
 ssh) makes the user choose a new one before going on. Fix 23 removes the ssh
 host keys and empties `/etc/machine-id` whatever they are, not only the
 vendor's, and release mode also deletes systemd's random seed and credential
-secret, so no two cards written from the image share them. It refuses `--set-password`, `--ssh-key`, a user other
+secret, so no two cards written from the image share them. It also deletes
+the vendor's apt package lists. Debian removes superseded packages from its
+mirror at each point release, so lists months old make `apt install` fetch
+versions that are gone and fail with 404s. A card from a release image has no
+lists, and apt says to run `sudo apt update` first. It refuses `--set-password`, `--ssh-key`, a user other
 than `pyra`, and an image that already has an authorised ssh key or a
 `NOPASSWD` sudo rule for all commands: start from the vendor image. The
 vendor's own `/etc/sudoers.d/pyrainput` (`pyrainputctl` without a password, for
@@ -391,8 +395,9 @@ There should be **no** `AIGLX` lines at all, and no `Segmentation fault` /
 integration uses; `GLX` is deliberately absent.
 
     # hardware GLES2 through the SGX blob; copy device/pyra-gles2-smoke.c
-    # from this repository to the card first. The image's package lists are
-    # months old, so refresh them before any install or the fetch 404s.
+    # from this repository to the card first. Refresh the package lists
+    # before any install: the vendor's are months old and the fetch 404s
+    # (a release image has none).
     sudo apt-get update
     sudo apt-get install libx11-dev
     gcc -O2 -o gles2-smoke pyra-gles2-smoke.c \

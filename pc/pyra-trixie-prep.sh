@@ -1815,6 +1815,11 @@ fi
 # would also be the same on every card written from the image; systemd makes
 # them when missing. (The vendor image has neither; a card that has booted has
 # both.)
+#
+# The package lists are the vendor's snapshot. Debian drops superseded .debs
+# from the mirror at each point release, so an install from lists months old
+# fetches versions that are gone and 404s. Without lists apt says to run
+# apt update instead. The lock and apt's own directories stay.
 
 if [[ $RELEASE == yes ]]; then
     for f in /var/lib/systemd/random-seed /var/lib/systemd/credential.secret; do
@@ -1825,6 +1830,15 @@ if [[ $RELEASE == yes ]]; then
             ok "release: no $f in the image"
         fi
     done
+    LISTS=$(find "$ROOT/var/lib/apt/lists" "$ROOT/var/cache/apt" -maxdepth 2 -type f \
+        \( -path '*/lists/*' ! -name lock -o -name '*pkgcache.bin' \) 2>/dev/null | wc -l)
+    if (( LISTS > 0 )); then
+        find "$ROOT/var/lib/apt/lists" "$ROOT/var/cache/apt" -maxdepth 2 -type f \
+            \( -path '*/lists/*' ! -name lock -o -name '*pkgcache.bin' \) -delete
+        ok "release: removed $LISTS apt package list and cache files"
+    else
+        ok "release: no apt package lists in the image"
+    fi
 fi
 
 echo

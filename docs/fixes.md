@@ -1526,7 +1526,8 @@ Prep knows the vendor's by pins in the script: the SHA-256 of each public
 key's blob and the machine-id itself. It removes only those, so a re-run on a
 card that has booted since keeps the card's own. One vendor key among them is
 enough to remove them all. `--release` removes whatever is there, and also
-systemd's random seed and credential secret (`procedure.md` section 4).
+systemd's random seed and credential secret and the vendor's stale apt package
+lists (`procedure.md` section 4).
 
 **What you see.** If your PC has talked to another Pyra at the same address,
 ssh warns once that the host key changed. Remove the old entry with
