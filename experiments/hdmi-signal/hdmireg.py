@@ -21,7 +21,7 @@ def show(a, n):
         print("%08x:" % (a + i*4), " ".join("%08x" % rd(a + (i+j)*4) for j in range(min(4, n-i))))
 c = sys.argv[1]; x = lambda s: int(s, 0)
 if c == "dump":
-    for name, a, n in (("wp", 0x58040000, 0x30), ("pll", 0x58040200, 0x20), ("phy", 0x58040300, 0x10)):
+    for name, a, n in (("wp", 0x58040000, 0x30), ("pll", 0x58040200, 0x20), ("phy", 0x58040300, 0x8)):
         print("--", name); show(a, n)
 elif c == "r": show(x(sys.argv[2]), x(sys.argv[3]) if len(sys.argv) > 3 else 1)
 elif c == "w": wr(x(sys.argv[2]), x(sys.argv[3])); show(x(sys.argv[2]), 1)

@@ -2028,3 +2028,16 @@ the whole time. The owner watched the screens.
 - Not explained: on `0.6+pyra1`, growing back to 3200x1080 brought the panel back, though the
   import was just as stale.
 
+## 2026-11-11 — HDMI PHY and PLL registers under X, decoded (R51)
+
+Release card, `5.6.19-m4-kbdled`, X running with `armsoc-omap5` 0.6+pyra2, HDMI at 640x480 beside the
+panel. Read-only: `sudo python3 /tmp/hdmireg.py dump`, plus `r 0x4A002E0C`. No register was written.
+
+- PHY `+0x00`-`+0x1C`: `00000000 f0000000 bf1bcc80 00107d80 11002c00 00007800 00000000 00000800`. The PHY
+  decodes 5 address bits: `+0x20`-`+0x3C` reads the same eight words again.
+- PLL CONFIGURATION2 `00602004`: PHY_CLKINEN (bit 14) is 0, where the AM572x TRM's Table 11-14 recommends 1.
+- HDMI_WP_PWR_CTRL `000000aa` (PHY TXON, PLL ON_ALL); CONTROL_HDMI_TX_PHY `10000000` (reset value).
+- ldo4 (the HDMI and DSI VDDA): 1800 mV, from the regulator debugfs summary.
+
+The field-by-field decode, and which fields no public document covers, are in `experiments/hdmi-signal`.
+

@@ -760,8 +760,10 @@ Ruled out: X (the same failure without it), HPD, DDC and the TPD12S015's
 control pins (the EDID reads and the low modes work), the PLL's DCO range, and
 its fractional divider. The PLL and PHY registers, read live, match what the
 driver computes. What's left is analog: the HDMI PHY's drive or supply
-settings, the board, or the unit's micro-HDMI connector. `experiments/hdmi-signal`
-has the method, the register dumps and what's still to try.
+settings, the board, or the unit's micro-HDMI connector. TI's public TRMs (OMAP543x
+and AM572x) leave out the HDMI PHY's register descriptions, so its drive and supply
+fields can't be decoded from them. `experiments/hdmi-signal` has the method, the
+register dumps, the fields that can be decoded, and what's still to try.
 
 Under X (stock `armsoc-omap5` 0.6, seen 2026-11-11 on four plug-ins), MATE
 grows the X screen to 2640x1080 (the rotated panel plus 1920 to its right), and
