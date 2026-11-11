@@ -171,17 +171,25 @@ against R46's 80.
 
 **A udev settle timeout after the grow (open).** On that boot the owner saw a
 udev timeout message on the LCD after `DO NOT SWITCH OFF`; it reaches no log.
-dmesg is silent for 48.7 s between the root mount (662.7 s) and systemd's
-start (711.4 s). `init-bottom/udev` runs `udevadm settle --timeout=60` there,
-so settle most likely waited out a queue that was not empty. Suspected, not
-shown: the lock keeps udev from processing the disk's events (udev 257 sets
-aside an event for a locked block device). `60-block.rules` still sends a
-change event for each write-close, and the capacity check makes 931 of them.
-Those events then queue for the length of the grow and drain once it exits.
-At about 50 ms each, 931 events take about as long as the gap. Settle's
-timeout bounds the delay; root was already mounted and the boot carried on.
-To show it: log `/run/udev/queue` and the settle exit time in `init-bottom`
-on a grow boot, as `pyra-settle-nudge` does in `init-top`.
+The text is `Timed out while waiting for udev queue to empty.`, which is
+`udevadm settle` giving up. Which settle: the grow runs from `mount_top`, before
+`local_mount_root`, so the first settle after it is `local_device_setup`'s
+`wait_for_udev 10`, not `init-bottom/udev`'s 60 s one. The second CI image's
+first boot (2026-11-11) fits that. The grow log's last write was at about
+556 s, root mounted at 567.3 s, and systemd started at 602.9 s. That is one
+10 s timeout before the mount, then `init-bottom`'s settle draining for 35.6 s
+without timing out. The first CI image's boot left a 48.7 s gap between mount
+and systemd (662.7 s to 711.4 s), also under 60 s.
+Suspected, not shown: the lock keeps udev from processing the disk's events
+(udev 257 sets aside an event for a locked block device). `60-block.rules`
+still sends a change event for each write-close, and the capacity check makes
+931 of them. Those events then queue for the length of the grow and drain once
+it exits: about 46 s on the second boot (10 + 35.6), which at about 50 ms an
+event is roughly 931 events. The boot carries on either way. To show it: log
+`/run/udev/queue` and the queued event count right after the grow exits. The
+likely fix is one held-open write fd on the disk for the capacity check's
+writes: inotify reports a close-write only at the file's last release, so
+that makes one change event instead of 931.
 
 **Booted on a Pyra four times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
