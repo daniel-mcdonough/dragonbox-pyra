@@ -769,8 +769,33 @@ then both mode sets fail: `drm failed to set mode: No space left on device` in
 `/var/log/Xorg.0.log`, for the panel and for HDMI. The monitor stays dark, the
 output reads `connected` but not enabled, and the panel keeps its picture. The
 screen stays 2640 wide, which is why part of the panel shows the edge of the
-taskbar after the cable is pulled. Where `ENOSPC` comes from in omapdrm isn't
-known yet.
+taskbar after the cable is pulled.
+
+The `ENOSPC` doesn't come from omapdrm. It comes from the DRM core's legacy
+SETCRTC check, `drm_mode_setcrtc` → `drm_crtc_check_viewport` →
+`drm_framebuffer_check_src_coords`, which refuses a mode whose viewport doesn't
+fit inside the framebuffer. If the CRTC's primary plane is rotated 90 or 270
+degrees, the viewport's width and height are swapped first. Two things in the
+stock X driver set this up (reproduced 2026-11-11 on `5.6.19-m4-kbdled-test`
+with `drm.debug=0x04` and `xrandr --output HDMI-1 --mode 1920x1080 --right-of`
+the panel):
+
+1. `armsoc_dumb.c` allocates the rotated (TILER) scanout buffer with width and
+   height swapped. A 3200x1080 screen gets a 1080x3200 buffer. The panel's
+   rotated viewport is 1280x720, which doesn't fit in a buffer 1080 wide:
+   `Invalid source coordinates 1280x720+0+0 (fb 1080x3200)`.
+2. `drmmode_revert_mode` then resizes the buffer to the panel's unrotated mode
+   (720x1280, so a 1280x720 buffer). The driver also sets the panel's rotation
+   on every plane, so HDMI's viewport is turned too:
+   `1080x1920+1280+0 (fb 1280x720)`. MATE's own 2640x1080 layout fails the
+   same way (`fb 1080x2640`).
+
+After that, the screen is 2640 (or 3200) wide in X, but the only framebuffer
+Xorg holds is 1280x720, as `/sys/kernel/debug/dri/0/framebuffer` shows. That
+explains the leftover taskbar edge. TILER limits play no part.
+`ddx-patches/0002` on branch `hdmi-r51` fixes all three: buffers in the size X
+draws, rotation per CRTC, and a revert that never resizes the screen. It
+isn't on master or the release card yet.
 
 What works today: the kernel console on a monitor at 640x480, with X stopped.
 There's no desktop on an external monitor yet.

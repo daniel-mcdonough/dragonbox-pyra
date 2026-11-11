@@ -1954,3 +1954,21 @@ Release card, `5.6.19-m4-kbdled-test` (patches/ through 0052) booted once from l
   after each unplug the panel showed part of the taskbar.
 - So the repro never reached the fault, and 0051-0052 aren't confirmed against it. The kernel
   ran the desktop normally.
+
+## 2026-11-11 — where the X mode sets' `ENOSPC` comes from (R51)
+
+Release card, `5.6.19-m4-kbdled-test` from l1, stock `armsoc-omap5` 0.6, panel rotated `right`, the
+1080p monitor plugged and `connected` but disabled after the R55 plug-ins.
+
+- `/sys/kernel/debug/dri/0/framebuffer` before the test: the only Xorg fb was 1280x720, while
+  `xrandr` reported a 2640x1080 screen.
+- With `echo 0x04 > /sys/module/drm/parameters/debug`, `xrandr --output HDMI-1 --mode 1920x1080
+  --right-of Unknown16-1` failed (`Configure crtc 1 failed`). dmesg, in order:
+  `drm_framebuffer_check_src_coords: Invalid source coordinates 1280x720+0+0 (fb 1080x3200)` on
+  crtc-0 (panel), then `1080x1920+1280+0 (fb 1280x720)` on crtc-1 (HDMI), then
+  `1280x720+0+0 (fb 1080x2640)` on crtc-0 again. Debug set back to 0 afterwards.
+- Read against the stock 0.6 source: `armsoc_dumb.c` allocates the rotated buffer with width and
+  height swapped, and `drmmode_revert_mode` resizes it to the panel's unrotated mode. The driver
+  sets the panel's rotation on every plane, which is why HDMI's viewport is swapped too.
+  `ddx-patches/0002` (branch `hdmi-r51`) changes all three. Explanation in troubleshooting.md, "An HDMI monitor
+  shows nothing above 640x480".
