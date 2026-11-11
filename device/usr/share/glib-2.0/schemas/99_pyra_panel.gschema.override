@@ -1,0 +1,10 @@
+# Prep fix 22 (docs/fixes.md): the default panel is the vendor's, with the
+# Pyra Brightness applet at the right, next to the notification area.
+# Installed only with pyra-backlight; MATE applies a layout at a user's first
+# login, when the panel has no settings of its own.
+#
+# The name sorts after pyra-config-desktop's 99_pyra.gschema.override ('_'
+# after '.'), so this default-layout replaces its 'pyra'.
+
+[org.mate.panel]
+default-layout='pyra-backlight'

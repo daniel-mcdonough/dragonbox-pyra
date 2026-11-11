@@ -1,0 +1,58 @@
+[Toplevel bottom]
+expand=true
+orientation=bottom
+size=32
+
+[Object main-menu]
+object-type=menu
+toplevel-id=bottom
+position=0
+locked=true
+
+[Object window-list]
+object-type=applet
+applet-iid=WnckletFactory::WindowListApplet
+toplevel-id=bottom
+position=20
+locked=true
+
+[Object notification-area]
+object-type=applet
+applet-iid=NotificationAreaAppletFactory::NotificationArea
+toplevel-id=bottom
+position=3
+panel-right-stick=true
+locked=true
+
+[Object clock]
+object-type=applet
+applet-iid=ClockAppletFactory::ClockApplet
+toplevel-id=bottom
+position=2
+panel-right-stick=true
+locked=true
+
+[Object separator]
+object-type=separator
+toplevel-id=bottom
+position=1
+panel-right-stick=true
+locked=true
+
+[Object show-desktop]
+object-type=applet
+applet-iid=WnckletFactory::ShowDesktopApplet
+toplevel-id=bottom
+panel-right-stick=true
+position=0
+locked=true
+
+
+[Object pyra-brightness]
+object-type=applet
+applet-iid=PyraBrightnessAppletFactory::PyraBrightnessApplet
+toplevel-id=bottom
+position=4
+panel-right-stick=true
+locked=true
+

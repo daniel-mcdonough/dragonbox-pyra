@@ -136,8 +136,8 @@ core spins at 100% and only a reboot recovers it. The workaround is to stop the
 screen blanking; [docs/troubleshooting.md](docs/troubleshooting.md) has the
 three settings. A fix has been written but is not yet confirmed.
 
-**Brightness.** A prepared card has `pyra-backlight` (fix 22). Add its slider
-with right-click on the panel, *Add to Panel…*, *Pyra Brightness*. Its
+**Brightness.** A prepared card has `pyra-backlight` (fix 22). Its slider is
+on the panel, left of the notification area, from the first login. Its
 `pyra-idle-dim` dims the screen after MATE's idle delay
 (`gsettings set org.mate.session idle-delay 5`, in minutes). Section 8 of
 `docs/procedure.md` has both of these in full.

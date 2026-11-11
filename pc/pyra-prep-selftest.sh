@@ -871,10 +871,23 @@ if [[ ${KARGS[*]} != *--no-backlight* ]]; then
         && p "fix22: pyra-idle-dim.service is enabled for every user" || f "fix22: pyra-idle-dim.service is not enabled in /etc/systemd/user"
     BAUDIT=$(in_chroot dpkg --audit pyra-backlight 2>&1 || true)
     [[ -z $BAUDIT ]] && p "fix22: dpkg --audit finds nothing wrong with pyra-backlight" || f "fix22: dpkg --audit: $(head -3 <<<"$BAUDIT" | tr '\n' ' ')"
+    for x in usr/share/mate-panel/layouts/pyra-backlight.layout $SD/99_pyra_panel.gschema.override; do
+        cmp -s "$PAYLOADS/$x" "$MNT/$x" && [[ $(stat -c '%a %u:%g' "$MNT/$x") == "644 0:0" ]] \
+            && p "fix22: /$x matches repo, 0644 root:root" || f "fix22: /$x missing, differs from repo or has the wrong mode"
+    done
+    # Ours is the vendor's layout with one object appended; a vendor update to
+    # pyra.layout would leave ours behind.
+    VL=$MNT/usr/share/mate-panel/layouts/pyra.layout
+    [[ -f $VL ]] && cmp -s "$VL" <(head -c "$(stat -c %s "$VL")" "$PAYLOADS/usr/share/mate-panel/layouts/pyra-backlight.layout") \
+        && p "fix22: the layout is the image's pyra.layout plus the applet" || f "fix22: the image's pyra.layout is not the start of pyra-backlight.layout; the vendor's layout changed"
+    got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.panel default-layout 2>/dev/null || true)
+    [[ $got == "'pyra-backlight'" ]] && p "fix22: org.mate.panel default-layout defaults to 'pyra-backlight'" || f "fix22: org.mate.panel default-layout defaults to $got"
 else
     printf '\e[33mSKIP\e[0m  fix22: assertions (PYRA_BACKLIGHT_DEB=none)\n'
     in_chroot dpkg-query -W pyra-backlight >/dev/null 2>&1 \
         && f "fix22: --no-backlight installed pyra-backlight" || p "fix22: with --no-backlight pyra-backlight is not installed"
+    [[ ! -e $MNT/$SD/99_pyra_panel.gschema.override && ! -e $MNT/usr/share/mate-panel/layouts/pyra-backlight.layout ]] \
+        && p "fix22: and no default panel layout names the missing applet" || f "fix22: --no-backlight installed the panel layout or its override"
 fi
 compgen -G "$MNT/var/tmp/pyra-prep-*.deb" >/dev/null && f "fix22: a staged .deb is still in /var/tmp" || p "fix22: no staged .deb left in /var/tmp"
 
@@ -945,6 +958,7 @@ grep -qE 'fix20: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
 grep -qE 'fix21: .*libpvrDRI3WSEGL.so already patched' "$OUT/prep-run2.log" && p "run 2 reported the library already patched" || f "run 2 did not report the library already patched"
 if [[ ${KARGS[*]} != *--no-backlight* ]]; then
     grep -qE 'fix22: pyra-backlight .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-backlight already installed" || f "run 2 did not report pyra-backlight already installed"
+    grep -qF 'fix22: the default panel layout is already up to date' "$OUT/prep-run2.log" && p "run 2 reported the panel layout already up to date" || f "run 2 did not report the panel layout already up to date"
 fi
 for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; do
     grep -qE "fix21: .*$x already up to date" "$OUT/prep-run2.log" && p "run 2 reported fix21's $x up to date" || f "run 2 did not report fix21's $x up to date"

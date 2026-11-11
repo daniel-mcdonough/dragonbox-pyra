@@ -1462,8 +1462,7 @@ root is needed, and it also drives a keyboard light that the kernel declares as
 an LED (`*::kbd_backlight`, as on `5.6.19-m4-kbdled`). It carries:
 
 - `pyra-brightness-applet`, a MATE panel applet with a slider for the screen
-  and one for the keyboard light. It is not on the panel by default: add it
-  with right-click, *Add to Panel…*, *Pyra Brightness*.
+  and one for the keyboard light. Prep puts it on the default panel, below.
 - `pyra-idle-dim`, a user service that dims the screen after
   `org.mate.session idle-delay` and brings it back on wake. The package's
   postinst enables it for every user (`/etc/systemd/user/default.target.wants`).
@@ -1472,6 +1471,23 @@ MATE's `backlight-enable` stays false, or the two would dim the panel at once
 (`procedure.md` §8). So MATE's own brightness controls do nothing: the slider in
 *Power Management Preferences* and mate-power-manager's *Brightness Applet*.
 The Pyra Brightness applet replaces both (owner, 2026-11-03).
+
+**The default panel.** MATE builds a user's panel from `org.mate.panel
+default-layout` at the first login, when the panel has no settings yet; the
+vendor image has none for `pyra`. The vendor's `99_pyra.gschema.override` (in
+`pyra-config-desktop`) names its `pyra.layout`. Prep installs
+`pyra-backlight.layout`, which is that file with the applet appended
+(`panel-right-stick=true`, `position=4`, so it sits left of the notification
+area, whose first icon is Bluetooth), and `99_pyra_panel.gschema.override`,
+which sorts after the vendor's and names it, then recompiles the schemas.
+Only with `pyra-backlight` installed: a layout naming a missing applet makes
+the panel complain at the first login, so with `--no-backlight` prep removes
+them. A user who has logged in keeps their own panel; *Add to Panel…* adds it
+there, or `mate-panel --reset` rebuilds the panel from the layout (losing
+changes made to it). The selftest checks that the vendor's `pyra.layout` is
+still the start of ours. Tried on the release card on 2026-11-11: a panel
+rebuilt from the layout has the applet, right-stuck at position 4, beside the
+Bluetooth icon.
 
 **How prep installs it.** With the image's own `dpkg -i`, in the chroot, not
 apt, so nothing comes from a mirror unpinned. Before writing anything it reads

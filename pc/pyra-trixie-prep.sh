@@ -208,6 +208,12 @@ KBDMATE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_kbdlight.gschema.override
 [[ -r $KBDMATE_SRC ]] || die "fix20: 99_pyra_kbdlight.gschema.override not found (looked in $PAYLOADS)"
 [[ -e $ROOT/$SCHEMA_DIR/org.mate.power-manager.gschema.xml ]] ||
     die "fix20: the image has no org.mate.power-manager schema (mate-power-manager)"
+# Fix 22's default panel: the vendor's layout with the brightness applet added.
+PANEL_LAYOUT_SRC=$PAYLOADS/usr/share/mate-panel/layouts/pyra-backlight.layout
+PANEL_OVERRIDE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_panel.gschema.override
+for f in "$PANEL_LAYOUT_SRC" "$PANEL_OVERRIDE_SRC"; do
+    [[ -r $f ]] || die "fix22: $(basename "$f") not found (looked in $PAYLOADS)"
+done
 # Fix 21 runs the device script on the image, so the patch has one
 # implementation. A library it doesn't know stops prep here, before fix 1.
 WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
@@ -1688,7 +1694,7 @@ done
 # MATE's brightness applet and its idle dimming both find the keyboard light
 # first on the stock kernel, so the image ships MATE's screen dimming off and
 # no brightness slider (procedure.md section 8). pyra-backlight names each
-# device: its applet (added from the panel's "Add to Panel...") sets the screen
+# device: its applet (on a new user's panel, below) sets the screen
 # and keyboard light, and pyra-idle-dim, a user service its postinst enables
 # for every user, dims the screen after org.mate.session idle-delay. The image's
 # dpkg installs it in the chroot; that run fires the dpkg hooks of fixes 6, 7
@@ -1711,9 +1717,42 @@ $out"
     rm -f -- "$STAGED_BACKLIGHT" ${STAGED_GIR:+"$STAGED_GIR"}
     BL_WANTS=$ROOT/etc/systemd/user/default.target.wants/pyra-idle-dim.service
     [[ -L $BL_WANTS ]] || die "fix22: pyra-idle-dim.service is not enabled for users (no ${BL_WANTS#$ROOT})"
-    ok "fix22: pyra-idle-dim.service is enabled for every user; the applet is in Add to Panel"
+    ok "fix22: pyra-idle-dim.service is enabled for every user"
+fi
+
+# The default panel. MATE builds a user's panel from org.mate.panel
+# default-layout at the first login, when the panel has no settings of its own
+# (the vendor image has none for pyra). The vendor's override sets 'pyra'; ours
+# sorts after it and names the same layout with the brightness applet added,
+# right-stuck next to the notification area. Only with pyra-backlight
+# installed: a layout naming a missing applet makes the panel complain at the
+# first login. A user who has logged in keeps their own panel.
+PANEL_LAYOUT_DST=$ROOT/usr/share/mate-panel/layouts/$(basename "$PANEL_LAYOUT_SRC")
+PANEL_OVERRIDE_DST=$ROOT/$SCHEMA_DIR/$(basename "$PANEL_OVERRIDE_SRC")
+if in_chroot dpkg-query -W -f='${db:Status-Abbrev}' pyra-backlight 2>/dev/null | grep -q '^ii'; then
+    if cmp -s "$PANEL_LAYOUT_SRC" "$PANEL_LAYOUT_DST" && cmp -s "$PANEL_OVERRIDE_SRC" "$PANEL_OVERRIDE_DST" &&
+       [[ $ROOT/$SCHEMA_DIR/gschemas.compiled -nt $PANEL_OVERRIDE_DST ]]; then
+        ok "fix22: the default panel layout is already up to date"
+    else
+        install -m 0644 -o 0 -g 0 "$PANEL_LAYOUT_SRC" "$PANEL_LAYOUT_DST"
+        install -m 0644 -o 0 -g 0 "$PANEL_OVERRIDE_SRC" "$PANEL_OVERRIDE_DST"
+        in_chroot glib-compile-schemas --strict "/$SCHEMA_DIR" ||
+            die "fix22: glib-compile-schemas rejected the schemas with the panel override in place"
+        ok "fix22: installed the default panel layout and recompiled the schemas"
+    fi
+    PANEL_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
+        gsettings get org.mate.panel default-layout 2>/dev/null || true)
+    [[ $PANEL_VAL == "'pyra-backlight'" ]] ||
+        die "fix22: org.mate.panel default-layout reads $PANEL_VAL after the override, not 'pyra-backlight'"
+    ok "fix22: a new user's panel has the brightness applet next to the notification area"
 else
     warn "fix22: pyra-backlight not installed; no brightness applet or idle dimmer"
+    if [[ -e $PANEL_OVERRIDE_DST || -e $PANEL_LAYOUT_DST ]]; then
+        rm -f -- "$PANEL_OVERRIDE_DST" "$PANEL_LAYOUT_DST"
+        in_chroot glib-compile-schemas --strict "/$SCHEMA_DIR" ||
+            die "fix22: glib-compile-schemas failed after removing the panel override"
+        ok "fix22: removed the default panel layout, which names the missing applet"
+    fi
 fi
 
 # ---------------------------------------------------------------------- fix 23

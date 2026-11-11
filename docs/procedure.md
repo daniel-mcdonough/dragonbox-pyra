@@ -544,8 +544,10 @@ the panel to MATE's 30 % idle level within a second (measured 2026-10-29). The
 documented path is still `pyra-idle-dim`, in the `pyra-backlight` package,
 which lives in its own repository (https://github.com/daniel-mcdonough/pyra-backlight) and also carries a panel applet for the
 screen and keyboard backlights. Prep installs it (fix 22, step 4), with
-`pyra-idle-dim.service` enabled for every user; add the applet with
-right-click on the panel, *Add to Panel…*, *Pyra Brightness*. Set how long
+`pyra-idle-dim.service` enabled for every user, and the applet on the panel
+from the first login. On a card where the user had already logged in before
+prep ran, add it with right-click on the panel, *Add to Panel…*, *Pyra
+Brightness*. Set how long
 before it dims:
 
     gsettings set org.mate.session idle-delay 5      # minutes before it dims
