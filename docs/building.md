@@ -943,8 +943,11 @@ archive, and the kernel tarball. The vendor archive is downloaded from the URL
 in `pc/pyra-vendor-image.sh` and cached under its pinned SHA-256. The build
 script checks the archive and the image inside it, as it does on a PC. The
 kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
-workflow's one input is that run's ID. Once a `kernel-*` release is pinned
-(not done yet), that release's asset should replace the input.
+workflow's one input is that run's ID: not a tag or release name, which the
+artifact download cannot find. Give the run that built the release prep pins
+(`kernel-5.6.19-r1`, run 42940820801), so prep reports the tarball as that
+release rather than "a local build". Taking the pinned release's asset instead
+of a run ID is not done yet.
 
 The workflow's result is a workflow artifact. It holds the image compressed with
 `xz -6`, the build script's `.sha256` of the uncompressed image (for

@@ -4,7 +4,8 @@
 #
 # Run by hand only. The kernel comes from a run of the Kernel release
 # workflow: give that run's ID, and its kernel-m4-kbdled artifact goes into the
-# image. (No kernel-* release is pinned in prep yet; docs/building.md.)
+# image. The run that built the release prep pins (kernel-5.6.19-r1) is the
+# one to give; prep then reports the tarball as that release.
 #
 # With release_tag (image-*) set, the result is also attached to a draft
 # release for that tag at the commit built. A draft is visible only to the

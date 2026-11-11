@@ -1246,9 +1246,9 @@ carry `./boot/vmlinuz-5.6.19-m4-kbdled`, or that has a `./lib/` entry.
 fix 1 writes anything, so a failed download or a wrong tarball leaves the card
 untouched.
 
-No release is pinned yet: the public repository has no remote, so no
-`kernel-*` release exists. Until one does, a run with no option stops before
-writing and asks for `--kernel FILE` or `--no-kernel`.
+The pinned release is `kernel-5.6.19-r1` (built by the Kernel release
+workflow from that tag, 2026-11-11). A new release changes the tag, URL and
+hash in prep together.
 
 **How it installs.** The two device scripts do the work, run in the chroot the
 way fix 14 runs the image's tools, so each job has one implementation:

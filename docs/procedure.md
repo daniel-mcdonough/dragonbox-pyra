@@ -269,8 +269,7 @@ already have, downloaded or built with `./pc/pyra-crossbuild.sh kernel-m4-kbdled
 
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra yourusername
 
-Until a release is pinned in the script there is nothing to download, and a run
-without `--kernel` stops before writing anything. `--no-kernel` prepares a card
+The pinned release is `kernel-5.6.19-r1`. `--no-kernel` prepares a card
 that boots the stock `5.6.19-pyradef`, with every other fix in place. The card
 boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
 not come up on the new kernel, `troubleshooting.md`, "The card does not boot

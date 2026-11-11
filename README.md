@@ -105,9 +105,8 @@ confirm each part works. The prebuilt image is this same procedure with
 
 The prep script installs the shipped kernel, `5.6.19-m4-kbdled`, and the card
 boots it (fix 19). It downloads the kernel from the project's release and checks
-it against a pinned hash, or takes a tarball you name with `--kernel FILE`. No
-release is pinned yet, so for now build the tarball yourself (see below) and
-pass it in. `--no-kernel` keeps the stock `5.6.19-pyradef`.
+it against a pinned hash (release `kernel-5.6.19-r1`), or takes a tarball you
+name with `--kernel FILE`. `--no-kernel` keeps the stock `5.6.19-pyradef`.
 
 It also installs `pyra-backlight` (fix 22): a panel applet with sliders for the
 screen and the keyboard light, and `pyra-idle-dim`, which dims the screen when
