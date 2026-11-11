@@ -1972,3 +1972,34 @@ Release card, `5.6.19-m4-kbdled-test` from l1, stock `armsoc-omap5` 0.6, panel r
   sets the panel's rotation on every plane, which is why HDMI's viewport is swapped too.
   `ddx-patches/0002` (branch `hdmi-r51`) changes all three. Explanation in troubleshooting.md, "An HDMI monitor
   shows nothing above 640x480".
+
+## 2026-11-11 — HDMI hotplug under X with `armsoc-omap5` 0.6+pyra1 (R51, R55)
+
+Release card, `5.6.19-m4-kbdled-test` from l1, `xserver-xorg-video-armsoc-omap5_0.6+pyra1`
+(ddx-patches 0001-0002, built 2026-11-03) installed over stock 0.6 with `dpkg -i`, lightdm
+restarted. The 1080p monitor (EDID preferred 1920x1080) was plugged the whole time. `drm.debug=0x04`
+during the test, 0 afterwards.
+
+- X start with the monitor attached: screen 3200x1080, panel `1280x720+0+0 right`, HDMI
+  `1920x1080+1280+0`. No `(EE)`, no `No space left` in `Xorg.0.log`.
+- Owner unplugged, waited about 10 s, plugged back in. dmesg: `HDMI-A-1 disconnected`, then on the
+  replug `drm_mode_setcrtc` on crtc-1, crtc-0, crtc-1 with no `Invalid source coordinates` line.
+  X logged `hotplug=1` and resized to 2640x1080 (MATE's layout, HDMI at `+720+0`). Both mode
+  sets succeeded. After the replug the kernel probed HDMI-A-1 about 120 times in roughly
+  35 s (EDID read each time), then stopped.
+- What the owner saw: the monitor alternated between black and "no signal", with the
+  wallpaper for a split second once. The panel went black briefly, then showed the desktop
+  with the wallpaper overlapping on the right (the +720 placement).
+- `xrandr --output HDMI-1 --mode 640x480 --pos 1280x0`: rc 0, screen 1920x720. The DRM
+  state was right (both planes on one 1920x720 fb; panel src 1280x720+0+0 rotation 270, HDMI
+  src 640x480+1280+0), but both the panel and the monitor were black, even with a white
+  xterm on the HDMI area. Backlight 6/15, DPMS on, no DSS errors. `xwd -root` still had
+  the taskbar.
+- Back to `--mode 1920x1080 --pos 1280x0` (screen 3200x1080): panel back, monitor black.
+- `xrandr --fb 3200x1080 --output HDMI-1 --mode 640x480 --pos 1280x0`: the monitor showed the
+  white xterm ("HDMI TEST 640x480"), panel fine. That's the first X picture on an external
+  monitor from a release card.
+- R55: no GC320 fault the whole session (no `etnaviv` hang/recover/MMU line in dmesg).
+  The GC320's debugfs `gpu` showed `idle: 0x7fffffff` with the FE parked on END, which is
+  etnaviv's runtime-suspend state, not a hang. So no `systemctl restart lightdm` recovery test.
+- The card keeps 0.6+pyra1 (owner's choice). The stock deb for the undo is in `~/ddx-undo/`.

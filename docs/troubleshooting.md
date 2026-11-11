@@ -795,9 +795,28 @@ Xorg holds is 1280x720, as `/sys/kernel/debug/dri/0/framebuffer` shows. That
 explains the leftover taskbar edge. TILER limits play no part.
 `ddx-patches/0002` on branch `hdmi-r51` fixes all three: buffers in the size X
 draws, rotation per CRTC, and a revert that never resizes the screen. It
-isn't on master or the release card yet.
+isn't on master yet.
 
-What works today: the kernel console on a monitor at 640x480, with X stopped.
+With `0.6+pyra1` (0001-0002) installed (release card, 2026-11-11), there's no
+`ENOSPC` at X start or on hotplug: both CRTCs are set on every plug-in, and the
+panel stays rotated. The 1080p monitor is still black, which is the signal fault
+above. Two problems are left on the X side:
+
+- With no `monitors.xml`, MATE places HDMI at the panel's unrotated width
+  (`1920x1080+720+0`, a 2640x1080 screen). The rotated panel is 1280 wide, so
+  its right part also shows on the monitor and the wallpaper overlaps there. Fix by hand:
+  `xrandr --output HDMI-1 --pos 1280x0`.
+- Shrinking the X screen can blank both outputs. `xrandr --output HDMI-1 --mode
+  640x480 --pos 1280x0` made the screen 1920x720. The kernel then showed both
+  planes on the new framebuffer with the right viewports, but the panel and the
+  monitor were black. X's own copy (`xwd -root`) still had the taskbar.
+  Going back to 3200x1080 brought the panel back. With the screen held at
+  3200x1080 (`xrandr --fb 3200x1080 --output HDMI-1 --mode 640x480 --pos
+  1280x0`), the monitor showed X windows and the panel stayed fine.
+
+What works today: the kernel console on a monitor at 640x480 with X stopped,
+and with `0.6+pyra1`, the X desktop on a monitor at 640x480 if the screen isn't
+shrunk (the `--fb` line above).
 There's no desktop on an external monitor yet.
 
 
