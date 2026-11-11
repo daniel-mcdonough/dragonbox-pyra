@@ -1,8 +1,8 @@
 # Why an HDMI monitor shows nothing above 640x480
 
 An HDMI monitor gets a picture from the Pyra only at the lowest modes. The question here is where the
-signal fails. The answer so far: on the Pyra's side of the connector, in the TMDS signal itself, and
-neither in X nor in the PLL setup. The symptoms and the user-facing summary are in `docs/troubleshooting.md`,
+signal fails. The answer so far: on the Pyra's side of the connector, in the TMDS signal itself. X is
+ruled out, and so are the PLL's DCO range and its fractional divider. The PLL's M2 divider is still untried. The symptoms and the user-facing summary are in `docs/troubleshooting.md`,
 "An HDMI monitor shows nothing above 640x480".
 
 ## Method: modes set straight on DRM, with X stopped
@@ -177,8 +177,11 @@ What this means:
 
 ## Open
 
-What's left is analog: the PHY's drive and LDO settings, the board's TMDS routing, or this unit's
+What's left is mostly analog: the PHY's drive settings, the board's TMDS routing, or this unit's
 micro-HDMI connector. DRA7 and the OMAP5 uEVM run 1080p on the same HDMI IP and driver, so a generic
-driver bug is unlikely. The public TRMs don't describe the PHY's analog fields (above), so the next steps
-are the two documented writes in the list above, someone with TI's full TRM, and asking whether 720p or above
-works on anyone's V5.x Pyra, which tells "this unit" from "every Pyra".
+driver bug is unlikely. Neither the public TRMs nor TI's vendor kernels describe the PHY's analog fields
+(above). The next steps are:
+
+- the two PLL writes in "Documented settings worth trying at 720p" (PHY_CLKINEN, and TI's M2 = 3 point);
+- someone with TI's full TRM;
+- asking whether 720p or above works on anyone's V5.x Pyra, which tells "this unit" from "every Pyra".
