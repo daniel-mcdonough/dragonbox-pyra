@@ -231,7 +231,11 @@ It takes about 10 minutes on a 256 GB card; do not switch off. `grow-rootfs.md` 
 **An image to share (`--release`).** `--release` prepares an image to give to
 other people rather than a card of your own, and asks nothing. The `pyra` user
 gets the password `pyra`, expired, so the first login (the greeter, a console or
-ssh) makes the user choose a new one before going on. Fix 23 removes the ssh
+ssh) makes the user choose a new one before going on. The greeter asks for
+`pyra` twice: once to sign in, then again as the current password (PAM's
+password-change step checks it again on its own), and only then for the new one. The
+second prompt is not a failed login. A wrong current password or a rejected new
+one starts again from the login screen. Fix 23 removes the ssh
 host keys and empties `/etc/machine-id` whatever they are, not only the
 vendor's, and release mode also deletes systemd's random seed and credential
 secret, so no two cards written from the image share them. It also deletes
