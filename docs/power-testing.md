@@ -123,8 +123,9 @@ the screen at levels between 1 and 15, suspend-to-RAM, and the GPU at 384 MHz.
 | `device/pyra-sleep-test.sh` | device | RTC-woken freeze-then-mem suspend test, detached |
 
 Copy the scripts to `~/gpu-power/` on the device, and the `.py` next to them.
-Registers are read through `/dev/mem` with Python `mmap`: `devmem2` returns zeros
-on this kernel.
+Registers are read through `/dev/mem` with Python `mmap`. `devmem2` returns zeros,
+but the fault is in the `devmem2` binary, not in `/dev/mem`: it prints a wrong
+virtual address, and `CONFIG_STRICT_DEVMEM` is off (checked 2026-11-11).
 
 ## Next runs
 

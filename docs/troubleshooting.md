@@ -707,6 +707,56 @@ make `x11perf` safe to run.
 `pyra-modeset-hang-trap.sh` automates provoking the hang and capturing it, and
 `building.md` has the patch set and how to build a kernel carrying it.
 
+### A second loop with the same symptoms: the 2D GPU's command buffer wait
+
+Seen once on 2026-11-11 on the release card (`5.6.19-m4-kbdled-test`, stock
+`armsoc-omap5` 0.6), after an HDMI monitor was plugged in under X. It looks
+just like the hang above. `Xorg` sits in `R` at about 85 % system time,
+`SIGKILL` stays pending (`SigPnd` bit 9), and `systemctl stop lightdm` sits in
+`deactivating` past its final SIGKILL. But it spins somewhere else, so
+`patches/0001` doesn't cover it. Repeated `echo l > /proc/sysrq-trigger`
+backtraces put `Xorg` here every time:
+
+    etnaviv_ioctl_gem_submit -> etnaviv_cmdbuf_init
+        -> bitmap_find_free_region / prepare_to_wait_event
+
+Before it, dmesg has `etnaviv-gpu 59000000.bb2d: MMU fault status 0x00000002`
+and `recover hung GPU!`: the X driver's EXA (`Viv2DEXA`) sent the GC320 a blit
+that faulted. The loop is in `drivers/gpu/drm/etnaviv/etnaviv_cmdbuf.c`. When
+the command buffer pool is full, `etnaviv_cmdbuf_init` waits with
+`wait_event_interruptible_timeout` and gives up only on a return of 0 (timeout).
+With a signal pending, the wait returns `-ERESTARTSYS` straight away, and the
+code goes back to `retry`. That makes it a busy loop that a pending SIGKILL
+keeps going instead of ending. The pool stays full because the hung GPU never
+retires its buffers. The fix is to return the negative value (`if (ret < 0)
+return ret;`). Not yet patched or confirmed.
+
+Recovery is a reboot. A clean one waits forever on the X server, so sync and
+force it: `sync; sudo systemctl reboot -f`. That boot came back normally. To
+avoid it while testing HDMI, stop lightdm with no monitor attached
+(`experiments/hdmi-signal`).
+
+## An HDMI monitor shows nothing above 640x480
+
+Open (2026-11-11). This is separate from the X driver's rotation trouble
+(a monitor blacking out the built-in screen), which a patched driver fixes
+outside master. Here the fault is below X. With X stopped and modes set straight
+on DRM with `modetest`, a monitor shows a clean picture only at 640x480 and
+720x480. From 1024x768 up, it shows black, or colour bars with static. At 720p
+and 1080p the monitor stays synced (no "no signal" message) but the screen is
+black. Two monitors and two cable paths behaved the same way. A worse cable
+moves the cut-off lower.
+
+Ruled out: X (the same failure without it), HPD, DDC and the TPD12S015's
+control pins (the EDID reads and the low modes work), the PLL's DCO range, and
+its fractional divider. The PLL and PHY registers, read live, match what the
+driver computes. What's left is analog: the HDMI PHY's drive or supply
+settings, the board, or the unit's micro-HDMI connector. `experiments/hdmi-signal`
+has the method, the register dumps and what's still to try.
+
+What works today: the kernel console on a monitor at 640x480, with X stopped.
+There's no desktop on an external monitor yet.
+
 
 ---
 

@@ -1903,3 +1903,39 @@ and press one key.
   were late but still slept through the release. Run 3 is the redo.
 - The boot WARN from `omap_l3_noc` (L3 custom error, taint 512) is on the
   shipped kernel's boots too (9 the boot before), not from this patch.
+
+## 2026-11-11 — HDMI out, mode by mode, with X stopped (R51)
+
+On the release-image card, kernel `5.6.19-m4-kbdled` (l5). lightdm was stopped
+with no monitor attached, then modes were set straight on DRM with `modetest`
+(`experiments/hdmi-signal`) and held 20-45 s each. The owner reported what each
+monitor showed. Monitor 1 is a 1080p monitor; monitor 2 is a BenQ GW2760HS. The
+bit rate is the TMDS rate per lane (10 × pixel clock).
+
+| Mode | Bit rate | Monitor 1, 3' cable | Monitor 1, 8" cable + 5" adapter | BenQ, 3' cable, direct |
+| --- | --- | --- | --- | --- |
+| 640x480 | 252 Mb/s | bars, clean | bars, clean | bars, clean |
+| 720x480 | 270 Mb/s | bars | — | — |
+| 1024x768 | 650 Mb/s | bars ("I think") | black | black |
+| 1280x720 | 742.5 Mb/s | black, synced | black | black (monitor went to standby) |
+| 1366x768 | 855 Mb/s | bars with static, blanked twice | black | — |
+| 1600x900 | 1080 Mb/s | bars with static | — | — |
+| 1920x1080 | 1485 Mb/s | — | black | black |
+
+- **The kernel console** came up on monitor 1 at 640x480 on its own when HDMI
+  was plugged in with X stopped (fbdev emulation), showing the top-left corner
+  of the 1280x720 console.
+- **At plug-in the EDID read failed once** (`omapdss error: HDMI I2C Master
+  Error`, modes list `640x480` only). A re-probe through the connector's
+  `status` file read it in full.
+- **With 720p held, two PLL changes made no difference:** SELFREQDCO set to the
+  high range, and an integer M (619, no fraction). Both re-locked (STATUS 3).
+  Switching the core to DVI mid-stream lost the monitor's lock. Register values
+  are in `experiments/hdmi-signal/README.md`.
+- An HDMI switch in front of the BenQ gave nothing at any mode, including
+  640x480 (first BenQ run). Those results aren't in the table.
+- Before X was stopped, plugging in monitor 1 under the stock X driver hung the
+  GC320 (`etnaviv-gpu 59000000.bb2d: MMU fault`, `recover hung GPU!`). That left
+  `Xorg` spinning and unkillable in `etnaviv_cmdbuf_init` (troubleshooting.md,
+  "A second loop with the same symptoms"). Recovered with `sync; sudo systemctl
+  reboot -f`.

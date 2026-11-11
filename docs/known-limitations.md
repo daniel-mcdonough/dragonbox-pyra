@@ -278,6 +278,14 @@ Stated so they are not mistaken for settled.
   reboot. Not reproducible on demand — roughly 2,100 deliberate modesets have
   not triggered it. A candidate fix exists and cannot be confirmed until it next
   fails to happen. This outranks every performance item in the project.
+  A second loop with the same symptoms, in the 2D GPU driver after a GC320
+  hang, was caught on 2026-11-11. It has a one-line fix that isn't applied yet.
+  `troubleshooting.md`, "The X server can hang in a modeset".
+- **No external HDMI picture above 640x480.** Measured 2026-11-11 with X
+  stopped. From 1024x768 up, the TMDS signal is too marginal for a monitor to
+  show a picture, on two monitors and two cables. The cause is below X and not
+  in the PLL setup. `troubleshooting.md`, "An HDMI monitor shows nothing above
+  640x480".
 - **Why fullscreen games are copied, not flipped.** Measured 2026-09-27: no
   `PAGE_FLIP`. Xorg has the GC320 copy every frame into the TILER front buffer.
   ~~The cause is probably that SGX buffers cannot be TILER-backed for the rotated

@@ -790,7 +790,7 @@ The graphics rail is at its nominal operating point. ~~`dpll_core_m3x2_ck` reads
 > 2.0 per clock, which is plausible. So: **the GPU is not throttled; the kernel's
 > clock tree does not describe what the DDK set, and neither `m3x2` nor
 > `clk_summary` measures the GPU clock.** Measured, not read from a register:
-> `devmem2` returns 0 for every CM register (strict `/dev/mem`), including
+> `devmem2` returns 0 for every CM register (a broken `devmem2`, see `power-testing.md`), including
 > `CM_CLKMODE_DPLL_CORE`, which cannot be 0 on a running system. `omapconf` reads
 > through the same `/dev/mem` and warns "no matching rate" for MPU and CORE, so its
 > "GPU 425 MHz" is best treated as its OPP table's nominal value. The only
