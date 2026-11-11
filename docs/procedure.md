@@ -226,7 +226,10 @@ comment). It refuses a private key. Both options are off unless you ask.
 **Growing on the first boot.** `--grow-on-boot` makes the card grow its rootfs
 to fill itself on its first boot, from the initramfs, after a capacity check and
 a read-only fsck. Without it, grow the card from the PC afterwards, as below.
-It takes about 10 minutes on a 256 GB card; do not switch off. `grow-rootfs.md` has the details.
+It takes about 10 minutes on a 256 GB card; do not switch off. Near the end the
+screen may show `Timed out while waiting for udev queue to empty.`; that is
+expected, and the boot carries on within about a minute. `grow-rootfs.md` has
+the details.
 
 **An image to share (`--release`).** `--release` prepares an image to give to
 other people rather than a card of your own, and asks nothing. The `pyra` user

@@ -136,6 +136,12 @@ core spins at 100% and only a reboot recovers it. The workaround is to stop the
 screen blanking; [docs/troubleshooting.md](docs/troubleshooting.md) has the
 three settings. A fix has been written but is not yet confirmed.
 
+**External HDMI doesn't work yet.** A monitor gets a picture only at 640x480;
+higher modes show black. Plugging a monitor in while the desktop runs can also
+hang the 2D GPU and lock up X until a reboot (`sync; sudo systemctl reboot -f`).
+Leave HDMI unplugged for now. [docs/troubleshooting.md](docs/troubleshooting.md),
+"An HDMI monitor shows nothing above 640x480", has what is known.
+
 **Brightness.** A prepared card has `pyra-backlight` (fix 22). Its slider is
 on the panel, left of the notification area, from the first login. Its
 `pyra-idle-dim` dims the screen after MATE's idle delay
