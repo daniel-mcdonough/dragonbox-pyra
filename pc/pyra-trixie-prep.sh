@@ -1594,7 +1594,7 @@ $out"
         die "fix19: $KERNEL_REL has omap_remoteproc but ${M4_CONF#$ROOT} was not written"
     fi
 
-    base=$(tr -dc 'a-z0-9' < "$EXTDIR/pyra-base-label" 2>/dev/null || true)
+    base=$(tr -dc 'a-z0-9' 2>/dev/null < "$EXTDIR/pyra-base-label" || true)
     def=$(awk '/^[[:space:]]*default /{print $2; exit}' "$EXTDIR/extlinux.conf")
     if [[ $base == "$KERNEL_SLOT" && $def == "$KERNEL_SLOT" ]]; then
         ok "fix19: $KERNEL_SLOT is already the base and the default"
