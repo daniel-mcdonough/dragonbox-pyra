@@ -53,6 +53,7 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
 | `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | **The shipped kernel.** `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect` |
 | `kernel-m4-kbdled-sched` | `5.6.19-m4-kbdled-sched` | The running `5.6.19-m4-kbdled` build (#10, 2026-10-29: same 48 patches, same config, `FW_LOADER_USER_HELPER_FALLBACK` still on) + `SCHEDSTATS` / `SCHED_INFO`, for `/proc/<pid>/task/<tid>/schedstat` (run-queue delay) when measuring games. Config checked against the device's `/boot/config-5.6.19-m4-kbdled`: only those two and the release name differ. Developer build; the undervolt module has its own build for it (`experiments/undervolt/README.md`) |
+| `kernel-m4-kbdled-test` | `5.6.19-m4-kbdled-test` | `kernel-m4-kbdled` exactly, under its own release name, so a patch can be tried in a spare slot beside the shipped kernel. Developer build |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled-sched`** since 2026-11-07, at the owner's request (boot entry l6,
@@ -231,6 +232,20 @@ settle was woken on udevd's CPU and preempted it inside `fsnotify_add_event()`, 
 sequence that left settle asleep twice on the stuck boot traced in `experiments/initramfs-wait/`. This time its lookup found
 no file and it exited. No new warning at boot, nor after a pty was opened and closed (devpts, 0049). Not
 exercised: the configfs, nfsd and rpc_pipefs paths that 0049 changes.
+
+**0050 — input: tca8418: service the chip on resume.** The keyboard driver had no PM
+callbacks. A key that changes state while the machine is asleep queues an event and
+asserts the chip's pin, but the edge comes while the GPIO bank isn't latching it, so it is
+never replayed and the keyboard is dead after the resume: 0006's stuck pin, reached
+through suspend, where 0006's loop never runs. This services the chip in a resume
+callback with the interrupt disabled, and sets the client data in probe for it.
+Report: `reports/kernel-input-tca8418-lost-interrupt.md` (patch 2 of that series).
+
+**0050 tested 2026-11-11** on the V5.3 unit, as `5.6.19-m4-kbdled-test` (`kernel-m4-kbdled`
+under its own release name) booted once from l1: a key let go of while asleep left the
+keyboard working 3 of 3, against dead on the shipped `5.6.19-m4-kbdled` (`verification-log.md`).
+The shipped kernel release `kernel-5.6.19-r1` predates it; it needs the next release and a
+new fix 19 pin.
 
 ---
 

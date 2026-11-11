@@ -1203,7 +1203,10 @@ acknowledges leaves the line asserted, no further edge ever comes, and the
 keyboard stays dead. The handler is never entered, so nothing is logged.
 `patches/0006` fixes it in the kernel (`kernel-changes.md`), and the shipped
 kernel fix 19 installs carries it; the stock `5.6.19-pyradef` does not, so the
-rescue is for a card prepared with `--no-kernel` or booted on `l0`.
+rescue is for a card prepared with `--no-kernel` or booted on `l0`. It is also
+for the shipped kernel after a resume: a key let go of while the machine sleeps
+leaves the same stuck line, which `patches/0050` fixes, and the pinned
+`kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
 
 Prep installs `device/pyra-keypad-rescue` as `/usr/local/sbin/pyra-keypad-rescue`.
 It reads the queued events out over i2c and clears the interrupt status, which

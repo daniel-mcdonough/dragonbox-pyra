@@ -1864,3 +1864,42 @@ usable (115200 baud set by mistake; the console is 1500000).
 
 Not recorded: the run's duration and whether the f2fs module came from
 `linux-modules-extra` (the run log was not read).
+
+## 2026-11-11 — the keyboard across suspend, with and without `patches/0050` (R53)
+
+On the release-image card, by the owner's hands with the readings taken over
+ssh. Each run: hold a key on the built-in keyboard, suspend 3 s later with an
+RTC wake 45 s after arming, let go of the key while asleep, leave the keyboard
+alone until the wake. Then read the tca8418 interrupt count (both CPU columns of
+`/proc/interrupts`), `INT_STAT` (`0x02`) and `KEY_LCK_EC` (`0x03`) on i2c-1 `0x34`,
+and press one key.
+
+    sudo rtcwake -m no -s 45
+    sudo systemd-run --on-active=3 --timer-property=AccuracySec=100ms systemctl suspend
+
+| Kernel | Run | Count before → after wake → after one key | `INT_STAT` / `KEY_LCK_EC` after wake | Keyboard |
+| --- | --- | --- | --- | --- |
+| `5.6.19-m4-kbdled` #10 (shipped, 0006 only) | control | 362 → 362 → 362 | `0x01` / `0x01`, then `0x0a` after typing | dead |
+| `5.6.19-m4-kbdled-test` (+ 0050) | 1 | 35 → 47 (keys pressed before the read) | `0x00` / `0x00` | works, count rising while typing (47 → 137) |
+| | 2 | 138 → 138 → 140 | `0x00` / `0x00` | works |
+| | 3 | 161 → 161 → 163 | `0x00` / `0x00` | works |
+
+- **Control:** the release event stayed queued with the pin asserted, and the
+  count did not move as the owner typed. `sudo i2cset -f -y 1 0x34 0x02 0x0f`
+  recovered it: count 363, queue empty, keyboard back.
+- **Patched:** an unchanged count across the sleep with an empty queue after
+  it means the release was drained by the resume callback, which does not go
+  through the interrupt handler and so is not counted. One key afterwards adds
+  exactly two (press and release). No `tca8418` message in dmesg.
+- **The test build** is `kernel-m4-kbdled` with only the release name changed
+  (configs diffed against the card's `/boot/config-5.6.19-m4-kbdled`: only
+  `CONFIG_LOCALVERSION` differs), installed into `l1` and booted once with
+  `pyra-boot-kernel.sh debug --once`; l5 stayed the base.
+- **A first try at run 3 did not count.** `systemd-run --on-active=3` uses
+  systemd's default `AccuracySec=1min`, so the suspend started 41 s after arming,
+  6 s before the RTC alarm, and the key was let go while still awake (count
+  +1). With `--timer-property=AccuracySec=100ms` the suspend starts at 3 s.
+  The control (8 s) and runs 1 and 2 (13 s and 28 s; 33 s and 17 s asleep)
+  were late but still slept through the release. Run 3 is the redo.
+- The boot WARN from `omap_l3_noc` (L3 custom error, taint 512) is on the
+  shipped kernel's boots too (9 the boot before), not from this patch.

@@ -18,6 +18,8 @@
 #                                            target is a developer build
 #   ./pyra-crossbuild.sh kernel-m4-kbdled-sched  the running m4-kbdled build plus
 #                                            scheduler statistics (schedstat)
+#   ./pyra-crossbuild.sh kernel-m4-kbdled-test   m4-kbdled exactly, under its own
+#                                            release name, to try a change beside it
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
@@ -490,6 +492,16 @@ build_kernel_m4_kbdled_sched() { build_kernel_variant m4-kbdled-sched \
 	"$M4_KBDLED_PATCHES" src-m4-kbdled-sched \
 	"$M4_KBDLED_CONFIG SCHEDSTATS SCHED_INFO"; }
 
+# The shipped kernel, built exactly as kernel-m4-kbdled builds it, but released
+# as 5.6.19-m4-kbdled-test. A change to the patches can then be installed into a
+# spare slot and tried beside the shipped kernel, which stays the fallback;
+# pyra-install-debug-kernel.sh refuses to install over a running release of the
+# same name. Its own source tree, so a patch tried here never leaks into the
+# shipped build's tree.
+build_kernel_m4_kbdled_test() { build_kernel_variant m4-kbdled-test \
+	"$M4_KBDLED_PATCHES" src-m4-kbdled-test \
+	"$M4_KBDLED_CONFIG -FW_LOADER_USER_HELPER_FALLBACK"; }
+
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
 	pyra-hacks)   shift; build_pyra_hacks "$@" ;;
@@ -504,7 +516,8 @@ case "${1:-}" in
 	kernel-m4-uprobe-kprobe) shift; build_kernel_m4_uprobe_kprobe ;;
 	kernel-m4-kbdled) shift; build_kernel_m4_kbdled ;;
 	kernel-m4-kbdled-sched) shift; build_kernel_m4_kbdled_sched ;;
+	kernel-m4-kbdled-test) shift; build_kernel_m4_kbdled_test ;;
 	kernel-m4demo) shift; build_kernel_m4demo ;;
 	kernel-jack)  shift; build_kernel_jack ;;
-	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4-kbdled-sched | kernel-m4demo | kernel-jack" ;;
+	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4-kbdled-sched | kernel-m4-kbdled-test | kernel-m4demo | kernel-jack" ;;
 esac

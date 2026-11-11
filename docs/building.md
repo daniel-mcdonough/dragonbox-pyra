@@ -196,8 +196,12 @@ expect on it.
 
 **Every other `kernel-*` target is a developer build:** `kernel`,
 `kernel-debug`, `kernel-fix`, `kernel-c2`, `kernel-freq`, `kernel-oc`,
-`kernel-m4`, `kernel-m4demo`, `kernel-m4-uprobe`, `kernel-m4-uprobe-kprobe`
-and `kernel-jack`. They stay buildable because the history in this document
+`kernel-m4`, `kernel-m4demo`, `kernel-m4-uprobe`, `kernel-m4-uprobe-kprobe`,
+`kernel-m4-kbdled-sched`, `kernel-m4-kbdled-test` and `kernel-jack`.
+`kernel-m4-kbdled-test` is the shipped build under the release name
+`5.6.19-m4-kbdled-test`, for trying a patch in a spare slot beside the shipped
+kernel (the installer will not install over a running release of the same
+name). They stay buildable because the history in this document
 and the A/B tests depend on them, but the user docs don't point at them.
 Don't hand `kernel-oc` to anyone: its 2 GHz table needs modified cooling
 (`known-limitations.md` §2.4). `kernel-c2` hangs the machine.
@@ -666,12 +670,30 @@ patch keeps servicing until the chip reports nothing pending, and does the same
 once at the end of probe, because the chip keeps its queue across an unbind and
 the old startup path never cleared it.
 
+`0050-input-tca8418-service-the-chip-on-resume.patch` closes the other way
+in. The driver had no resume callback, and a key that changes state while the
+machine is asleep raises its edge when nothing is listening for it, so the
+chip comes out of the suspend already asserting. The patch services the chip
+on resume, with the interrupt disabled so a running handler and the callback
+never read the queue at once. 0006 alone is in the shipped `kernel-5.6.19-r1`;
+0050 needs the next kernel release.
+
 **How to know it worked.** Press keys and watch the count move:
 
     grep tca8418 /proc/interrupts
 
-A count frozen while you type is the fault. `device/pyra-keypad-rescue` clears
-it on a machine not yet running this kernel.
+A count frozen while you type is the fault. For 0050, hold a key, suspend with
+an RTC wake, and let go while it sleeps:
+
+    sudo rtcwake -m no -s 45
+    sudo systemd-run --on-active=3 --timer-property=AccuracySec=100ms systemctl suspend
+
+After the wake the count should rise on the first key, and
+`sudo i2cget -f -y 1 0x34 0x02` should read `0x00`. Without 0050 it reads
+`0x01` and the keyboard is dead. Without the `AccuracySec`, systemd may start
+the suspend up to a minute late, after you have already let go.
+Tested 3 of 3 on 2026-11-11 (`verification-log.md`). `device/pyra-keypad-rescue` clears it on a
+machine not yet running this kernel.
 
 ### 7. Kprobes that do not panic the kernel
 

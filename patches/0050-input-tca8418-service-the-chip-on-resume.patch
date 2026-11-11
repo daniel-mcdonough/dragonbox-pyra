@@ -1,0 +1,77 @@
+input: tca8418: service the chip on resume
+
+The driver has no PM callbacks, so the chip is never looked at across a
+system suspend.  On a board that wires INT to an edge-triggered line, as
+the Pyra does, that loses the keypad for good whenever a key changes
+state while the system is asleep.
+
+The key event is queued and INT is asserted, but the falling edge
+happens while the gpio bank is not latching edges for a line that is not
+a wakeup source.  Nothing marks the interrupt pending, so nothing replays
+it at resume.  The chip goes on holding INT low, setting a status bit
+that is already set produces no new edge, and the handler is never
+entered again.
+
+Seen on a Pyra V5.3 with the in-handler loop already applied: hold a
+key, suspend with an RTC wake, release the key while asleep.  After the
+resume REG_INT_STAT reads 0x01, REG_KEY_LCK_EC reads 0x0a (the FIFO
+full), the interrupt count in /proc/interrupts is frozen and the
+keyboard is dead.  Writing REG_INT_STAT by hand over i2c brings it back.
+
+Service the chip in a resume callback, with the interrupt disabled so
+that a handler thread already running cannot read the FIFO at the same
+time; disable_irq() waits for it.  The events queued while asleep are
+reported, so a key released during the suspend is reported released
+rather than left held.  Probe never set the client data, so set it for
+the callback to find.
+
+--- a/drivers/input/keyboard/tca8418_keypad.c
++++ b/drivers/input/keyboard/tca8418_keypad.c
+@@ -338,6 +338,7 @@ static int tca8418_keypad_probe(struct i2c_client *client,
+ 
+ 	keypad_data->client = client;
+ 	keypad_data->row_shift = row_shift;
++	i2c_set_clientdata(client, keypad_data);
+ 
+ 	/* Read key lock register, if this fails assume device not present */
+ 	error = tca8418_read_byte(keypad_data, REG_KEY_LCK_EC, &reg);
+@@ -402,6 +403,31 @@ static int tca8418_keypad_probe(struct i2c_client *client,
+ 	return 0;
+ }
+ 
++static int __maybe_unused tca8418_resume(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct tca8418_keypad *keypad_data = i2c_get_clientdata(client);
++
++	/*
++	 * A key that changes state while the system is suspended queues an
++	 * event and asserts INT, but the falling edge can come while the gpio
++	 * bank is not latching edges for a line that is not a wakeup source,
++	 * so nothing marks the interrupt pending and nothing replays it.  The
++	 * pin then stays asserted and, as in tca8418_service(), no later edge
++	 * can arrive.  Service the chip now so the pin starts released.
++	 *
++	 * disable_irq() waits for a handler thread that is already running,
++	 * so the two never read the FIFO at the same time.
++	 */
++	disable_irq(client->irq);
++	tca8418_service(keypad_data);
++	enable_irq(client->irq);
++
++	return 0;
++}
++
++static SIMPLE_DEV_PM_OPS(tca8418_pm_ops, NULL, tca8418_resume);
++
+ static const struct i2c_device_id tca8418_id[] = {
+ 	{ "tca8418", 8418, },
+ 	{ }
+@@ -418,6 +444,7 @@ static struct i2c_driver tca8418_keypad_driver = {
+ 	.driver = {
+ 		.name	= "tca8418_keypad",
+ 		.of_match_table = tca8418_dt_ids,
++		.pm	= &tca8418_pm_ops,
+ 	},
+ 	.probe		= tca8418_keypad_probe,
+ 	.id_table	= tca8418_id,

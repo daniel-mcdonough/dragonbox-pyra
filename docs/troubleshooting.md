@@ -1243,6 +1243,31 @@ nothing pending, so an event arriving mid-drain is handled in the same
 invocation instead of waiting for an edge that cannot come, and which does the
 same once at the end of probe so the driver always starts from a released pin.
 
+### Dead after a resume, even with `patches/0006`
+
+The same signature, but straight after a suspend: the pointer moves, the unlock
+dialog's clock ticks, and typing does nothing. `INT_STAT` reads `0x01`, events
+are queued, and the tca8418 count is frozen. The shipped `5.6.19-m4-kbdled`
+(kernel release `kernel-5.6.19-r1`) has it.
+
+It happens when a key changes state while the machine is asleep: a key held
+into the suspend and released during it is the reliable way, and the Suspend
+button in MATE's shutdown dialog hits it about one time in four. The chip
+queues the event and asserts its pin, but the edge comes while the GPIO bank is
+not latching edges for this line, which is not a wakeup source, so the kernel
+never marks it pending and nothing replays it at resume. From then on it is the
+stuck pin above. 0006 cannot help, because its loop only runs when the handler
+is entered, and the driver had no resume callback at all.
+
+**Fixed by `patches/0050`**, which services the chip on resume. Reproduced and
+checked on hardware: `verification-log.md`, 2026-11-11.
+
+Recovery is the same as below. Clearing only the status also works and keeps
+the queued keystrokes: the chip re-asserts for them, that edge is seen, and the
+handler drains the queue (count up by one, queue empty):
+
+    sudo i2cset -f -y 1 0x34 0x02 0x0f
+
 ### Getting the keyboard back without that kernel
 
 You need another way in, because the keyboard is the broken thing: ssh, or the
