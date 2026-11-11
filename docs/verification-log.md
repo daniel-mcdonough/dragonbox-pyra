@@ -1811,3 +1811,56 @@ journal, and `/sys/class/backlight/backlight/brightness` every 5 s.
   README's first-boot steps advise, the dim is what idle looks like.
 
 Still not seen: the same on a card prepared with fix 22.
+
+## 2026-11-10 — the first CI-built release image on a Pyra (R49)
+
+`pyra-trixie-release-ef8b2dc1b6f0`, the first artifact of
+`.github/workflows/release-image.yml` on a GitHub-hosted runner. Its `.info`:
+`built_utc=20261111-020128`, `repo_commit=ef8b2dc1b6f0…` (`repo_dirty=no`),
+`prep_options=--release --grow-on-boot --kernel m4-kbdled-kernel.tar.gz`,
+kernel tarball SHA-256 `8c00c70b…`, vendor image SHA-256 `d8e98ff6…` (the pin).
+Downloaded as the workflow artifact, written to the 256 GB card and booted once
+on `5.6.19-m4-kbdled`. Read over ssh after that boot, with nothing changed on
+the card except the login password, an ssh key and a sudoers file
+(`01-dev`, development only), plus a serial capture that recorded nothing
+usable (115200 baud set by mistake; the console is 1500000).
+
+- **Artifact:** the `.img.xz` matches its `.sha256` (`4aeb551e…`), and the
+  decompressed image matches the build's own `.sha256` (`49eee3aa…`), both
+  checked on the PC. The prep log ends `done`; the image's fsck log is clean.
+- **Release mode on first boot:** new ssh host keys, written at 04:02 card
+  time by `pyra-ssh-hostkeys.service` (5.2 s); a new `/etc/machine-id`;
+  `systemd-firstboot.service` masked; the password change was forced (owner).
+  No failed units; `graphical.target` 24.5 s into userspace.
+- **initrd:** `lsinitramfs` lists `usr/bin/flock`, `60-block.rules`,
+  `usr/sbin/pyra-grow-root`, `pyra-fw-nofallback` and `pyra-settle-nudge`. The
+  unpacked `pyra-grow-root` is byte-identical to the repo copy (SHA-256
+  `48ec95b5…`).
+- **Grow log:** 232 GiB unused, capacity check passed (931 samples), read-only
+  fsck 56 s, `partition 2 is now 499480576 sectors`, fsck after the resize
+  67 s, all clean, then `done: the root filesystem is now 238 GiB`. No
+  `next boot will finish it`, no `moved`, no `could not lock`. `df -h /` 239G,
+  4.9G used.
+- **No re-reads during the capacity check:** dmesg has one
+  `mmcblk1: p1 p2` line, at 2.2 s (the probe). R46's boot had 80, from the
+  capacity check's writes. This is the first Pyra run of the lock taken
+  before the capacity check (`grow-rootfs.md`).
+- **Early initramfs:** `Ignoring firmware sysfs fallback due to sysctl knob`
+  at 8.3 s with the USB ethernet adapter plugged in; `settle-nudge.log` says
+  `5.14 armed`, `7.30 settle exited` (no nudge needed).
+- **Timing (dmesg):** `Run /init` at 4.8 s; the grow's first `drop_caches` at
+  18.0 s; root mounted at 662.7 s; systemd started at 711.4 s. Kernel phase
+  11 min 52 s, userspace 27.9 s.
+- **A udev settle timeout after the grow** (open, R52): the owner saw a udev
+  timeout message on the LCD after the grow's `DO NOT SWITCH OFF` line. It is
+  in no log: the initramfs writes to `/dev/console`, the LCD. dmesg has
+  nothing for 48.7 s between the root mount and systemd's start, where
+  `init-bottom/udev` runs `udevadm settle --timeout=60`. The gap was not
+  measured on a boot without a grow. Not yet explained; the leading suspicion
+  is in `grow-rootfs.md`.
+- **Expected noise only:** `F2FS-fs (mmcblk1p2): invalid crc_offset: 0` once
+  (`grow-rootfs.md`), sensor probes failing with -121, missing wl18xx and
+  rtl8153 firmware, `alsactl restore` exit 99 (no saved state yet).
+
+Not recorded: the run's duration and whether the f2fs module came from
+`linux-modules-extra` (the run log was not read).

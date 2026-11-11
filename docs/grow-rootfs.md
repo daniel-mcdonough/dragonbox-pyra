@@ -164,17 +164,35 @@ dmesg, and the `loopN: p1 p2` lines between the marks counted): with the lock
 taken at `sfdisk`, the script's 14 runs made 26 table re-reads, up to 9 in one
 run. With the lock taken before the capacity check they made none. The
 selftest's own card setup, outside the script, made 24 and 23. The full
-selftest, real image included, passes with the new scope. Not yet run on a
-Pyra.
+selftest, real image included, passes with the new scope. On a Pyra
+(2026-11-10, the first CI-built release image, `verification-log.md`): the
+grow finished with one `mmcblk1: p1 p2` line in dmesg, the probe at 2.2 s,
+against R46's 80.
 
-**Booted on a Pyra three times.** First on 2026-10-31 (the card above, through
+**A udev settle timeout after the grow (open).** On that boot the owner saw a
+udev timeout message on the LCD after `DO NOT SWITCH OFF`; it reaches no log.
+dmesg is silent for 48.7 s between the root mount (662.7 s) and systemd's
+start (711.4 s). `init-bottom/udev` runs `udevadm settle --timeout=60` there,
+so settle most likely waited out a queue that was not empty. Suspected, not
+shown: the lock keeps udev from processing the disk's events (udev 257 sets
+aside an event for a locked block device). `60-block.rules` still sends a
+change event for each write-close, and the capacity check makes 931 of them.
+Those events then queue for the length of the grow and drain once it exits.
+At about 50 ms each, 931 events take about as long as the gap. Settle's
+timeout bounds the delay; root was already mounted and the boot carried on.
+To show it: log `/run/udev/queue` and the settle exit time in `init-bottom`
+on a grow boot, as `pyra-settle-nudge` does in `init-top`.
+
+**Booted on a Pyra four times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
 mounted at 8.2 s on the next one (serial console, 2026-11-01). Then on
 2026-11-01, from a `--release` image: the grow ran on the first boot, with no
 reboot, and ended `done: the root filesystem is now 238 GiB` (`verification-log.md`).
 Then again on 2026-11-01 from a `--release` image with the lock, the same way
-(above).
+(above). Then on 2026-11-10 from the first CI-built release image, with the
+lock taken before the capacity check: `done: the root filesystem is now
+238 GiB`, root mounted at 662.7 s (above).
 
 ---
 

@@ -976,10 +976,14 @@ prefix also keeps it clear of `kernel-*`, which starts the Kernel release
 workflow when the tag is created. Without `release_tag`, the workflow publishes
 nothing.
 
+**First run on GitHub** (artifact built 2026-11-11 02:01 UTC from `ef8b2dc`):
+it produced the artifact. Both `.sha256` files verified after download, and
+the image booted on a Pyra (`verification-log.md`, 2026-11-10). The run's
+duration and which f2fs path it took were not recorded.
+
 **What the runner must allow, and how the workflow checks it.** The workflow
-has not run on GitHub yet, because the repository has no remote. These are
-assumptions about hosted runners, and the workflow checks each one before
-the build so that a gap fails early with a clear error:
+checks each of these before the build, so that a gap fails early with a
+clear error:
 
 | Need | Why | Checked by |
 | --- | --- | --- |
