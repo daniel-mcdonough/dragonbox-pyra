@@ -2003,3 +2003,28 @@ during the test, 0 afterwards.
   The GC320's debugfs `gpu` showed `idle: 0x7fffffff` with the FE parked on END, which is
   etnaviv's runtime-suspend state, not a hang. So no `systemctl restart lightdm` recovery test.
 - The card keeps 0.6+pyra1 (owner's choice). The stock deb for the undo is in `~/ddx-undo/`.
+
+## 2026-11-11 — a screen resize on `armsoc-omap5` 0.6+pyra1 and 0.6+pyra2 (R56)
+
+Release card, `5.6.19-m4-kbdled` from l5 (the card rebooted on l5 after the hang in
+troubleshooting.md, "Reading a TILER framebuffer with the CPU"). The 1080p monitor was plugged
+the whole time. The owner watched the screens.
+
+- `0.6+pyra1`, X at 3200x1080 (panel `1280x720+0+0 right`, HDMI `1920x1080+1280+0`, both planes
+  on fb 61). `xrandr --output HDMI-1 --off`: screen 1280x720, panel plane on the new fb 58,
+  1280x720. The owner saw the panel **black**. So the panel alone reproduces it.
+- Cause from the source: `src/viv2d/viv2d_exa.c` imports the scanout into etnaviv once in
+  `InitViv2DEXA` (`v2d->bo`). After `resize_scanout_bo` swaps the scanout,
+  `Viv2DModifyPixmapHeader` and `Viv2DAttachBo` still give the screen pixmap that old import. So
+  the GC320 draws into the old buffer, and the planes scan out the new one, which
+  `armsoc_bo_clear` left black.
+- `ddx-patches/0003` (`ScanoutChanged` hook, re-import through a PRIME fd), built as `0.6+pyra2`
+  (hdmi-r51 2584736) and installed with `dpkg -i`. lightdm restarted: X at 3200x1080, HDMI at
+  `+1280`, no `(EE)`.
+- `xrandr --output HDMI-1 --off`: screen 1280x720, panel on fb 61. The owner saw the **desktop,
+  and it redrew**.
+- `xrandr --output HDMI-1 --mode 640x480 --right-of Unknown16-1`: screen 1920x720 with no
+  `--fb`, both planes on fb 60. The owner saw the **desktop on both** the panel and the monitor.
+- Not explained: on `0.6+pyra1`, growing back to 3200x1080 brought the panel back, though the
+  import was just as stale.
+

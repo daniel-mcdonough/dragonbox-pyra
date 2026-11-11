@@ -806,21 +806,41 @@ above. Two problems are left on the X side:
   (`1920x1080+720+0`, a 2640x1080 screen). The rotated panel is 1280 wide, so
   its right part also shows on the monitor and the wallpaper overlaps there. Fix by hand:
   `xrandr --output HDMI-1 --pos 1280x0`.
-- Shrinking the X screen can blank both outputs. `xrandr --output HDMI-1 --mode
-  640x480 --pos 1280x0` made the screen 1920x720. The kernel then showed both
-  planes on the new framebuffer with the right viewports, but the panel and the
-  monitor were black. X's own copy (`xwd -root`) still had the taskbar.
-  Going back to 3200x1080 brought the panel back. With the screen held at
-  3200x1080 (`xrandr --fb 3200x1080 --output HDMI-1 --mode 640x480 --pos
-  1280x0`), the monitor showed X windows and the panel stayed fine.
+- Any X screen resize that reallocates the scanout buffer blanks every output on
+  `0.6+pyra1`. HDMI off (3200x1080 to 1280x720) is enough, with the panel alone.
+  The KMS state is right (planes on the new framebuffer, right viewports), and
+  `xwd -root` still has the taskbar. Cause: the GC320 2D backend imports the
+  scanout buffer into etnaviv once, at X start, and kept drawing into that old
+  buffer after a resize, while the planes scanned out the new one, cleared to
+  black. Fixed by `ddx-patches/0003` (`0.6+pyra2`, branch `hdmi-r51`). On
+  `0.6+pyra1` the workaround is to hold the screen at one size:
+  `xrandr --fb 3200x1080 --output HDMI-1 --mode 640x480 --pos 1280x0`.
 
 What works today: the kernel console on a monitor at 640x480 with X stopped,
-and with `0.6+pyra1`, the X desktop on a monitor at 640x480 if the screen isn't
-shrunk (the `--fb` line above).
+and with `0.6+pyra2`, the X desktop on a monitor at 640x480 beside the panel
+(`xrandr --output HDMI-1 --mode 640x480 --right-of Unknown16-1`).
 There's no desktop on an external monitor yet.
 
 
 ---
+
+## Reading a TILER framebuffer with the CPU through `/dev/dri` hangs the machine
+
+Seen 2026-11-11 on the release card (`5.6.19-m4-kbdled-test`, X running on
+`0.6+pyra1`). A root script took X's scanout framebuffer (a 3200x1080 TILER
+buffer) with `DRM_IOCTL_MODE_GETFB`, mapped it with `DRM_IOCTL_MODE_MAP_DUMB`
+and `mmap` on `/dev/dri/card0`, and read 1280x720 pixels. It never returned.
+The mouse pointer still moved (the cursor is a plane), but clicks did nothing.
+sshd stopped answering, ping answered only now and then, and the serial
+console printed nothing. The journal of that boot shows an RCU stall: the
+script's `python3` running on CPU 1 for about 30,000 jiffies. The card
+rebooted about a minute later.
+
+Recovery: hold power to force it off. A one-time boot entry falls back to the
+default on the next boot.
+
+Don't read a scanout buffer that way. To see what the panel shows, ask
+someone to look, or have X draw something known.
 
 ## The WiFi driver can flood the kernel log and starve the machine
 
