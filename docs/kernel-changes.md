@@ -247,6 +247,23 @@ keyboard working 3 of 3, against dead on the shipped `5.6.19-m4-kbdled` (`verifi
 The shipped kernel release `kernel-5.6.19-r1` predates it; it needs the next release and a
 new fix 19 pin.
 
+**0051 — drm/etnaviv: set `cmdbuf->suballoc` only once the allocation succeeded.**
+`etnaviv_cmdbuf_init()` stored the pool pointer before looking for space, and the submit
+cleanup frees whatever a cmdbuf with that pointer holds. After a failed allocation it freed
+granules at offset 0 of the pool, which belong to the GC320's ring buffer, so a later
+submit could be given the same memory. Only the 10 s timeout reached it before 0052.
+
+**0052 — drm/etnaviv: return from the cmdbuf space wait when a signal is pending.** With the
+command buffer pool full (a hung GC320 never retires its buffers), the wait returns
+`-ERESTARTSYS` at once when a signal is pending, and the code went back to `retry`. That is
+a busy loop no signal can end, and an unkillable `Xorg` (`troubleshooting.md`, "A second
+loop with the same symptoms"). 0052 returns the error. Mainline still has both bugs.
+
+**0051-0052 built 2026-11-11** into `5.6.19-m4-kbdled-test` (with 0050) and booted from l1 on
+the V5.3 unit. The desktop ran normally on it (the X driver submits GC320 work every frame).
+The HDMI hotplug that faulted the GC320 once didn't fault it again in four tries, so the
+fix itself isn't confirmed on hardware yet (`verification-log.md`).
+
 ---
 
 ## `experiments/m4-ipu/`: in all m4 kernels, and the demo kit

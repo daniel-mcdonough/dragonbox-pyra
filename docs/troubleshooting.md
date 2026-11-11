@@ -728,8 +728,17 @@ the command buffer pool is full, `etnaviv_cmdbuf_init` waits with
 With a signal pending, the wait returns `-ERESTARTSYS` straight away, and the
 code goes back to `retry`. That makes it a busy loop that a pending SIGKILL
 keeps going instead of ending. The pool stays full because the hung GPU never
-retires its buffers. The fix is to return the negative value (`if (ret < 0)
-return ret;`). Not yet patched or confirmed.
+retires its buffers.
+
+**Patched by `patches/0051`-`0052`** (built 2026-11-11, not yet confirmed
+against this fault). 0052 returns the wait's negative value, so a pending
+signal ends the ioctl and a SIGKILL can be delivered. 0051 comes first because
+the error path had a bug of its own: it freed granules the failed allocation
+never got, at offset 0 of the pool, where the GC320's ring buffer is. Mainline
+has both bugs. The repro didn't fault the GC320 again: four HDMI plug-ins under
+X on the patched kernel, each with X's mode set failing (next section), so X
+never drew to the monitor. Whether X is killable after a real fault is still
+open.
 
 Recovery is a reboot. A clean one waits forever on the X server, so sync and
 force it: `sync; sudo systemctl reboot -f`. That boot came back normally. To
@@ -753,6 +762,15 @@ its fractional divider. The PLL and PHY registers, read live, match what the
 driver computes. What's left is analog: the HDMI PHY's drive or supply
 settings, the board, or the unit's micro-HDMI connector. `experiments/hdmi-signal`
 has the method, the register dumps and what's still to try.
+
+Under X (stock `armsoc-omap5` 0.6, seen 2026-11-11 on four plug-ins), MATE
+grows the X screen to 2640x1080 (the rotated panel plus 1920 to its right), and
+then both mode sets fail: `drm failed to set mode: No space left on device` in
+`/var/log/Xorg.0.log`, for the panel and for HDMI. The monitor stays dark, the
+output reads `connected` but not enabled, and the panel keeps its picture. The
+screen stays 2640 wide, which is why part of the panel shows the edge of the
+taskbar after the cable is pulled. Where `ENOSPC` comes from in omapdrm isn't
+known yet.
 
 What works today: the kernel console on a monitor at 640x480, with X stopped.
 There's no desktop on an external monitor yet.

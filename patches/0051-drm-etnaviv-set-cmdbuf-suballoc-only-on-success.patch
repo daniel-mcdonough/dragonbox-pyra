@@ -1,0 +1,32 @@
+drm/etnaviv: set cmdbuf->suballoc only once the allocation succeeded
+
+etnaviv_cmdbuf_init() stores the suballocator in the cmdbuf before it
+looks for space, and submit_cleanup() takes a non-NULL cmdbuf->suballoc
+to mean "this cmdbuf holds granules".  When the allocation fails in the
+submit ioctl, the error path therefore calls etnaviv_cmdbuf_free() on a
+cmdbuf that owns nothing.  suballoc_offset is still 0 from kzalloc(), so that
+releases the granules at the start of the region, which belong to a
+live buffer (the first one allocated is the GPU's own ring buffer), and
+a later submit can be handed the same memory.
+
+Today only the 10 second timeout reaches this.  Set the pointer together
+with the offset, after the region has been found.
+
+--- a/drivers/gpu/drm/etnaviv/etnaviv_cmdbuf.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_cmdbuf.c
+@@ -87,7 +87,6 @@ int etnaviv_cmdbuf_init(struct etnaviv_c
+ {
+ 	int granule_offs, order, ret;
+ 
+-	cmdbuf->suballoc = suballoc;
+ 	cmdbuf->size = size;
+ 
+ 	order = order_base_2(ALIGN(size, SUBALLOC_GRANULE) / SUBALLOC_GRANULE);
+@@ -109,6 +108,7 @@ retry:
+ 		goto retry;
+ 	}
+ 	mutex_unlock(&suballoc->lock);
++	cmdbuf->suballoc = suballoc;
+ 	cmdbuf->suballoc_offset = granule_offs * SUBALLOC_GRANULE;
+ 	cmdbuf->vaddr = suballoc->vaddr + cmdbuf->suballoc_offset;
+ 

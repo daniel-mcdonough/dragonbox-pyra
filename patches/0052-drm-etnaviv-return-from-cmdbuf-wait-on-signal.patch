@@ -1,0 +1,31 @@
+drm/etnaviv: return from the cmdbuf space wait when a signal is pending
+
+etnaviv_cmdbuf_init() waits with wait_event_interruptible_timeout() when
+the suballocator is full and gives up only when it returns 0.  With a
+signal pending the wait returns -ERESTARTSYS at once, and the code goes
+back to retry.  Once the region stays full, the task spins in the submit
+ioctl for good: a fatal signal can never be delivered, kill -9 does
+nothing, and the only way out is a reboot.
+
+Seen on a Pyra (OMAP5432, GC320 2D core) after an HDMI hotplug under the
+armsoc X driver: the 2D core took an MMU fault, "recover hung GPU!"
+followed, and Xorg then sat in R state at about 85 % system time with
+SIGKILL pending, every sysrq backtrace in etnaviv_ioctl_gem_submit ->
+etnaviv_cmdbuf_init.
+
+Return the error.  Nothing has been committed at that point and the
+submit is put on the error path, so the ioctl can be restarted.  This
+relies on the previous patch, which keeps the cleanup from freeing
+granules the cmdbuf never got.
+
+--- a/drivers/gpu/drm/etnaviv/etnaviv_cmdbuf.c
++++ b/drivers/gpu/drm/etnaviv/etnaviv_cmdbuf.c
+@@ -105,6 +105,8 @@ retry:
+ 				"Timeout waiting for cmdbuf space\n");
+ 			return -ETIMEDOUT;
+ 		}
++		if (ret < 0)
++			return ret;
+ 		goto retry;
+ 	}
+ 	mutex_unlock(&suballoc->lock);

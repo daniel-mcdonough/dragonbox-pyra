@@ -1939,3 +1939,18 @@ bit rate is the TMDS rate per lane (10 × pixel clock).
   `Xorg` spinning and unkillable in `etnaviv_cmdbuf_init` (troubleshooting.md,
   "A second loop with the same symptoms"). Recovered with `sync; sudo systemctl
   reboot -f`.
+
+## 2026-11-11 — HDMI hotplug under X on the etnaviv fix (R55)
+
+Release card, `5.6.19-m4-kbdled-test` (patches/ through 0052) booted once from l1, stock
+`armsoc-omap5` 0.6, lightdm running, a 1080p monitor (EDID preferred 1920x1080).
+
+- Four plug-ins (one, then three unplug/plug cycles of about 10 s / 20 s). No GC320 fault:
+  no `etnaviv`, `MMU fault` or `hung` line in dmesg (watched with `dmesg -w`). `Xorg` stayed
+  in `S`, `SigPnd` 0.
+- Each plug-in: `hotplug=1`, the X screen grew to 2640x1080, then two
+  `drm failed to set mode: No space left on device` (8 in `Xorg.0.log` by the end).
+  `xrandr`: `HDMI-1 connected` with its EDID modes, not enabled. The monitor showed nothing;
+  after each unplug the panel showed part of the taskbar.
+- So the repro never reached the fault, and 0051-0052 aren't confirmed against it. The kernel
+  ran the desktop normally.
