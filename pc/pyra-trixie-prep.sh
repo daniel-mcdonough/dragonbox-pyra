@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-three known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -40,7 +40,7 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20 and 22 run the image's own tools in a chroot, so a PC that is not
+# Fixes 14, 19, 20, 22 and 24 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -214,6 +214,9 @@ PANEL_OVERRIDE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_panel.gschema.override
 for f in "$PANEL_LAYOUT_SRC" "$PANEL_OVERRIDE_SRC"; do
     [[ -r $f ]] || die "fix22: $(basename "$f") not found (looked in $PAYLOADS)"
 done
+# Fix 24's override: shut down, not hibernate, at critical battery.
+POWER_OVERRIDE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_power.gschema.override
+[[ -r $POWER_OVERRIDE_SRC ]] || die "fix24: 99_pyra_power.gschema.override not found (looked in $PAYLOADS)"
 # Fix 21 runs the device script on the image, so the patch has one
 # implementation. A library it doesn't know stops prep here, before fix 1.
 WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
@@ -1846,6 +1849,34 @@ else
     ln -s /dev/null "$FB"
     ok "fix23: masked systemd-firstboot.service, so the first boot asks nothing on the console"
 fi
+
+# ---------------------------------------------------------------------- fix 24
+#
+# At critical battery MATE's power manager runs action-critical-battery,
+# 'hibernate' by default, and these kernels cannot hibernate (logind's
+# CanHibernate is "na"): MATE warns that the machine is about to hibernate,
+# asks logind, and is refused. UPower acts at the same warning level and falls
+# back from its HybridSleep to PowerOff, so the machine still goes down, but
+# MATE's warning is wrong. A system override sets 'shutdown', so both ask for
+# the same thing; a user's own gsettings value still wins. UPower.conf is left
+# alone: it is a conffile, and its fallback already lands on PowerOff.
+
+POWER_OVERRIDE_DST=$ROOT/$SCHEMA_DIR/$(basename "$POWER_OVERRIDE_SRC")
+if [[ -e $POWER_OVERRIDE_DST ]] && cmp -s "$POWER_OVERRIDE_SRC" "$POWER_OVERRIDE_DST" &&
+   [[ $ROOT/$SCHEMA_DIR/gschemas.compiled -nt $POWER_OVERRIDE_DST ]]; then
+    ok "fix24: ${POWER_OVERRIDE_DST#$ROOT} already up to date"
+else
+    VERB=$([[ -e $POWER_OVERRIDE_DST ]] && echo updated || echo installed)
+    install -m 0644 -o 0 -g 0 "$POWER_OVERRIDE_SRC" "$POWER_OVERRIDE_DST"
+    in_chroot glib-compile-schemas --strict "/$SCHEMA_DIR" ||
+        die "fix24: glib-compile-schemas rejected the schemas with the override in place"
+    ok "fix24: $VERB ${POWER_OVERRIDE_DST#$ROOT} and recompiled the schemas"
+fi
+POWER_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
+    gsettings get org.mate.power-manager action-critical-battery 2>/dev/null || true)
+[[ $POWER_VAL == "'shutdown'" ]] ||
+    die "fix24: action-critical-battery reads $POWER_VAL after the override, not 'shutdown'"
+ok "fix24: MATE shuts down at critical battery (action-critical-battery 'shutdown')"
 
 # ------------------------------------------------------------------- release
 #

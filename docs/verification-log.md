@@ -2108,3 +2108,29 @@ pressed per round while asleep. Interrupt counts read from `/proc/interrupts` be
   bottom slept 47 s (RTC).
 - Not covered: the lid as a wake source, the udev rule, the `fdtput` DTB edit, the shoulder
   buttons as input after the resume.
+
+## 2026-11-12 — critical battery: shutdown, not hibernate (fix 24)
+
+Release card, shipped `5.6.19-m4-kbdled`, desktop session logged in. Before the change:
+`action-critical-battery` read `'hibernate'`; logind `CanHibernate` and `CanHybridSleep` were
+`na`; `/sys/power/state` read `freeze mem`; UPower 1.90.9 ran with `CriticalPowerAction=HybridSleep`,
+and its `GetCriticalAction` returned `PowerOff`.
+
+Method: fix 24's override installed by hand and the schemas recompiled. `GSETTINGS_BACKEND=memory
+gsettings get` then read `'shutdown'`. For one boot, upowerd was pointed at a copy of
+`UPower.conf` in `/run`, with `PercentageLow/Critical/Action` at 97/96/95. That was done through
+`UPOWER_CONF_FILE_NAME` in a runtime drop-in, which is gone after a reboot. The battery read
+77 %, discharging. The charger chip reported `ONLINE=0` throughout, even with a charger plugged
+in (the known `bq24297` quirk, 2026-09 note above), so UPower's `OnBattery` read `true`.
+
+- **Test:** upowerd started at 06:09:54.99 with `warning-level: action`. MATE showed "…about to
+  shutdown" (seen by the owner). logind logged "The system will power off now!" at 06:10:15.24,
+  20.2 s later. After the next boot the drop-in was gone and `GetCriticalAction` returned
+  `PowerOff`.
+- **An earlier, aborted run:** upowerd was restarted at action level at 06:05:31.74, then
+  restarted again without the test config at 06:05:43, which left the warning level at `none`.
+  logind still powered off at 06:05:52.24, 20.5 s after the first restart. UPower's timer
+  had died with its process, so this was mate-power-manager's 20 s timer, which it never
+  cancels (`gpm-manager.c`). That mate-power-manager started after the override went in.
+- Not covered: a real drain to 2 %, and whether the fuel gauge reaches 2 % before the cell's
+  cut-off.

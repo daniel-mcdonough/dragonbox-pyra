@@ -10,9 +10,9 @@
 # Copy the repository onto the device and run this from inside its `device`
 # directory. Everything it touches lives under /usr/local, /etc or the calling
 # user's own systemd directory, except the two PulseAudio mixer paths, which
-# can only live in /usr/share/pulseaudio (docs/audio.md), and fix 20's
-# gsettings override, which only takes effect in the schema directory it
-# overrides. Every file it installs has a pyra name no Debian package uses, so
+# can only live in /usr/share/pulseaudio (docs/audio.md), and fixes 20 and
+# 24's gsettings overrides, which only take effect in the schema directory they
+# override. Every file it installs has a pyra name no Debian package uses, so
 # nothing here fights a package.
 #
 # The idle dimmer and the brightness applet are no longer here. They are the
@@ -22,13 +22,14 @@
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does install the two init-top hooks
 # that keep root from mounting late, and rebuilds the initrd of every kernel in
-# /boot whose initrd lacks them or predates them. It does not apply the twenty-three
+# /boot whose initrd lacks them or predates them. It does not apply the twenty-four
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
-# Fixes 13 to 18 and 20 are the exception, since their files (pyra-gles, the two
+# Fixes 13 to 18, 20 and 24 are the exception, since their files (pyra-gles, the two
 # hooks, pyra-kbdlight.sh and its pyrainput.service drop-in,
 # pyra-governor-tune's script and unit,
 # pyra-audio-select's script, unit and five PulseAudio files,
-# pyra-keypad-rescue, and the MATE keyboard-light override) are in the map
+# pyra-keypad-rescue, and MATE's keyboard-light and critical-battery
+# overrides) are in the map
 # below and land on the same paths prep uses; fix 15's two lines in
 # /etc/pyrainput.cfg and fix 17's daemon.conf.d link are made by the same
 # scripts prep calls. Fix 21's script and its dpkg guard land where prep puts
@@ -86,6 +87,7 @@ pyra-gles                           /usr/local/bin                     0755
 pyra-kbdlight.sh                    /usr/local/sbin                    0755
 etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf /etc/systemd/system/pyrainput.service.d 0644
 usr/share/glib-2.0/schemas/99_pyra_kbdlight.gschema.override /usr/share/glib-2.0/schemas 0644
+usr/share/glib-2.0/schemas/99_pyra_power.gschema.override /usr/share/glib-2.0/schemas 0644
 pyra-soh                            /usr/local/bin                     0755
 pyra-cpu-pin                        /usr/local/sbin                    0755
 etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440
@@ -219,17 +221,18 @@ else
 	fi
 fi
 
-# ----------------------------------------------------- MATE and the light
-# Fix 20's override changes nothing until the schemas are recompiled. The
-# setting is read at each power change, so a running session picks it up; a
-# value the user set with gsettings still wins over it.
-say "MATE's keyboard-light override"
+# --------------------------------------------- MATE's power manager
+# Fix 20's and fix 24's overrides change nothing until the schemas are
+# recompiled. Fix 20's setting is read at each power change, so a running
+# session picks it up; for fix 24's, count on the next login. A value the user
+# set with gsettings still wins over either.
+say "MATE's power-manager overrides"
 if [ "$DRYRUN" = 1 ]; then
 	note "would run: glib-compile-schemas /usr/share/glib-2.0/schemas"
 elif glib-compile-schemas /usr/share/glib-2.0/schemas; then
-	note "schemas recompiled; kbd-backlight-battery-reduce now defaults to false"
+	note "schemas recompiled; kbd-backlight-battery-reduce now defaults to false, action-critical-battery to shutdown"
 else
-	note "glib-compile-schemas failed; MATE still drives the keyboard light on battery"
+	note "glib-compile-schemas failed; MATE still drives the keyboard light on battery and tries to hibernate at critical battery"
 fi
 
 # ------------------------------------------------------- the audio script

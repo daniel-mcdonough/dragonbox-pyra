@@ -1,4 +1,4 @@
-# The twenty-three fixes, and what they actually do
+# The twenty-four fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -47,6 +47,7 @@ them out.
 | 21 | workaround | `dri3wsegl-pyra` closes a descriptor twice; a four-byte binary patch removes the second close | the package drops the `close()` at `dri3_ws.c:324` | `pyra-ddk-dri3-wsegl-double-close.md` |
 | 22 | restores | MATE's backlight helper takes the first device it finds, the keyboard light on the stock kernel, so the image ships MATE's screen dimming off and no brightness slider | MATE picks the panel by itself and the image turns its dimming back on | — |
 | 23 | workaround | the vendor image ships its ssh host keys and machine-id, the same on every card; an image should make them on the first boot | the vendor image ships without them | — (none drafted yet) |
+| 24 | setting | — (MATE's default critical-battery action is hibernate, which these kernels can't do) | the kernel gains hibernation (not planned) | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1557,6 +1558,64 @@ kept, and a mixed set is removed (`pc/pyra-prep-selftest.sh`). The same steps
 as `--release` booted on a Pyra on 2026-11-01 (`verification-log.md`, 2026-11-01): new
 host keys in about 13 s, sshd up after them, a new machine-id, no console
 prompt.
+
+## Fix 24 — at critical battery MATE tries to hibernate
+
+**Symptom.** MATE's power manager defaults `action-critical-battery` to
+`hibernate`. The Pyra's kernels have no hibernation: there is no
+`/sys/power/disk`, `/sys/power/state` is `freeze mem`, and logind's
+`CanHibernate` is `na`. At critical battery MATE warned that the machine was
+about to hibernate, then asked logind to hibernate and was refused.
+
+**What actually happened at critical battery.** UPower and MATE act on the
+same event. MATE 1.26.1 doesn't use its own `percentage-action` or
+`time-action` keys. It acts on UPower's `warning-level` reaching `action`,
+which UPower 1.90.9 sets at 2 % (`PercentageAction` in
+`/etc/UPower/UPower.conf`, with `UsePercentageForPolicy=true`) while the
+battery reads discharging. Both then wait 20 s:
+
+- UPower's `CriticalPowerAction=HybridSleep` falls back through `Hibernate`,
+  which logind refuses, to `PowerOff` (`up_backend_get_critical_action`).
+  `GetCriticalAction` on the running daemon returns `PowerOff`. So the machine
+  did power off. MATE's warning was simply wrong.
+- MATE ran its own action, `hibernate`, which failed.
+
+**The fix.** Prep installs `/usr/share/glib-2.0/schemas/99_pyra_power.gschema.override`,
+which sets `action-critical-battery='shutdown'`, and recompiles the schemas in
+the chroot. Then it reads the value back on the memory backend, the same way
+as fix 20. MATE's warning now says "about to shutdown", and MATE asks logind to
+power off at the same moment UPower does. It is a default, so a user's own
+gsettings value still wins. `pyra-install-helpers.sh` installs the same file
+and recompiles. mate-power-manager reads the new default when it starts, so the
+change takes effect at the next login.
+
+`UPower.conf` is left alone. It is a dpkg conffile, UPower 1.90.9 reads no
+drop-in directory, and its fallback already ends at `PowerOff`.
+
+Suspend is no choice for critical battery: a suspended Pyra keeps drawing from
+the cell.
+
+**With a charger in.** The `bq24297` reports `online=0` even with a charger in
+(`verification-log.md`, 2026-09), so UPower's `OnBattery` is always true here.
+MATE's check for being on mains never stops it. What decides is the fuel gauge:
+UPower computes a warning level only while the battery reads discharging. A
+charger that keeps up keeps the gauge at charging, so nothing happens. One that
+can't keep up with the load (a weak brick, a sagging cable) still gets the
+shutdown at 2 %, which is right, because the cell is still draining.
+
+**MATE's countdown can't be cancelled.** mate-power-manager 1.26.1 starts its
+20 s timer without keeping the source ID (`gpm-manager.c`, "battery
+critical-action"). Plugging the charger in during those 20 s doesn't stop it,
+although UPower's own timer is cancelled. With `hibernate` that was harmless,
+because the call failed. With `shutdown` the machine powers off anyway. At 2 %
+that is the safe outcome; plug in before the warning, not during it. The
+first, accidental test showed this (`verification-log.md`, 2026-11-12): UPower
+dropped back to no warning 12 s into the countdown, and MATE still powered the
+machine off.
+
+**Checked** on the release card on 2026-11-12 (`verification-log.md`), with the
+action level raised to 95 % for one boot: MATE showed "about to shutdown" and
+logind powered off 20.2 s after UPower reached the action level.
 
 ## Fixes 6, 7 and 12 as a package
 

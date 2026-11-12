@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 23 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 24 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -912,6 +912,16 @@ grep -qx 'Before=ssh.service ssh.socket' "$U" && grep -qx 'ExecStart=/usr/bin/ss
     && p "fix23: systemd-firstboot.service masked" || f "fix23: systemd-firstboot.service not masked"
 
 ########################################################################
+i "assert fix 24 — MATE shuts down at critical battery"
+########################################################################
+O=$MNT/$SD/99_pyra_power.gschema.override
+cmp -s "$PAYLOADS/$SD/99_pyra_power.gschema.override" "$O" && p "fix24: /$SD/99_pyra_power.gschema.override matches repo" || f "fix24: /$SD/99_pyra_power.gschema.override missing or differs from repo"
+[[ $(stat -c '%a %u:%g' "$O" 2>/dev/null) == "644 0:0" ]] && p "fix24: the override is 0644 root:root" || f "fix24: the override mode is $(stat -c '%a %u:%g' "$O" 2>/dev/null)"
+[[ $MNT/$SD/gschemas.compiled -nt $O ]] && p "fix24: gschemas.compiled is newer than the override" || f "fix24: gschemas.compiled was not rebuilt after the override"
+got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.power-manager action-critical-battery 2>/dev/null || true)
+[[ $got == "'shutdown'" ]] && p "fix24: action-critical-battery defaults to 'shutdown'" || f "fix24: action-critical-battery defaults to $got, want 'shutdown'"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -965,6 +975,7 @@ for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; 
 done
 [[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run2.log") -eq 4 ]] \
     && p "run 2 reported fix23's unit, its link, the machine-id and the mask already in place" || f "run 2 did not report fix23's unit, link, machine-id and mask in place"
+grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.

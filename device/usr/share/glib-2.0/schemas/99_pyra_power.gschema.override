@@ -1,0 +1,16 @@
+# Prep fix 24 (docs/fixes.md): shut down, not hibernate, at critical battery.
+#
+# mate-power-manager 1.26.1 defaults action-critical-battery to 'hibernate'.
+# The Pyra's kernels have no hibernation (no /sys/power/disk, logind's
+# CanHibernate is "na"), so at UPower's action level it warns "about to
+# hibernate", asks logind to hibernate and gets refused. UPower's own action
+# at the same moment falls back from HybridSleep to PowerOff, so the machine
+# does go down; this makes MATE say so and ask for the same thing.
+#
+# Suspend is no choice here: a suspended Pyra keeps draining the cell.
+#
+# The name sorts after pyra-config-desktop's 99_pyra.gschema.override ('_'
+# after '.'), so a key both files set takes this file's value.
+
+[org.mate.power-manager]
+action-critical-battery='shutdown'
