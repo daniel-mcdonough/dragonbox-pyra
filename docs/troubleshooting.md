@@ -1156,6 +1156,31 @@ Tested on `5.6.19-m4-kbdled-test` (the shipped build plus 0053),
 slept the full 46 s. A woke it after 9 s, through `48051000.gpio` (IRQ 113),
 the bank A is on. Right shoulder bottom slept the full 47 s.
 
+**The other wake sources.** Every device whose `power/wakeup` reads `enabled`
+on the release card (2026-11-12, `find /sys/devices -path '*/power/wakeup'`):
+
+| device | what it is |
+| --- | --- |
+| `pyra-game-buttons` | the 14 game buttons, above |
+| `pyra-lid-wakeup` | the lid, a switch (`SW_LID`, code 0) |
+| `user-buttons` | one button, `BTN1`, code 169 |
+| `palmas_power_button` | the power button |
+| `palmas@48:rtc` | the real-time clock alarm |
+| `bq24297` | the charger |
+| four `*.mmc` hosts, `wl18xx` | card detect and the WiFi radio |
+| four `*.serial` ports, one USB port | consoles and the USB hub path |
+
+The keyboard (`tca8418`) is not among them. That a key press does not wake the
+machine follows from it, but was not tried. The lid node in the device tree
+also has a `wwan_wakeup` key (code 240), but `pyra-lid-wakeup` registers only
+the lid switch: its `keys` file is empty.
+
+Closing the lid does not suspend the machine on the release image. MATE's
+`org.mate.power-manager` keys `button-lid-battery` and `button-lid-ac` are both
+`blank`, so the lid only blanks the screen. Idle sleep is off too
+(`sleep-computer-battery` and `sleep-computer-ac` are 0). The shoulder-button problem above applies when the machine was
+suspended some other way and the lid was then closed.
+
 ### Fixed: the interrupt storm that made every resume noisy
 
 Waking up used to produce a burst of kernel messages. It was survivable and
