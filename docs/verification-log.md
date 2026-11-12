@@ -2132,5 +2132,6 @@ in (the known `bq24297` quirk, 2026-09 note above), so UPower's `OnBattery` read
   logind still powered off at 06:05:52.24, 20.5 s after the first restart. UPower's timer
   had died with its process, so this was mate-power-manager's 20 s timer, which it never
   cancels (`gpm-manager.c`). That mate-power-manager started after the override went in.
+- Prep selftest with fix 24 (a043b11), run by the owner: 280 passed, 0 failed, 0 skipped.
 - Not covered: a real drain to 2 %, and whether the fuel gauge reaches 2 % before the cell's
   cut-off.
