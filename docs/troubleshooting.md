@@ -758,14 +758,17 @@ moves the cut-off lower.
 
 Ruled out: X (the same failure without it), HPD, DDC and the TPD12S015's
 control pins (the EDID reads and the low modes work), the PLL's DCO range, and
-its fractional divider. The PLL and PHY registers, read live, match what the
-driver computes. What's left is mostly analog: the HDMI PHY's drive or supply
-settings, the board, or the unit's micro-HDMI connector. Two PLL settings that
-TI's older kernels used haven't been tried yet. TI's public TRMs (OMAP543x
+its fractional divider, and the two PLL settings TI's older kernels used
+(PHY_CLKINEN on, and M2 = 3 with a 1950 MHz DCO at 1024x768; the second may have
+lengthened the time between drop-outs a little, but the picture still dropped).
+The PLL and PHY registers, read live, match what the driver computes. What's
+left is analog: the HDMI PHY's drive or supply settings, the board, or the
+unit's micro-HDMI connector. The HDMI core's PHY I2C master, which sets a
+Synopsys PHY's swing on other SoCs, gets no answer on OMAP5. TI's public TRMs (OMAP543x
 and AM572x) leave out the HDMI PHY's register descriptions, so its drive and supply
 fields can't be decoded from them. TI's own vendor kernels (3.8 to 4.19) don't name
 those fields either. They differ from 5.6 only in the PLL's operating point and one
-PLL bit, PHY_CLKINEN, and TI's 3.8 driver marks the PHY's LDO field reserved on OMAP5.
+PLL bit, PHY_CLKINEN (both tried, above), and TI's 3.8 driver marks the PHY's LDO field reserved on OMAP5.
 `experiments/hdmi-signal` has the method, the register dumps, the fields that can be
 decoded, the vendor-kernel comparison, and what's still to try.
 

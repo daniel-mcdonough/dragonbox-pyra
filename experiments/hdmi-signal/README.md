@@ -2,8 +2,9 @@
 
 An HDMI monitor gets a picture from the Pyra only at the lowest modes. The question here is where the
 signal fails. The answer so far: on the Pyra's side of the connector, in the TMDS signal itself. X is
-ruled out, and so are the PLL's DCO range and its fractional divider. The PLL's M2 divider is still untried. The symptoms and the user-facing summary are in `docs/troubleshooting.md`,
-"An HDMI monitor shows nothing above 640x480".
+ruled out, and so is every documented PLL setting: the DCO range, the fractional divider, PHY_CLKINEN and
+TI's older M2 = 3 operating point. M2 = 3 may buy a little margin; it doesn't fix it. The symptoms
+and the user-facing summary are in `docs/troubleshooting.md`, "An HDMI monitor shows nothing above 640x480".
 
 ## Method: modes set straight on DRM, with X stopped
 
@@ -18,7 +19,10 @@ trixie `Packages` index, and copy only `usr/bin/modetest` to `/tmp` on the Pyra.
 
 Stop X with no monitor attached. With the stock X driver, a monitor at hotplug can hang the 2D GPU, and
 X then can't be killed (`docs/troubleshooting.md`, "The X server can hang in a modeset", the etnaviv
-section). With X stopped, plugging in a monitor gets you the kernel console on it at 640x480.
+section). With X stopped, plugging in a monitor gets you the kernel console on it: at 640x480 when the
+EDID read fails, at 1024x768 when it succeeds (fbcon's pick). At 1024x768 the picture drops out every few
+seconds, with sideways static in between, which makes a handy live test: the console holds the mode, so
+no `modetest` is needed.
 
 The EDID read sometimes fails at plug-in (`omapdss error: HDMI I2C Master Error`), and then the connector
 lists only `640x480`. Re-probe with `echo detect | sudo tee /sys/class/drm/card0-HDMI-A-1/status`.
@@ -52,16 +56,26 @@ and 1280x720 the PLL matches `dss_pll_calc_b` exactly (sys_clkin 19.2 MHz, N=8, 
 TX_CTRL reads 0 because of M2: `hdmi5.c` passes the DCO and CLKOUT (DCO/M2) to `hdmi_phy_configure`,
 and when they differ the driver sets FREQOUT to 0. Each field is decoded below.
 
-## What was ruled out, with 720p held and the monitor watched
+## What was ruled out, with a mode held and the monitor watched
 
-- **A.** SELFREQDCO switched to the high range (CONFIGURATION2 `0x00602004` → `0x00602008`), PLL re-locked
+- **A.** (720p) SELFREQDCO switched to the high range (CONFIGURATION2 `0x00602004` → `0x00602008`), PLL re-locked
   (STATUS 3). Still black. So the DCO sitting 1 % under the 1.5 GHz range switch is not the cause.
-- **B.** Integer-only M (619, M.f 0, DCO 1485.6 MHz), re-locked. Still black. So fractional-N jitter is
+- **B.** (720p) Integer-only M (619, M.f 0, DCO 1485.6 MHz), re-locked. Still black. So fractional-N jitter is
   not the cause.
 - **D.** The core switched to DVI mid-stream (`FC_INVIDCONF` `0x78` → `0x70`). The monitor lost lock
   ("no signal"), so this one says nothing. A clean DVI test needs the mode set as DVI from the start,
   which takes a kernel knob: `drm.edid_firmware` doesn't reach omapdrm on 5.6, because omapdrm reads the
   EDID through its own `read_edid` and never calls `drm_get_edid`.
+- **E.** PHY_CLKINEN on after lock (CONFIGURATION2 `0x00602004` → `0x00606004`, no GO), at 1024x768.
+  Drop-outs timed by eye: median 3 s, longest 17 s, against 5 s and 19 s with the bit at 0. No change.
+- **F.** TI's 3.8/3.14 operating point at 1024x768: M2 = 3, DCO 1950 MHz, CLKOUT still 650 MHz
+  (CFG1 `0x0006580e`, CFG3 `0x00002000`, CFG4 `0x000e0000`, CFG2 `0x00602008`, GO, locked). Median 7 s,
+  and two runs of 45 s and 125 s, where 31 timed runs at the driver's point before and after never went
+  past 19 s. The static looked the same and the picture still dropped out. Applied once, not repeated: a
+  small gain at most.
+- **G.** The core's PHY I2C master, which dw-hdmi uses on other SoCs to set a Synopsys PHY's swing and
+  termination (`phyi2c.py`). Reads at slave `0x69` and `0x49` time out with neither DONE nor ERROR, and
+  `PHY_CONF0` has PDZ at 0. Nothing answers there, so no analog controls are reachable that way.
 - Not tried: **C**, the PHY's `POWER_CTRL[3:0]` LDO field, which the driver sets to 0xB on OMAP4 and
   leaves at reset on OMAP5 (`ldo_voltage = false`). TI's own 3.8 driver says these bits are reserved on
   OMAP5 (see "TI's vendor kernels" below), so this test is dropped.
@@ -110,11 +124,11 @@ at 640x480 beside the panel). The PHY decodes 5 address bits, so `phy+0x20` mirr
 The VDDA rail is what the uEVM uses: `vdda-supply` is ldo4 at 1.8 V (live, regulator debugfs), shared
 with the DSI port. The TMDS lines pass a TPD12S015 on the way to the connector.
 
-### Documented settings worth trying at 720p
+### Documented settings, all tried by 2026-11-11
 
 Nothing in the public documents names a PHY drive, swing, pre-emphasis or termination field. The
-candidates that come from a document or the driver, cheapest first. Each is one write with 720p held
-and the owner watching (rule 5); none has been tried:
+candidates that come from a document or the driver, cheapest first. Items 1 and 2 were tried at 1024x768
+(E and F above):
 
 1. **PHY_CLKINEN on after lock:** CONFIGURATION2 `0x00602004` → `0x00606004`, no GO. This is the
    AM572x's recommended value, and TI's 3.14 kernel sets it after lock on OMAP5 and DRA7 (below). The
@@ -177,11 +191,11 @@ What this means:
 
 ## Open
 
-What's left is mostly analog: the PHY's drive settings, the board's TMDS routing, or this unit's
+What's left is analog: the PHY's drive settings, the board's TMDS routing, or this unit's
 micro-HDMI connector. DRA7 and the OMAP5 uEVM run 1080p on the same HDMI IP and driver, so a generic
 driver bug is unlikely. Neither the public TRMs nor TI's vendor kernels describe the PHY's analog fields
-(above). The next steps are:
+(above), and the core's PHY I2C master reaches nothing (G). Every documented setting has been tried
+(A, B, E, F). The next steps are:
 
-- the two PLL writes in "Documented settings worth trying at 720p" (PHY_CLKINEN, and TI's M2 = 3 point);
 - someone with TI's full TRM;
 - asking whether 720p or above works on anyone's V5.x Pyra, which tells "this unit" from "every Pyra".

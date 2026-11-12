@@ -2041,3 +2041,26 @@ panel. Read-only: `sudo python3 /tmp/hdmireg.py dump`, plus `r 0x4A002E0C`. No r
 
 The field-by-field decode, and which fields no public document covers, are in `experiments/hdmi-signal`.
 
+
+## 2026-11-11 — HDMI at 1024x768: the two documented PLL writes, and the core's PHY I2C master (R51)
+
+Release card, `5.6.19-m4-kbdled`, X stopped, BenQ GW2760HS on the 3' cable. With the EDID read cleanly, the
+console came up at 1024x768 (wrapper video size `03000400`; PLL N 8, M 541.667, M2 2, DCO 1300 MHz, 650 Mb/s per
+lane), and the monitor kept dropping its picture with sideways static between drop-outs. The owner timed the
+seconds between drop-outs by eye; each write was made with `hdmireg.py` with the mode held and read back.
+
+| PLL state | Seconds between drop-outs | Median | Longest |
+| --- | --- | --- | --- |
+| driver's point (CONFIGURATION2 `00602004`) | 19 8 12 3 3 7 4 6 1 5 5 1 4 7 11 9 1 4 | 5 | 19 |
+| PHY_CLKINEN on (`00606004`, no GO, STATUS 3) | 17 6 16 1 1 1 2 6 6 2 4 4 2 2 17 | 3 | 17 |
+| M2 3, DCO 1950 MHz (CFG1 `0006580e`, CFG3 `00002000`, CFG4 `000e0000`, CFG2 `00602008`, GO, STATUS 3) | 4 3 9 4 19 7 14 2 12 3 7 125 45 | 7 | 125 |
+| driver's point again (CFG1 `00043a0e`, CFG3 `00001800`, CFG4 `000aaaaa`, CFG2 `00602004`, GO, STATUS 3) | 4 3 4 11 5 19 8 4 9 8 4 10 4 | 5 | 19 |
+
+Order: an untimed look at the driver's point ("1.5-5 s"), then PHY_CLKINEN on, then the bit back off and the
+first row timed, then M2 = 3, then the driver's point again. The static looked the same in every state. M2 = 3 was applied once; the owner stopped the
+testing before a repeat.
+
+The core's PHY I2C master (`phyi2c.py`): `PHY_CONF0` `06` (PDZ 0), `PHY_STAT0` `01`, `MC_PHYRSTZ` `00`,
+`I2CM_DIV` `0b`, `IH_MUTE` `00`. Reads at slave `0x69` (registers 0x00, 0x09, 0x0e, 0x19) and `0x49` (0x00) all
+timed out after 50 ms with neither DONE nor ERROR in `IH_I2CMPHY_STAT0`. No dmesg output. Afterwards the PLL was
+back at the driver's values and lightdm was restarted.
