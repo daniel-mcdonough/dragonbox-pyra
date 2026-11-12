@@ -1125,8 +1125,36 @@ of two things:
   so the edit has to be made again. Not tested on hardware. The node and
   property names are the ones read back from `/proc/device-tree` on the
   running kernel.
-- **A driver change** giving `gpio-keys` a writable per-button wake mask in
-  sysfs, with the device tree supplying the default. Not written.
+- **A driver change**, `patches/0053`. It gives every `gpio-keys` device
+  writable `wakeup_keys` and `wakeup_switches` files, in the keycode-list
+  format `disabled_keys` uses. The device tree supplies the starting set.
+  Not in `kernel-5.6.19-r2`; see `kernel-changes.md`.
+
+**With `patches/0053`, per button at runtime.** The Pyra's game-button codes:
+
+| code | button | code | button |
+| --- | --- | --- | --- |
+| 54 | left shoulder bottom | 104 | Y |
+| 126 | left shoulder top | 107 | B |
+| 97 | right shoulder bottom | 109 | X |
+| 100 | right shoulder top | 103, 108, 105, 106 | d-pad up, down, left, right |
+| 102 | A | 273, 272 | left nub click, right nub click |
+
+Everything except the shoulder buttons:
+
+    echo 102-109,272-273 | sudo tee /sys/devices/platform/pyra-game-buttons/wakeup_keys
+
+Reading the file gives the current set. A code the device does not have is
+refused with `Invalid argument`, and the setting is left as it was. The
+change takes effect at the next suspend, and it does not survive a reboot,
+so make it stick the same way as `power/wakeup` above. `power/wakeup` still
+switches the whole device: with it `disabled`, no button wakes the machine,
+whatever `wakeup_keys` says.
+
+Tested on `5.6.19-m4-kbdled-test` (the shipped build plus 0053),
+2026-11-12, with the set above and a 45 s RTC backstop. Left shoulder top
+slept the full 46 s. A woke it after 9 s, through `48051000.gpio` (IRQ 113),
+the bank A is on. Right shoulder bottom slept the full 47 s.
 
 ### Fixed: the interrupt storm that made every resume noisy
 

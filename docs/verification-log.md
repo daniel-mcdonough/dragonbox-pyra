@@ -2090,3 +2090,21 @@ kernel is the `kernel-m4-kbdled` artifact of Kernel release run 43135826496
   as a regular file whose name is its own SONAME; fix 21's patched copy was in
   place (`.stock` beside it). Harmless, `troubleshooting.md`.
 - Not covered: the no-option prep run on a fresh vendor image (R54), HDMI.
+
+## 2026-11-12 — game buttons as wake sources; patches/0053 per-button wake
+
+Release card. Suspend to RAM through `/sys/power/state`, RTC armed as a backstop, one button
+pressed per round while asleep. Interrupt counts read from `/proc/interrupts` before and after.
+
+- **Shipped `5.6.19-m4-kbdled`:** all 14 `pyra-game-buttons` nodes carry `gpio-key,wakeup`.
+  Each shoulder button woke a 60 s-backstopped suspend in 3-6 s; only its own count rose.
+- **Same kernel, `pyra-game-buttons/power/wakeup` = `disabled`:** left shoulder top, then A,
+  each slept the full 45 s and was woken by IRQ 152 (palmas, the RTC). Put back to `enabled`.
+- **`5.6.19-m4-kbdled-test` (the shipped build plus 0053) from l1:** `wakeup_keys` read
+  `54,97,100,102-109,126,272-273` on `pyra-game-buttons`, `169` on `user-buttons`;
+  `wakeup_switches` read `0` on `pyra-lid-wakeup`. Writing `1` was refused (`Invalid
+  argument`) and left the set unchanged. With `102-109,272-273` written: left shoulder top
+  slept 46 s (RTC), A woke it in 9 s (IRQ 113, `48051000.gpio`, A 0 -> 3), right shoulder
+  bottom slept 47 s (RTC).
+- Not covered: the lid as a wake source, the udev rule, the `fdtput` DTB edit, the shoulder
+  buttons as input after the resume.

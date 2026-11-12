@@ -264,6 +264,23 @@ the V5.3 unit. The desktop ran normally on it (the X driver submits GC320 work e
 The HDMI hotplug that faulted the GC320 once didn't fault it again in four tries, so the
 fix itself isn't confirmed on hardware yet (`verification-log.md`).
 
+**0053 — Input: gpio-keys: let userspace choose which buttons wake the system.** The wake
+flag of each button was read from the device tree at probe, and only `power/wakeup`, which
+switches every button on the device at once, could change anything afterwards. On the Pyra
+all 14 game buttons wake it, the shoulder buttons included, so a shoulder button pressed
+against a bag wakes it with the lid shut. 0053 adds `wakeup_keys` and `wakeup_switches`
+beside `disabled_keys`, in the same keycode-list format. Writing a list makes exactly those
+buttons wakeup sources; the device tree's set is where it starts, so nothing changes until
+userspace writes. The masking of the other lines at suspend is left to the irqchip, which on
+OMAP clears their bank wake bits (`IRQCHIP_MASK_ON_SUSPEND`). Mainline has no such control.
+Use: `troubleshooting.md`, "Every game button wakes the machine".
+
+**0053 tested 2026-11-12** on the V5.3 unit, as `5.6.19-m4-kbdled-test` booted once from l1:
+the three devices' `wakeup_keys` read back their device tree sets, a code the device lacks
+was refused and left the setting alone, and with the shoulder buttons taken out of the set
+a shoulder press slept through to the 45 s RTC backstop twice while A woke it in 9 s. Not in
+`kernel-5.6.19-r2`; it reaches users with the next kernel release.
+
 ---
 
 ## `experiments/m4-ipu/`: in all m4 kernels, and the demo kit

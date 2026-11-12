@@ -1,0 +1,268 @@
+Input: gpio-keys: let userspace choose which buttons wake the system
+
+Which buttons wake the system is read from the device tree once, at
+probe, and nothing can change it afterwards short of editing the blob
+and rebooting.  power/wakeup only turns the whole device on or off.
+
+On the Pyra every one of its fourteen game buttons is a wakeup source,
+the shoulder buttons included, so with the lid shut a shoulder button
+pressed against a bag wakes the machine.  Turning power/wakeup off
+stops that but also takes the face buttons and d-pad with it.
+
+Add wakeup_keys and wakeup_switches next to disabled_keys and
+disabled_switches, in the same keycode-list format.  Reading gives the
+codes that wake the system; writing a list makes exactly those buttons
+of that type wakeup sources.  The device tree's gpio-key,wakeup and
+wakeup-source properties become the starting set, so nothing changes
+until userspace writes.  The choice takes effect at the next suspend.
+
+A device whose device tree named no wakeup button was never made wakeup
+capable, so the first write that names one also makes it capable.
+
+Masking a line that is not a wakeup source at suspend is left to the
+irqchip, as before.  On OMAP the gpio driver sets
+IRQCHIP_MASK_ON_SUSPEND, and masking a line also clears its bank wake
+enable bit.
+
+--- a/drivers/input/keyboard/gpio_keys.c
++++ b/drivers/input/keyboard/gpio_keys.c
+@@ -46,6 +46,7 @@
+ 	unsigned int wakeup_trigger_type;
+ 	spinlock_t lock;
+ 	bool disabled;
++	bool wakeup;
+ 	bool key_pressed;
+ 	bool suspended;
+ };
+@@ -61,13 +62,15 @@
+ /*
+  * SYSFS interface for enabling/disabling keys and switches:
+  *
+- * There are 4 attributes under /sys/devices/platform/gpio-keys/
++ * There are 6 attributes under /sys/devices/platform/gpio-keys/
+  *	keys [ro]              - bitmap of keys (EV_KEY) which can be
+  *	                         disabled
+  *	switches [ro]          - bitmap of switches (EV_SW) which can be
+  *	                         disabled
+  *	disabled_keys [rw]     - bitmap of keys currently disabled
+  *	disabled_switches [rw] - bitmap of switches currently disabled
++ *	wakeup_keys [rw]       - bitmap of keys that wake the system
++ *	wakeup_switches [rw]   - bitmap of switches that wake the system
+  *
+  * Userland can change these values and hence disable event generation
+  * for each key (or switch). Disabling a key means its interrupt line
+@@ -184,9 +187,15 @@
+  * that are currently disabled. Returns 0 on success or negative
+  * errno on failure.
+  */
++enum gpio_keys_attr_filter {
++	GPIO_KEYS_ALL,
++	GPIO_KEYS_DISABLED,
++	GPIO_KEYS_WAKEUP,
++};
++
+ static ssize_t gpio_keys_attr_show_helper(struct gpio_keys_drvdata *ddata,
+ 					  char *buf, unsigned int type,
+-					  bool only_disabled)
++					  enum gpio_keys_attr_filter filter)
+ {
+ 	int n_events = get_n_events_by_type(type);
+ 	unsigned long *bits;
+@@ -203,7 +212,10 @@
+ 		if (bdata->button->type != type)
+ 			continue;
+ 
+-		if (only_disabled && !bdata->disabled)
++		if (filter == GPIO_KEYS_DISABLED && !bdata->disabled)
++			continue;
++
++		if (filter == GPIO_KEYS_WAKEUP && !bdata->wakeup)
+ 			continue;
+ 
+ 		__set_bit(*bdata->code, bits);
+@@ -285,7 +297,67 @@
+ 	return error;
+ }
+ 
+-#define ATTR_SHOW_FN(name, type, only_disabled)				\
++/**
++ * gpio_keys_wakeup_store_helper() - choose the buttons that wake the system
++ * @dev: the gpio-keys platform device
++ * @buf: buffer from userspace that contains stringified bitmap
++ * @type: button type (%EV_KEY, %EV_SW)
++ *
++ * Buttons of @type whose code is in the bitmap become wakeup sources, and
++ * the rest of that type stop being ones.  The device tree's gpio-key,wakeup
++ * and wakeup-source properties only give the starting set.  The change
++ * takes effect at the next system suspend; power/wakeup still turns the
++ * whole device's wakeup on and off.
++ */
++static ssize_t gpio_keys_wakeup_store_helper(struct device *dev,
++					     const char *buf, unsigned int type)
++{
++	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
++	int n_events = get_n_events_by_type(type);
++	const unsigned long *bitmap = get_bm_events_by_type(ddata->input, type);
++	unsigned long *bits;
++	bool any = false;
++	ssize_t error;
++	int i;
++
++	bits = bitmap_zalloc(n_events, GFP_KERNEL);
++	if (!bits)
++		return -ENOMEM;
++
++	error = bitmap_parselist(buf, bits, n_events);
++	if (error)
++		goto out;
++
++	if (!bitmap_subset(bits, bitmap, n_events)) {
++		error = -EINVAL;
++		goto out;
++	}
++
++	mutex_lock(&ddata->disable_lock);
++
++	for (i = 0; i < ddata->pdata->nbuttons; i++) {
++		struct gpio_button_data *bdata = &ddata->data[i];
++
++		if (bdata->button->type == type)
++			bdata->wakeup = test_bit(*bdata->code, bits);
++		any |= bdata->wakeup;
++	}
++
++	mutex_unlock(&ddata->disable_lock);
++
++	/*
++	 * A device whose device tree named no wakeup button was never made
++	 * wakeup capable, so it would not even be asked at suspend.
++	 */
++	if (any && !device_can_wakeup(dev))
++		device_init_wakeup(dev, true);
++
++out:
++	bitmap_free(bits);
++	return error;
++}
++
++#define ATTR_SHOW_FN(name, type, filter)				\
+ static ssize_t gpio_keys_show_##name(struct device *dev,		\
+ 				     struct device_attribute *attr,	\
+ 				     char *buf)				\
+@@ -294,13 +366,15 @@
+ 	struct gpio_keys_drvdata *ddata = platform_get_drvdata(pdev);	\
+ 									\
+ 	return gpio_keys_attr_show_helper(ddata, buf,			\
+-					  type, only_disabled);		\
++					  type, filter);		\
+ }
+ 
+-ATTR_SHOW_FN(keys, EV_KEY, false);
+-ATTR_SHOW_FN(switches, EV_SW, false);
+-ATTR_SHOW_FN(disabled_keys, EV_KEY, true);
+-ATTR_SHOW_FN(disabled_switches, EV_SW, true);
++ATTR_SHOW_FN(keys, EV_KEY, GPIO_KEYS_ALL);
++ATTR_SHOW_FN(switches, EV_SW, GPIO_KEYS_ALL);
++ATTR_SHOW_FN(disabled_keys, EV_KEY, GPIO_KEYS_DISABLED);
++ATTR_SHOW_FN(disabled_switches, EV_SW, GPIO_KEYS_DISABLED);
++ATTR_SHOW_FN(wakeup_keys, EV_KEY, GPIO_KEYS_WAKEUP);
++ATTR_SHOW_FN(wakeup_switches, EV_SW, GPIO_KEYS_WAKEUP);
+ 
+ /*
+  * ATTRIBUTES:
+@@ -331,6 +405,24 @@
+ ATTR_STORE_FN(disabled_keys, EV_KEY);
+ ATTR_STORE_FN(disabled_switches, EV_SW);
+ 
++#define ATTR_WAKEUP_STORE_FN(name, type)				\
++static ssize_t gpio_keys_store_##name(struct device *dev,		\
++				      struct device_attribute *attr,	\
++				      const char *buf,			\
++				      size_t count)			\
++{									\
++	ssize_t error;							\
++									\
++	error = gpio_keys_wakeup_store_helper(dev, buf, type);		\
++	if (error)							\
++		return error;						\
++									\
++	return count;							\
++}
++
++ATTR_WAKEUP_STORE_FN(wakeup_keys, EV_KEY);
++ATTR_WAKEUP_STORE_FN(wakeup_switches, EV_SW);
++
+ /*
+  * ATTRIBUTES:
+  *
+@@ -344,11 +436,26 @@
+ 		   gpio_keys_show_disabled_switches,
+ 		   gpio_keys_store_disabled_switches);
+ 
++/*
++ * ATTRIBUTES:
++ *
++ * /sys/devices/platform/gpio-keys/wakeup_keys [rw]
++ * /sys/devices/platform/gpio-keys/wakeup_switches [rw]
++ */
++static DEVICE_ATTR(wakeup_keys, S_IWUSR | S_IRUGO,
++		   gpio_keys_show_wakeup_keys,
++		   gpio_keys_store_wakeup_keys);
++static DEVICE_ATTR(wakeup_switches, S_IWUSR | S_IRUGO,
++		   gpio_keys_show_wakeup_switches,
++		   gpio_keys_store_wakeup_switches);
++
+ static struct attribute *gpio_keys_attrs[] = {
+ 	&dev_attr_keys.attr,
+ 	&dev_attr_switches.attr,
+ 	&dev_attr_disabled_keys.attr,
+ 	&dev_attr_disabled_switches.attr,
++	&dev_attr_wakeup_keys.attr,
++	&dev_attr_wakeup_switches.attr,
+ 	NULL,
+ };
+ ATTRIBUTE_GROUPS(gpio_keys);
+@@ -390,7 +497,7 @@
+ 
+ 	BUG_ON(irq != bdata->irq);
+ 
+-	if (bdata->button->wakeup) {
++	if (bdata->wakeup) {
+ 		const struct gpio_keys_button *button = bdata->button;
+ 
+ 		pm_wakeup_event(bdata->input->dev.parent, 1000);
+@@ -438,7 +545,7 @@
+ 	spin_lock_irqsave(&bdata->lock, flags);
+ 
+ 	if (!bdata->key_pressed) {
+-		if (bdata->button->wakeup)
++		if (bdata->wakeup)
+ 			pm_wakeup_event(bdata->input->dev.parent, 1000);
+ 
+ 		input_event(input, EV_KEY, *bdata->code, 1);
+@@ -488,6 +595,7 @@
+ 
+ 	bdata->input = input;
+ 	bdata->button = button;
++	bdata->wakeup = button->wakeup;
+ 	spin_lock_init(&bdata->lock);
+ 
+ 	if (child) {
+@@ -916,7 +1024,7 @@
+ 
+ 	for (i = 0; i < ddata->pdata->nbuttons; i++) {
+ 		bdata = &ddata->data[i];
+-		if (bdata->button->wakeup) {
++		if (bdata->wakeup) {
+ 			error = gpio_keys_button_enable_wakeup(bdata);
+ 			if (error)
+ 				goto err_out;
+@@ -929,7 +1037,7 @@
+ err_out:
+ 	while (i--) {
+ 		bdata = &ddata->data[i];
+-		if (bdata->button->wakeup)
++		if (bdata->wakeup)
+ 			gpio_keys_button_disable_wakeup(bdata);
+ 		bdata->suspended = false;
+ 	}
