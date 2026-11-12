@@ -1057,6 +1057,77 @@ wakeup source really is stuck on, and this says which:
 
     grep -v '	0	' /sys/kernel/debug/wakeup_sources
 
+### Every game button wakes the machine, the shoulder buttons included
+
+On the shipped kernel, any of the 14 game buttons wakes the Pyra from
+suspend: A/B/X/Y, the d-pad, both nub clicks and all four shoulder buttons.
+The board device tree gives every button under `pyra-game-buttons` the
+`gpio-key,wakeup` property, and the `gpio-keys` driver arms the wake
+interrupt for each button that has it. With the lid closed, a shoulder button
+pressed against a bag or the case is enough to wake it.
+
+Tested on `5.6.19-m4-kbdled`, 2026-11-12, suspend to RAM with the RTC armed
+60 s out as a backstop. Each shoulder button was pressed once while the
+machine was asleep:
+
+| button | woke after | interrupt count that rose | `pm_wakeup_irq` |
+| --- | --- | --- | --- |
+| left top | 6 s | `Left-Shoulder-Top` only | 119 (`4805d000.gpio`) |
+| left bottom | 3 s | `Left-Shoulder-Bottom` only | 97 (`4ae10000.gpio`) |
+| right top | 4 s | `Right-Shoulder-Top` only | 119 |
+| right bottom | 3 s | `Right-Shoulder-Bottom` only | 119 |
+
+`/sys/power/pm_wakeup_irq` names the GPIO bank, not the button. The per-button
+lines in `/proc/interrupts` (`Left-Shoulder-Top` and so on) say which one it
+was. `pyra-game-buttons/power/wakeup_count` stayed at 0 throughout, so it is
+no use for telling whether a button woke the machine.
+
+**Turning it off at runtime, for all 14 at once.** No reboot and no kernel
+change:
+
+    echo disabled | sudo tee /sys/devices/platform/pyra-game-buttons/power/wakeup
+
+The same test with that set: a press on left shoulder top, then one on A.
+Both rounds slept the full 45 s backstop and were woken by IRQ 152, the
+Palmas PMIC that carries the RTC. The button interrupt counts did not move.
+`enabled` puts it back. The setting does not survive a reboot. To make it
+stick, write it from a boot-time unit or a udev rule:
+
+    ACTION=="add", SUBSYSTEM=="platform", KERNEL=="pyra-game-buttons", ATTR{power/wakeup}="disabled"
+
+The match keys are the ones `udevadm info -a` reports for the device. The rule
+itself has not been booted with.
+
+It works because the OMAP GPIO driver sets `IRQCHIP_MASK_ON_SUSPEND`. With
+device wake off, `gpio_keys_suspend()` arms none of the buttons, so the core
+masks their lines at suspend, and masking a line also clears its bit in the
+bank's hardware wake-enable register (`omap_set_gpio_irqenable()`). Nothing
+else on the machine is affected: the lid is the separate `pyra-lid-wakeup`
+device, and the keyboard and power button are other drivers.
+
+**Per button, the 5.6 driver offers nothing at runtime.** `gpio-keys` reads
+each button's wake flag from the device tree once, at probe, and exposes no
+sysfs control for it. Its `disabled_keys` attribute is not a substitute: it
+disables the button's interrupt outright, so the button stops working while
+the machine is awake too. Leaving only some buttons as wake sources takes one
+of two things:
+
+- **A device tree edit.** Delete `gpio-key,wakeup` from the chosen nodes,
+  either in the source or directly in the installed blob with `fdtput` from
+  the `device-tree-compiler` package:
+
+      sudo fdtput -d /boot/dtb/linux-image-5.6.19-m4-kbdled/omap5-letux-cortex15-v5.3+pyra-v5.3.dtb \
+          /pyra-game-buttons/left_shoulder_top gpio-key,wakeup
+
+  That file is for a V5.3 mainboard. `/boot/dtb/linux-image-*/` holds one per
+  board revision, so edit the one your board boots. It takes effect at the
+  next boot. A new kernel install replaces the blob,
+  so the edit has to be made again. Not tested on hardware. The node and
+  property names are the ones read back from `/proc/device-tree` on the
+  running kernel.
+- **A driver change** giving `gpio-keys` a writable per-button wake mask in
+  sysfs, with the device tree supplying the default. Not written.
+
 ### Fixed: the interrupt storm that made every resume noisy
 
 Waking up used to produce a burst of kernel messages. It was survivable and
