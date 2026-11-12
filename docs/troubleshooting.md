@@ -1389,7 +1389,7 @@ same once at the end of probe so the driver always starts from a released pin.
 The same signature, but straight after a suspend: the pointer moves, the unlock
 dialog's clock ticks, and typing does nothing. `INT_STAT` reads `0x01`, events
 are queued, and the tca8418 count is frozen. The shipped `5.6.19-m4-kbdled`
-(kernel release `kernel-5.6.19-r1`) has it.
+from kernel release `kernel-5.6.19-r1` has it; `kernel-5.6.19-r2` fixes it.
 
 It happens when a key changes state while the machine is asleep: a key held
 into the suspend and released during it is the reliable way, and the Suspend
@@ -1513,6 +1513,14 @@ not patch it. Back up saves first: a damaged save is not repaired by the fix.
 If a program misbehaves with the patched library, `sudo pyra-wsegl-fdfix.sh
 rollback` puts the stock file back, checked against its SHA-256, and keeps
 the guard from re-patching it; `install` undoes both.
+
+## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
+
+Expected, and nothing to fix. The vendor package `dri3wsegl-pyra` installs the
+library as a regular file named after its own SONAME, and ldconfig expects a
+file with that name to be a symlink. `/lib` is `/usr/lib` on trixie, so it is
+the package's `/usr/lib/libpvrDRI3WSEGL.so`. Any package run that triggers
+ldconfig prints it, with fix 21's patched copy or the stock one.
 
 ## The screen never dims, and MATE's setting for it does nothing
 

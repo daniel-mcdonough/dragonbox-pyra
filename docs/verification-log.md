@@ -2064,3 +2064,29 @@ The core's PHY I2C master (`phyi2c.py`): `PHY_CONF0` `06` (PDZ 0), `PHY_STAT0` `
 `I2CM_DIV` `0b`, `IH_MUTE` `00`. Reads at slave `0x69` (registers 0x00, 0x09, 0x0e, 0x19) and `0x49` (0x00) all
 timed out after 50 ms with neither DONE nor ERROR in `IH_I2CMPHY_STAT0`. No dmesg output. Afterwards the PLL was
 back at the driver's values and lightdm was restarted.
+
+## 2026-11-12 — the CI release image with `kernel-5.6.19-r2` (R54)
+
+A card written from the Release image run 43138203935 (master, 2026-11-12), whose
+kernel is the `kernel-m4-kbdled` artifact of Kernel release run 43135826496
+(`kernel-5.6.19-r2`). First boot grew the root filesystem to 239 GiB.
+
+- **The kernel is the published asset.** `/boot/vmlinuz-5.6.19-m4-kbdled` has the
+  same SHA-256 as the one in r2's `m4-kbdled-kernel.tar.gz` as downloaded, and
+  the tarball matches r2's `SHA256SUMS` (`aa2498ff…53bc2`). It carries 0001-0052.
+- **Release mode:** password changed at first login, ssh host keys made by
+  `pyra-ssh-hostkeys.service` on that boot, a new machine-id, no NOPASSWD rule
+  from the image. No failed units.
+- **Suspend:** one `rtcwake -m mem -s 20` cycle, suspend_stats success 1, fail 0.
+  The keypad answered on i2c-1 `0x34` afterwards. The resume printed only what
+  `troubleshooting.md` already lists: `Unbalanced enable for IRQ 144` (SGX) and
+  four `DSI error: VC(n) busy`.
+- **Key let go while asleep** (the R53 procedure, by the owner's hands): the
+  keyboard worked after the wake.
+- **Headphone jack switching** (owner): sound moved between the speakers and
+  the headphones on plug and unplug.
+- **ldconfig warning on `apt install`:** `ldconfig: /lib/libpvrDRI3WSEGL.so is
+  not a symbolic link`. The vendor package `dri3wsegl-pyra` installs that library
+  as a regular file whose name is its own SONAME; fix 21's patched copy was in
+  place (`.stock` beside it). Harmless, `troubleshooting.md`.
+- Not covered: the no-option prep run on a fresh vendor image (R54), HDMI.

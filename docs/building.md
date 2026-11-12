@@ -675,8 +675,8 @@ in. The driver had no resume callback, and a key that changes state while the
 machine is asleep raises its edge when nothing is listening for it, so the
 chip comes out of the suspend already asserting. The patch services the chip
 on resume, with the interrupt disabled so a running handler and the callback
-never read the queue at once. 0006 alone is in the shipped `kernel-5.6.19-r1`;
-0050 needs the next kernel release.
+never read the queue at once. `kernel-5.6.19-r1` has 0006 alone; 0050 ships from
+`kernel-5.6.19-r2`.
 
 **How to know it worked.** Press keys and watch the count move:
 
@@ -967,7 +967,7 @@ script checks the archive and the image inside it, as it does on a PC. The
 kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
 workflow's one input is that run's ID: not a tag or release name, which the
 artifact download cannot find. Give the run that built the release prep pins
-(`kernel-5.6.19-r1`, run 42940820801), so prep reports the tarball as that
+(`kernel-5.6.19-r2`, run 43135826496; r1 was run 42940820801), so prep reports the tarball as that
 release rather than "a local build". Taking the pinned release's asset instead
 of a run ID is not done yet.
 

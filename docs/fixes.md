@@ -1205,8 +1205,8 @@ keyboard stays dead. The handler is never entered, so nothing is logged.
 kernel fix 19 installs carries it; the stock `5.6.19-pyradef` does not, so the
 rescue is for a card prepared with `--no-kernel` or booted on `l0`. It is also
 for the shipped kernel after a resume: a key let go of while the machine sleeps
-leaves the same stuck line, which `patches/0050` fixes, and the pinned
-`kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
+leaves the same stuck line. `patches/0050` fixes that, from the pinned
+`kernel-5.6.19-r2` on; `kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
 
 Prep installs `device/pyra-keypad-rescue` as `/usr/local/sbin/pyra-keypad-rescue`.
 It reads the queued events out over i2c and clears the interrupt status, which
@@ -1249,8 +1249,8 @@ carry `./boot/vmlinuz-5.6.19-m4-kbdled`, or that has a `./lib/` entry.
 fix 1 writes anything, so a failed download or a wrong tarball leaves the card
 untouched.
 
-The pinned release is `kernel-5.6.19-r1` (built by the Kernel release
-workflow from that tag, 2026-11-11). A new release changes the tag, URL and
+The pinned release is `kernel-5.6.19-r2` (built by the Kernel release
+workflow from that tag, 2026-11-12; r1 before it lacked `patches/0050`). A new release changes the tag, URL and
 hash in prep together.
 
 **How it installs.** The two device scripts do the work, run in the chroot the

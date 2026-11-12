@@ -279,7 +279,8 @@ Stated so they are not mistaken for settled.
   not triggered it. A candidate fix exists and cannot be confirmed until it next
   fails to happen. This outranks every performance item in the project.
   A second loop with the same symptoms, in the 2D GPU driver after a GC320
-  hang, was caught on 2026-11-11. It has a one-line fix that isn't applied yet.
+  hang, was caught on 2026-11-11. `patches/0051`-`0052` fix it and ship in
+  `kernel-5.6.19-r2`; no GC320 hang has happened on that kernel yet to confirm it.
   `troubleshooting.md`, "The X server can hang in a modeset".
 - **No external HDMI picture above 640x480.** Measured 2026-11-11 with X
   stopped. From 1024x768 up, the TMDS signal is too marginal for a monitor to

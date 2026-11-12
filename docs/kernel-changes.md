@@ -244,8 +244,8 @@ Report: `reports/kernel-input-tca8418-lost-interrupt.md` (patch 2 of that series
 **0050 tested 2026-11-11** on the V5.3 unit, as `5.6.19-m4-kbdled-test` (`kernel-m4-kbdled`
 under its own release name) booted once from l1: a key let go of while asleep left the
 keyboard working 3 of 3, against dead on the shipped `5.6.19-m4-kbdled` (`verification-log.md`).
-The shipped kernel release `kernel-5.6.19-r1` predates it; it needs the next release and a
-new fix 19 pin.
+It ships in `kernel-5.6.19-r2`, which fix 19 pins. Checked again on r2 itself 2026-11-12: a key
+held into a suspend and let go during it left the keyboard working.
 
 **0051 — drm/etnaviv: set `cmdbuf->suballoc` only once the allocation succeeded.**
 `etnaviv_cmdbuf_init()` stored the pool pointer before looking for space, and the submit
