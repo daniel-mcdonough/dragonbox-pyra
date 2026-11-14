@@ -2163,5 +2163,7 @@ Times from the journal (`-o short-precise`) and from each process's start time i
   `network-manager-gnome`, only `mate-polkit`; listed last, both.
 - The card's apt history shows both agents installed on 2026-02-01 by the image build's
   `apt install pyra-meta-mate`, so the vendor image carries ukui-polkit.
-- Not yet checked: a login with `56pyra_mate-no-accel-check` in place, and the prep selftest with
-  fix 25 (it needs root on the PC).
+- Prep selftest with fix 25 (96975ec), run by the owner: 289 passed, 0 failed, 0 skipped. The
+  first run, at 9974cd3, stopped before fix 1: prep looked for `--disable-acceleration-check` in
+  the mate-session binary, but GOption keeps the name without its dashes.
+- Not yet checked: a login with `56pyra_mate-no-accel-check` in place.
