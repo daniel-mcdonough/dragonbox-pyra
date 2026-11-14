@@ -688,7 +688,7 @@ put the card in a reader and re-run prep on it, as in section 4. Prep is
 idempotent. It finds the user already there and does not ask for a password
 again, and it reports what is already in place. Two things to know first.
 It re-applies every fix, including fix 12's override. And it does not know
-about the `0.38+pyra1` `pyra-hacks` package (`fixes.md`, "Fixes 6, 7 and 12
+about the `0.38+pyraN` `pyra-hacks` packages (`fixes.md`, "Fixes 6, 7 and 12
 as a package"), so on a card with that package installed, undo the override
 again afterwards with `pyra-volumed/install.sh --undo`.
 
@@ -747,7 +747,7 @@ them. To check one initrd by hand:
   `--undo`, because the undo deletes the backup it keys on. Fix 12 survives
   an upgrade by itself, because it is a drop-in beside the package rather
   than an edit to it. The exception is a card where that drop-in was removed
-  in favour of the `0.38+pyra1` package: there, an archive upgrade also
+  in favour of a `0.38+pyraN` package: there, an archive upgrade also
   brings back the uncalibrated wheel, so re-run `pyra-volumed/install.sh`.
   The hook does not watch fix 12.
 - **A `dri3wsegl-pyra` reinstall or upgrade** puts the stock

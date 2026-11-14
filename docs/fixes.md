@@ -29,7 +29,7 @@ them out.
 | 3 | restores | the trixie `funkeymonkey-pyrainput` 0.1.19 package lacks `pyrainput.service` | the trixie package ships the unit | `pyra-funkeymonkey-missing-unit.md` |
 | 4 | workaround | Xorg crashes after the AIGLX probe fails; GLX is turned off to avoid it | Xorg or Mesa's software-GLX fallback is fixed | `xorg-aiglx-dri2-null-deref.md`, `mesa-dril-omapdrm-no-fallback.md` |
 | 5 | workaround | the usb3503 driver or device tree should reset the hub on every boot | the kernel resets the hub itself (no patch yet) | `kernel-usb3503-warm-reboot-no-reset.md` (on hold) |
-| 6 | package fix | `pyra-hacks`: set the ceiling through sysfs, not `cpufreq-set` | `pyra-hacks` takes the patch, or the `0.38+pyra1` deb is installed | `pyra-hacks-thermal-daemon.md` |
+| 6 | package fix | `pyra-hacks`: set the ceiling through sysfs, not `cpufreq-set` | `pyra-hacks` takes the patch, or the `0.38+pyraN` deb is installed | `pyra-hacks-thermal-daemon.md` |
 | 7 | package fix | `pyra-hacks`: the ladder's five decision faults | as fix 6 | `pyra-hacks-thermal-ladder.md` |
 | 8 | restores | nothing in the image sets the charger's input limit | `pyra-hacks` (or another package) sets it | `pyra-hacks-charge-current.md` |
 | 9 | restores | the image ships no `asound.state`, so the codec routes are off | the image ships one | `pyra-image-asound-state-all-off.md` |
@@ -945,9 +945,9 @@ does not ship.
 Since 2026-11-14 it also sets `Headset Playback Volume` (0 to 15, -30 to
 0 dB) from the same travel, so the wheel works on headphones too; the packaged
 daemon never touched them. *The volume wheel* in `audio.md` has why it can
-write both at once. The package carries it as patch 0002 on the `pyra`
-branch (*Fixes 6, 7 and 12 as a package*), which has not been released yet:
-`0.38+pyra1` still drives only the speakers.
+write both at once. The package carries it as patch 0002, released as
+`0.38+pyra2` (*Fixes 6, 7 and 12 as a package*); `0.38+pyra1` drives only the
+speakers.
 
 The prep script cannot build C, so the card gets the source, a runner
 (`/usr/local/sbin/pyra-volumed-run`) and a drop-in that points the packaged
@@ -1640,32 +1640,39 @@ The packaged form is a separate repository,
 package's release history rebuilt from the source packages (upstream's
 repository is not public), each fix is a branch off it (`feature/thermal-cap`,
 `feature/thermal-ladder`, `feature/volumed-taper`), and `pyra` merges them with
-a `0.38+pyra1` version. The patches above are `git format-patch` output from
+a `+pyraN` version. The patches above are `git format-patch` output from
 those branches. Its CI builds the deb, and each `+pyraN` tag is a
 [release](https://github.com/daniel-mcdonough/pyra-hacks/releases) with the
-debs attached. To install 0.38+pyra1 on the Pyra:
+debs attached:
 
-    wget https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra1/pyra-hacks_0.38+pyra1_armhf.deb
-    sha256sum pyra-hacks_0.38+pyra1_armhf.deb
-    # d46efe8cbef3c3e9ad334a724f70fded76ecebba9d3188676ef7338af3a93269
-    sudo apt install ./pyra-hacks_0.38+pyra1_armhf.deb
+| version | changelog date | adds |
+| --- | --- | --- |
+| `0.38+pyra1` | 2026-10-20 | fixes 6, 7 and 12 (the wheel's taper, speakers only) |
+| `0.38+pyra2` | 2026-11-14 | the wheel drives the headphones too (fix 12, patch 0002) |
+
+To install 0.38+pyra2 on the Pyra:
+
+    wget https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra2/pyra-hacks_0.38+pyra2_armhf.deb
+    sha256sum pyra-hacks_0.38+pyra2_armhf.deb
+    # 72f708e1776759190eddcfb210819795fab5f730e4414081ecf3bc3aca2a0daa
+    sudo apt install ./pyra-hacks_0.38+pyra2_armhf.deb
 
 To build it here instead, clone that repository beside this one as
 `../pyra-hacks`, on its `pyra` branch (the GitHub default, `master`, is empty,
 and the build looks for a local `pyra` branch):
 
     git clone -b pyra https://github.com/daniel-mcdonough/pyra-hacks.git ../pyra-hacks
-    ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra1_armhf.deb
+    ./pc/pyra-crossbuild.sh pyra-hacks     # -> pyra-hacks_0.38+pyra2_armhf.deb
 
 Its `pyra-thermal.sh` is byte-identical to what fixes 6 and 7 produce from the
 0.38 script, and its `pyra_volumed` is fix 12's mapping on upstream's own
-libiio and alsa-lib code, with the calibration readable from
-`/etc/pyra_volumed.conf`. With it installed, `dpkg --verify pyra-hacks` is
+libiio and alsa-lib code, driving the headphones as well from `0.38+pyra2`,
+with the calibration and both ranges readable from `/etc/pyra_volumed.conf`. With it installed, `dpkg --verify pyra-hacks` is
 clean and the three fixes have nothing left to do. Undo fix 12's override
 (`device/pyra-volumed/install.sh --undo`), because its runner would otherwise
 take over the packaged daemon.
 
-The running unit has had it since 2026-10-20, replacing 0.38. The previous
+The running unit has had `0.38+pyra1` since 2026-10-20, replacing 0.38. The previous
 thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
@@ -1705,10 +1712,10 @@ nothing about `--reinstall` or the stock package. `dpkg-divert` would keep
 the old fixed file over any newer vendor one, silently, which is the same
 fault the other way round.
 
-With the `0.38+pyra1` package the file already carries both markers, so the
+With a `0.38+pyraN` package the file already carries both markers, so the
 guard is silent; it only acts if an archive version replaces that package.
 Fix 12 is not watched. Its drop-in survives package runs by itself, but on a
-card where it was removed for the `0.38+pyra1` package, an archive upgrade
+card where it was removed for a `0.38+pyraN` package, an archive upgrade
 brings back the stock wheel mapping without a word.
 
 Fix 21 has a guard of the same shape, `pyra-wsegl-guard`, for the library
