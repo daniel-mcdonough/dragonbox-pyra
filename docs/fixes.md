@@ -48,7 +48,7 @@ them out.
 | 22 | restores | MATE's backlight helper takes the first device it finds, the keyboard light on the stock kernel, so the image ships MATE's screen dimming off and no brightness slider | MATE picks the panel by itself and the image turns its dimming back on | — |
 | 23 | workaround | the vendor image ships its ssh host keys and machine-id, the same on every card; an image should make them on the first boot | the vendor image ships without them | — (none drafted yet) |
 | 24 | setting | — (MATE's default critical-battery action is hibernate, which these kernels can't do) | the kernel gains hibernation (not planned) | — |
-| 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | — (the patch's message is the report) |
+| 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | `pyra-meta-polkit-ukui-timeout.md` |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1709,7 +1709,8 @@ ukui's.
 **Checked** on the release card on 2026-11-14 (`verification-log.md`): with
 the override, marco started 6.5 s after the session opened instead of 36.3 s,
 `polkit-mate-authentication-agent-1` was the running agent, and the timeout
-warning was gone.
+warning was gone. With the GL-check snippet as well, marco started about 0.8 s
+after the session opened.
 
 ## Fixes 6, 7 and 12 as a package
 

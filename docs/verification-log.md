@@ -2166,4 +2166,7 @@ Times from the journal (`-o short-precise`) and from each process's start time i
 - Prep selftest with fix 25 (96975ec), run by the owner: 289 passed, 0 failed, 0 skipped. The
   first run, at 9974cd3, stopped before fix 1: prep looked for `--disable-acceleration-check` in
   the mate-session binary, but GOption keeps the name without its dashes.
-- Not yet checked: a login with `56pyra_mate-no-accel-check` in place.
+- **Both in place** (18:20 login): the session ran as `x-session-manager --disable-acceleration-check`;
+  session opened 18:20:38.81, dconf requested at 18:20:39.28 (0.5 s, was about 6 s behind the GL
+  check), marco at about 18:20:39.6, 0.8 s after the session opened. `~/.xsession-errors` had no
+  acceleration, ukui or timeout lines; `polkit-mate-authentication-agent-1` was running.
