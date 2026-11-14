@@ -945,7 +945,9 @@ does not ship.
 Since 2026-11-14 it also sets `Headset Playback Volume` (0 to 15, -30 to
 0 dB) from the same travel, so the wheel works on headphones too; the packaged
 daemon never touched them. *The volume wheel* in `audio.md` has why it can
-write both at once. The `0.38+pyra1` package does not carry this yet.
+write both at once. The package carries it as patch 0002 on the `pyra`
+branch (*Fixes 6, 7 and 12 as a package*), which has not been released yet:
+`0.38+pyra1` still drives only the speakers.
 
 The prep script cannot build C, so the card gets the source, a runner
 (`/usr/local/sbin/pyra-volumed-run`) and a drop-in that points the packaged
@@ -1630,7 +1632,8 @@ All three change files that `pyra-hacks` owns, so the prep script and the
 device scripts patch or override that package in place. The same three changes
 as patches against pyra-hacks 0.38, in the form sent upstream, are in
 `patches/userspace/pyra-hacks-thermal/` (fixes 6 and 7, a two-patch series)
-and `patches/userspace/pyra-hacks-volumed/` (fix 12). Each applies with `git am`.
+and `patches/userspace/pyra-hacks-volumed/` (fix 12, also a two-patch series:
+the taper, then the headphones). Each applies with `git am`.
 
 The packaged form is a separate repository,
 [pyra-hacks](https://github.com/daniel-mcdonough/pyra-hacks): `main` is the
