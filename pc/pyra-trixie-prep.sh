@@ -227,7 +227,8 @@ done
 # and the flag the snippet adds must be one this mate-session knows.
 [[ -r $ROOT/etc/xdg/autostart/polkit-mate-authentication-agent-1.desktop ]] ||
     die "fix25: the image has no mate-polkit autostart entry; hiding ukui-polkit would leave no polkit agent"
-grep -qa -- --disable-acceleration-check "$ROOT/usr/bin/mate-session" 2>/dev/null ||
+# GOption keeps the long name without its dashes; --help adds them.
+grep -qaF disable-acceleration-check "$ROOT/usr/bin/mate-session" 2>/dev/null ||
     die "fix25: the image's mate-session has no --disable-acceleration-check option"
 # Fix 21 runs the device script on the image, so the patch has one
 # implementation. A library it doesn't know stops prep here, before fix 1.
