@@ -693,9 +693,11 @@ Two things follow, and both matter before anyone touches these volumes:
   is not ours to set, so the fix does not set it. This also explains a
   confusing hour during diagnosis: the value kept falling back to 2 or 4
   between measurements, because the wheel was being turned.
-* **`Headset Playback Volume` has no daemon behind it.** The wheel does not
-  reach the headphones at all; only PulseAudio's software volume does. So this
-  one does need a sane floor, and it is the one that shipped at zero.
+* **`Headset Playback Volume` has no daemon behind it in the packaged
+  image.** The packaged `pyra_volumed` does not reach the headphones at all, so
+  this one does need a sane floor, and it is the one that shipped at zero. Fix
+  12's daemon drives it from the wheel as well, and overrides the floor on the
+  wheel's next turn.
 
 ### The fix
 
@@ -939,6 +941,11 @@ through those five points (interpolating in log(raw)) and spreads -40 to
 libm: the ADC comes from sysfs and the volume goes in with the ALSA control
 ioctl, so it does not need `libasound2-dev` or `libiio-dev`, which the image
 does not ship.
+
+Since 2026-11-14 it also sets `Headset Playback Volume` (0 to 15, -30 to
+0 dB) from the same travel, so the wheel works on headphones too; the packaged
+daemon never touched them. *The volume wheel* in `audio.md` has why it can
+write both at once. The `0.38+pyra1` package does not carry this yet.
 
 The prep script cannot build C, so the card gets the source, a runner
 (`/usr/local/sbin/pyra-volumed-run`) and a drop-in that points the packaged

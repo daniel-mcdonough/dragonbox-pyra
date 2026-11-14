@@ -53,9 +53,11 @@
 #   * `Handsfree Playback Volume` belongs to `pyra_volumed`. Whatever this
 #     script or `alsactl` writes there is overwritten the next time the wheel
 #     moves. It is not ours to set, so we do not set it.
-#   * `Headset Playback Volume` has no daemon behind it. The wheel does not
-#     reach the headphones at all; only PulseAudio's software volume does. So
-#     this one does need a sane floor, and it is the one that shipped at zero.
+#   * `Headset Playback Volume` has no daemon behind it under the packaged
+#     `pyra_volumed`, which does not reach the headphones at all. So it needs
+#     a sane floor, and it is the one that shipped at zero. The calibrated
+#     daemon (fix 12, `device/pyra-volumed/`) drives it from the wheel too;
+#     the floor below only matters until the wheel next moves.
 #
 # WHAT IT DOES NOT FIX
 #
@@ -130,8 +132,9 @@ if [ -n "$(get 'DL1 PDM Switch')" ]; then
 	done
 fi
 
-# The headphone volume, which has no daemon behind it, is only lifted when it
-# is found at the floor. A value the user chose is left alone.
+# The headphone volume is only lifted when it is found at the floor (the
+# packaged pyra_volumed leaves it alone; the calibrated one sets it from the
+# wheel, and overrides this on the next turn). A value the user chose is left alone.
 case "$(get 'Headset Playback Volume')" in
 	'0,0'|'') $AMIXER -c "$CARD" -q cset name='Headset Playback Volume' 13,13 2>/dev/null ;;
 esac

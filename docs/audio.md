@@ -289,13 +289,22 @@ Two further things worth knowing before anyone optimises:
 ## The volume wheel, on both paths
 
 **`pyra_volumed`** (from `pyra-hacks`, enabled by default) reads the encoder
-wheel on `palmas-gpadc` and writes **`Handsfree Playback Volume` only**, via
-`snd_mixer_selem_set_playback_volume_all` on `hw:CARD=L15`. It sets a volume
-and never sets a route. The wheel therefore controls the **speakers and
-nothing else** — it does not reach the headphones, which have only
-PulseAudio's software volume and the `Headset Playback Volume` control. The
-TWL6040 controls are the same on both kernels, so this does not change on the
-AESS path.
+wheel on `palmas-gpadc` and sets a volume; it never sets a route. The TWL6040
+controls are the same on both kernels, so none of this changes on the AESS
+path.
+
+**The wheel drives the headphones as well as the speakers, with the
+replacement daemon below.** The packaged one writes **`Handsfree Playback
+Volume` only**, so under it the wheel controls the speakers and nothing else,
+and the headphones have only PulseAudio's software volume. The replacement
+(since 2026-11-14) writes both `Handsfree Playback Volume` and `Headset
+Playback Volume` from the same wheel position, on every turn, whichever port
+is playing. It does not need to know which port that is: each control sits
+behind its own codec route, which the port switches, so the one not playing is
+silent. That also keeps it out of the jack's late unplug (above). The headset
+control runs 0 to 15, -30 dB to 0 dB in 2 dB steps, and the wheel spans all of
+it. It has no mute, so the bottom of the wheel is -30 dB on the headphones,
+quiet but not silent; PulseAudio's volume goes below that.
 
 **The packaged daemon maps the wheel wrongly, and this unit runs a
 replacement.** It computes `raw * 29 / 2052`, as if the ADC reading rose
@@ -408,15 +417,16 @@ below the codec — go back to step 2, then check volumes.
 **4. Volumes, remembering who owns which.**
 
     amixer -c L15 cget name='Handsfree Playback Volume'   # speakers: pyra_volumed's, from the wheel
-    amixer -c L15 cget name='Headset Playback Volume'     # headphones: nobody's, 0..15
+    amixer -c L15 cget name='Headset Playback Volume'     # headphones: the wheel's too with fix 12's daemon, 0..15
 
 If the speakers are quiet, turn the **wheel**. Writing that control by hand
 does no good, because `pyra_volumed` overwrites it. To test at a fixed level,
 `sudo systemctl stop pyra_volumed` first and start it again afterwards. If
 the speakers are silent on the AESS path and the headphones are not, check
 the OPP (*The AESS path*) before anything else. If the
-headphones are quiet, that control and PulseAudio are the only two things in
-play. On the AESS path the DSP gains in the table above sit in front of both.
+headphones are quiet, turn the wheel too, then look at PulseAudio's volume:
+with fix 12's daemon those two are all that set the level (under the packaged
+daemon the control is set only by fix 9's floor and by hand). On the AESS path the DSP gains in the table above sit in front of both.
 
 **5. Only then, PulseAudio's own levels.**
 

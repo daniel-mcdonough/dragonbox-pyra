@@ -19,6 +19,12 @@
 // because below about -40 dB the speakers are silent. The very bottom of the
 // wheel still goes to step 0.
 //
+// The headphones get the same wheel. "Headset Playback Volume" (0..15,
+// -30..0 dB in 2 dB steps) is set from the same travel, so the wheel works
+// whichever port is playing, and needs no idea of which one that is (the
+// jack's removal is not seen while the amplifier is powered). Each control
+// sits behind its codec route, so the one not playing is silent anyway.
+//
 // It needs nothing but libc and libm, so a fresh card can build it on its
 // first boot with the gcc the image already has (pyra-trixie-prep.sh, fix 12;
 // the image has no libasound2-dev or libiio-dev). The ADC is read from sysfs,
@@ -38,7 +44,6 @@
 #include <sound/asound.h>
 
 #define CARD_ID "L15"
-#define CONTROL "Handsfree Playback Volume"
 #define ADCNAME "palmas-gpadc"
 #define CHANNEL "in_voltage2_raw"
 
@@ -53,10 +58,21 @@ static const double CAL[] = { 16, 144, 394, 1071, 2068 };
 // Readings this close to the bottom are "all the way down".
 #define RAW_OFF 20.0
 
-// Control steps the wheel spans: 6 = -40 dB, 29 = +6 dB. At or below
-// RAW_OFF the volume goes to 0 (-52 dB), the quietest the codec does.
-#define STEP_LO 6
-#define STEP_HI 29
+// The controls the wheel drives, and the steps of each it spans. At or
+// below RAW_OFF each goes to 0, the quietest the codec does.
+//   speakers:   6 = -40 dB .. 29 = +6 dB (below -40 dB they are silent);
+//               0 = -52 dB.
+//   headphones: 0 = -30 dB .. 15 = 0 dB, the control's whole range; the
+//               control has no mute, so the bottom is -30 dB, not silence.
+static struct control {
+	const char *name;
+	int lo, hi;
+	long cur;
+} CONTROLS[] = {
+	{ "Handsfree Playback Volume", 6, 29, -1 },
+	{ "Headset Playback Volume", 0, 15, -1 },
+};
+#define NCONTROLS (sizeof(CONTROLS) / sizeof(CONTROLS[0]))
 
 // The log mapping magnifies ADC noise at the bottom of the travel, where
 // one count is a large ratio. Only move once the wheel's position is this
@@ -116,13 +132,13 @@ static int open_card(void)
 	return fd;
 }
 
-static int set_volume(int card, long v)
+static int set_volume(int card, const char *name, long v)
 {
 	struct snd_ctl_elem_value val;
 
 	memset(&val, 0, sizeof(val));
 	val.id.iface = SNDRV_CTL_ELEM_IFACE_MIXER;
-	strncpy((char *)val.id.name, CONTROL, sizeof(val.id.name) - 1);
+	strncpy((char *)val.id.name, name, sizeof(val.id.name) - 1);
 	val.value.integer.value[0] = v;
 	val.value.integer.value[1] = v;
 	return ioctl(card, SNDRV_CTL_IOCTL_ELEM_WRITE, &val);
@@ -154,19 +170,18 @@ static double travel(double raw)
 	return 1;
 }
 
-// Where the wheel is, in fractional control steps.
-static double position(double raw)
+// Where the wheel is, in fractional steps of control c.
+static double position(const struct control *c, double raw)
 {
 	if (raw <= RAW_OFF)
 		return 0;
-	return STEP_LO + travel(raw) * (STEP_HI - STEP_LO);
+	return c->lo + travel(raw) * (c->hi - c->lo);
 }
 
 int main(void)
 {
 	int adc, card;
 	int delay = MIN_DELAY;
-	long cur = -1;
 
 	// The sound card and the ADC can both come up after this starts. Wait
 	// rather than exit: the packaged unit's Restart=on-failure would hit
@@ -185,16 +200,26 @@ int main(void)
 		double raw;
 
 		if (read_raw(adc, &raw) == 0) {
-			double pos = position(raw);
-			long want = lround(pos);
+			int moved = 0;
 
-			if (cur < 0 || (want != cur &&
-			    fabs(pos - cur) > 0.5 + HYSTERESIS)) {
-				// On failure, log it once and try again on the next
-				// movement rather than every 100 ms.
-				if (set_volume(card, want) != 0)
-					perror("pyra_volumed: " CONTROL);
-				cur = want;
+			for (size_t i = 0; i < NCONTROLS; i++) {
+				struct control *c = &CONTROLS[i];
+				double pos = position(c, raw);
+				long want = lround(pos);
+
+				if (c->cur >= 0 && (want == c->cur ||
+				    fabs(pos - c->cur) <= 0.5 + HYSTERESIS))
+					continue;
+				// On failure, log it once and try again on the
+				// next movement rather than every 100 ms.
+				if (set_volume(card, c->name, want) != 0) {
+					fprintf(stderr, "pyra_volumed: %s: ", c->name);
+					perror(NULL);
+				}
+				c->cur = want;
+				moved = 1;
+			}
+			if (moved) {
 				delay = MIN_DELAY;
 			} else {
 				delay += delay / 10;
