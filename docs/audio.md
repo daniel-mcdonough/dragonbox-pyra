@@ -304,7 +304,12 @@ behind its own codec route, which the port switches, so the one not playing is
 silent. That also keeps it out of the jack's late unplug (above). The headset
 control runs 0 to 15, -30 dB to 0 dB in 2 dB steps, and the wheel spans all of
 it. It has no mute, so the bottom of the wheel is -30 dB on the headphones,
-quiet but not silent; PulseAudio's volume goes below that.
+quiet but not silent; PulseAudio's volume goes below that. The daemon is the
+only thing that should write either control from the wheel: anything else
+that does, such as a desktop applet copying the speaker volume onto the
+headphones, overwrites the daemon on every turn with its own mapping.
+(Verified 2026-11-14: an applet doing that left the headphones at step 4
+where the daemon had set 1.)
 
 **The packaged daemon maps the wheel wrongly, and this unit runs a
 replacement.** It computes `raw * 29 / 2052`, as if the ADC reading rose
