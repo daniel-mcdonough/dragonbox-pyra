@@ -202,7 +202,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twenty-four fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The twenty-five fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |
@@ -254,7 +254,7 @@ with the private development notes; it is not published.
     pc/          run these on your computer
     device/      run these on the Pyra, or install them onto it
     patches/     kernel source patches, applied by the build script
-      userspace/ patches to Pyra packages (pyra-hacks, funkeymonkey-pyrainput), in the form sent upstream
+      userspace/ patches to Pyra packages (pyra-hacks, pyra-meta, funkeymonkey-pyrainput), in the form sent upstream
     experiments/ kernel changes and measurements on trial, kept out of patches/
     reports/     findings written up for upstream, drafted but not sent (not in the public copy)
     docs/        one document per job, listed above
@@ -274,7 +274,7 @@ GPL-2.0-only, in `LICENSE`, with the exceptions below. The kernel patches in `pa
 the BSD-3-Clause header that `experiments/m4-ipu/0009-*.patch` adds, since the
 kernel file it touches is BSD-3-Clause upstream. Likewise, the patches in
 `patches/userspace/` carry the licence of the package they change: MIT for
-pyra-hacks, BSD-2-Clause for funkeymonkey-pyrainput. So does
+pyra-hacks and pyra-meta, BSD-2-Clause for funkeymonkey-pyrainput. So does
 `experiments/kms-plane/armsoc-0001-*.patch`: MIT, for xf86-video-armsoc.
 
 The exception is the Cortex-M4 test firmware in `experiments/m4-ipu/firmware/`

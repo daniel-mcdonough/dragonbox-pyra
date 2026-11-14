@@ -1,0 +1,52 @@
+From c116613a7f9c1cbbcdd91c83f404c9cf5ff282d2 Mon Sep 17 00:00:00 2001
+From: Daniel McDonough <90170351+daniel-mcdonough@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 12:05:56 -0500
+Subject: [PATCH pyra-meta] pyra-meta-mate: depend on mate-polkit before
+ network-manager-gnome
+
+network-manager-gnome depends on "policykit-1-gnome | polkit-1-auth-agent".
+policykit-1-gnome is gone in trixie, so apt picks a polkit-1-auth-agent
+provider while resolving it, before it reaches mate-polkit through
+mate-desktop-environment. It takes ukui-polkit, the first provider it
+finds, and the image ends up with both agents.
+
+ukui-polkit's autostart entry includes MATE and puts the agent in
+mate-session's Initialization phase, but the agent never registers with
+the session manager. mate-session waits for it until its phase timeout,
+so every login sits about 30 seconds before the window manager starts:
+
+  WARNING: Application 'polkit-ukui-authentication-agent-1.desktop'
+  failed to register before timeout
+
+Naming mate-polkit ahead of network-manager-gnome makes apt mark it
+first, and nm-applet's dependency is then already satisfied. Simulated
+with apt-get install -s on trixie armhf: as shipped, both agents are
+installed; with this change, only mate-polkit. Listing mate-polkit after
+network-manager-gnome does not help.
+
+Measured on a Pyra on Debian 13: the panel appears about 7 seconds after
+the password instead of about 35.
+---
+ debian/control | 6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/debian/control b/debian/control
+index 217ca58..c8bd776 100644
+--- a/debian/control
++++ b/debian/control
+@@ -89,9 +89,9 @@ Description: Xfce desktop for pyra (metapackage)
+ 
+ Package: pyra-meta-mate
+ Architecture: all
+-Depends: ${misc:Depends}, pyra-meta-desktop-base, caja-open-terminal,
+- network-manager-gnome, modem-manager-gui, mate-desktop-environment,
+- lightdm, pyra-meta-extra
++Depends: ${misc:Depends}, pyra-meta-desktop-base, mate-polkit,
++ caja-open-terminal, network-manager-gnome, modem-manager-gui,
++ mate-desktop-environment, lightdm, pyra-meta-extra
+ Description: Mate desktop for pyra (metapackage)
+  The Pyra will be a perfect pocket device for everyday computing,
+  gaming, emulation or hacking. It is a unique combination of a gaming
+-- 
+2.55.0
+

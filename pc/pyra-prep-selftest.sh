@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 24 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 25 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -922,6 +922,25 @@ got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.power-manage
 [[ $got == "'shutdown'" ]] && p "fix24: action-critical-battery defaults to 'shutdown'" || f "fix24: action-critical-battery defaults to $got, want 'shutdown'"
 
 ########################################################################
+i "assert fix 25 — no 30 s polkit timeout or GL check at login"
+########################################################################
+for x in etc/xdg/pyra/autostart/polkit-ukui-authentication-agent-1.desktop etc/X11/Xsession.d/56pyra_mate-no-accel-check; do
+    cmp -s "$PAYLOADS/$x" "$MNT/$x" && p "fix25: /$x matches repo" || f "fix25: /$x missing or differs from repo"
+    [[ $(stat -c '%a %u:%g' "$MNT/$x" 2>/dev/null) == "644 0:0" ]] && p "fix25: $(basename "$x") is 0644 root:root" || f "fix25: $(basename "$x") mode is $(stat -c '%a %u:%g' "$MNT/$x" 2>/dev/null)"
+done
+# The image's own GLib parses the override: mate-session drops an entry it
+# cannot load and falls back to the /etc/xdg copy, which is what fix 25 hides.
+got=$(in_chroot python3 -c 'from gi.repository import GLib
+k = GLib.KeyFile(); k.load_from_file("/etc/xdg/pyra/autostart/polkit-ukui-authentication-agent-1.desktop", 0)
+print(k.get_boolean("Desktop Entry", "Hidden"), bool(k.get_string("Desktop Entry", "Exec")))' 2>&1 || true)
+[[ $got == "True True" ]] && p "fix25: the ukui override loads, with Hidden and Exec" || f "fix25: the ukui override reads '$got', want Hidden and Exec"
+[[ -r $MNT/etc/xdg/autostart/polkit-mate-authentication-agent-1.desktop ]] && p "fix25: mate-polkit's autostart entry is there to take over" || f "fix25: no mate-polkit autostart entry; no polkit agent would run"
+got=$(in_chroot sh -c 'STARTUP=x-session-manager; . /etc/X11/Xsession.d/56pyra_mate-no-accel-check; echo "$STARTUP"' 2>&1 || true)
+[[ $got == "x-session-manager --disable-acceleration-check" ]] && p "fix25: the image's session starts as '$got'" || f "fix25: the snippet makes STARTUP '$got'"
+got=$(in_chroot sh -c 'STARTUP=/home/pyra/.xsession; . /etc/X11/Xsession.d/56pyra_mate-no-accel-check; echo "$STARTUP"' 2>&1 || true)
+[[ $got == /home/pyra/.xsession ]] && p "fix25: a user's own ~/.xsession is left alone" || f "fix25: the snippet changed ~/.xsession to '$got'"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -976,6 +995,7 @@ done
 [[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run2.log") -eq 4 ]] \
     && p "run 2 reported fix23's unit, its link, the machine-id and the mask already in place" || f "run 2 did not report fix23's unit, link, machine-id and mask in place"
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
+[[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.

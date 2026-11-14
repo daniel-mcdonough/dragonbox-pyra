@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -217,6 +217,18 @@ done
 # Fix 24's override: shut down, not hibernate, at critical battery.
 POWER_OVERRIDE_SRC=$PAYLOADS/$SCHEMA_DIR/99_pyra_power.gschema.override
 [[ -r $POWER_OVERRIDE_SRC ]] || die "fix24: 99_pyra_power.gschema.override not found (looked in $PAYLOADS)"
+# Fix 25's two files: hide the ukui polkit agent, skip mate-session's GL check.
+UKUI_HIDE=etc/xdg/pyra/autostart/polkit-ukui-authentication-agent-1.desktop
+NOACCEL=etc/X11/Xsession.d/56pyra_mate-no-accel-check
+for f in "$UKUI_HIDE" "$NOACCEL"; do
+    [[ -r $PAYLOADS/$f ]] || die "fix25: $(basename "$f") not found (looked in $PAYLOADS)"
+done
+# Hiding the ukui agent is only safe with MATE's own agent there to take over,
+# and the flag the snippet adds must be one this mate-session knows.
+[[ -r $ROOT/etc/xdg/autostart/polkit-mate-authentication-agent-1.desktop ]] ||
+    die "fix25: the image has no mate-polkit autostart entry; hiding ukui-polkit would leave no polkit agent"
+grep -qa -- --disable-acceleration-check "$ROOT/usr/bin/mate-session" 2>/dev/null ||
+    die "fix25: the image's mate-session has no --disable-acceleration-check option"
 # Fix 21 runs the device script on the image, so the patch has one
 # implementation. A library it doesn't know stops prep here, before fix 1.
 WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
@@ -1877,6 +1889,41 @@ POWER_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
 [[ $POWER_VAL == "'shutdown'" ]] ||
     die "fix24: action-critical-battery reads $POWER_VAL after the override, not 'shutdown'"
 ok "fix24: MATE shuts down at critical battery (action-critical-battery 'shutdown')"
+
+# ---------------------------------------------------------------------- fix 25
+#
+# A login sat about 35 s between the password and the panel. Two waits:
+#
+# The image has two polkit agents. network-manager-gnome wants
+# "policykit-1-gnome | polkit-1-auth-agent", trixie has no policykit-1-gnome,
+# and apt took ukui-polkit before it reached mate-polkit. ukui's autostart
+# entry runs in MATE's Initialization phase but never registers with
+# mate-session, which waits out the phase timeout, about 30 s, before it
+# starts marco. An entry in /etc/xdg/pyra (first in XDG_CONFIG_DIRS, from
+# pyra-config-desktop) hides it; mate-polkit is then the agent. The package
+# stays, so an upgrade changes nothing. patches/userspace/pyra-meta-polkit
+# fixes the image build itself.
+#
+# mate-session then checks for GL twice, about 6 s at login, though a run by
+# hand takes 0.3 s (docs/fixes.md has what is known). The check always fails and
+# nothing in MATE reads its result, so an Xsession.d snippet passes
+# --disable-acceleration-check, but only to a plain mate-session: a user's
+# own ~/.xsession is left alone.
+
+for f in "$UKUI_HIDE" "$NOACCEL"; do
+    if [[ -e $ROOT/$f ]] && cmp -s "$PAYLOADS/$f" "$ROOT/$f"; then
+        ok "fix25: /$f already up to date"
+    else
+        VERB=$([[ -e $ROOT/$f ]] && echo updated || echo installed)
+        install -D -m 0644 -o 0 -g 0 "$PAYLOADS/$f" "$ROOT/$f"
+        ok "fix25: $VERB /$f"
+    fi
+done
+sh -n "$ROOT/$NOACCEL" || die "fix25: /$NOACCEL does not parse"
+XSM=$(readlink "$ROOT/etc/alternatives/x-session-manager" 2>/dev/null || true)
+[[ ${XSM##*/} == mate-session* ]] ||
+    warn "fix25: x-session-manager is ${XSM:-unset} on the image, not mate-session; the GL-check snippet will do nothing"
+ok "fix25: logins skip ukui-polkit's 30 s timeout and mate-session's GL check"
 
 # ------------------------------------------------------------------- release
 #

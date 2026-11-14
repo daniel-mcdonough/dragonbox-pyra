@@ -2135,3 +2135,33 @@ in (the known `bq24297` quirk, 2026-09 note above), so UPower's `OnBattery` read
 - Prep selftest with fix 24 (a043b11), run by the owner: 280 passed, 0 failed, 0 skipped.
 - Not covered: a real drain to 2 %, and whether the fuel gauge reaches 2 % before the cell's
   cut-off.
+
+## 2026-11-14 — login time: ukui-polkit's timeout and mate-session's GL check (fix 25)
+
+Release card, `5.6.19-m4-kbdled`, MATE through lightdm, logged in at the greeter with a password.
+Times from the journal (`-o short-precise`) and from each process's start time in
+`/proc/PID/stat`, the latter corrected by +0.9 s to the journal's clock (dconf-service: 15.61 in
+`/proc`, 16.53 in the journal). Method: `profiling-guide.md` §3.3.
+
+- **As shipped** (second login of the boot, warm): session opened 17:50:47.57; mate-settings-daemon
+  and `polkit-ukui-authentication-agent-1` started at 17:50:54.0; marco at 17:51:23.9, 36.3 s after
+  the session opened. `~/.xsession-errors`: "Application 'polkit-ukui-authentication-agent-1.desktop'
+  failed to register before timeout". The first login after the boot took about 42 s to marco.
+- **First override, without `Exec=`:** no change. mate-session logged "Could not parse desktop
+  file … does not have key 'Exec'" and started the agent from `/etc/xdg/autostart` anyway.
+- **Override with `Exec=` and `Hidden=true`:** session opened 17:53:10.29; marco at 17:53:16.8,
+  6.5 s later. No timeout warning; the running agent was `polkit-mate-authentication-agent-1`.
+  The owner saw the desktop come up faster.
+- **GL check:** in that 6.5 s, the first `mate-session-check-accelerated` ended at 17:53:10.99 and
+  the second, with `LIBGL_ALWAYS_SOFTWARE=1`, at 17:53:16.39 (`gl_failed!` at 16.51). The second
+  asked for `org.a11y.atspi.Registry` at 17:53:11.18 and logged nothing more until it exited. Run
+  by hand over ssh with `_GNOME_SESSION_ACCELERATED` removed from the root window, each mode took
+  0.26 s. A `grep -a` of marco, mate-panel, caja, mate-settings-daemon and libmarco-private found
+  neither `_GNOME_SESSION_ACCELERATED` nor `_GNOME_SESSION_RENDERER`.
+- apt's choice of agent, simulated with `apt-get install -s` of a stand-in `pyra-meta-mate` in a
+  `debian:trixie` armhf container: as shipped, both agents; `mate-polkit` listed before
+  `network-manager-gnome`, only `mate-polkit`; listed last, both.
+- The card's apt history shows both agents installed on 2026-02-01 by the image build's
+  `apt install pyra-meta-mate`, so the vendor image carries ukui-polkit.
+- Not yet checked: a login with `56pyra_mate-no-accel-check` in place, and the prep selftest with
+  fix 25 (it needs root on the PC).

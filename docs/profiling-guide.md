@@ -313,6 +313,45 @@ in `experiments/gpu-tools/`, with the first measurement: Ship of Harkinian's GPU
 at its 30 fps cap. There are still no GL timer queries, and no in-process GPU timings beyond
 `GL_EXT_occlusion_query_boolean`.
 
+### 3.3 Login and session start
+
+No one tool covers the time from the password to the desktop. Three sources
+together do, all read over ssh after a login:
+
+- **The journal, to the millisecond**, for the systemd side: PAM, the user
+  manager, D-Bus activations, pulseaudio. The greeter's `gkr-pam: stashed
+  password` line is the moment the password was accepted.
+
+  ```sh
+  sudo journalctl -b -o short-precise | grep 'pam_unix(lightdm:session): session opened'
+  sudo journalctl -o short-precise --since 17:53:09 --until 17:53:40
+  ```
+
+- **`~/.xsession-errors`**, where mate-session writes its own warnings, among
+  them any app that "failed to register before timeout".
+- **The start time of every process in the session**, which shows when each
+  mate-session phase began (marco starting marks the end of Initialization).
+  `ps -o lstart` has only whole seconds. Field 22 of `/proc/PID/stat` is in
+  clock ticks since boot:
+
+  ```sh
+  T=$(getconf CLK_TCK); B=$(awk '/btime/{print $2}' /proc/stat)
+  for p in /proc/[0-9]*; do
+    [ "$(stat -c %u $p 2>/dev/null)" = "$(id -u)" ] || continue
+    st=$(awk '{print $22}' $p/stat 2>/dev/null) || continue
+    printf '%s %s\n' "$(date -d @"$(echo "scale=2; $B + $st/$T" | bc)" +%T.%N | cut -c1-11)" \
+      "$(tr '\0' ' ' < $p/cmdline | cut -c1-90)"
+  done | sort
+  ```
+
+  `btime` is whole seconds, so these times run up to a second behind the
+  journal's. On the release card they ran 0.9 s behind. Compare times from one
+  source with each other, or correct by a process both show.
+
+Compare like with like. The first login after a boot runs with cold caches
+and is several seconds slower than a later one. Fix 25 (`fixes.md`) is what
+this found.
+
 ---
 
 ## 4. Do not use `x11perf` on this machine

@@ -1,0 +1,11 @@
+# Fix 25 (docs/fixes.md). The image has two polkit agents. This one never
+# registers with mate-session, which then holds every login about 30 s until
+# its Initialization phase times out. mate-polkit stays and is the agent.
+# /etc/xdg/pyra comes first in XDG_CONFIG_DIRS, so this hides the copy in
+# /etc/xdg/autostart. mate-session rejects an entry without Exec, and then
+# falls back to that copy, so Exec stays.
+[Desktop Entry]
+Type=Application
+Name=PolicyKit Authentication Agent (UKUI)
+Exec=/usr/lib/arm-linux-gnueabihf/ukui-polkit/polkit-ukui-authentication-agent-1
+Hidden=true

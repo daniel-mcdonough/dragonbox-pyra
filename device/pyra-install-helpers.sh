@@ -13,7 +13,9 @@
 # can only live in /usr/share/pulseaudio (docs/audio.md), and fixes 20 and
 # 24's gsettings overrides, which only take effect in the schema directory they
 # override. Every file it installs has a pyra name no Debian package uses, so
-# nothing here fights a package.
+# nothing here fights a package. Fix 25's ukui-polkit override is the one
+# exception: it must carry the name of the entry it hides, but it lives in
+# /etc/xdg/pyra, where no package puts a file of that name.
 #
 # The idle dimmer and the brightness applet are no longer here. They are the
 # pyra-backlight package, in its own repository. This removes any copies an
@@ -22,14 +24,14 @@
 # It does not install a kernel: that is pyra-install-debug-kernel.sh, which
 # this script puts on the path for you. It does install the two init-top hooks
 # that keep root from mounting late, and rebuilds the initrd of every kernel in
-# /boot whose initrd lacks them or predates them. It does not apply the twenty-four
+# /boot whose initrd lacks them or predates them. It does not apply the twenty-five
 # card fixes: those are pc/pyra-trixie-prep.sh, applied offline before first boot.
-# Fixes 13 to 18, 20 and 24 are the exception, since their files (pyra-gles, the two
+# Fixes 13 to 18, 20, 24 and 25 are the exception, since their files (pyra-gles, the two
 # hooks, pyra-kbdlight.sh and its pyrainput.service drop-in,
 # pyra-governor-tune's script and unit,
 # pyra-audio-select's script, unit and five PulseAudio files,
-# pyra-keypad-rescue, and MATE's keyboard-light and critical-battery
-# overrides) are in the map
+# pyra-keypad-rescue, MATE's keyboard-light and critical-battery
+# overrides, and fix 25's ukui-polkit override and Xsession.d snippet) are in the map
 # below and land on the same paths prep uses; fix 15's two lines in
 # /etc/pyrainput.cfg and fix 17's daemon.conf.d link are made by the same
 # scripts prep calls. Fix 21's script and its dpkg guard land where prep puts
@@ -88,6 +90,8 @@ pyra-kbdlight.sh                    /usr/local/sbin                    0755
 etc/systemd/system/pyrainput.service.d/pyra-kbdlight.conf /etc/systemd/system/pyrainput.service.d 0644
 usr/share/glib-2.0/schemas/99_pyra_kbdlight.gschema.override /usr/share/glib-2.0/schemas 0644
 usr/share/glib-2.0/schemas/99_pyra_power.gschema.override /usr/share/glib-2.0/schemas 0644
+etc/xdg/pyra/autostart/polkit-ukui-authentication-agent-1.desktop /etc/xdg/pyra/autostart 0644
+etc/X11/Xsession.d/56pyra_mate-no-accel-check /etc/X11/Xsession.d          0644
 pyra-soh                            /usr/local/bin                     0755
 pyra-cpu-pin                        /usr/local/sbin                    0755
 etc/sudoers.d/pyra-cpu-pin          /etc/sudoers.d                     0440

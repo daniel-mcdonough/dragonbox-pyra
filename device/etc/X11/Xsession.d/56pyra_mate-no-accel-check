@@ -1,0 +1,17 @@
+# Fix 25 (docs/fixes.md).
+# Skip mate-session's GL acceleration check. It costs ~6 s at login on the
+# Pyra, always fails there ("No hardware 3D support"), and nothing in MATE
+# reads the result.
+
+BASESTARTUP=${STARTUP%% *}
+BASESTARTUP=${BASESTARTUP##*/}
+if [ "$BASESTARTUP" = x-session-manager ]; then
+    BASESTARTUP=$(basename $(readlink /etc/alternatives/x-session-manager))
+fi
+case "$STARTUP" in
+  x-session-manager|mate-session|/usr/bin/mate-session)
+    case "$BASESTARTUP" in
+      mate-session*) STARTUP="$STARTUP --disable-acceleration-check" ;;
+    esac
+    ;;
+esac

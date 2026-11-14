@@ -1,4 +1,4 @@
-# The twenty-four fixes, and what they actually do
+# The twenty-five fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -48,6 +48,7 @@ them out.
 | 22 | restores | MATE's backlight helper takes the first device it finds, the keyboard light on the stock kernel, so the image ships MATE's screen dimming off and no brightness slider | MATE picks the panel by itself and the image turns its dimming back on | — |
 | 23 | workaround | the vendor image ships its ssh host keys and machine-id, the same on every card; an image should make them on the first boot | the vendor image ships without them | — (none drafted yet) |
 | 24 | setting | — (MATE's default critical-battery action is hibernate, which these kernels can't do) | the kernel gains hibernation (not planned) | — |
+| 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | — (the patch's message is the report) |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1625,6 +1626,90 @@ machine off.
 **Checked** on the release card on 2026-11-12 (`verification-log.md`), with the
 action level raised to 95 % for one boot: MATE showed "about to shutdown" and
 logind powered off 20.2 s after UPower reached the action level.
+
+## Fix 25 — a login takes about 35 s, most of it waiting
+
+**Symptom.** On the trixie image the desktop came up about 35 s after the
+password was entered, against noticeably less on the stock bookworm card.
+Profiled on the release card on 2026-11-14 (how: `profiling-guide.md` §3.3),
+the wait is two things, both inside mate-session before it starts the
+window manager.
+
+**1. A second polkit agent that never registers (about 30 s).** The image has
+two polkit agents, `mate-polkit` and `ukui-polkit`. `network-manager-gnome`
+depends on `policykit-1-gnome | polkit-1-auth-agent`. Trixie has no
+`policykit-1-gnome`, so apt satisfies the virtual package while resolving
+nm-applet. That happens before it reaches `mate-polkit` through
+`mate-desktop-environment`, and it takes `ukui-polkit`, the first provider in
+its list. Both were installed by the vendor's own image build
+(`apt install pyra-meta-mate`, 2026-02-01).
+
+`ukui-polkit`'s autostart entry is `OnlyShowIn=UKUI;MATE` with
+`X-MATE-Autostart-Phase=Initialization`. mate-session waits for every
+Initialization-phase app to register before it moves on. The UKUI agent
+starts, takes the polkit agent role, and never registers, so mate-session
+waits out its phase timeout:
+
+    x-session-manager: WARNING: Application 'polkit-ukui-authentication-agent-1.desktop' failed to register before timeout
+
+marco started 29.8 s after the agent. Because the UKUI agent took the role,
+`mate-polkit` then failed with "An authentication agent already exists".
+
+**2. mate-session's GL check (about 6 s).** Before anything else mate-session
+runs `mate-session-check-accelerated`. It fails ("No hardware 3D support"),
+so mate-session runs it again with `LIBGL_ALWAYS_SOFTWARE=1`, which fails too
+(`gl_failed!`). At login the first run took about 0.7 s and the second about
+5.4 s. The second asks for the AT-SPI registry at once and then goes quiet
+until it exits. Run by hand later, from cold (with the `_GNOME_SESSION_ACCELERATED`
+root-window property removed), either run takes 0.26 s. What the second run
+waits for at login is not pinned down. The result is used by nothing here:
+mate-session only logs it, and neither marco, mate-panel, caja nor
+mate-settings-daemon reads the `_GNOME_SESSION_ACCELERATED` or
+`_GNOME_SESSION_RENDERER` properties it sets.
+
+**The fix.** Prep installs two files, and `pyra-install-helpers.sh` installs
+the same two:
+
+- `/etc/xdg/pyra/autostart/polkit-ukui-authentication-agent-1.desktop`, with
+  `Hidden=true`. `/etc/xdg/pyra` comes first in `XDG_CONFIG_DIRS`
+  (`pyra-config-desktop`'s `65pyra_xdg-config`), so it hides the entry in
+  `/etc/xdg/autostart`. It must keep an `Exec=` line: mate-session rejects an
+  entry without one ("Key file does not have key 'Exec'") and then uses the
+  copy in `/etc/xdg/autostart`, which is the one being hidden. The first try
+  on the card made exactly that mistake and changed nothing. The package
+  stays installed, so a package upgrade doesn't undo the fix. Prep refuses an
+  image that has no `mate-polkit` autostart entry, since hiding the UKUI one
+  would then leave no agent at all.
+- `/etc/X11/Xsession.d/56pyra_mate-no-accel-check`, which appends
+  `--disable-acceleration-check` to `STARTUP` when it is a plain
+  `x-session-manager` or `mate-session` and `x-session-manager` resolves to
+  mate-session. A user's own `~/.xsession` is left alone. Prep refuses a
+  `mate-session` without the option, and warns if the image's
+  `x-session-manager` is not mate-session.
+
+Both take effect at the next login.
+
+**The proper fix for the polkit half** is in the image build. The patch in
+`patches/userspace/pyra-meta-polkit/` names `mate-polkit` in `pyra-meta-mate`'s
+Depends, ahead of `network-manager-gnome`. Order matters. Simulated with
+`apt-get install -s` in a trixie armhf container, with
+`pyra-meta-desktop-base`'s and `pyra-meta-extra`'s Debian dependencies in place:
+
+| `pyra-meta-mate` Depends | apt installs |
+| --- | --- |
+| as shipped (0.41) | `mate-polkit` and `ukui-polkit` (with `libpolkit-qt5-1-1`) |
+| `mate-polkit` before `network-manager-gnome` | `mate-polkit` only |
+| `mate-polkit` at the end | `mate-polkit` and `ukui-polkit` |
+
+The patch helps only new images. A card that already has `ukui-polkit` keeps
+it, so the override is still needed there. `apt purge ukui-polkit` would also
+work; its dry run orphans a long list of libraries, not all checked to be
+ukui's.
+
+**Checked** on the release card on 2026-11-14 (`verification-log.md`): with
+the override, marco started 6.5 s after the session opened instead of 36.3 s,
+`polkit-mate-authentication-agent-1` was the running agent, and the timeout
+warning was gone.
 
 ## Fixes 6, 7 and 12 as a package
 
