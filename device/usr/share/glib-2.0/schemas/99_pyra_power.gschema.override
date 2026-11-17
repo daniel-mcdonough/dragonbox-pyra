@@ -1,4 +1,5 @@
-# Prep fix 24 (docs/fixes.md): shut down, not hibernate, at critical battery.
+# Prep fix 24 (docs/fixes.md): shut down, not hibernate, at critical battery,
+# and suspend, not hibernate, when idle sleep fires.
 #
 # mate-power-manager 1.26.1 defaults action-critical-battery to 'hibernate'.
 # The Pyra's kernels have no hibernation (no /sys/power/disk, logind's
@@ -9,8 +10,14 @@
 #
 # Suspend is no choice here: a suspended Pyra keeps draining the cell.
 #
+# Idle sleep (sleep-computer-battery/-ac, off by default) runs
+# action-sleep-type-battery/-ac, whose upstream defaults are 'hibernate' and
+# 'suspend'. Hibernate can't work here, so both default to 'suspend'.
+#
 # The name sorts after pyra-config-desktop's 99_pyra.gschema.override ('_'
 # after '.'), so a key both files set takes this file's value.
 
 [org.mate.power-manager]
 action-critical-battery='shutdown'
+action-sleep-type-battery='suspend'
+action-sleep-type-ac='suspend'

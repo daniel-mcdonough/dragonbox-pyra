@@ -1605,6 +1605,17 @@ drop-in directory, and its fallback already ends at `PowerOff`.
 Suspend is no choice for critical battery: a suspended Pyra keeps drawing from
 the cell.
 
+**Idle sleep.** The same file sets `action-sleep-type-battery` and
+`action-sleep-type-ac` to `suspend`. MATE's idle sleep runs that action once
+`sleep-computer-battery` / `-ac` runs out, after `org.mate.session idle-delay`.
+Upstream defaults them to `hibernate` (battery) and `suspend` (AC); with
+`hibernate`, idle sleep on battery would ask logind to hibernate and be
+refused. Idle sleep itself stays off by default (`sleep-computer-*` is `0`), and
+`idle-delay` stays at Debian's 30 min (owner, 2026-11-15).
+Prep and the selftest read both keys back on the memory backend. Checked
+against the release card's schemas on 2026-11-15: compiled with `--strict`,
+the three keys read `shutdown`, `suspend`, `suspend`.
+
 **With a charger in.** The `bq24297` reports `online=0` even with a charger in
 (`verification-log.md`, 2026-09), so UPower's `OnBattery` is always true here.
 MATE's check for being on mains never stops it. What decides is the fuel gauge:

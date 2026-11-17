@@ -1890,6 +1890,13 @@ POWER_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
 [[ $POWER_VAL == "'shutdown'" ]] ||
     die "fix24: action-critical-battery reads $POWER_VAL after the override, not 'shutdown'"
 ok "fix24: MATE shuts down at critical battery (action-critical-battery 'shutdown')"
+for k in action-sleep-type-battery action-sleep-type-ac; do
+    POWER_VAL=$(in_chroot env GSETTINGS_BACKEND=memory \
+        gsettings get org.mate.power-manager "$k" 2>/dev/null || true)
+    [[ $POWER_VAL == "'suspend'" ]] ||
+        die "fix24: $k reads $POWER_VAL after the override, not 'suspend'"
+done
+ok "fix24: idle sleep suspends (action-sleep-type-battery/-ac 'suspend')"
 
 # ---------------------------------------------------------------------- fix 25
 #

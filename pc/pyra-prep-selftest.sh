@@ -920,6 +920,10 @@ cmp -s "$PAYLOADS/$SD/99_pyra_power.gschema.override" "$O" && p "fix24: /$SD/99_
 [[ $MNT/$SD/gschemas.compiled -nt $O ]] && p "fix24: gschemas.compiled is newer than the override" || f "fix24: gschemas.compiled was not rebuilt after the override"
 got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.power-manager action-critical-battery 2>/dev/null || true)
 [[ $got == "'shutdown'" ]] && p "fix24: action-critical-battery defaults to 'shutdown'" || f "fix24: action-critical-battery defaults to $got, want 'shutdown'"
+for k in action-sleep-type-battery action-sleep-type-ac; do
+    got=$(in_chroot env GSETTINGS_BACKEND=memory gsettings get org.mate.power-manager "$k" 2>/dev/null || true)
+    [[ $got == "'suspend'" ]] && p "fix24: $k defaults to 'suspend'" || f "fix24: $k defaults to $got, want 'suspend'"
+done
 
 ########################################################################
 i "assert fix 25 — no 30 s polkit timeout or GL check at login"
