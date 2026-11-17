@@ -1,4 +1,4 @@
-# The twenty-five fixes, and what they actually do
+# The twenty-six fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -49,6 +49,7 @@ them out.
 | 23 | workaround | the vendor image ships its ssh host keys and machine-id, the same on every card; an image should make them on the first boot | the vendor image ships without them | — (none drafted yet) |
 | 24 | setting | — (MATE's default critical-battery action is hibernate, which these kernels can't do) | the kernel gains hibernation (not planned) | — |
 | 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | `pyra-meta-polkit-ukui-timeout.md` |
+| 26 | project choice | — (the Pyra's own settings app, and the pyra-hacks fork it depends on) | — | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -962,6 +963,12 @@ Checked on hardware: a bottom-to-top sweep gave steps 0, 8, 10, 13, 15, 16, 18,
 19, 22, 24, 27, 29, and it sounds even by ear. The calibration comes from one
 unit, and another unit's pot may differ. The table is at the top of the source.
 
+When fix 26 installs the pyra-hacks fork, fix 12 stands aside: it writes
+nothing and removes the four files an earlier run wrote (the drop-in, the
+runner, the source and the built binary), so the packaged unit runs the fork's
+`pyra_volumed`. pyra-settings' wheel page writes `/etc/pyra_volumed.conf`, which
+only the fork's daemon reads.
+
 ## Fix 13 — no Qt5 program draws anything
 
 Found 2026-09-18 with Pegasus; the diagnosis is `qt-gles.md`. Every program
@@ -1734,6 +1741,48 @@ the override, marco started 6.5 s after the session opened instead of 36.3 s,
 warning was gone. With the GL-check snippet as well, marco started about 0.8 s
 after the session opened.
 
+## Fix 26 — no place to set what only the Pyra has
+
+**Symptom.** Which buttons wake the Pyra from suspend, whether the lid does,
+what the lid and idle do, and the volume wheel's calibration have no settings
+page: MATE knows none of them.
+
+**Fix.** Prep installs `pyra-settings`, a GTK 3 app from its own repository
+(pyra-settings). Its root helper runs through pkexec (polkit action
+`org.pyra.settings.wake`), and `pyra-settings-apply.service`, which the
+package's postinst enables, applies the saved choices at boot from
+`/etc/pyra-settings/pyra-settings.conf`. The wake-button page needs
+`patches/0053` in the kernel (`wakeup_keys`); the helper looks for the file,
+not the kernel version, and on a kernel without it the page says so.
+`kernel-5.6.19-r2` does not carry 0053 (NEXT R59).
+
+It depends on `pyra-hacks (>= 0.38+pyra3)`, the fork (*Fixes 6, 7 and 12 as a
+package*, below), and on `pyra-backlight (>= 0.4)` (fix 22). So fix 26 also
+installs the fork's `pyra-hacks_0.38+pyra3_armhf.deb`, pinned by SHA-256
+(`3dd6e39c…7f3fa`, the release asset as published), from a copy beside the
+pyra-settings `.deb` or else from that release. It replaces the vendor's 0.38;
+an image that already has 0.38+pyra3 or later keeps it. The fork's thermal
+script is byte-identical to what fixes 6 and 7 make, so their dpkg guard finds
+nothing to do, and prep checks that after the install. Fix 12 stands aside
+(above). Fix 8 stays: the fork does not set the charger's limit.
+
+**How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
+`.deb`s in one run, after checking before fix 1 that the file is
+`pyra-settings` and that the image has every package either depends on.
+`--settings` with `--no-backlight` is refused, since pyra-settings depends on
+pyra-backlight. A second run sees the version installed and does nothing.
+
+The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
+release, checked against `SETTINGS_SHA256` in the script. No release is pinned
+yet, so a run without `--settings` leaves both packages out and fix 12 in place.
+`--no-settings` leaves them out on purpose.
+
+**Kept in step with apt.** The fork is in no apt repository, and the vendor
+repository's 0.38 sorts below `0.38+pyra3`, so apt keeps the fork. A vendor
+0.39 would replace it and satisfy pyra-settings' Depends without reading
+`/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
+is rebased.
+
 ## Fixes 6, 7 and 12 as a package
 
 All three change files that `pyra-hacks` owns, so the prep script and the
@@ -1757,6 +1806,7 @@ debs attached:
 | --- | --- | --- |
 | `0.38+pyra1` | 2026-10-20 | fixes 6, 7 and 12 (the wheel's taper, speakers only) |
 | `0.38+pyra2` | 2026-11-14 | the wheel drives the headphones too (fix 12, patch 0002) |
+| `0.38+pyra3` | 2026-11-14 | the wheel's off position has its own band, so it doesn't flutter at the bottom; prep's fix 26 installs this one |
 
 To install 0.38+pyra2 on the Pyra:
 
@@ -1784,7 +1834,7 @@ The running unit has had `0.38+pyra1` since 2026-10-20, replacing 0.38. The prev
 thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
-package.
+package; fix 26 installs `0.38+pyra3` along with pyra-settings.
 
 ### Surviving a package run: `pyra-thermal-guard`
 

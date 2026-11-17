@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Apply the twenty-five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-six known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
 #   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel]
-#                              [--backlight FILE | --no-backlight] [--set-password]
+#                              [--backlight FILE | --no-backlight]
+#                              [--settings FILE | --no-settings] [--set-password]
 #                              [--ssh-key FILE.pub] [--grow-on-boot] [--release]
 #                              /mnt [username]
 #
@@ -27,6 +28,13 @@
 # uses a .deb you have (pyra-backlight's ./build-deb.sh makes one);
 # --no-backlight leaves it out.
 #
+# Fix 26 installs pyra-settings (the Pyra's own settings app) and the
+# pyra-hacks fork it depends on (0.38+pyra3, which carries fixes 6, 7 and 12;
+# fix 12 then stands aside). With no option it downloads the pinned pyra-settings
+# release; while none is pinned it is left out. --settings FILE uses a .deb you
+# have (pyra-settings' build makes one); --no-settings leaves both out. It needs
+# fix 22's pyra-backlight.
+#
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
@@ -40,7 +48,7 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20, 22 and 24 run the image's own tools in a chroot, so a PC that is not
+# Fixes 14, 19, 20, 22, 24 and 26 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -70,6 +78,8 @@ KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-ke
 KERNEL_FILE=
 BACKLIGHT_MODE=auto     # auto: the pinned download if there is one; file: --backlight; none: --no-backlight
 BACKLIGHT_FILE=
+SETTINGS_MODE=auto      # auto: the pinned download if there is one; file: --settings; none: --no-settings
+SETTINGS_FILE=
 SET_PASSWORD=no
 SSH_KEY=
 GROW_ON_BOOT=no
@@ -85,6 +95,10 @@ while [[ $# -gt 0 ]]; do
                  BACKLIGHT_MODE=file; BACKLIGHT_FILE=$2; shift 2 ;;
     --backlight=*) BACKLIGHT_MODE=file; BACKLIGHT_FILE=${1#--backlight=}; shift ;;
     --no-backlight) BACKLIGHT_MODE=none; shift ;;
+    --settings)  [[ $# -ge 2 ]] || die "--settings needs a .deb"
+                 SETTINGS_MODE=file; SETTINGS_FILE=$2; shift 2 ;;
+    --settings=*) SETTINGS_MODE=file; SETTINGS_FILE=${1#--settings=}; shift ;;
+    --no-settings) SETTINGS_MODE=none; shift ;;
     --set-password) SET_PASSWORD=yes; shift ;;
     --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
                  SSH_KEY=$2; shift 2 ;;
@@ -99,7 +113,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--backlight FILE | --no-backlight] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--backlight FILE | --no-backlight] [--settings FILE | --no-settings] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -354,11 +368,28 @@ GIR_SHA256=5c75b6aae0881990a2555c83502d93d22fd3700265ba9eebaa5841de05dd5684
 GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
           https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
 STAGED_GIR=
+# Fix 26's two .debs. pyra-settings has no published release yet, so nothing is
+# pinned and a run without --settings leaves it out; when it is published, its
+# three lines are set the same way. The pyra-hacks fork is published: the
+# v0.38+pyra3 release asset, by SHA-256. A copy beside the pyra-settings .deb is
+# used instead, so a run can be offline.
+SETTINGS_TAG=
+SETTINGS_URL=
+SETTINGS_SHA256=
+SETTINGS_TMP=
+STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
+HACKS_VER=0.38+pyra3
+HACKS_DEB=pyra-hacks_0.38+pyra3_armhf.deb
+HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra3/pyra-hacks_0.38%2Bpyra3_armhf.deb
+HACKS_SHA256=3dd6e39c543ae4926e3747266dda1c1d2c402c4c7a05b477d172523676e7f3fa
+STAGED_HACKS=
 cleanup() {
     [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
     [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
     [[ -n $BACKLIGHT_TMP ]] && rm -rf -- "$BACKLIGHT_TMP"
-    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" ${STAGED_GIR:+"$STAGED_GIR"}
+    [[ -n $SETTINGS_TMP ]] && rm -rf -- "$SETTINGS_TMP"
+    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" ${STAGED_GIR:+"$STAGED_GIR"} \
+        ${STAGED_HACKS:+"$STAGED_HACKS"}
 }
 trap cleanup EXIT
 
@@ -527,6 +558,93 @@ $GIR_MISSING
 $BL_MISSING
        Nothing has been written."
     ok "fix22: pyra-backlight $BL_VER; the image has everything it depends on${BL_WITH:+, with $GIR_PKG added}"
+fi
+
+# Fix 26, the same way as fix 22: the pyra-settings .deb is found, downloaded
+# and checked now, with the pyra-hacks fork it depends on, so a wrong file or a
+# missing dependency stops prep before fix 1. The fork is skipped when the image
+# already has it (or later); the vendor's 0.38 is replaced.
+if [[ $SETTINGS_MODE == auto ]]; then
+    if [[ -z $SETTINGS_URL || -z $SETTINGS_SHA256 ]]; then
+        info "fix26: no pyra-settings release is pinned yet, so the card gets no settings app.
+       Pass --settings FILE (pyra-settings' build makes one) to install it."
+        SETTINGS_MODE=none
+    elif [[ $BACKLIGHT_MODE == none ]]; then
+        warn "fix26: pyra-settings depends on pyra-backlight, which is left out; no settings app either"
+        SETTINGS_MODE=none
+    else
+        command -v curl >/dev/null || die "fix26: the download needs curl on this PC"
+        SETTINGS_TMP=$(mktemp -d)
+        SETTINGS_FILE=$SETTINGS_TMP/pyra-settings.deb
+        info "fix26: downloading $SETTINGS_URL"
+        curl -fL --proto '=https' --tlsv1.2 -o "$SETTINGS_FILE" "$SETTINGS_URL" ||
+            die "fix26: the download failed; nothing has been written"
+        sum=$(sha256sum "$SETTINGS_FILE" | cut -d' ' -f1)
+        [[ $sum == "$SETTINGS_SHA256" ]] ||
+            die "fix26: the download's SHA-256 is $sum, not the pinned $SETTINGS_SHA256. Not installing it."
+        ok "fix26: the download matches the pinned SHA-256"
+        SETTINGS_MODE=file
+    fi
+elif [[ $SETTINGS_MODE == none ]]; then
+    warn "fix26: --no-settings: pyra-settings will not be installed"
+fi
+if [[ $SETTINGS_MODE == file ]]; then
+    [[ $BACKLIGHT_MODE == file ]] ||
+        die "fix26: pyra-settings depends on pyra-backlight, which --no-backlight leaves out; add --no-settings too"
+    [[ -r $SETTINGS_FILE ]] || die "fix26: no .deb at $SETTINGS_FILE"
+    if [[ -z $SETTINGS_TMP ]]; then
+        sum=$(sha256sum "$SETTINGS_FILE" | cut -d' ' -f1)
+        if [[ -n $SETTINGS_SHA256 && $sum == "$SETTINGS_SHA256" ]]; then
+            ok "fix26: $SETTINGS_FILE is the published release $SETTINGS_TAG"
+        else
+            info "fix26: $SETTINGS_FILE is not the published release (a local build?); installing it as given"
+        fi
+    fi
+    install -m 0644 -o 0 -g 0 "$SETTINGS_FILE" "$STAGED_SETTINGS"
+    ST_DEB=${STAGED_SETTINGS#$ROOT}
+    ST_PKG=$(in_chroot dpkg-deb -f "$ST_DEB" Package 2>/dev/null) ||
+        die "fix26: $SETTINGS_FILE is not a .deb the image's dpkg-deb can read; nothing has been written"
+    [[ $ST_PKG == pyra-settings ]] ||
+        die "fix26: $SETTINGS_FILE is the package '$ST_PKG', not pyra-settings; nothing has been written"
+    ST_VER=$(in_chroot dpkg-deb -f "$ST_DEB" Version)
+    ST_WITH=()
+    have=$(in_chroot dpkg-query -W -f='${db:Status-Abbrev}|${Version}' pyra-hacks 2>/dev/null || true)
+    if [[ $have == ii*'|'* ]] && in_chroot dpkg --compare-versions "${have#*|}" ge "$HACKS_VER"; then
+        ok "fix26: the image already has pyra-hacks ${have#*|}"
+    else
+        hk=$(dirname -- "$SETTINGS_FILE")/$HACKS_DEB
+        if [[ -r $hk ]]; then
+            info "fix26: using $hk"
+        else
+            command -v curl >/dev/null || die "fix26: fetching the pyra-hacks fork needs curl on this PC"
+            [[ -n $SETTINGS_TMP ]] || SETTINGS_TMP=$(mktemp -d)
+            hk=$SETTINGS_TMP/$HACKS_DEB
+            hv=${have#*|}
+            info "fix26: the image has pyra-hacks ${hv:-(none)}; downloading $HACKS_URL"
+            curl -fL --proto '=https' --tlsv1.2 -o "$hk" "$HACKS_URL" ||
+                die "fix26: could not download $HACKS_DEB; nothing has been written.
+       Put it beside $SETTINGS_FILE to run without the network."
+        fi
+        sum=$(sha256sum "$hk" | cut -d' ' -f1)
+        [[ $sum == "$HACKS_SHA256" ]] ||
+            die "fix26: $hk has SHA-256 $sum, not the pinned $HACKS_SHA256. Not installing it."
+        ok "fix26: $HACKS_DEB matches the pinned SHA-256"
+        STAGED_HACKS=$ROOT/var/tmp/pyra-prep-$HACKS_DEB
+        install -m 0644 -o 0 -g 0 "$hk" "$STAGED_HACKS"
+        HK_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "${STAGED_HACKS#$ROOT}") ||
+            die "fix26: could not read the dependencies of $HACKS_DEB"
+        [[ -z $HK_MISSING ]] || die "fix26: the image lacks what pyra-hacks $HACKS_VER depends on:
+$HK_MISSING
+       Nothing has been written."
+        ST_WITH=("${STAGED_HACKS#$ROOT}")
+    fi
+    # dpkg itself checks the versions of these two when it installs.
+    ST_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "$ST_DEB" pyra-hacks pyra-backlight) ||
+        die "fix26: could not read the dependencies of $SETTINGS_FILE"
+    [[ -z $ST_MISSING ]] || die "fix26: the image lacks what pyra-settings $ST_VER depends on:
+$ST_MISSING
+       Nothing has been written."
+    ok "fix26: pyra-settings $ST_VER; the image has everything it depends on${ST_WITH:+, with pyra-hacks $HACKS_VER added}"
 fi
 
 
@@ -1237,6 +1355,25 @@ fi
 # falls back to the packaged daemon if that fails. The package is untouched;
 # a drop-in points its unit at the runner.
 
+#
+# Fix 26's pyra-hacks fork carries the same calibrated daemon in the package,
+# and pyra-settings reads and writes the config only the fork's reads. With fix
+# 26 installing, fix 12 stands aside: it writes nothing and removes what an
+# earlier run wrote, so the packaged unit runs the fork's binary.
+WHEEL_PATHS="/etc/systemd/system/pyra_volumed.service.d/calibrated.conf /usr/local/sbin/pyra-volumed-run
+             /usr/local/bin/pyra_volumed /usr/local/src/pyra-volumed/pyra_volumed.c"
+if [[ $SETTINGS_MODE == file ]]; then
+    WHEEL_GONE=0
+    for x in $WHEEL_PATHS; do
+        [[ -e $ROOT$x ]] && { rm -f -- "$ROOT$x"; WHEEL_GONE=1; }
+    done
+    rmdir -- "$ROOT/etc/systemd/system/pyra_volumed.service.d" "$ROOT/usr/local/src/pyra-volumed" 2>/dev/null || true
+    if [[ $WHEEL_GONE -eq 1 ]]; then
+        ok "fix12: removed its files; the pyra-hacks fork (fix 26) carries the calibrated wheel"
+    else
+        ok "fix12: left to the pyra-hacks fork (fix 26), which carries the calibrated wheel"
+    fi
+else
 WHEEL_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/pyra-fix12.XXXXXX")
 if ! WHEEL_FILES=$("$WHEEL_FIX" --emit-into "$WHEEL_STAGE" 2>&1); then
     rm -rf "$WHEEL_STAGE"
@@ -1267,6 +1404,7 @@ rm -rf "$WHEEL_STAGE"
 
 if [[ $WHEEL_CHANGED -eq 1 ]]; then
     ok "fix12: the volume wheel will be built on first boot and map evenly in dB"
+fi
 fi
 
 # ---------------------------------------------------------------------- fix 13
@@ -1932,6 +2070,43 @@ XSM=$(readlink "$ROOT/etc/alternatives/x-session-manager" 2>/dev/null || true)
 [[ ${XSM##*/} == mate-session* ]] ||
     warn "fix25: x-session-manager is ${XSM:-unset} on the image, not mate-session; the GL-check snippet will do nothing"
 ok "fix25: logins skip ukui-polkit's 30 s timeout and mate-session's GL check"
+
+# ---------------------------------------------------------------------- fix 26
+#
+# pyra-settings is a GTK app for what only the Pyra has (which buttons and the
+# lid wake it, the lid and idle actions, the volume wheel). Its root helper runs
+# through pkexec, and pyra-settings-apply.service, which its postinst enables,
+# applies the saved choices at boot. It depends on the pyra-hacks fork, whose
+# pyra_volumed reads /etc/pyra_volumed.conf; the fork also carries fixes 6 and 7
+# (the hook that guards them finds nothing to change) and fix 12 (which stood
+# aside above). One dpkg run installs both, in the chroot. The wake-button page
+# needs patches/0053 in the kernel; on a kernel without it the app says so.
+
+if [[ $SETTINGS_MODE == file ]]; then
+    have=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-settings 2>/dev/null || true)
+    if [[ $have == "$ST_VER ii"* && ${#ST_WITH[@]} -eq 0 ]]; then
+        ok "fix26: pyra-settings $ST_VER already installed"
+    else
+        chroot_mount
+        info "fix26: installing pyra-settings $ST_VER${ST_WITH:+ and pyra-hacks $HACKS_VER} with the image's dpkg"
+        if ! out=$(in_chroot dpkg -i "${ST_WITH[@]}" "$ST_DEB" 2>&1); then
+            die "fix26: dpkg -i failed in the chroot:
+$out"
+        fi
+        chroot_unmount
+        ok "fix26: installed pyra-settings $ST_VER (was: ${have:-not installed})"
+    fi
+    rm -f -- "$STAGED_SETTINGS" ${STAGED_HACKS:+"$STAGED_HACKS"}
+    ST_WANTS=$ROOT/etc/systemd/system/multi-user.target.wants/pyra-settings-apply.service
+    [[ -L $ST_WANTS ]] || die "fix26: pyra-settings-apply.service is not enabled (no ${ST_WANTS#$ROOT})"
+    # The fork's thermal daemon must be one fixes 6 and 7 already find fixed,
+    # or their dpkg hook would rewrite a packaged file on every package run.
+    for fx in "$THERMAL_FIX" "$LADDER_FIX"; do
+        "$fx" --emit-patched "$THERMAL_DST" 2>/dev/null | cmp -s - "$THERMAL_DST" ||
+            die "fix26: the installed pyra-hacks' ${THERMAL_DST#$ROOT} is not one $(basename "$fx") finds fixed"
+    done
+    ok "fix26: pyra-settings is installed, applies its settings at boot, and pyra-hacks carries fixes 6, 7 and 12"
+fi
 
 # ------------------------------------------------------------------- release
 #

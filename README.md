@@ -114,6 +114,11 @@ the session goes idle. The same way, it downloads the package from its
 [release](https://github.com/daniel-mcdonough/pyra-backlight/releases/tag/v0.8) and checks it against a pinned hash;
 `--backlight FILE` takes a `.deb` you have, and `--no-backlight` leaves it out.
 
+With `--settings FILE` it installs `pyra-settings` (fix 26), the Pyra's own
+settings app (wake buttons, lid, idle, volume wheel), with the pyra-hacks fork it
+depends on. pyra-settings has no published release yet, so without the option
+it is left out.
+
 The vendor image ships its ssh host keys and machine-id, the same on every card.
 Prep removes them (fix 23), and the card makes its own on its first boot. If
 your PC has reached another Pyra at the same address, ssh warns once that the
@@ -189,7 +194,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twenty-five fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The twenty-six fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

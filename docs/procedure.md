@@ -32,9 +32,10 @@ fix 22 installs a brightness applet and an idle dimmer that reach the screen,
 fix 23 removes the ssh host keys and machine-id every vendor card shares,
 fix 24 makes MATE shut down rather than try to hibernate at critical battery, and
 fix 25 takes the login from about 35 s to a few seconds by hiding a second
-polkit agent and skipping mate-session's GL check.
+polkit agent and skipping mate-session's GL check, and fix 26 installs the
+Pyra's own settings app when given one.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-five fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-six fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
@@ -144,7 +145,9 @@ skipped. For fix 22 it lets prep download the pinned pyra-backlight release
 `.deb` to pass with `--backlight` instead, and `PYRA_BACKLIGHT_DEB=none` runs
 prep with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
 package and a `pyra-backlight` with a dependency no image has, and requires
-each to stop prep before fix 1 writes. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
+each to stop prep before fix 1 writes. For fix 26, `PYRA_SETTINGS_DEB` names the
+pyra-settings `.deb` to pass with `--settings`; unset, while no release is
+pinned, or `=none`, nothing is installed and a skip is counted. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
 Note: if you ran the prep script by hand above, the image file itself is now
 prepared, with the user you named and the initrds rebuilt. You can `dd` *that*
@@ -302,6 +305,14 @@ have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz --backlight pyra-backlight_0.8_all.deb /mnt/pyra yourusername
 
 `--no-backlight` leaves it out.
+
+**Settings app (fix 26).** `--settings FILE` installs `pyra-settings` and the
+pyra-hacks fork `0.38+pyra3` it depends on (pinned by SHA-256, from a copy beside
+the `.deb` or else its release), the same way. It needs fix 22's pyra-backlight.
+pyra-settings has no published release yet, so without the option it is left
+out; `--no-settings` says so explicitly.
+
+    sudo ./pc/pyra-trixie-prep.sh --settings pyra-settings_0.13_all.deb /mnt/pyra yourusername
 
 ---
 
@@ -638,7 +649,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the twenty-five fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
+and of the twenty-six fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

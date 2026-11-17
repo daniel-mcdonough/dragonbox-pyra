@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 25 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 26 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -38,6 +38,14 @@
 # beside that .deb. A .deb that is not
 # pyra-backlight, and one whose dependency the image lacks, are made here and
 # must each stop prep before fix 1 writes anything.
+#
+# Fix 26 installs pyra-settings and the pyra-hacks fork: PYRA_SETTINGS_DEB names
+# the pyra-settings .deb (--settings). Unset, prep downloads the pinned release
+# if there is one; while none is pinned, and with PYRA_SETTINGS_DEB=none
+# (--no-settings), nothing is installed and that is a SKIP. The fork is
+# downloaded (pinned) unless a copy sits beside that .deb. A .deb that is not
+# pyra-settings, and --settings with --no-backlight, must each stop prep before
+# fix 1 writes anything.
 #
 # Fix 21's guard is fired by a real reinstall of the vendor's dri3wsegl-pyra 0.4
 # deb when PYRA_WSEGL_DEB (by default the package archive beside the
@@ -69,6 +77,7 @@ KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
 KREL=5.6.19-m4-kbdled
 KSLOT=l5
 BDEB=${PYRA_BACKLIGHT_DEB:-}
+SDEB=${PYRA_SETTINGS_DEB:-}
 
 PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
 SKIPPED=()
@@ -154,6 +163,25 @@ elif [[ -n $BDEB ]]; then
     i "fix 22 installs $BDEB"
 else
     i "fix 22: prep downloads the pinned pyra-backlight release (network)"
+fi
+# SON: whether fix 26 installs pyra-settings in this run.
+SON=no
+if [[ $SDEB == none ]]; then
+    KARGS+=(--no-settings)
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 26 installed no pyra-settings (PYRA_SETTINGS_DEB=none)")
+    printf '\e[33mSKIP\e[0m  fix26: PYRA_SETTINGS_DEB=none; prep runs with --no-settings\n'
+elif [[ -n $SDEB ]]; then
+    [[ -r $SDEB ]] || { echo "PYRA_SETTINGS_DEB=$SDEB is not readable" >&2; exit 2; }
+    [[ $BDEB != none ]] || { echo "PYRA_SETTINGS_DEB needs pyra-backlight; unset PYRA_BACKLIGHT_DEB=none" >&2; exit 2; }
+    KARGS+=(--settings "$SDEB")
+    SON=yes
+    i "fix 26 installs $SDEB"
+elif [[ -n $(sed -n 's/^SETTINGS_SHA256=//p' "$PREP") && $BDEB != none ]]; then
+    SON=yes
+    i "fix 26: prep downloads the pinned pyra-settings release (network)"
+else
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 26 installed no pyra-settings (none pinned; set PYRA_SETTINGS_DEB to a .deb)")
+    printf '\e[33mSKIP\e[0m  fix26: no pyra-settings release is pinned and PYRA_SETTINGS_DEB is unset\n'
 fi
 
 ########################################################################
@@ -945,6 +973,47 @@ got=$(in_chroot sh -c 'STARTUP=/home/pyra/.xsession; . /etc/X11/Xsession.d/56pyr
 [[ $got == /home/pyra/.xsession ]] && p "fix25: a user's own ~/.xsession is left alone" || f "fix25: the snippet changed ~/.xsession to '$got'"
 
 ########################################################################
+i "assert fix 26 — pyra-settings and the pyra-hacks fork, installed by the image's dpkg"
+########################################################################
+WHEEL12="etc/systemd/system/pyra_volumed.service.d/calibrated.conf usr/local/sbin/pyra-volumed-run usr/local/src/pyra-volumed/pyra_volumed.c"
+if [[ $SON == yes ]]; then
+    if [[ -n $SDEB ]]; then
+        SVER=$(bsdtar -xOf "$SDEB" 'control.tar.*' | bsdtar -xOf - ./control | awk '/^Version:/{print $2}')
+    else
+        SVER=$(sed -n 's/^SETTINGS_TAG=v//p' "$PREP")
+        grep -qF 'fix26: the download matches the pinned SHA-256' "$OUT/prep-run1.log" \
+            && p "fix26: run 1 downloaded pyra-settings $SVER and it matched the pin" || f "fix26: run 1 did not report a matching download"
+    fi
+    HVER=$(sed -n 's/^HACKS_VER=//p' "$PREP")
+    SST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-settings 2>/dev/null || true)
+    [[ $SST == "$SVER ii"* ]] && p "fix26: dpkg has pyra-settings $SVER installed and configured" || f "fix26: dpkg says '$SST', want $SVER ii"
+    HST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-hacks 2>/dev/null || true)
+    [[ $HST == "$HVER ii"* ]] && p "fix26: dpkg has the pyra-hacks fork $HVER installed and configured" || f "fix26: pyra-hacks is '$HST', want $HVER ii"
+    for x in /usr/bin/pyra-settings /usr/libexec/pyra-settings/pyra-settings-helper; do
+        [[ -x $MNT$x ]] && p "fix26: $x is installed" || f "fix26: no executable $x"
+    done
+    [[ -f $MNT/usr/share/polkit-1/actions/org.pyra.settings.wake.policy ]] && p "fix26: its polkit action is installed" || f "fix26: no polkit action"
+    [[ $(readlink "$MNT/etc/systemd/system/multi-user.target.wants/pyra-settings-apply.service") == */pyra-settings-apply.service ]] \
+        && p "fix26: pyra-settings-apply.service is enabled" || f "fix26: pyra-settings-apply.service is not enabled"
+    SAUDIT=$(in_chroot dpkg --audit 2>&1 || true)
+    [[ -z $SAUDIT ]] && p "fix26: dpkg --audit finds nothing wrong" || f "fix26: dpkg --audit: $(head -3 <<<"$SAUDIT" | tr '\n' ' ')"
+    # The fork carries fixes 6 and 7: both scripts must find its daemon fixed.
+    TD=$MNT/usr/share/pyra/scripts/pyra-thermal.sh
+    for fx in pyra-thermal-fix.sh pyra-thermal-ladder.sh; do
+        "$PAYLOADS/$fx" --emit-patched "$TD" 2>/dev/null | cmp -s - "$TD" \
+            && p "fix26: $fx finds the fork's thermal daemon already fixed" || f "fix26: $fx would change the fork's thermal daemon"
+    done
+    W=0; for x in $WHEEL12; do [[ -e $MNT/$x ]] && W=1; done
+    [[ $W -eq 0 ]] && p "fix26: fix 12 stood aside; the packaged unit runs the fork's pyra_volumed" || f "fix26: fix 12's files are on the card beside the fork"
+else
+    printf '\e[33mSKIP\e[0m  fix26: assertions (no pyra-settings in this run)\n'
+    in_chroot dpkg-query -W pyra-settings >/dev/null 2>&1 \
+        && f "fix26: pyra-settings is installed though this run asked for none" || p "fix26: pyra-settings is not installed"
+    W=1; for x in $WHEEL12; do [[ -e $MNT/$x ]] || W=0; done
+    [[ $W -eq 1 ]] && p "fix26: without it, fix 12's calibrated wheel is in place" || f "fix26: without pyra-settings, fix 12's files are missing"
+fi
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -998,6 +1067,11 @@ for x in pyra-wsegl-fdfix.sh sbin/pyra-wsegl-guard dpkg.cfg.d/pyra-wsegl-guard; 
 done
 [[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run2.log") -eq 4 ]] \
     && p "run 2 reported fix23's unit, its link, the machine-id and the mask already in place" || f "run 2 did not report fix23's unit, link, machine-id and mask in place"
+if [[ $SON == yes ]]; then
+    grep -qE 'fix26: pyra-settings .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-settings already installed" || f "run 2 did not report pyra-settings already installed"
+    grep -qF 'fix26: the image already has pyra-hacks' "$OUT/prep-run2.log" && p "run 2 found the fork already installed" || f "run 2 did not find the fork already installed"
+    grep -qF 'fix12: left to the pyra-hacks fork' "$OUT/prep-run2.log" && p "run 2 reported fix 12 left to the fork" || f "run 2 did not report fix 12 left to the fork"
+fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
 
@@ -1132,6 +1206,33 @@ for c in "other-package|python3|is the package 'other-package', not pyra-backlig
     [[ $bpkg == pyra-backlight ]] && { grep -q 'pyra-selftest-no-such-package' <<<"$ABORT" && p "fix22: it names the missing dependency" || f "fix22: it did not name the missing dependency"; }
     [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "fix22: and it stopped before fix 1 wrote anything" || f "fix22: fix 1 ran before the .deb was refused"
     [[ ! -e $MNT/var/tmp/pyra-prep-backlight.deb ]] && p "fix22: and removed the staged .deb" || f "fix22: the staged .deb was left in /var/tmp"
+    rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+done
+
+########################################################################
+i "fix 26 — a wrong .deb, and pyra-settings without pyra-backlight, stop prep before fix 1 writes"
+########################################################################
+mkdeb "$OUT/selftest-not-settings.deb" other-package python3
+# The wrong .deb needs a real pyra-backlight beside it to reach fix 26's check:
+# the run's own, or the pinned download.
+BARGS=(); [[ -n $BDEB && $BDEB != none ]] && BARGS=(--backlight "$BDEB")
+SCASES=("--no-backlight|depends on pyra-backlight, which --no-backlight leaves out")
+[[ $BDEB != none ]] && SCASES+=("${BARGS[*]}|is the package 'other-package', not pyra-settings")
+for c in "${SCASES[@]}"; do
+    IFS='|' read -r sargs swant <<<"$c"
+    ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+    ARC=0
+    disarm
+    # shellcheck disable=SC2086  # the options split on purpose
+    ABORT=$("$PREP" --no-kernel $sargs --settings "$OUT/selftest-not-settings.deb" "$MNT" pyra 2>&1 </dev/null) || ARC=$?
+    arm
+    if [[ $ARC -ne 0 ]] && grep -qF "$swant" <<<"$ABORT"; then
+        p "fix26: a run where pyra-settings $swant stops prep (exit $ARC)"
+    else
+        f "fix26: pyra-settings $swant: exit $ARC:"; tail -3 <<<"$ABORT" | sed 's/^/      /'
+    fi
+    [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "fix26: and it stopped before fix 1 wrote anything" || f "fix26: fix 1 ran before prep stopped"
+    [[ ! -e $MNT/var/tmp/pyra-prep-settings.deb ]] && p "fix26: and left no staged .deb" || f "fix26: the staged .deb was left in /var/tmp"
     rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 done
 
