@@ -23,7 +23,10 @@
 #   pyra-trixie-prepped-<UTC stamp>.img      the image (sparse)
 #   pyra-trixie-prepped-<UTC stamp>.sha256   its checksum, for sha256sum -c
 #   pyra-trixie-prepped-<UTC stamp>.info     repository commit, prep options,
-#                                            kernel tarball checksum
+#                                            checksums of the files given to
+#                                            prep, and the versions of
+#                                            pyra-backlight, pyra-settings and
+#                                            pyra-hacks it installed
 # owned by the user who ran sudo. Needs qemu-user with binfmt, as prep does.
 
 set -euo pipefail
@@ -37,6 +40,7 @@ TOP=$(cd -- "$HERE/.." && pwd)
 PREP=$HERE/pyra-trixie-prep.sh
 BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$TOP/.." && pwd)/dragonbox-pyra-build}
 KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
+PREP_PKGS="pyra-backlight pyra-settings pyra-hacks"   # recorded in the .info
 # shellcheck source=pyra-vendor-image.sh
 . "$HERE/pyra-vendor-image.sh"
 
@@ -102,6 +106,17 @@ RC=${PIPESTATUS[0]}
 set -e
 [[ $RC -eq 0 ]] || die "prep exited $RC; see $BASE.prep.log. No image written"
 
+# What prep installed of the packages it can download or be given (fixes 22 and
+# 26), read from the image's dpkg status: a download leaves no file in
+# PREP_ARGS to checksum, and the PC may have no dpkg.
+INSTALLED=$(awk -v want=" $PREP_PKGS " '
+    /^Package: / { p = $2; st = ""; v = "" }
+    /^Status: /  { st = $0 }
+    /^Version: / { v = $2 }
+    /^$/ && index(want, " " p " ") && st ~ / installed$/ { print "installed_" p "=" v }
+    END { if (index(want, " " p " ") && st ~ / installed$/) print "installed_" p "=" v }
+' "$MNT/var/lib/dpkg/status")
+
 sync
 umount "$MNT/boot"
 umount "$MNT"
@@ -132,9 +147,10 @@ done
         if [[ -f $a && $a == *.tar.gz ]]; then
             echo "kernel_tarball=$(basename "$a") sha256=$(sha256sum < "$a" | cut -d' ' -f1)"
         elif [[ -f $a && $a == *.deb ]]; then
-            echo "backlight_deb=$(basename "$a") sha256=$(sha256sum < "$a" | cut -d' ' -f1)"
+            echo "deb=$(basename "$a") sha256=$(sha256sum < "$a" | cut -d' ' -f1)"
         fi
     done
+    [[ -z $INSTALLED ]] || echo "$INSTALLED"
 } > "$BASE.info"
 chown "$OWNER" "$OUT" "$BASE.sha256" "$BASE.info" "$BASE.prep.log" "$BASE.fsck.log"
 ok "image:    $OUT"

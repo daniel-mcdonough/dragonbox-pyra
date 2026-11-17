@@ -189,7 +189,10 @@ another machine, the one with the reader.
   (section 4, "An image to share"). One built that way was written and booted
   on a Pyra on 2026-11-01.
   Output goes to `../dragonbox-pyra-build/images/`: the image, a `.sha256`, and
-  an `.info` with the repository commit and prep options.
+  an `.info` with the repository commit, prep options, the checksums of the
+  files given to prep, and the versions of pyra-backlight, pyra-settings and
+  pyra-hacks the image got. pyra-settings goes in only from prep's pin or from
+  `--settings FILE` after `--` (fix 26).
 - **Push.** `pyra-image-push.sh` rsyncs the image to `PYRA_WRITER` (or the host
   given) and checks the checksum there. `PYRA_WRITER` can live in
   `pyra-local.conf`; copy `pyra-local.conf.example` to start one.

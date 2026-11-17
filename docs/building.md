@@ -983,6 +983,15 @@ pyra-backlight release (fix 22) and, since the vendor image lacks it,
 `gir1.2-matepanelapplet-4.0` from Debian, both checked against their SHA-256s.
 The runner needs network for both, as it does for the vendor image.
 
+It passes no `--settings` either, and should not: the image gets pyra-settings
+and the pyra-hacks fork only from prep's pins (fix 26), never from a `.deb` the
+workflow hands prep, which no checksum in the repository would cover. While
+pyra-settings has no pinned release, prep leaves it out, and the build step
+prints a warning saying so. Once it is pinned, the next run includes it with no
+change here. The `.info` names the versions prep installed
+(`installed_pyra-backlight=`, `installed_pyra-settings=`, `installed_pyra-hacks=`,
+read from the image's dpkg status), so a download is recorded as well as a file.
+
 **Publishing it.** Give the run a second input, `release_tag`, named
 `image-<name>` (for example `image-2026.11-r1`):
 

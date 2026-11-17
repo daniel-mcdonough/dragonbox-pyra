@@ -138,6 +138,11 @@ jobs:
           sudo env PYRA_VENDOR_7Z="$WORK/vendor/pyra-trixie-t1-brokenxorg.7z" \
             ./pc/pyra-image-build.sh --out "$WORK/image/$name.img" \
             -- --release --grow-on-boot --kernel "$WORK/kernel/m4-kbdled-kernel.tar.gz"
+          # Prep installs pyra-backlight and pyra-settings from their pins
+          # (fixes 22, 26), never from a file this workflow could hand it.
+          # Until pyra-settings has a pinned release, the image has no settings app.
+          grep -q '^installed_pyra-settings=' "$WORK/image/$name.info" ||
+            echo "::warning::no pyra-settings in this image: prep pins no pyra-settings release yet"
           echo "NAME=$name" >> "$GITHUB_ENV"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
@@ -185,7 +190,7 @@ jobs:
             echo "    sha256sum -c $NAME.img.xz.sha256"
             echo "    xzcat $NAME.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync"
             echo
-            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. \`$NAME.info\` records the commit, the prep options, and the vendor image and kernel checksums."
+            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. \`$NAME.info\` records the commit, the prep options, the vendor image and kernel checksums, and the versions of the Pyra packages prep installed."
             echo
             echo '```'
             cat "$NAME.info"
