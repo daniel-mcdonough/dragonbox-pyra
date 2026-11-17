@@ -121,32 +121,22 @@ host key changed.
 
 ## Do these after the first boot
 
-**Turn off suspend.** On the stock kernel it never completes, and a failed
-attempt leaves you a frozen desktop with a working mouse pointer. Unless
-`uname -r` says `5.6.19-m4-kbdled`, mask it so an idle timeout fails harmlessly
-instead:
-
-    sudo systemctl mask sleep.target suspend.target hybrid-sleep.target \
-                        suspend-then-hibernate.target hibernate.target
-
-The shipped kernel fixes this properly (see below).
-
-**The display can wedge when the screen blanks.** Rarely, but when it does a
-core spins at 100% and only a reboot recovers it. The workaround is to stop the
-screen blanking; [docs/troubleshooting.md](docs/troubleshooting.md) has the
-three settings. A fix has been written but is not yet confirmed.
-
-**External HDMI doesn't work yet.** A monitor gets a picture only at 640x480;
+**External HDMI doesn't work.** A monitor gets a picture only at 640x480;
 higher modes show black. Plugging a monitor in while the desktop runs can also
 hang the 2D GPU and lock up X until a reboot (`sync; sudo systemctl reboot -f`).
 Leave HDMI unplugged for now. [docs/troubleshooting.md](docs/troubleshooting.md),
 "An HDMI monitor shows nothing above 640x480", has what is known.
 
+**Don't run `x11perf`.** It forces dozens of display mode changes, and on the
+stock kernel that hung X twice. [docs/troubleshooting.md](docs/troubleshooting.md),
+"The X server can hang in a modeset".
+
 **Brightness.** A prepared card has `pyra-backlight` (fix 22). Its slider is
-on the panel, left of the notification area, from the first login. Its
-`pyra-idle-dim` dims the screen after MATE's idle delay
+on the panel. Its `pyra-idle-dim` dims the screen after MATE's idle delay
 (`gsettings set org.mate.session idle-delay 5`, in minutes). Section 8 of
-`docs/procedure.md` has both of these in full.
+`docs/procedure.md` has both of these in full. On a card prepared with
+`--no-kernel`, or booted back on `l0`, read the same section's note on
+suspend first: the stock kernel can't complete one.
 
 ## If something goes wrong
 
@@ -161,8 +151,7 @@ on the panel, left of the notification area, from the first login. Its
 ## The shipped kernel
 
 The kernel this project ships is `5.6.19-m4-kbdled`, and a prepared card boots
-it (fix 19); the image's stock `5.6.19-pyradef` stays on the card as `l0`. It carries every kernel patch in `patches/`: the
-suspend fix, the nubs dying after a resume, the built-in keyboard going silent,
+it (fix 19); the image's stock `5.6.19-pyradef` stays on the card as `l0`. It carries every kernel patch in `patches/`: the suspend fix, the nubs dying after a resume, the built-in keyboard going silent,
 the noise on every resume, the root filesystem mounting a minute late, and the
 candidate display fix. On top of that it carries the AESS audio path with
 headphone-jack switching, the SGX powering off at idle, five extra CPU
@@ -186,8 +175,6 @@ controls it too.
 ---
 
 ## Documentation
-
-Each document stands alone. Read the one that matches what you are doing.
 
 The line under each document's title says what kind it is: **instructions** (steps to
 follow), **reference** (how things are and why), or **log** (a dated record: history,
@@ -236,7 +223,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/decisions.md](docs/decisions.md) | Where this deviates from the original forum writeup, and what was rejected. |
 | `reports/` | Findings written up for submission upstream. |
 
-### Logs: history, not instructions
+### Logs:
 
 | Document | What it covers |
 | --- | --- |
@@ -247,7 +234,9 @@ not instructions). The logs are listed separately at the end.
 | [docs/verification-log.md](docs/verification-log.md) | What was checked against the image and the hardware, dated. |
 
 Some documents cite "the development log §N". That is the dated working log kept
-with the private development notes; it is not published.
+with the private development notes; it is not published. The notes can be provided if requested.
+They were kept out of the repo due to them containing local configuration information and
+adding noise to the repo.
 
 ## What is in the repository
 
@@ -260,12 +249,8 @@ with the private development notes; it is not published.
     docs/        one document per job, listed above
 
 The scripts are idempotent and refuse to run against anything that is not what
-they expect. The ones that take a device argument write to it, so read the
-header comment before the first run. [docs/scripts.md](docs/scripts.md) lists
+they expect. [docs/scripts.md](docs/scripts.md) lists
 them all.
-
-The image, the upstream archive and card dumps are gitignored: they are large,
-and reproducible from the sources below.
 
 ## Licence
 
