@@ -336,11 +336,11 @@ KERNEL_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/
 KERNEL_SHA256=aa2498ff85d8b451f3171c7935e52e323a076562578ff70508e5aa1148753bc2
 KERNEL_TMP=
 STAGED_KERNEL=$ROOT/var/tmp/pyra-prep-kernel.tar.gz
-# Fix 22's published .deb, the same way: pyra-backlight's v0.2 release asset,
+# Fix 22's published .deb, the same way: pyra-backlight's v0.8 release asset,
 # the SHA-256 of the file as published. All three change together.
-BACKLIGHT_TAG=v0.2
-BACKLIGHT_URL=https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.2/pyra-backlight_0.2_all.deb
-BACKLIGHT_SHA256=d6e1ae62ce5ae1310e88c6719b6152ddc04c5241503933e535e79c9508999d10
+BACKLIGHT_TAG=v0.8
+BACKLIGHT_URL=https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.8/pyra-backlight_0.8_all.deb
+BACKLIGHT_SHA256=2c25bbf314fc6f3dbd9a27e83cf6567de3f64e46d01525e610a97d4d8430f87a
 BACKLIGHT_TMP=
 STAGED_BACKLIGHT=$ROOT/var/tmp/pyra-prep-backlight.deb
 # The one package pyra-backlight needs that the vendor image lacks: the MATE
