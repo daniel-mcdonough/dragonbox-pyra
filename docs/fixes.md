@@ -1480,6 +1480,18 @@ an LED (`*::kbd_backlight`, as on `5.6.19-m4-kbdled`). It carries:
 - `pyra-idle-dim`, a user service that dims the screen after
   `org.mate.session idle-delay` and brings it back on wake. The package's
   postinst enables it for every user (`/etc/systemd/user/default.target.wants`).
+- `pyra-greeter-kbd-light` (from 0.5), which turns the keyboard light on at
+  lightdm's login screen, at boot and after every logout. A drop-in in
+  `/usr/share/lightdm/lightdm.conf.d/` makes it lightdm's
+  `greeter-setup-script`. The vendor's `90_pyra.conf` sets no such script
+  (checked against `pyra-config-desktop` 0.39, 2026-11-17). An empty
+  `greeter-setup-script=` in a file under `/etc/lightdm/lightdm.conf.d/` turns
+  it off.
+
+The package (from 0.6) also sets MATE's `kbd-brightness-on-ac` default to 20 (upstream
+100), the login screen's level. Without that, the keyboard light jumps to full
+for about a second at a login on AC. Nothing in the vendor image or this repo
+sets that key.
 
 MATE's `backlight-enable` stays false, or the two would dim the panel at once
 (`procedure.md` §8). So MATE's own brightness controls do nothing: the slider in
