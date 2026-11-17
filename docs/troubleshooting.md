@@ -1685,7 +1685,7 @@ goes through logind, so it needs no privileges. It ships in the
 service for everyone. Prep installs it (fix 22); on a card prepped without it:
 
     ./build-deb.sh                                   # on the PC, in a checkout of pyra-backlight
-    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra
+    sudo apt install ./pyra-backlight_0.8_all.deb    # on the Pyra
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
 It listens for the session manager's idle signal, so **the delay is whatever

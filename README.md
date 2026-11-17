@@ -111,7 +111,7 @@ name with `--kernel FILE`. `--no-kernel` keeps the stock `5.6.19-pyradef`.
 It also installs `pyra-backlight` (fix 22): a panel applet with sliders for the
 screen and the keyboard light, and `pyra-idle-dim`, which dims the screen when
 the session goes idle. The same way, it downloads the package from its
-[release](https://github.com/daniel-mcdonough/pyra-backlight/releases/tag/v0.2) and checks it against a pinned hash;
+[release](https://github.com/daniel-mcdonough/pyra-backlight/releases/tag/v0.8) and checks it against a pinned hash;
 `--backlight FILE` takes a `.deb` you have, and `--no-backlight` leaves it out.
 
 The vendor image ships its ssh host keys and machine-id, the same on every card.
@@ -169,7 +169,7 @@ suspend back on and checking each fix took.
 
 On this kernel the keyboard light is an LED, which the stock Fn-key script
 cannot find. Prep's fix 15 (and `pyra-push-helpers.sh`) point the Fn keys at
-`pyra-kbdlight.sh`, which drives it; the `pyra-backlight` 0.2 panel applet
+`pyra-kbdlight.sh`, which drives it; the `pyra-backlight` panel applet
 controls it too.
 
 ---

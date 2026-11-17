@@ -1521,10 +1521,9 @@ does nothing. (Found by the selftest, 2026-11-02: a card where the package had
 been installed by hand had the bindings, and the vendor image does not.)
 
 The `.deb` comes from `--backlight FILE`, or by default from pyra-backlight's
-release, checked against `BACKLIGHT_SHA256` in the script: v0.2's
-`pyra-backlight_0.2_all.deb`, SHA-256 `d6e1ae62…9d10` as published (built by
-that repository's release workflow, so it differs from a local `./build-deb.sh`
-build in the gzipped man page's timestamp and nothing else). A `.deb` given with
+release, checked against `BACKLIGHT_SHA256` in the script: v0.8's
+`pyra-backlight_0.8_all.deb`, SHA-256 `2c25bbf3…f87a` as published (built by
+that repository's release workflow). A `.deb` given with
 `--backlight` that matches the pin is reported as the release; any other is
 installed as given. `--no-backlight` leaves it out.
 

@@ -931,7 +931,7 @@ What to expect on it:
 - The stock Fn keyboard-brightness script, `pyra-brightkey.sh`, hard-codes
   `/sys/class/backlight/keyboard-backlight`, which is gone. Prep's fix 15
   points the keys at `pyra-kbdlight.sh`, which drives the LED in the same nine
-  steps as before (`fixes.md`); the `pyra-backlight` 0.2 applet does too.
+  steps as before (`fixes.md`); the `pyra-backlight` applet does too.
 - MATE's power manager now reaches the keyboard light through UPower and
   applies its stock keyboard settings, whatever `backlight-enable` says. On
   battery it halves the light at each power change, cuts it by 75 % when idle

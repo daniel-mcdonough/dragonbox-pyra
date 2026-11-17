@@ -296,10 +296,10 @@ vendor image lacks one, `gir1.2-matepanelapplet-4.0`: prep adds Debian's build
 of it, pinned by SHA-256, from a copy beside the pyra-backlight `.deb` or else
 from `deb.debian.org` (`fixes.md`, fix 22). With no option it
 downloads the `.deb` from pyra-backlight's release and installs it only if it
-matches the SHA-256 pinned in the script (v0.2). To use a `.deb` you already
+matches the SHA-256 pinned in the script (v0.8). To use a `.deb` you already
 have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
 
-    sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz --backlight pyra-backlight_0.2_all.deb /mnt/pyra yourusername
+    sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz --backlight pyra-backlight_0.8_all.deb /mnt/pyra yourusername
 
 `--no-backlight` leaves it out.
 
@@ -565,15 +565,15 @@ before it dims:
 On a card prepared without it, download the `.deb` from its release on the
 Pyra and install it:
 
-    wget https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.2/pyra-backlight_0.2_all.deb
-    sudo apt install ./pyra-backlight_0.2_all.deb
+    wget https://github.com/daniel-mcdonough/pyra-backlight/releases/download/v0.8/pyra-backlight_0.8_all.deb
+    sudo apt install ./pyra-backlight_0.8_all.deb
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
 or build it yourself on the PC:
 
     git clone https://github.com/daniel-mcdonough/pyra-backlight.git
-    cd pyra-backlight && ./build-deb.sh              # makes dist/pyra-backlight_0.2_all.deb
-    sudo apt install ./pyra-backlight_0.2_all.deb    # on the Pyra, after copying it over
+    cd pyra-backlight && ./build-deb.sh              # makes dist/pyra-backlight_0.8_all.deb
+    sudo apt install ./pyra-backlight_0.8_all.deb    # on the Pyra, after copying it over
     systemctl --user start pyra-idle-dim.service     # or log out and in
 
 The service takes its timing from `idle-delay` and has no timer of its own, so
