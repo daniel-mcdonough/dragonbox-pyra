@@ -1128,7 +1128,7 @@ of two things:
 - **A driver change**, `patches/0053`. It gives every `gpio-keys` device
   writable `wakeup_keys` and `wakeup_switches` files, in the keycode-list
   format `disabled_keys` uses. The device tree supplies the starting set.
-  Not in `kernel-5.6.19-r2`; see `kernel-changes.md`.
+  In `kernel-5.6.19-r3`, which prep installs, and not in r2 or earlier; see `kernel-changes.md`.
 
 **With `patches/0053`, per button at runtime.** The Pyra's game-button codes:
 
@@ -1513,7 +1513,7 @@ same once at the end of probe so the driver always starts from a released pin.
 The same signature, but straight after a suspend: the pointer moves, the unlock
 dialog's clock ticks, and typing does nothing. `INT_STAT` reads `0x01`, events
 are queued, and the tca8418 count is frozen. The shipped `5.6.19-m4-kbdled`
-from kernel release `kernel-5.6.19-r1` has it; `kernel-5.6.19-r2` fixes it.
+from kernel release `kernel-5.6.19-r1` has it; `kernel-5.6.19-r2` and later fix it.
 
 It happens when a key changes state while the machine is asleep: a key held
 into the suspend and released during it is the reliable way, and the Suspend

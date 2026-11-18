@@ -13,7 +13,7 @@ the SGX, all the on-board hardware checks out, and the rootfs fills the card.
 lightdm starts, the greeter renders on the panel, and the unit is reachable over
 SSH as `pyra`.
 
-Twenty-three fixes are needed, and `fixes.md` explains each one. Most of them are not
+Twenty-six fixes are needed, and `fixes.md` explains each one. Most of them are not
 in the original forum writeup: fix 4 supersedes fix 1, because the documented
 DRI symlink does not work on mesa 25.x and never could; fix 5 keeps USB alive
 across a warm reboot; fix 6 makes the thermal daemon able to apply a frequency
@@ -289,7 +289,7 @@ already have, downloaded or built with `./pc/pyra-crossbuild.sh kernel-m4-kbdled
 
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra yourusername
 
-The pinned release is `kernel-5.6.19-r2`. `--no-kernel` prepares a card
+The pinned release is `kernel-5.6.19-r3`. `--no-kernel` prepares a card
 that boots the stock `5.6.19-pyradef`, with every other fix in place. The card
 boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
 not come up on the new kernel, `troubleshooting.md`, "The card does not boot

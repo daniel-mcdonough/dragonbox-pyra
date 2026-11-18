@@ -244,7 +244,7 @@ Report: `reports/kernel-input-tca8418-lost-interrupt.md` (patch 2 of that series
 **0050 tested 2026-11-11** on the V5.3 unit, as `5.6.19-m4-kbdled-test` (`kernel-m4-kbdled`
 under its own release name) booted once from l1: a key let go of while asleep left the
 keyboard working 3 of 3, against dead on the shipped `5.6.19-m4-kbdled` (`verification-log.md`).
-It ships in `kernel-5.6.19-r2`, which fix 19 pins. Checked again on r2 itself 2026-11-12: a key
+It ships from `kernel-5.6.19-r2` on; fix 19 pins r3. Checked again on r2 itself 2026-11-12: a key
 held into a suspend and let go during it left the keyboard working.
 
 **0051 — drm/etnaviv: set `cmdbuf->suballoc` only once the allocation succeeded.**
@@ -278,8 +278,8 @@ Use: `troubleshooting.md`, "Every game button wakes the machine".
 **0053 tested 2026-11-12** on the V5.3 unit, as `5.6.19-m4-kbdled-test` booted once from l1:
 the three devices' `wakeup_keys` read back their device tree sets, a code the device lacks
 was refused and left the setting alone, and with the shoulder buttons taken out of the set
-a shoulder press slept through to the 45 s RTC backstop twice while A woke it in 9 s. Not in
-`kernel-5.6.19-r2`; it reaches users with the next kernel release.
+a shoulder press slept through to the 45 s RTC backstop twice while A woke it in 9 s. It ships
+in `kernel-5.6.19-r3` (run 44223360396), which fix 19 pins; r2 and earlier lack it.
 
 ---
 

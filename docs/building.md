@@ -967,7 +967,7 @@ script checks the archive and the image inside it, as it does on a PC. The
 kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
 workflow's one input is that run's ID: not a tag or release name, which the
 artifact download cannot find. Give the run that built the release prep pins
-(`kernel-5.6.19-r2`, run 43135826496; r1 was run 42940820801), so prep reports the tarball as that
+(`kernel-5.6.19-r3`, run 44223360396; r2 was run 43135826496, r1 run 42940820801), so prep reports the tarball as that
 release rather than "a local build". Taking the pinned release's asset instead
 of a run ID is not done yet.
 
