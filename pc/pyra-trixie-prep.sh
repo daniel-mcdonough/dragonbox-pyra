@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Apply the twenty-six known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-seven known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
 #   sudo ./pyra-trixie-prep.sh [--kernel FILE]
 #                              [--backlight FILE | --no-backlight]
-#                              [--settings FILE | --no-settings] [--set-password]
+#                              [--settings FILE | --no-settings]
+#                              [--sound FILE | --no-sound] [--set-password]
 #                              [--ssh-key FILE.pub] [--grow-on-boot] [--release]
 #                              /mnt [username]
 #
@@ -37,6 +38,10 @@
 # have (pyra-settings' build makes one); --no-settings leaves both out. It needs
 # fix 22's pyra-backlight.
 #
+# Fix 27 installs pyra-sound (the sound tray icon, which hides MATE's). With no
+# option it downloads the pinned release (v0.4); --sound FILE uses a .deb you
+# have; --no-sound leaves it out.
+#
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
@@ -50,7 +55,7 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20, 22, 24 and 26 run the image's own tools in a chroot, so a PC that is not
+# Fixes 14, 19, 20, 22, 24, 26 and 27 run the image's own tools in a chroot, so a PC that is not
 # armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -82,6 +87,8 @@ BACKLIGHT_MODE=auto     # auto: the pinned download if there is one; file: --bac
 BACKLIGHT_FILE=
 SETTINGS_MODE=auto      # auto: the pinned download if there is one; file: --settings; none: --no-settings
 SETTINGS_FILE=
+SOUND_MODE=auto         # auto: the pinned download; file: --sound; none: --no-sound
+SOUND_FILE=
 SET_PASSWORD=no
 SSH_KEY=
 GROW_ON_BOOT=no
@@ -100,6 +107,10 @@ while [[ $# -gt 0 ]]; do
                  SETTINGS_MODE=file; SETTINGS_FILE=$2; shift 2 ;;
     --settings=*) SETTINGS_MODE=file; SETTINGS_FILE=${1#--settings=}; shift ;;
     --no-settings) SETTINGS_MODE=none; shift ;;
+    --sound)     [[ $# -ge 2 ]] || die "--sound needs a .deb"
+                 SOUND_MODE=file; SOUND_FILE=$2; shift 2 ;;
+    --sound=*)   SOUND_MODE=file; SOUND_FILE=${1#--sound=}; shift ;;
+    --no-sound)  SOUND_MODE=none; shift ;;
     --set-password) SET_PASSWORD=yes; shift ;;
     --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
                  SSH_KEY=$2; shift 2 ;;
@@ -114,7 +125,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE] [--backlight FILE | --no-backlight] [--settings FILE | --no-settings] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE] [--backlight FILE | --no-backlight] [--settings FILE | --no-settings] [--sound FILE | --no-sound] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -382,12 +393,19 @@ HACKS_DEB=pyra-hacks_0.38+pyra3_armhf.deb
 HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra3/pyra-hacks_0.38%2Bpyra3_armhf.deb
 HACKS_SHA256=3dd6e39c543ae4926e3747266dda1c1d2c402c4c7a05b477d172523676e7f3fa
 STAGED_HACKS=
+# Fix 27's .deb, the release asset as published, by SHA-256.
+SOUND_TAG=v0.4
+SOUND_URL=https://github.com/daniel-mcdonough/pyra-sound/releases/download/v0.4/pyra-sound_0.4_all.deb
+SOUND_SHA256=67f9aa94496f1a7a824e2c128cc32592c7a7d68a8d0fe11e7347f5e96619eb62
+SOUND_TMP=
+STAGED_SOUND=$ROOT/var/tmp/pyra-prep-sound.deb
 cleanup() {
     [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
     [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
     [[ -n $BACKLIGHT_TMP ]] && rm -rf -- "$BACKLIGHT_TMP"
     [[ -n $SETTINGS_TMP ]] && rm -rf -- "$SETTINGS_TMP"
-    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" ${STAGED_GIR:+"$STAGED_GIR"} \
+    [[ -n $SOUND_TMP ]] && rm -rf -- "$SOUND_TMP"
+    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" "$STAGED_SOUND" ${STAGED_GIR:+"$STAGED_GIR"} \
         ${STAGED_HACKS:+"$STAGED_HACKS"}
 }
 trap cleanup EXIT
@@ -639,6 +657,50 @@ $HK_MISSING
 $ST_MISSING
        Nothing has been written."
     ok "fix26: pyra-settings $ST_VER; the image has everything it depends on${ST_WITH:+, with pyra-hacks $HACKS_VER added}"
+fi
+
+# Fix 27, the same way: the pyra-sound .deb is found, downloaded and checked
+# now. The vendor image has everything it depends on (python3-gi, GTK 3's
+# GObject bindings, pactl, alsa-utils), so the image's dpkg installs it alone
+# and no apt run or network is needed in the chroot.
+if [[ $SOUND_MODE == auto ]]; then
+    command -v curl >/dev/null || die "fix27: the download needs curl on this PC"
+    SOUND_TMP=$(mktemp -d)
+    SOUND_FILE=$SOUND_TMP/pyra-sound.deb
+    info "fix27: downloading $SOUND_URL"
+    curl -fL --proto '=https' --tlsv1.2 -o "$SOUND_FILE" "$SOUND_URL" ||
+        die "fix27: the download failed; nothing has been written"
+    sum=$(sha256sum "$SOUND_FILE" | cut -d' ' -f1)
+    [[ $sum == "$SOUND_SHA256" ]] ||
+        die "fix27: the download's SHA-256 is $sum, not the pinned $SOUND_SHA256. Not installing it."
+    ok "fix27: the download matches the pinned SHA-256"
+    SOUND_MODE=file
+elif [[ $SOUND_MODE == none ]]; then
+    warn "fix27: --no-sound: pyra-sound will not be installed; MATE's own sound icon stays"
+fi
+if [[ $SOUND_MODE == file ]]; then
+    [[ -r $SOUND_FILE ]] || die "fix27: no .deb at $SOUND_FILE"
+    if [[ -z $SOUND_TMP ]]; then
+        sum=$(sha256sum "$SOUND_FILE" | cut -d' ' -f1)
+        if [[ $sum == "$SOUND_SHA256" ]]; then
+            ok "fix27: $SOUND_FILE is the published release $SOUND_TAG"
+        else
+            info "fix27: $SOUND_FILE is not the published release (a local build?); installing it as given"
+        fi
+    fi
+    install -m 0644 -o 0 -g 0 "$SOUND_FILE" "$STAGED_SOUND"
+    SO_DEB=${STAGED_SOUND#$ROOT}
+    SO_PKG=$(in_chroot dpkg-deb -f "$SO_DEB" Package 2>/dev/null) ||
+        die "fix27: $SOUND_FILE is not a .deb the image's dpkg-deb can read; nothing has been written"
+    [[ $SO_PKG == pyra-sound ]] ||
+        die "fix27: $SOUND_FILE is the package '$SO_PKG', not pyra-sound; nothing has been written"
+    SO_VER=$(in_chroot dpkg-deb -f "$SO_DEB" Version)
+    SO_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "$SO_DEB") ||
+        die "fix27: could not read the dependencies of $SOUND_FILE"
+    [[ -z $SO_MISSING ]] || die "fix27: the image lacks what pyra-sound $SO_VER depends on:
+$SO_MISSING
+       Nothing has been written."
+    ok "fix27: pyra-sound $SO_VER; the image has everything it depends on"
 fi
 
 
@@ -2095,6 +2157,42 @@ $out"
             die "fix26: the installed pyra-hacks' ${THERMAL_DST#$ROOT} is not one $(basename "$fx") finds fixed"
     done
     ok "fix26: pyra-settings is installed, applies its settings at boot, and pyra-hacks carries fixes 6, 7 and 12"
+fi
+
+# ---------------------------------------------------------------------- fix 27
+#
+# The vendor image shows MATE's own sound icon (mate-volume-control-status-icon),
+# which knows nothing of the AESS sink's two outputs. pyra-sound is a tray icon
+# for the Pyra: left click mutes, right click switches between the speakers and
+# the headphones. Its package links a Hidden=true copy of MATE's autostart entry
+# into /etc/xdg/pyra/autostart, which pyra-config-desktop's Xsession snippet puts
+# before /etc/xdg in XDG_CONFIG_DIRS, so MATE's icon no longer starts. It needs
+# an AESS kernel (sink 'aess', fix 19); the volume wheel on the headphones is
+# pyra_volumed's, from fix 26's fork. Nothing in it is per machine, so --release
+# keeps it.
+
+SO_MASK=/etc/xdg/pyra/autostart/mate-volume-control-status-icon.desktop
+if [[ $SOUND_MODE == file ]]; then
+    have=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-sound 2>/dev/null || true)
+    if [[ $have == "$SO_VER ii"* ]]; then
+        ok "fix27: pyra-sound $SO_VER already installed"
+    else
+        chroot_mount
+        info "fix27: installing pyra-sound $SO_VER with the image's dpkg"
+        if ! out=$(in_chroot dpkg -i "$SO_DEB" 2>&1); then
+            die "fix27: dpkg -i failed in the chroot:
+$out"
+        fi
+        chroot_unmount
+        ok "fix27: installed pyra-sound $SO_VER (was: ${have:-not installed})"
+    fi
+    rm -f -- "$STAGED_SOUND"
+    # A link resolved inside the image, not on this PC.
+    in_chroot grep -qx 'Hidden=true' "$SO_MASK" 2>/dev/null ||
+        die "fix27: pyra-sound did not install its mask of MATE's sound icon ($SO_MASK)"
+    grep -qs 'XDG_CONFIG_DIRS=/etc/xdg/pyra' "$ROOT/etc/X11/Xsession.d/65pyra_xdg-config" ||
+        warn "fix27: the image has no /etc/X11/Xsession.d/65pyra_xdg-config (pyra-config-desktop); MATE's sound icon will show beside pyra-sound's"
+    ok "fix27: pyra-sound starts at login and MATE's sound icon is masked"
 fi
 
 # ------------------------------------------------------------------- release

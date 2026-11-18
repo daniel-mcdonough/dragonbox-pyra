@@ -122,6 +122,11 @@ page needs. It downloads the package from its
 [release](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.14) and checks it against a pinned hash;
 `--settings FILE` takes a `.deb` you have, and `--no-settings` leaves it out.
 
+It also installs `pyra-sound` (fix 27), a sound icon for the panel (mute,
+speakers or headphones) that takes the place of MATE's own. It downloads the package from its
+[release](https://github.com/daniel-mcdonough/pyra-sound/releases/tag/v0.4) and checks it against a pinned hash;
+`--sound FILE` takes a `.deb` you have, and `--no-sound` leaves it out.
+
 The vendor image ships its ssh host keys and machine-id, the same on every card.
 Prep removes them (fix 23), and the card makes its own on its first boot. If
 your PC has reached another Pyra at the same address, ssh warns once that the
@@ -197,7 +202,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twenty-six fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The twenty-seven fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |

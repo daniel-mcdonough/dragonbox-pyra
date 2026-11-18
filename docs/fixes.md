@@ -1,4 +1,4 @@
-# The twenty-six fixes, and what they actually do
+# The twenty-seven fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -50,6 +50,7 @@ them out.
 | 24 | setting | — (MATE's default critical-battery action is hibernate, which these kernels can't do) | the kernel gains hibernation (not planned) | — |
 | 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | `pyra-meta-polkit-ukui-timeout.md` |
 | 26 | project choice | — (the Pyra's own settings app, and the pyra-hacks fork it depends on) | — | — |
+| 27 | project choice | — (a sound icon for the AESS sink's two outputs, in place of MATE's) | — | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1791,6 +1792,50 @@ repository's 0.38 sorts below `0.38+pyra3`, so apt keeps the fork. A vendor
 0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
+
+## Fix 27 — MATE's sound icon knows nothing of the speakers and headphones
+
+**Symptom.** The panel shows MATE's own sound icon
+(`mate-volume-control-status-icon`). On the AESS kernels the sound card is one
+PulseAudio sink, `aess`, with two outputs, and the icon has no way to switch
+between them; choosing one means `pactl` or `pavucontrol`.
+
+**Fix.** Prep installs `pyra-sound`, a tray icon from its own repository
+([pyra-sound](https://github.com/daniel-mcdonough/pyra-sound)): left click mutes
+and unmutes, right click opens a small window to switch between the speakers and
+the headphones. It runs as the logged-in user and goes through PulseAudio only;
+no root, no unit. It starts from `/etc/xdg/autostart/pyra-sound.desktop`.
+
+The package hides MATE's icon without touching MATE's files: it links a copy of
+`mate-volume-control-status-icon.desktop` with `Hidden=true` into
+`/etc/xdg/pyra/autostart/`. pyra-config-desktop's
+`/etc/X11/Xsession.d/65pyra_xdg-config` puts `/etc/xdg/pyra` ahead of
+`/etc/xdg` in `XDG_CONFIG_DIRS`, so the hidden copy wins at login. Removing
+pyra-sound removes the link and MATE's icon comes back at the next login. Prep
+checks, through the image's own root, that the link resolves to a
+`Hidden=true` entry, and warns if the image lacks the Xsession snippet (the
+vendor image has it).
+
+It needs an AESS kernel (`5.6.19-m4*`, fix 19); on the stock kernel there is no
+`aess` sink. The volume wheel stays with `pyra_volumed`: with fix 26's fork it
+drives the headphones too, and from 0.4 the icon shows one volume, the wheel's
+position, on both outputs. Without the fork the window offers a headphone
+slider instead.
+
+**How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, after
+checking before fix 1 that the file is `pyra-sound` and that the image has
+every package it depends on (the vendor image has all six of 0.4's: python3,
+python3-gi, gir1.2-glib-2.0, gir1.2-gtk-3.0, pulseaudio-utils, alsa-utils). So
+no apt run and no network is needed in the chroot, and `--release` deleting the
+package lists afterwards changes nothing. It depends on neither fix 22 nor fix
+26. A second run sees the version installed and does nothing. Nothing in it is
+per machine, so `--release` keeps it.
+
+The `.deb` comes from `--sound FILE`, or by default from pyra-sound's
+[release v0.4](https://github.com/daniel-mcdonough/pyra-sound/releases/tag/v0.4)
+(`pyra-sound_0.4_all.deb`), checked against `SOUND_SHA256` in the script
+(`67f9aa94…19eb62`, the asset as published, checked 2026-11-17). `--no-sound`
+leaves it out, and MATE's icon stays.
 
 ## Fixes 6, 7 and 12 as a package
 

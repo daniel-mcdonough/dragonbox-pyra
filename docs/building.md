@@ -987,8 +987,10 @@ It passes no `--settings` either, and should not: the image gets pyra-settings
 and the pyra-hacks fork only from prep's pins (fix 26), never from a `.deb` the
 workflow hands prep, which no checksum in the repository would cover. Prep pins
 pyra-settings v0.14; if an image ends up without it, the build step prints a
-warning. The `.info` names the versions prep installed
+warning. pyra-sound (fix 27) comes from prep's pin the same way (v0.4), with
+the same warning. The `.info` names the versions prep installed
 (`installed_pyra-backlight=`, `installed_pyra-settings=`, `installed_pyra-hacks=`,
+`installed_pyra-sound=`,
 read from the image's dpkg status), so a download is recorded as well as a file.
 
 **Publishing it.** Give the run a second input, `release_tag`, named
@@ -1023,7 +1025,7 @@ clear error:
 | root | loop devices and mounts | hosted runners have passwordless `sudo` |
 | `losetup --partscan` | the image's two partitions | the build script stops on a missing `p2` |
 | f2fs in the kernel | the vendor rootfs is f2fs | `modprobe f2fs`. If that fails, the workflow installs `linux-modules-extra-$(uname -r)` and tries again, then checks `/proc/filesystems` |
-| qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
+| qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20, 22, 24, 26, 27). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
 | 12 GiB free in the work tree | archive (862 MB), sparse 6 GiB image (3.7 GiB used), its `.xz` | `df` before the download |
 | time | an estimate, not measured on a runner: under an hour, mostly the qemu steps | `timeout-minutes: 120` |
 

@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 26 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 27 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -48,6 +48,13 @@
 # pyra-settings, and --settings with --no-backlight, must each stop prep before
 # fix 1 writes anything.
 #
+# Fix 27 installs pyra-sound: PYRA_SOUND_DEB names a .deb (--sound); unset,
+# prep downloads the pinned release (network); PYRA_SOUND_DEB=none runs prep
+# with --no-sound, and that is a SKIP. A .deb that is not pyra-sound, one whose
+# dependency the image lacks, and (with PYRA_SOUND_DEB unset) a copy of prep
+# whose pin the download does not match must each stop prep before fix 1
+# writes anything.
+#
 # Fix 21's guard is fired by a real reinstall of the vendor's dri3wsegl-pyra 0.4
 # deb when PYRA_WSEGL_DEB (by default the package archive beside the
 # repository) holds it with the pinned SHA-256. Without it, the stock library
@@ -79,6 +86,7 @@ KREL=5.6.19-m4-kbdled
 KSLOT=l5
 BDEB=${PYRA_BACKLIGHT_DEB:-}
 SDEB=${PYRA_SETTINGS_DEB:-}
+SODEB=${PYRA_SOUND_DEB:-}
 
 PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
 SKIPPED=()
@@ -188,6 +196,20 @@ elif [[ -n $(sed -n 's/^SETTINGS_SHA256=//p' "$PREP") && $BDEB != none ]]; then
 else
     SKIP=$((SKIP+1)); SKIPPED+=("fix 26 installed no pyra-settings (none pinned; set PYRA_SETTINGS_DEB to a .deb)")
     printf '\e[33mSKIP\e[0m  fix26: no pyra-settings release is pinned and PYRA_SETTINGS_DEB is unset\n'
+fi
+# SOON: whether fix 27 installs pyra-sound in this run.
+SOON=yes
+if [[ $SODEB == none ]]; then
+    KARGS+=(--no-sound)
+    SOON=no
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 27 installed no pyra-sound (PYRA_SOUND_DEB=none)")
+    printf '\e[33mSKIP\e[0m  fix27: PYRA_SOUND_DEB=none; prep runs with --no-sound\n'
+elif [[ -n $SODEB ]]; then
+    [[ -r $SODEB ]] || { echo "PYRA_SOUND_DEB=$SODEB is not readable" >&2; exit 2; }
+    KARGS+=(--sound "$SODEB")
+    i "fix 27 installs $SODEB"
+else
+    i "fix 27: prep downloads the pinned pyra-sound release (network)"
 fi
 
 ########################################################################
@@ -1017,6 +1039,36 @@ else
 fi
 
 ########################################################################
+i "assert fix 27 — pyra-sound, installed by the image's dpkg, masks MATE's sound icon"
+########################################################################
+SOMASK=/etc/xdg/pyra/autostart/mate-volume-control-status-icon.desktop
+if [[ $SOON == yes ]]; then
+    if [[ -n $SODEB ]]; then
+        SOVER=$(bsdtar -xOf "$SODEB" 'control.tar.*' | bsdtar -xOf - ./control | awk '/^Version:/{print $2}')
+    else
+        SOVER=$(sed -n 's/^SOUND_TAG=v//p' "$PREP")
+        grep -qF 'fix27: the download matches the pinned SHA-256' "$OUT/prep-run1.log" \
+            && p "fix27: run 1 downloaded pyra-sound $SOVER and it matched the pin" || f "fix27: run 1 did not report a matching download"
+    fi
+    SOST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-sound 2>/dev/null || true)
+    [[ $SOST == "$SOVER ii"* ]] && p "fix27: dpkg has pyra-sound $SOVER installed and configured" || f "fix27: dpkg says '$SOST', want $SOVER ii"
+    [[ -x $MNT/usr/bin/pyra-sound ]] && p "fix27: /usr/bin/pyra-sound is installed" || f "fix27: no executable /usr/bin/pyra-sound"
+    grep -qx 'Exec=pyra-sound' "$MNT/etc/xdg/autostart/pyra-sound.desktop" 2>/dev/null \
+        && p "fix27: it starts at login (/etc/xdg/autostart/pyra-sound.desktop)" || f "fix27: no autostart entry for pyra-sound"
+    in_chroot grep -qx 'Hidden=true' "$SOMASK" 2>/dev/null \
+        && p "fix27: $SOMASK hides MATE's sound icon" || f "fix27: no Hidden=true mask at $SOMASK"
+    grep -qs 'XDG_CONFIG_DIRS=/etc/xdg/pyra' "$MNT/etc/X11/Xsession.d/65pyra_xdg-config" \
+        && p "fix27: the image puts /etc/xdg/pyra first in XDG_CONFIG_DIRS, so the mask applies" || f "fix27: nothing puts /etc/xdg/pyra in XDG_CONFIG_DIRS"
+    SAUDIT=$(in_chroot dpkg --audit 2>&1 || true)
+    [[ -z $SAUDIT ]] && p "fix27: dpkg --audit finds nothing wrong" || f "fix27: dpkg --audit: $(head -3 <<<"$SAUDIT" | tr '\n' ' ')"
+else
+    printf '\e[33mSKIP\e[0m  fix27: assertions (no pyra-sound in this run)\n'
+    in_chroot dpkg-query -W pyra-sound >/dev/null 2>&1 \
+        && f "fix27: pyra-sound is installed though this run asked for none" || p "fix27: pyra-sound is not installed"
+    [[ ! -e $MNT$SOMASK ]] && p "fix27: and MATE's sound icon is not masked" || f "fix27: MATE's sound icon is masked without pyra-sound"
+fi
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1072,6 +1124,9 @@ if [[ $SON == yes ]]; then
     grep -qE 'fix26: pyra-settings .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-settings already installed" || f "run 2 did not report pyra-settings already installed"
     grep -qF 'fix26: the image already has pyra-hacks' "$OUT/prep-run2.log" && p "run 2 found the fork already installed" || f "run 2 did not find the fork already installed"
     grep -qF 'fix12: left to the pyra-hacks fork' "$OUT/prep-run2.log" && p "run 2 reported fix 12 left to the fork" || f "run 2 did not report fix 12 left to the fork"
+fi
+if [[ $SOON == yes ]]; then
+    grep -qE 'fix27: pyra-sound .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-sound already installed" || f "run 2 did not report pyra-sound already installed"
 fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
@@ -1244,6 +1299,48 @@ for c in "${SCASES[@]}"; do
     [[ ! -e $MNT/var/tmp/pyra-prep-settings.deb ]] && p "fix26: and left no staged .deb" || f "fix26: the staged .deb was left in /var/tmp"
     rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
 done
+
+########################################################################
+i "fix 27 — a wrong .deb, a missing dependency and a wrong pin stop prep before fix 1 writes"
+########################################################################
+# --no-backlight and --no-settings get these runs past fixes 22 and 26 with no
+# download. The pin case runs a copy of prep whose SOUND_SHA256 the release
+# cannot match, beside a link to device/ (prep finds its payloads there); bash
+# runs it, in case OUT is on a noexec /tmp.
+mkdeb "$OUT/selftest-not-sound.deb" other-package python3
+mkdeb "$OUT/selftest-sound-nodep.deb" pyra-sound "python3, pyra-selftest-no-such-package (>= 1)"
+PINDIR=$OUT/pin
+rm -rf "$PINDIR"; mkdir -p "$PINDIR/pc"; ln -s "$PAYLOADS" "$PINDIR/device"
+sed 's/^SOUND_SHA256=.*/SOUND_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' \
+    "$PREP" > "$PINDIR/pc/pyra-trixie-prep.sh"
+chmod 0755 "$PINDIR/pc/pyra-trixie-prep.sh"
+SOCASES=("$PREP|--sound $OUT/selftest-not-sound.deb|is the package 'other-package', not pyra-sound"
+         "$PREP|--sound $OUT/selftest-sound-nodep.deb|lacks what pyra-sound 0.0selftest depends on")
+if [[ -z $SODEB ]]; then
+    SOCASES+=("$PINDIR/pc/pyra-trixie-prep.sh||not the pinned 0000000000000000000000000000000000000000000000000000000000000000")
+else
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 27's wrong-pin case (needs the network; PYRA_SOUND_DEB is set)")
+    printf '\e[33mSKIP\e[0m  fix27: wrong-pin case (PYRA_SOUND_DEB is set, so this run stays off the network)\n'
+fi
+for c in "${SOCASES[@]}"; do
+    IFS='|' read -r soprep soargs sowant <<<"$c"
+    ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+    ARC=0
+    disarm
+    # shellcheck disable=SC2086  # the options split on purpose
+    ABORT=$(bash "$soprep" --kernel "$KTAR" --no-backlight --no-settings $soargs "$MNT" pyra 2>&1 </dev/null) || ARC=$?
+    arm
+    if [[ $ARC -ne 0 ]] && grep -qF "$sowant" <<<"$ABORT"; then
+        p "fix27: a run where pyra-sound $sowant stops prep (exit $ARC)"
+    else
+        f "fix27: pyra-sound $sowant: exit $ARC:"; tail -3 <<<"$ABORT" | sed 's/^/      /'
+    fi
+    [[ $sowant == lacks* ]] && { grep -q 'pyra-selftest-no-such-package' <<<"$ABORT" && p "fix27: it names the missing dependency" || f "fix27: it did not name the missing dependency"; }
+    [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "fix27: and it stopped before fix 1 wrote anything" || f "fix27: fix 1 ran before prep stopped"
+    [[ ! -e $MNT/var/tmp/pyra-prep-sound.deb ]] && p "fix27: and left no staged .deb" || f "fix27: the staged .deb was left in /var/tmp"
+    rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+done
+rm -rf "$PINDIR"
 
 ########################################################################
 i "fix 21's guard — a package run that puts the stock library back"
