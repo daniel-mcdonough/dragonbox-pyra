@@ -90,7 +90,8 @@ in the next section cannot happen.
 
 `pc/pyra-grow-root-selftest.sh` (root, on a PC or a Pyra) runs it against
 throwaway loop-device cards:
-- a genuine card
+- a genuine card, with the disk's udev change events counted (the capacity
+  check must make none)
 - three device-mapper fakes: wrapping, dropping writes, and an upper range that fails to read
 - an interrupted grow
 - p2 missing from the kernel for a moment after the grow, and for good
@@ -169,7 +170,7 @@ selftest, real image included, passes with the new scope. On a Pyra
 grow finished with one `mmcblk1: p1 p2` line in dmesg, the probe at 2.2 s,
 against R46's 80.
 
-**A udev settle timeout after the grow (open).** On that boot the owner saw a
+**A udev settle timeout after the grow (fix written, not yet booted).** On that boot the owner saw a
 udev timeout message on the LCD after `DO NOT SWITCH OFF`; it reaches no log.
 The text is `Timed out while waiting for udev queue to empty.`, which is
 `udevadm settle` giving up. Which settle: the grow runs from `mount_top`, before
@@ -186,10 +187,30 @@ still sends a change event for each write-close, and the capacity check makes
 931 of them. Those events then queue for the length of the grow and drain once
 it exits: about 46 s on the second boot (10 + 35.6), which at about 50 ms an
 event is roughly 931 events. The boot carries on either way. To show it: log
-`/run/udev/queue` and the queued event count right after the grow exits. The
-likely fix is one held-open write fd on the disk for the capacity check's
-writes: inotify reports a close-write only at the file's last release, so
-that makes one change event instead of 931.
+`/run/udev/queue` and the queued event count right after the grow exits.
+
+What changed (2026-11-17): the capacity check now writes its samples, and puts
+back the saved blocks on a failure, through a block node of its own,
+`/dev/.pyra-grow-<disk>`, made with busybox `mknod` from the disk's
+major:minor in sysfs and removed once the check is done (or on any exit).
+udev's watch is an inotify watch on the inode of the node in `/dev`, so
+close-writes on a second node for the same disk reach nobody: the check makes
+no change events where it made one a sample. sfdisk's write still makes one.
+The node is in `/dev` because the initramfs mounts `/run` with `nodev`. The
+reads stay on the `/dev` node, so a sample that reads back also proves the new
+node is the same disk. If `mknod` fails, the writes go through the `/dev` node
+as before and the log says so.
+The plan had been one held-open write fd for all the writes, which also makes
+one close-write. It was dropped: both coreutils and busybox dd apply `seek=`
+to an inherited fd relative to its current position (`lseek(SEEK_CUR)`;
+checked on the PC 2026-11-17: two writes with `seek=10`, 4 KiB blocks, landed at
+40960 and 86016). Every write would have needed a seek relative to the
+previous one, and one mistake there writes a sample into p1 or p2.
+The selftest's genuine-card case counts the disk's change events with
+`udevadm monitor --kernel` while the script runs: at most 2 (sfdisk's write
+and slack), against one per sample before. The Pyra check rides on the next
+fresh image's first boot: root mount to systemd should drop from 35-49 s to a
+few seconds, with no settle timeout on the LCD.
 
 **Booted on a Pyra four times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card

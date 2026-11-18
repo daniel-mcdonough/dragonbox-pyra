@@ -88,7 +88,7 @@ trap finish EXIT
 
 [[ $EUID -eq 0 ]] || { echo "must run as root" >&2; exit 1; }
 [[ -r $SCRIPT ]] || { echo "no $SCRIPT" >&2; exit 1; }
-for t in sfdisk partx losetup dmsetup mkfs.f2fs fsck.f2fs resize.f2fs blockdev sha256sum truncate; do
+for t in sfdisk partx losetup dmsetup mkfs.f2fs fsck.f2fs resize.f2fs blockdev sha256sum truncate udevadm; do
     command -v "$t" >/dev/null || { echo "missing tool: $t" >&2; exit 1; }
 done
 modprobe f2fs 2>/dev/null || true
@@ -167,8 +167,25 @@ truncate -s 4G "$WORK/genuine"
 newloop "$WORK/genuine"
 SUM=$(make_card "$L")
 FS0=$(fs_sectors "${L}p2")
+# udev's watch turns each close-write on the disk's /dev node into a change
+# event for the disk; the capacity check writes through a node of its own, so
+# its samples must make none. sfdisk's one write still makes one.
+udevadm monitor --kernel --subsystem-match=block > "$OUT/genuine.uevents" 2>&1 &
+MONPID=$!
+sleep 1
 run genuine "${L}p2"
+udevadm settle 2>/dev/null || true
+sleep 1
+kill "$MONPID" 2>/dev/null; wait "$MONPID" 2>/dev/null || true
 expect_rc genuine 10
+NSAMP=$(sed -n 's/^\([0-9][0-9]*\) samples from.*/\1/p' "$OUT/genuine.log")
+NCHG=$(grep -c " change .*/block/${L##*/} (block)" "$OUT/genuine.uevents" || true)
+if grep -q "writing the samples through /dev/.pyra-grow-" "$OUT/genuine.log" && [[ ${NSAMP:-0} -gt 2 && $NCHG -le 2 ]]; then
+    p "genuine: $NCHG change events for the disk from $NSAMP capacity samples"
+else
+    f "genuine: $NCHG change events for the disk from ${NSAMP:-?} capacity samples (see $OUT/genuine.uevents, $OUT/genuine.log)"
+fi
+compgen -G '/dev/.pyra-grow-*' >/dev/null && f "genuine: the script left its node in /dev" || p "genuine: no node left in /dev"
 DISK=$(blockdev --getsz "$L")
 P2=$(blockdev --getsz "${L}p2")
 FS1=$(fs_sectors "${L}p2")

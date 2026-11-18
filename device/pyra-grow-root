@@ -116,6 +116,24 @@ if [ $GROW_PART = 1 ]; then
 	if command -v flock >/dev/null 2>&1 && exec 9<"$DISK"; then
 		flock -x 9 || quiet "could not lock $DISK"
 	fi
+	# Each sample written through $DISK ends in a close-write, which udev's
+	# watch (60-block.rules) turns into a change event, about 931 on a 256 GB
+	# card. With the disk locked they queue until this script exits and then
+	# hold up udevadm settle for about 46 s (docs/grow-rootfs.md). The watch is
+	# on the inode of the node in /dev, so write through a second node for the
+	# same disk, which nothing watches. In /dev because the initramfs mounts
+	# /run nodev. Not one held-open fd instead: dd's seek= on an inherited fd
+	# counts from the fd's position, not from the start of the disk. The reads
+	# stay on $DISK, so the read-back also proves the node is the same disk.
+	WDISK=/dev/.pyra-grow-$D
+	rm -f "$WDISK"
+	if mknod "$WDISK" b $(tr ':' ' ' < "/sys/class/block/$D/dev") 2>/dev/null; then
+		trap 'rm -f "$WDISK"' EXIT
+		quiet "writing the samples through $WDISK"
+	else
+		quiet "could not make $WDISK; writing the samples through $DISK"
+		WDISK=$DISK
+	fi
 	say "checking that the card really has that space"
 	rm -rf "$TMP"
 	mkdir -p "$TMP" || { say "cannot make $TMP"; exit 1; }
@@ -143,7 +161,7 @@ if [ $GROW_PART = 1 ]; then
 	BAD=
 	for S in $SAMPLES; do
 		printf 'PYRA-GROW-ROOT %s %s\n' "$NONCE" "$S" |
-			dd of="$DISK" bs=4096 seek=$((S / 8)) count=1 conv=sync,notrunc 2>/dev/null ||
+			dd of="$WDISK" bs=4096 seek=$((S / 8)) count=1 conv=sync,notrunc 2>/dev/null ||
 			{ BAD="write at sector $S failed"; break; }
 		WRITTEN="$WRITTEN $S"
 	done
@@ -158,7 +176,7 @@ if [ $GROW_PART = 1 ]; then
 	fi
 	if [ -n "$BAD" ]; then
 		for S in $WRITTEN; do
-			dd if="$TMP/$S" of="$DISK" bs=4096 seek=$((S / 8)) count=1 conv=notrunc 2>/dev/null
+			dd if="$TMP/$S" of="$WDISK" bs=4096 seek=$((S / 8)) count=1 conv=notrunc 2>/dev/null
 		done
 		sync
 		blockdev --flushbufs "$DISK" 2>/dev/null
@@ -168,6 +186,7 @@ if [ $GROW_PART = 1 ]; then
 		exit 20
 	fi
 	rm -rf "$TMP"
+	[ "$WDISK" = "$DISK" ] || rm -f "$WDISK"
 	say "capacity check passed"
 fi
 
