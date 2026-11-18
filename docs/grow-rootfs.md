@@ -178,7 +178,7 @@ selftest, real image included, passes with the new scope. On a Pyra
 grow finished with one `mmcblk1: p1 p2` line in dmesg, the probe at 2.2 s,
 against R46's 80.
 
-**A udev settle timeout after the grow (fix written, not yet booted).** On that boot the owner saw a
+**A udev settle timeout after the grow (fixed, booted 2026-11-17).** On that boot the owner saw a
 udev timeout message on the LCD after `DO NOT SWITCH OFF`; it reaches no log.
 The text is `Timed out while waiting for udev queue to empty.`, which is
 `udevadm settle` giving up. Which settle: the grow runs from `mount_top`, before
@@ -216,11 +216,11 @@ checked on the PC 2026-11-17: two writes with `seek=10`, 4 KiB blocks, landed at
 previous one, and one mistake there writes a sample into p1 or p2.
 The selftest's genuine-card case counts the disk's change events with
 `udevadm monitor --kernel` while the script runs: at most 2 (sfdisk's write
-and slack), against one per sample before. The Pyra check rides on the next
-fresh image's first boot: root mount to systemd should drop from 35-49 s to a
-few seconds, with no settle timeout on the LCD.
+and slack), against one per sample before. On a Pyra (2026-11-17, the r3 CI
+release image, `verification-log.md`): root mount to systemd took 0.2 s, against
+35-49 s before, and no settle timeout showed on the LCD.
 
-**Booted on a Pyra four times.** First on 2026-10-31 (the card above, through
+**Booted on a Pyra five times.** First on 2026-10-31 (the card above, through
 `pyra-image-build.sh`; the hook fix described above was applied on the card
 before that boot). The boots after it log `nothing to do` and print nothing; root
 mounted at 8.2 s on the next one (serial console, 2026-11-01). Then on
@@ -229,7 +229,9 @@ reboot, and ended `done: the root filesystem is now 238 GiB` (`verification-log.
 Then again on 2026-11-01 from a `--release` image with the lock, the same way
 (above). Then on 2026-11-10 from the first CI-built release image, with the
 lock taken before the capacity check: `done: the root filesystem is now
-238 GiB`, root mounted at 662.7 s (above).
+238 GiB`, root mounted at 662.7 s (above). Then on 2026-11-17 from the r3 CI
+release image, with the capacity check's own block node: the same `done` line,
+and systemd 0.2 s after the root mount (above).
 
 ---
 

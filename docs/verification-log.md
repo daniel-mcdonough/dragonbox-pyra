@@ -1851,7 +1851,7 @@ usable (115200 baud set by mistake; the console is 1500000).
 - **Timing (dmesg):** `Run /init` at 4.8 s; the grow's first `drop_caches` at
   18.0 s; root mounted at 662.7 s; systemd started at 711.4 s. Kernel phase
   11 min 52 s, userspace 27.9 s.
-- **A udev settle timeout after the grow** (open, R52): the owner saw a udev
+- **A udev settle timeout after the grow** (R52, fixed; booted 2026-11-17, below): the owner saw a udev
   timeout message on the LCD after the grow's `DO NOT SWITCH OFF` line. It is
   in no log: the initramfs writes to `/dev/console`, the LCD. dmesg has
   nothing for 48.7 s between the root mount and systemd's start, where
@@ -2170,3 +2170,25 @@ Times from the journal (`-o short-precise`) and from each process's start time i
   session opened 18:20:38.81, dconf requested at 18:20:39.28 (0.5 s, was about 6 s behind the GL
   check), marco at about 18:20:39.6, 0.8 s after the session opened. `~/.xsession-errors` had no
   acceleration, ukui or timeout lines; `polkit-mate-authentication-agent-1` was running.
+
+## 2026-11-17 — the CI release image with `kernel-5.6.19-r3` and pyra-settings 0.14 (R62, R52)
+
+A card written from the Release image run 44230398383 (master ef6ee24, 2026-11-18 UTC), whose
+kernel is the `kernel-m4-kbdled` artifact of Kernel release run 44223360396 (`kernel-5.6.19-r3`).
+Serial console (FTDI, 1500000 baud) and ssh.
+
+- **The kernel is the pinned asset.** `/boot/vmlinuz-5.6.19-m4-kbdled` has the same SHA-256
+  (`f57911a5…6dc5ce7`) as the one in r3's `m4-kbdled-kernel.tar.gz`, downloaded and checked
+  against prep's pin. `l5` is the default. No failed units.
+- **Fix 26:** `pyra-settings 0.14`, `pyra-hacks 0.38+pyra3` and `pyra-backlight 0.8` installed.
+  The run raised no "no pyra-settings" warning (its only annotations were GitHub's Node.js 20
+  deprecation notices). The `.info` itself sits in the job log, which needs a login to read.
+- **Wake page** (owner): the settings app's wake-button page shows and works on this kernel.
+- **First-boot grow:** `done: the root filesystem is now 238 GiB`, with the samples written
+  through `/dev/.pyra-grow-mmcblk1` (the 2026-11-17 change). fsck dry runs 55.8 s and 67.1 s,
+  `resize.f2fs` 407.2 s. Root 239G, 234G free.
+- **R52 closed:** root mounted at 553.88 s and systemd started at 554.07 s (serial console),
+  0.2 s between them, against 35.6 s and 48.7 s on the two earlier CI images. The owner saw no
+  udev timeout on the LCD. Kernel phase 9 min 14 s (the grow), userspace 27.4 s.
+- **Not in the image:** pyra-sound, so MATE's own sound icon is in the tray. Prep never
+  installed it; it ships with the release (owner, 2026-11-17).
