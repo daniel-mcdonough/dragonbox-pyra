@@ -1222,7 +1222,7 @@ mkdeb "$OUT/selftest-not-settings.deb" other-package python3
 # The wrong .deb needs a real pyra-backlight beside it to reach fix 26's check:
 # the run's own, or the pinned download.
 BARGS=(); [[ -n $BDEB && $BDEB != none ]] && BARGS=(--backlight "$BDEB")
-SCASES=("--no-backlight|depends on pyra-backlight, which --no-backlight leaves out")
+SCASES=("--no-backlight|needs pyra-backlight, which --no-backlight leaves out")
 [[ $BDEB != none ]] && SCASES+=("${BARGS[*]}|is the package 'other-package', not pyra-settings")
 for c in "${SCASES[@]}"; do
     IFS='|' read -r sargs swant <<<"$c"
@@ -1427,6 +1427,8 @@ T0=$(in_chroot /usr/sbin/sshd -t 2>&1); T0RC=$?
 G=$(in_chroot /usr/bin/ssh-keygen -A 2>&1); GRC=$?
 T1=$(in_chroot /usr/sbin/sshd -t 2>&1); T1RC=$?
 set -e; arm
+# sshd ends its messages with a carriage return, which overprints the line.
+T0=${T0//$'\r'/}; G=${G//$'\r'/}; T1=${T1//$'\r'/}
 [[ $T0RC -ne 0 ]] && p "release: without host keys the image's sshd -t fails ($(head -1 <<<"$T0"))" || f "release: sshd -t passed with no host keys"
 [[ $GRC -eq 0 && $T1RC -eq 0 ]] && p "release: after ssh-keygen -A ($(sed -n 's/.*generating new host keys: //p' <<<"$G")) sshd -t passes" \
     || { f "release: ssh-keygen -A exit $GRC, then sshd -t exit $T1RC"; printf '%s\n%s\n' "$G" "$T1" | sed 's/^/      /'; }
