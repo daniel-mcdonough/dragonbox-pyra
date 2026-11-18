@@ -29,9 +29,9 @@
 # --no-backlight leaves it out.
 #
 # Fix 26 installs pyra-settings (the Pyra's own settings app) and the
-# pyra-hacks fork it depends on (0.38+pyra3, which carries fixes 6, 7 and 12;
-# fix 12 then stands aside). With no option it downloads the pinned pyra-settings
-# release; while none is pinned it is left out. --settings FILE uses a .deb you
+# pyra-hacks fork its volume wheel page needs (0.38+pyra3, which carries fixes
+# 6, 7 and 12; fix 12 then stands aside). With no option it downloads the pinned
+# pyra-settings release (v0.14). --settings FILE uses a .deb you
 # have (pyra-settings' build makes one); --no-settings leaves both out. It needs
 # fix 22's pyra-backlight.
 #
@@ -368,12 +368,12 @@ GIR_SHA256=5c75b6aae0881990a2555c83502d93d22fd3700265ba9eebaa5841de05dd5684
 GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
           https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
 STAGED_GIR=
-# Fix 26's two .debs. The pyra-settings app is pusblished. The pyra-hacks fork is published: the
-# v0.38+pyra3 release asset, by SHA-256. A copy beside the pyra-settings .deb is
-# used instead, so a run can be offline.
+# Fix 26's two .debs, both release assets as published, by SHA-256: pyra-settings
+# v0.14 and the pyra-hacks fork v0.38+pyra3. A copy of the fork beside the
+# pyra-settings .deb is used instead, so a run with --settings can be offline.
 SETTINGS_TAG=v0.14
-SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings-launcher/releases/download/v0.14/pyra-settings_0.14_all.deb
-SETTINGS_SHA256=0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
+SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings/releases/download/v0.14/pyra-settings_0.14_all.deb
+SETTINGS_SHA256=9c30888738ccbc3eae638418c5b38094e2ff16623c8ce1a12ec2b1d9643d8db4
 SETTINGS_TMP=
 STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
 HACKS_VER=0.38+pyra3
@@ -568,7 +568,7 @@ if [[ $SETTINGS_MODE == auto ]]; then
        Pass --settings FILE (pyra-settings' build makes one) to install it."
         SETTINGS_MODE=none
     elif [[ $BACKLIGHT_MODE == none ]]; then
-        warn "fix26: pyra-settings depends on pyra-backlight, which is left out; no settings app either"
+        warn "fix26: pyra-settings needs pyra-backlight, which is left out; no settings app either"
         SETTINGS_MODE=none
     else
         command -v curl >/dev/null || die "fix26: the download needs curl on this PC"
@@ -588,7 +588,7 @@ elif [[ $SETTINGS_MODE == none ]]; then
 fi
 if [[ $SETTINGS_MODE == file ]]; then
     [[ $BACKLIGHT_MODE == file ]] ||
-        die "fix26: pyra-settings depends on pyra-backlight, which --no-backlight leaves out; add --no-settings too"
+        die "fix26: pyra-settings needs pyra-backlight, which --no-backlight leaves out; add --no-settings too"
     [[ -r $SETTINGS_FILE ]] || die "fix26: no .deb at $SETTINGS_FILE"
     if [[ -z $SETTINGS_TMP ]]; then
         sum=$(sha256sum "$SETTINGS_FILE" | cut -d' ' -f1)
@@ -2074,7 +2074,7 @@ ok "fix25: logins skip ukui-polkit's 30 s timeout and mate-session's GL check"
 # pyra-settings is a GTK app for what only the Pyra has (which buttons and the
 # lid wake it, the lid and idle actions, the volume wheel). Its root helper runs
 # through pkexec, and pyra-settings-apply.service, which its postinst enables,
-# applies the saved choices at boot. It depends on the pyra-hacks fork, whose
+# applies the saved choices at boot. It recommends the pyra-hacks fork, whose
 # pyra_volumed reads /etc/pyra_volumed.conf; the fork also carries fixes 6 and 7
 # (the hook that guards them finds nothing to change) and fix 12 (which stood
 # aside above). One dpkg run installs both, in the chroot. The wake-button page

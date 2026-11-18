@@ -146,8 +146,8 @@ skipped. For fix 22 it lets prep download the pinned pyra-backlight release
 prep with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
 package and a `pyra-backlight` with a dependency no image has, and requires
 each to stop prep before fix 1 writes. For fix 26, `PYRA_SETTINGS_DEB` names the
-pyra-settings `.deb` to pass with `--settings`; unset, while no release is
-pinned, or `=none`, nothing is installed and a skip is counted. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
+pyra-settings `.deb` to pass with `--settings`; unset, prep downloads the pinned
+release, and `=none` installs nothing and counts a skip. Ends in a single `TEST COMPLETE: PASS` or `FAIL`.
 
 Note: if you ran the prep script by hand above, the image file itself is now
 prepared, with the user you named and the initrds rebuilt. You can `dd` *that*
@@ -309,13 +309,14 @@ have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
 
 `--no-backlight` leaves it out.
 
-**Settings app (fix 26).** `--settings FILE` installs `pyra-settings` and the
-pyra-hacks fork `0.38+pyra3` it depends on (pinned by SHA-256, from a copy beside
-the `.deb` or else its release), the same way. It needs fix 22's pyra-backlight.
-pyra-settings has no published release yet, so without the option it is left
-out; `--no-settings` says so explicitly.
+**Settings app (fix 26).** Prep installs `pyra-settings` and the pyra-hacks fork
+`0.38+pyra3` its volume wheel page needs, the same way: by default it downloads
+pyra-settings' release (v0.14) and the fork's, each checked against a pinned
+SHA-256. `--settings FILE` takes a `.deb` you have (the fork comes from a copy
+beside it, or else its release). It needs fix 22's pyra-backlight.
+`--no-settings` leaves both out.
 
-    sudo ./pc/pyra-trixie-prep.sh --settings pyra-settings_0.13_all.deb /mnt/pyra yourusername
+    sudo ./pc/pyra-trixie-prep.sh --settings pyra-settings_0.14_all.deb /mnt/pyra yourusername
 
 ---
 

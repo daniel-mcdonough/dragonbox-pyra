@@ -1756,8 +1756,11 @@ package's postinst enables, applies the saved choices at boot from
 not the kernel version, and on a kernel without it the page says so.
 `kernel-5.6.19-r2` does not carry 0053 (NEXT R59).
 
-It depends on `pyra-hacks (>= 0.38+pyra3)`, the fork (*Fixes 6, 7 and 12 as a
-package*, below), and on `pyra-backlight (>= 0.4)` (fix 22). So fix 26 also
+It recommends `pyra-hacks (>= 0.38+pyra3)`, the fork (*Fixes 6, 7 and 12 as a
+package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4)`
+(fix 22), which its display and keyboard light page needs. (0.13 and earlier
+had both in Depends; 0.14 moved them to Recommends.) Prep installs both anyway,
+so fix 26 also
 installs the fork's `pyra-hacks_0.38+pyra3_armhf.deb`, pinned by SHA-256
 (`3dd6e39c…7f3fa`, the release asset as published), from a copy beside the
 pyra-settings `.deb` or else from that release. It replaces the vendor's 0.38;
@@ -1768,18 +1771,21 @@ nothing to do, and prep checks that after the install. Fix 12 stands aside
 
 **How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
 `.deb`s in one run, after checking before fix 1 that the file is
-`pyra-settings` and that the image has every package either depends on.
-`--settings` with `--no-backlight` is refused, since pyra-settings depends on
-pyra-backlight. A second run sees the version installed and does nothing.
+`pyra-settings` and that the image has every package either depends on (the
+vendor image has all seven of pyra-settings 0.14's: python3, python3-gi,
+gir1.2-gtk-3.0, pkexec, polkitd, alsa-utils, pulseaudio-utils).
+`--settings` with `--no-backlight` is refused, since a page of pyra-settings
+needs pyra-backlight. A second run sees the version installed and does nothing.
 
 The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
-release, checked against `SETTINGS_SHA256` in the script. No release is pinned
-yet, so a run without `--settings` leaves both packages out and fix 12 in place.
-`--no-settings` leaves them out on purpose.
+[release v0.14](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.14)
+(`pyra-settings_0.14_all.deb`), checked against `SETTINGS_SHA256` in the script
+(`9c308887…d8db4`, the asset as published). `--no-settings` leaves both packages
+out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
 repository's 0.38 sorts below `0.38+pyra3`, so apt keeps the fork. A vendor
-0.39 would replace it and satisfy pyra-settings' Depends without reading
+0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
 

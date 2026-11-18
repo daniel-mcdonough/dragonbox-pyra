@@ -114,10 +114,11 @@ the session goes idle. The same way, it downloads the package from its
 [release](https://github.com/daniel-mcdonough/pyra-backlight/releases/tag/v0.8) and checks it against a pinned hash;
 `--backlight FILE` takes a `.deb` you have, and `--no-backlight` leaves it out.
 
-With `--settings FILE` it installs `pyra-settings` (fix 26), the Pyra's own
-settings app (wake buttons, lid, idle, volume wheel), with the pyra-hacks fork it
-depends on. pyra-settings has no published release yet, so without the option
-it is left out.
+It also installs `pyra-settings` (fix 26), the Pyra's own settings app (wake
+buttons, lid, idle, volume wheel), with the pyra-hacks fork its volume wheel
+page needs. It downloads the package from its
+[release](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.14) and checks it against a pinned hash;
+`--settings FILE` takes a `.deb` you have, and `--no-settings` leaves it out.
 
 The vendor image ships its ssh host keys and machine-id, the same on every card.
 Prep removes them (fix 23), and the card makes its own on its first boot. If

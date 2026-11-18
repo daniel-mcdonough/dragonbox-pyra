@@ -140,9 +140,8 @@ jobs:
             -- --release --grow-on-boot --kernel "$WORK/kernel/m4-kbdled-kernel.tar.gz"
           # Prep installs pyra-backlight and pyra-settings from their pins
           # (fixes 22, 26), never from a file this workflow could hand it.
-          # Until pyra-settings has a pinned release, the image has no settings app.
           grep -q '^installed_pyra-settings=' "$WORK/image/$name.info" ||
-            echo "::warning::no pyra-settings in this image: prep pins no pyra-settings release yet"
+            echo "::warning::no pyra-settings in this image: check fix 26 in the prep log"
           echo "NAME=$name" >> "$GITHUB_ENV"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
