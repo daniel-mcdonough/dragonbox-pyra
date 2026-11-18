@@ -207,6 +207,9 @@ fi
 modprobe f2fs
 LOOP=$(losetup --find --partscan --show "$WORK")
 i "loop device $LOOP"
+# udev may still be handling the new partitions; mount can fail with "Can't
+# lookup blockdev" until it is done.
+udevadm settle 2>/dev/null || true
 [[ -b ${LOOP}p2 ]] || { echo "no ${LOOP}p2 — partscan failed" >&2; exit 1; }
 
 blkid "${LOOP}p1" "${LOOP}p2" || true

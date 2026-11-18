@@ -94,6 +94,9 @@ ok "vendor archive and its image match their pinned SHA-256s"
 
 modprobe f2fs 2>/dev/null || true
 LOOP=$(losetup --find --partscan --show "$TMP")
+# udev may still be handling the new partitions; mount can fail with "Can't
+# lookup blockdev" until it is done.
+udevadm settle 2>/dev/null || true
 [[ -b ${LOOP}p2 ]] || die "no ${LOOP}p2: partition scan failed"
 mount -t f2fs "${LOOP}p2" "$MNT"
 mount "${LOOP}p1" "$MNT/boot"
