@@ -4,7 +4,7 @@
 # its /boot, before the card's first boot.
 #
 #   sudo mount /dev/sdX2 /mnt && sudo mount /dev/sdX1 /mnt/boot
-#   sudo ./pyra-trixie-prep.sh [--kernel FILE | --no-kernel]
+#   sudo ./pyra-trixie-prep.sh [--kernel FILE]
 #                              [--backlight FILE | --no-backlight]
 #                              [--settings FILE | --no-settings] [--set-password]
 #                              [--ssh-key FILE.pub] [--grow-on-boot] [--release]
@@ -18,8 +18,10 @@
 # Fix 19 installs the shipped kernel, 5.6.19-m4-kbdled, and makes it what the
 # card boots. With no option it offers to download the published release asset
 # and checks it against the SHA-256 pinned below; --kernel FILE uses a tarball
-# you already have (a download, or ./pc/pyra-crossbuild.sh kernel-m4-kbdled);
-# --no-kernel leaves the card on the stock 5.6.19-pyradef.
+# you already have (a download, or ./pc/pyra-crossbuild.sh kernel-m4-kbdled).
+# There is no stock-only card: without one of the two, prep stops before it
+# writes anything. The stock 5.6.19-pyradef stays in boot slot l0 as the
+# fallback.
 #
 # Fix 22 installs pyra-backlight (a brightness applet for the screen and the
 # keyboard light, and pyra-idle-dim) with the image's own dpkg. With no option
@@ -74,7 +76,7 @@ warn() { printf '\e[33mWARN\e[0m   %s\n' "$*" >&2; }
 ok()   { printf '\e[32mOK\e[0m     %s\n' "$*"; }
 info() { printf '\e[36mINFO\e[0m   %s\n' "$*"; }
 
-KERNEL_MODE=ask         # ask: offer the download; file: --kernel; none: --no-kernel
+KERNEL_MODE=ask         # ask: offer the download (or stop); file: --kernel
 KERNEL_FILE=
 BACKLIGHT_MODE=auto     # auto: the pinned download if there is one; file: --backlight; none: --no-backlight
 BACKLIGHT_FILE=
@@ -90,7 +92,6 @@ while [[ $# -gt 0 ]]; do
     --kernel)    [[ $# -ge 2 ]] || die "--kernel needs a tarball"
                  KERNEL_MODE=file; KERNEL_FILE=$2; shift 2 ;;
     --kernel=*)  KERNEL_MODE=file; KERNEL_FILE=${1#--kernel=}; shift ;;
-    --no-kernel) KERNEL_MODE=none; shift ;;
     --backlight) [[ $# -ge 2 ]] || die "--backlight needs a .deb"
                  BACKLIGHT_MODE=file; BACKLIGHT_FILE=$2; shift 2 ;;
     --backlight=*) BACKLIGHT_MODE=file; BACKLIGHT_FILE=${1#--backlight=}; shift ;;
@@ -113,7 +114,7 @@ ROOT=${ARGS[0]:-}
 USERNAME=${ARGS[1]:-pyra}
 GROUPS_WANTED="sudo video audio netdev plugdev bluetooth dialout input render games cdrom floppy"
 
-[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE | --no-kernel] [--backlight FILE | --no-backlight] [--settings FILE | --no-settings] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
+[[ -n $ROOT ]] || die "usage: $0 [--kernel FILE] [--backlight FILE | --no-backlight] [--settings FILE | --no-settings] [--set-password] [--ssh-key FILE.pub] [--grow-on-boot] [--release] /path/to/mounted/rootfs [username]"
 [[ $EUID -eq 0 ]] || die "must run as root (it writes into $ROOT and chowns files)"
 [[ -d $ROOT/etc && -d $ROOT/usr && -d $ROOT/var ]] || die "$ROOT does not look like a rootfs"
 
@@ -394,8 +395,7 @@ trap cleanup EXIT
 if [[ $KERNEL_MODE == ask ]]; then
     if [[ -z $KERNEL_URL || -z $KERNEL_SHA256 ]]; then
         warn "fix19: no kernel release is published yet, so there is nothing to download.
-       Pass --kernel FILE (./pc/pyra-crossbuild.sh kernel-m4-kbdled builds one),
-       or --no-kernel to leave this card on the stock 5.6.19-pyradef."
+       Pass --kernel FILE (./pc/pyra-crossbuild.sh kernel-m4-kbdled builds one)."
         die "fix19: no kernel to install; nothing has been written"
     fi
     ans=y
@@ -411,34 +411,30 @@ if [[ $KERNEL_MODE == ask ]]; then
            info "fix19: downloading $KERNEL_URL"
            curl -fL --proto '=https' --tlsv1.2 -o "$KERNEL_FILE" "$KERNEL_URL" ||
                die "fix19: the download failed; nothing has been written"
-           KERNEL_MODE=file ;;
-    *)     KERNEL_MODE=none ;;
+           ;;
+    *)     die "fix19: prep installs the shipped kernel on every card; pass --kernel FILE to use a tarball you have. Nothing has been written" ;;
     esac
 fi
-if [[ $KERNEL_MODE == file ]]; then
-    [[ -r $KERNEL_FILE ]] || die "fix19: no tarball at $KERNEL_FILE"
-    sum=$(sha256sum "$KERNEL_FILE" | cut -d' ' -f1)
-    if [[ -n $KERNEL_TMP ]]; then
-        [[ $sum == "$KERNEL_SHA256" ]] ||
-            die "fix19: the download's SHA-256 is $sum, not the pinned $KERNEL_SHA256. Not installing it."
-        ok "fix19: the download matches the pinned SHA-256"
+[[ -r $KERNEL_FILE ]] || die "fix19: no tarball at $KERNEL_FILE"
+sum=$(sha256sum "$KERNEL_FILE" | cut -d' ' -f1)
+if [[ -n $KERNEL_TMP ]]; then
+    [[ $sum == "$KERNEL_SHA256" ]] ||
+        die "fix19: the download's SHA-256 is $sum, not the pinned $KERNEL_SHA256. Not installing it."
+    ok "fix19: the download matches the pinned SHA-256"
+fi
+LIST=$(tar tzf "$KERNEL_FILE") || die "fix19: $KERNEL_FILE is not a readable .tar.gz"
+grep -qx "./boot/vmlinuz-$KERNEL_REL" <<<"$LIST" ||
+    die "fix19: $KERNEL_FILE does not carry ./boot/vmlinuz-$KERNEL_REL; prep installs only the shipped kernel"
+# The installer refuses this too, but by then fixes 1-18 are on the card.
+grep -qx './lib/' <<<"$LIST" &&
+    die "fix19: $KERNEL_FILE has a ./lib/ entry, which would replace the image's /lib symlink"
+unset LIST
+if [[ -z $KERNEL_TMP ]]; then
+    if [[ -n $KERNEL_SHA256 && $sum == "$KERNEL_SHA256" ]]; then
+        ok "fix19: $KERNEL_FILE is the published release $KERNEL_TAG"
+    else
+        info "fix19: $KERNEL_FILE is not the published release (a local build?); installing it as given"
     fi
-    LIST=$(tar tzf "$KERNEL_FILE") || die "fix19: $KERNEL_FILE is not a readable .tar.gz"
-    grep -qx "./boot/vmlinuz-$KERNEL_REL" <<<"$LIST" ||
-        die "fix19: $KERNEL_FILE does not carry ./boot/vmlinuz-$KERNEL_REL; prep installs only the shipped kernel"
-    # The installer refuses this too, but by then fixes 1-18 are on the card.
-    grep -qx './lib/' <<<"$LIST" &&
-        die "fix19: $KERNEL_FILE has a ./lib/ entry, which would replace the image's /lib symlink"
-    unset LIST
-    if [[ -z $KERNEL_TMP ]]; then
-        if [[ -n $KERNEL_SHA256 && $sum == "$KERNEL_SHA256" ]]; then
-            ok "fix19: $KERNEL_FILE is the published release $KERNEL_TAG"
-        else
-            info "fix19: $KERNEL_FILE is not the published release (a local build?); installing it as given"
-        fi
-    fi
-elif [[ $KERNEL_MODE == none ]]; then
-    warn "fix19: no kernel will be installed; this card will boot the stock 5.6.19-pyradef"
 fi
 
 # Fix 22 installs a .deb with the image's dpkg, without apt: the vendor image
@@ -1615,8 +1611,7 @@ fi
 # pyra-audio-select.service fills it before the display manager on an AESS
 # kernel (5.6.19-m4-kbdled) and leaves it dangling on any other, where
 # PulseAudio skips it and the packaged pyra.conf and pyra.pa apply untouched.
-# So on the stock 5.6.19-pyradef this card boots, the stock audio is what
-# plays. docs/audio.md, "Two paths, chosen by the kernel".
+# So on the stock 5.6.19-pyradef (slot l0), the stock audio is what plays. docs/audio.md, "Two paths, chosen by the kernel".
 #
 # Two of the files go in /usr/share/pulseaudio/alsa-mixer/paths, the only
 # place PulseAudio 17 reads a profile set's paths from. The pulseaudio package
@@ -1660,7 +1655,7 @@ fi
 # the line edge triggered, and a key that lands between the driver's last
 # FIFO read and its acknowledge leaves the line asserted with no new edge to
 # come. patches/0006 fixes it in the kernel fix 19 installs; the stock
-# 5.6.19-pyradef, which a --no-kernel card boots, does not carry it. pyra-keypad-rescue drains the queue and clears
+# 5.6.19-pyradef, which a card booted on l0 runs, does not carry it. pyra-keypad-rescue drains the queue and clears
 # the status over i2c, run by hand from ssh or the touchscreen. A manual tool:
 # no unit, nothing enabled. docs/troubleshooting.md, "Getting the keyboard
 # back without that kernel".
@@ -1696,8 +1691,8 @@ done
 # the tree, writes the M4 modprobe.d blacklist before the initrd, builds the
 # initrd (with fix 14's hooks, which are in place by now) and copies the stock
 # append line into the entry. pyra-boot-kernel.sh then names l5 the base and
-# makes it the default. Prep installs both scripts on every run, kernel or
-# not: they are how a user changes kernels later.
+# makes it the default. Prep installs both scripts on every run: they are how
+# a user changes kernels later.
 #
 # Fallback: a kernel that never reaches userspace can't be undone from the
 # device. Put the card in a PC and change `default l5` to `default l0` in
@@ -1716,59 +1711,55 @@ for s in "$KINSTALL_SRC" "$KBOOT_SRC"; do
     fi
 done
 
-if [[ $KERNEL_MODE == file ]]; then
-    EXTDIR=$ROOT/boot/extlinux
-    KMOD=$ROOT/usr/lib/modules/$KERNEL_REL
-    M4_CONF=$ROOT/etc/modprobe.d/pyra-m4-noautoboot.conf
-    slot_linux=$(awk -v want="label $KERNEL_SLOT" '$0 == want {f=1; next} /^label /{f=0}
-        f && /^[[:space:]]*linux /{print $2; exit}' "$EXTDIR/user.cfg" 2>/dev/null || true)
-    # Installed means: the entry boots it, its files are there, the image is
-    # this tarball's, and a kernel with omap_remoteproc has the blacklist.
-    current=no
-    if [[ $slot_linux == "/vmlinuz-$KERNEL_REL" && -f $ROOT/boot/initrd.img-$KERNEL_REL && -d $KMOD ]] &&
-       tar xzOf "$KERNEL_FILE" "./boot/vmlinuz-$KERNEL_REL" | cmp -s - "$ROOT/boot/vmlinuz-$KERNEL_REL"; then
-        current=yes
-        if find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q . &&
-           ! grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
-            current=no
-        fi
+EXTDIR=$ROOT/boot/extlinux
+KMOD=$ROOT/usr/lib/modules/$KERNEL_REL
+M4_CONF=$ROOT/etc/modprobe.d/pyra-m4-noautoboot.conf
+slot_linux=$(awk -v want="label $KERNEL_SLOT" '$0 == want {f=1; next} /^label /{f=0}
+    f && /^[[:space:]]*linux /{print $2; exit}' "$EXTDIR/user.cfg" 2>/dev/null || true)
+# Installed means: the entry boots it, its files are there, the image is
+# this tarball's, and a kernel with omap_remoteproc has the blacklist.
+current=no
+if [[ $slot_linux == "/vmlinuz-$KERNEL_REL" && -f $ROOT/boot/initrd.img-$KERNEL_REL && -d $KMOD ]] &&
+   tar xzOf "$KERNEL_FILE" "./boot/vmlinuz-$KERNEL_REL" | cmp -s - "$ROOT/boot/vmlinuz-$KERNEL_REL"; then
+    current=yes
+    if find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q . &&
+       ! grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
+        current=no
     fi
-    if [[ $current == yes ]]; then
-        ok "fix19: $KERNEL_REL is already installed in slot $KERNEL_SLOT"
-    else
-        cp -- "$KERNEL_FILE" "$STAGED_KERNEL"
-        chroot_mount
-        info "fix19: installing $KERNEL_REL in the chroot (under qemu, a few minutes)"
-        if ! out=$(in_chroot /usr/local/sbin/pyra-install-debug-kernel.sh \
-                --slot "$KERNEL_SLOT" "${STAGED_KERNEL#$ROOT}" 2>&1); then
-            die "fix19: pyra-install-debug-kernel.sh failed in the chroot:
-$out"
-        fi
-        rm -f -- "$STAGED_KERNEL"
-        ok "fix19: installed $KERNEL_REL into slot $KERNEL_SLOT, with its initrd"
-    fi
-    if grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
-        ok "fix19: ${M4_CONF#$ROOT} keeps the M4s from starting at boot"
-    elif find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q .; then
-        die "fix19: $KERNEL_REL has omap_remoteproc but ${M4_CONF#$ROOT} was not written"
-    fi
-
-    base=$(tr -dc 'a-z0-9' 2>/dev/null < "$EXTDIR/pyra-base-label" || true)
-    def=$(awk '/^[[:space:]]*default /{print $2; exit}' "$EXTDIR/extlinux.conf")
-    if [[ $base == "$KERNEL_SLOT" && $def == "$KERNEL_SLOT" ]]; then
-        ok "fix19: $KERNEL_SLOT is already the base and the default"
-    else
-        chroot_mount
-        in_chroot /usr/local/sbin/pyra-boot-kernel.sh base "$KERNEL_SLOT" --quiet ||
-            die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the base"
-        in_chroot /usr/local/sbin/pyra-boot-kernel.sh stock --quiet ||
-            die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the default"
-        ok "fix19: the card boots $KERNEL_REL ($KERNEL_SLOT is the base and the default; l0 is the stock kernel)"
-    fi
-    chroot_unmount
-else
-    warn "fix19: no kernel installed; the card boots the stock 5.6.19-pyradef"
 fi
+if [[ $current == yes ]]; then
+    ok "fix19: $KERNEL_REL is already installed in slot $KERNEL_SLOT"
+else
+    cp -- "$KERNEL_FILE" "$STAGED_KERNEL"
+    chroot_mount
+    info "fix19: installing $KERNEL_REL in the chroot (under qemu, a few minutes)"
+    if ! out=$(in_chroot /usr/local/sbin/pyra-install-debug-kernel.sh \
+            --slot "$KERNEL_SLOT" "${STAGED_KERNEL#$ROOT}" 2>&1); then
+        die "fix19: pyra-install-debug-kernel.sh failed in the chroot:
+$out"
+    fi
+    rm -f -- "$STAGED_KERNEL"
+    ok "fix19: installed $KERNEL_REL into slot $KERNEL_SLOT, with its initrd"
+fi
+if grep -qsx 'blacklist omap_remoteproc' "$M4_CONF"; then
+    ok "fix19: ${M4_CONF#$ROOT} keeps the M4s from starting at boot"
+elif find "$KMOD" -name 'omap_remoteproc.ko*' | grep -q .; then
+    die "fix19: $KERNEL_REL has omap_remoteproc but ${M4_CONF#$ROOT} was not written"
+fi
+
+base=$(tr -dc 'a-z0-9' 2>/dev/null < "$EXTDIR/pyra-base-label" || true)
+def=$(awk '/^[[:space:]]*default /{print $2; exit}' "$EXTDIR/extlinux.conf")
+if [[ $base == "$KERNEL_SLOT" && $def == "$KERNEL_SLOT" ]]; then
+    ok "fix19: $KERNEL_SLOT is already the base and the default"
+else
+    chroot_mount
+    in_chroot /usr/local/sbin/pyra-boot-kernel.sh base "$KERNEL_SLOT" --quiet ||
+        die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the base"
+    in_chroot /usr/local/sbin/pyra-boot-kernel.sh stock --quiet ||
+        die "fix19: pyra-boot-kernel.sh could not make $KERNEL_SLOT the default"
+    ok "fix19: the card boots $KERNEL_REL ($KERNEL_SLOT is the base and the default; l0 is the stock kernel)"
+fi
+chroot_unmount
 
 # ---------------------------------------------------------------------- fix 20
 #

@@ -108,9 +108,6 @@ stays on the card, and `sudo pyra-boot-kernel.sh debug l5 --once` tries it again
 for a single boot. Please report what the kernel did, with
 `journalctl -b -1 -k` from a boot that got far enough to write a journal.
 
-To prepare a card that boots the stock kernel from the start, run prep with
-`--no-kernel`.
-
 ---
 
 ## Root mounts a minute or two late, with nothing on screen

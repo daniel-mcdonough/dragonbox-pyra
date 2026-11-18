@@ -106,7 +106,9 @@ confirm each part works. The prebuilt image is this same procedure with
 The prep script installs the shipped kernel, `5.6.19-m4-kbdled`, and the card
 boots it (fix 19). It downloads the kernel from the project's release and checks
 it against a pinned hash (release `kernel-5.6.19-r3`), or takes a tarball you
-name with `--kernel FILE`. `--no-kernel` keeps the stock `5.6.19-pyradef`.
+name with `--kernel FILE`. It always installs one of the two: there is no
+stock-only card. The stock `5.6.19-pyradef` stays in boot slot `l0` as the
+fallback.
 
 It also installs `pyra-backlight` (fix 22): a panel applet with sliders for the
 screen and the keyboard light, and `pyra-idle-dim`, which dims the screen when
@@ -140,8 +142,8 @@ stock kernel that hung X twice. [docs/troubleshooting.md](docs/troubleshooting.m
 **Brightness.** A prepared card has `pyra-backlight` (fix 22). Its slider is
 on the panel. Its `pyra-idle-dim` dims the screen after MATE's idle delay
 (`gsettings set org.mate.session idle-delay 5`, in minutes). Section 8 of
-`docs/procedure.md` has both of these in full. On a card prepared with
-`--no-kernel`, or booted back on `l0`, read the same section's note on
+`docs/procedure.md` has both of these in full. On a card booted back on
+`l0`, read the same section's note on
 suspend first: the stock kernel can't complete one.
 
 ## If something goes wrong

@@ -1159,7 +1159,7 @@ On `5.6.19-m4-kbdled` audio goes through the OMAP5's audio DSP (AESS) on
 own script, and loading the wrong one leaves the session on `auto_null`, the
 "dummy output" (`audio.md`, "Two paths, chosen by the kernel"). A file in `/etc`
 can name only one of them, and a prepared card has both: it boots the shipped
-kernel (fix 19), and the stock one is its fallback (`--no-kernel`, or `l0`).
+kernel (fix 19), and the stock one is its fallback in `l0`.
 
 So the choice is made per boot. Prep installs, to the same paths
 `pyra-install-helpers.sh` uses:
@@ -1221,7 +1221,7 @@ acknowledges leaves the line asserted, no further edge ever comes, and the
 keyboard stays dead. The handler is never entered, so nothing is logged.
 `patches/0006` fixes it in the kernel (`kernel-changes.md`), and the shipped
 kernel fix 19 installs carries it; the stock `5.6.19-pyradef` does not, so the
-rescue is for a card prepared with `--no-kernel` or booted on `l0`. It is also
+rescue is for a card booted on `l0`. It is also
 for the shipped kernel after a resume: a key let go of while the machine sleeps
 leaves the same stuck line. `patches/0050` fixes that, from
 `kernel-5.6.19-r2` on (the pinned release is r3); `kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
@@ -1256,14 +1256,16 @@ stays in `linux.cfg` as `l0`, untouched. The vendor's `extlinux.conf` is kept as
 
 **Where the kernel comes from.** The release workflow publishes
 `m4-kbdled-kernel.tar.gz` on each `kernel-*` tag. With no option, prep offers to
-download that asset ([Y/n]; a run with no terminal takes yes) and installs it
+download that asset ([Y/n]; a run with no terminal takes yes; `n` stops prep
+with "pass --kernel FILE") and installs it
 only if its SHA-256 matches the hash pinned in the script. The script comes from
 the repository, so the hash travels with the source that names it.
 `--kernel FILE` installs a tarball you already have, whether a download or
 `./pc/pyra-crossbuild.sh kernel-m4-kbdled`. Prep says whether it matches the
 pinned release, and installs it either way. It refuses any tarball that doesn't
 carry `./boot/vmlinuz-5.6.19-m4-kbdled`, or that has a `./lib/` entry.
-`--no-kernel` leaves the card on the stock kernel. All of this happens before
+There is no option to skip the kernel: the stock one stays in `l0` as the
+fallback whatever prep does. All of this happens before
 fix 1 writes anything, so a failed download or a wrong tarball leaves the card
 untouched.
 
@@ -1286,8 +1288,7 @@ way fix 14 runs the image's tools, so each job has one implementation:
 - `pyra-boot-kernel.sh base l5`, then `stock`, makes `l5` the kernel the
   one-shot revert and `stock` return to, and the default.
 
-Prep also installs both scripts in `/usr/local/sbin` on every run, with or
-without a kernel, because they are how a user changes kernels afterwards
+Prep also installs both scripts in `/usr/local/sbin` on every run, because they are how a user changes kernels afterwards
 (`building.md`, "Boot slots").
 
 A second run compares the slot's entry, the installed `vmlinuz` with the
@@ -1305,7 +1306,8 @@ sudo pyra-boot-kernel.sh stock` goes back to it for good.
 
 The selftest installs the cross-build's tarball when it finds one and asserts
 the entry, the files, the blacklist, the base and the default. Without a
-tarball it runs prep with `--no-kernel` and reports the skip in its verdict.
+tarball it downloads the release prep pins and checks it against prep's hash.
+Its abort tests pass the same tarball, since prep has no kernel-less run.
 No prepared card has booted this fix yet (`verification-log.md`).
 
 ## Fix 20 — on battery, MATE takes the keyboard light back from the Fn keys

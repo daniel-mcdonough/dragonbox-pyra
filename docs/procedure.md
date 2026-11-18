@@ -117,9 +117,9 @@ Check the three assumptions by hand:
 
 Then run the script against the loop mount to confirm it completes cleanly:
 
-    sudo ./pc/pyra-trixie-prep.sh --no-kernel /mnt/pyra testuser
+    sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra testuser
 
-(or `--kernel FILE` in place of `--no-kernel`, step 4). The script reports what it found for each fix. If anything surprises you, adjust
+(or with no `--kernel`, to download the pinned release, step 4). The script reports what it found for each fix. If anything surprises you, adjust
 before committing it to a card.
 
     sudo umount /mnt/pyra/boot /mnt/pyra
@@ -139,8 +139,8 @@ time and requires every entry to be unchanged, with no initrd rebuilt, and
 finally removes a fix 5 payload to confirm the script aborts *before* fix 1
 writes anything. For fix 19 it hands prep the cross-build's
 `m4-kbdled-kernel.tar.gz` (`PYRA_KERNEL_TARBALL` names another). Without one it
-runs prep with `--no-kernel`, and the verdict says the kernel install was
-skipped. For fix 22 it lets prep download the pinned pyra-backlight release
+downloads the release prep pins, checks it against prep's hash and passes
+that. For fix 22 it lets prep download the pinned pyra-backlight release
 (network) and checks that the download matched; `PYRA_BACKLIGHT_DEB` names a
 `.deb` to pass with `--backlight` instead, and `PYRA_BACKLIGHT_DEB=none` runs
 prep with `--no-backlight` and counts a skip. It also makes two small `.deb`s, another
@@ -289,8 +289,8 @@ already have, downloaded or built with `./pc/pyra-crossbuild.sh kernel-m4-kbdled
 
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra yourusername
 
-The pinned release is `kernel-5.6.19-r3`. `--no-kernel` prepares a card
-that boots the stock `5.6.19-pyradef`, with every other fix in place. The card
+The pinned release is `kernel-5.6.19-r3`. Prep always installs a kernel:
+answering `n` at its download prompt stops it before it writes anything. The card
 boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
 not come up on the new kernel, `troubleshooting.md`, "The card does not boot
 after prep installed the kernel", switches it back from the PC.
@@ -346,8 +346,8 @@ Log in as the user the script created. Then:
 
 `status` prints the running kernel and three lines, `next boot`, `base kernel`
 and `one-shot revert : disarmed`, the first two naming `l5`. The last file
-should end in `blacklist omap_remoteproc`. A card prepared with `--no-kernel`
-reads `5.6.19-pyradef`, and `l0` as the base.
+should end in `blacklist omap_remoteproc`. A card switched back to the stock
+kernel (`troubleshooting.md`) reads `5.6.19-pyradef`, and `l0` as the base.
 
     # the stock kernel is still there as the fallback
     grep -A2 '^label l0$' /boot/extlinux/linux.cfg   # linux /vmlinuz-5.6.19-pyradef
@@ -540,8 +540,8 @@ encrypting the card if the data on it matters.
 
 Two things about this machine's power handling are wrong out of the box, and
 what you should do about them depends on which kernel the card runs: the
-shipped one that prep installs (fix 19), or the stock one (`--no-kernel`, or
-back on `l0`). Both are covered in detail in `troubleshooting.md`.
+shipped one that prep installs (fix 19), or the stock one (booted back on
+`l0`). Both are covered in detail in `troubleshooting.md`.
 
 **Suspend.** On the stock kernel it cannot complete, and a failed attempt
 leaves the desktop frozen behind a working mouse pointer with no way back
