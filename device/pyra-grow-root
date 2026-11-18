@@ -237,8 +237,13 @@ fi
 
 TARGET=$((PART_SZ - MARGIN))
 say "resizing the filesystem to $((TARGET / 2097152)) GiB. DO NOT SWITCH OFF: about 10 minutes for a 256 GB card"
-resize.f2fs -t "$TARGET" "$PART" >> "$LOG" 2>&1 || { say "resize.f2fs failed; see $LOG"; exit 1; }
+# f2fs-tools 1.17 asks "Resize operation is currently experimental ... Do you
+# want to continue? [y/n]" on stdin; 1.16 (trixie) does not ask and ignores
+# stdin. 1.16 has no -F to skip the question, so answer it. A "n" or an
+# unanswered question can still exit 0, so the size is checked as well.
+echo y | resize.f2fs -t "$TARGET" "$PART" >> "$LOG" 2>&1 || { say "resize.f2fs failed; see $LOG"; exit 1; }
 NEW_FS=$(fs_sectors "$PART")
+[ "${NEW_FS:-0}" -gt "$FS_SZ" ] || { say "resize.f2fs left the filesystem at ${NEW_FS:-?} sectors; see $LOG"; exit 1; }
 if ! fsck.f2fs -f --dry-run "$PART" >> "$LOG" 2>&1; then
 	say "WARNING: the read-only check after the resize reported a problem; see $LOG"
 	exit 1

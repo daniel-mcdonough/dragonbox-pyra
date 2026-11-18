@@ -62,6 +62,14 @@ that is not as expected:
    PARTUUIDs stay valid. The kernel learns the new size through `partx`.
 5. **`resize.f2fs`**, leaving the 64 MiB margin measured below, then a second
    dry run.
+   f2fs-tools 1.17 (Arch, 2026-11) asks `Resize operation is currently
+   experimental ... Do you want to continue? [y/n]` on stdin and waits; with
+   stdin at `/dev/null` it aborts with an assertion, and an `n` exits 0 with
+   nothing resized. 1.16 (trixie, the initrd's) never asks and has no `-F`
+   to skip the question (it prints its usage and fails). So the script pipes
+   `y` into it, which 1.16 ignores, and then checks that the filesystem
+   actually grew. Found when the selftest hung on a PC with 1.17
+   (2026-11-17); both versions checked on image files that day.
 
 The screen says what is happening, and not to switch off during step 5.
 Measured 2026-10-31 on a 256 GB SanDisk (SA256): capacity check 931 samples,

@@ -138,7 +138,7 @@ run() {             # NAME PARTITION [CMDLINE]
     printf '%s\n' "${3:-root=PARTUUID=21a4c285-02 rootwait}" > "$OUT/$name.cmdline"
     set +e
     PYRA_GROW_LOG=$OUT/$name.log PYRA_GROW_TMP=$WORK/tmp-$name \
-        PYRA_GROW_CMDLINE=$OUT/$name.cmdline "${RUNSH[@]}" "$SCRIPT" "$part" > "$OUT/$name.out" 2>&1
+        PYRA_GROW_CMDLINE=$OUT/$name.cmdline "${RUNSH[@]}" "$SCRIPT" "$part" < /dev/null > "$OUT/$name.out" 2>&1
     RC=$?
     set -e
 }

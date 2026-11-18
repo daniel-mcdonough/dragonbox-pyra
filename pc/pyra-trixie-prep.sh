@@ -368,14 +368,12 @@ GIR_SHA256=5c75b6aae0881990a2555c83502d93d22fd3700265ba9eebaa5841de05dd5684
 GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
           https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
 STAGED_GIR=
-# Fix 26's two .debs. pyra-settings has no published release yet, so nothing is
-# pinned and a run without --settings leaves it out; when it is published, its
-# three lines are set the same way. The pyra-hacks fork is published: the
+# Fix 26's two .debs. The pyra-settings app is pusblished. The pyra-hacks fork is published: the
 # v0.38+pyra3 release asset, by SHA-256. A copy beside the pyra-settings .deb is
 # used instead, so a run can be offline.
-SETTINGS_TAG=
-SETTINGS_URL=
-SETTINGS_SHA256=
+SETTINGS_TAG=v0.14
+SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings-launcher/releases/download/v0.14/pyra-settings_0.14_all.deb
+SETTINGS_SHA256=0019dfc4b32d63c1392aa264aed2253c1e0c2fb09216f8e2cc269bbfb8bb49b5
 SETTINGS_TMP=
 STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
 HACKS_VER=0.38+pyra3
