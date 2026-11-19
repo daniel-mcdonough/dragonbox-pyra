@@ -2277,4 +2277,5 @@ ssh.
   boot.
 - **Owner:** the pyra-sound tray icon works on both boots. After the reboot, audio played and
   the tray switched it between headphones and speakers. That path is pyra-sound's, not the
-  daemon's; the wheel was not tried after the reboot.
+  daemon's. The wheel then moved the volume on the speakers and on the headphones, so the
+  restarted daemon drives both.
