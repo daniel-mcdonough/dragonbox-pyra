@@ -1765,10 +1765,10 @@ package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4
 (fix 22), which its display and keyboard light page needs. (0.13 and earlier
 had both in Depends; 0.14 moved them to Recommends.) Prep installs both anyway,
 so fix 26 also
-installs the fork's `pyra-hacks_0.38+pyra3_armhf.deb`, pinned by SHA-256
-(`3dd6e39c…7f3fa`, the release asset as published), from a copy beside the
+installs the fork's `pyra-hacks_0.38+pyra4_armhf.deb`, pinned by SHA-256
+(`45c16412…f3e9b`, the release asset as published), from a copy beside the
 pyra-settings `.deb` or else from that release. It replaces the vendor's 0.38;
-an image that already has 0.38+pyra3 or later keeps it. The fork's thermal
+an image that already has 0.38+pyra4 or later keeps it. The fork's thermal
 script is byte-identical to what fixes 6 and 7 make, so their dpkg guard finds
 nothing to do, and prep checks that after the install. Fix 12 stands aside
 (above). Fix 8 stays: the fork does not set the charger's limit.
@@ -1788,7 +1788,7 @@ The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
-repository's 0.38 sorts below `0.38+pyra3`, so apt keeps the fork. A vendor
+repository's 0.38 sorts below `0.38+pyra4`, so apt keeps the fork. A vendor
 0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
@@ -1860,7 +1860,8 @@ debs attached:
 | --- | --- | --- |
 | `0.38+pyra1` | 2026-10-20 | fixes 6, 7 and 12 (the wheel's taper, speakers only) |
 | `0.38+pyra2` | 2026-11-14 | the wheel drives the headphones too (fix 12, patch 0002) |
-| `0.38+pyra3` | 2026-11-14 | the wheel's off position has its own band, so it doesn't flutter at the bottom; prep's fix 26 installs this one |
+| `0.38+pyra3` | 2026-11-14 | the wheel's off position has its own band, so it doesn't flutter at the bottom |
+| `0.38+pyra4` | 2026-11-19 | `pyra_volumed` exits when the sound card or the wheel's ADC is not there yet and systemd restarts it every 2 s, up to 30 times, so a daemon started before the card registered no longer leaves the wheel dead for the boot; prep's fix 26 installs this one |
 
 To install 0.38+pyra2 on the Pyra:
 
@@ -1888,7 +1889,7 @@ The running unit has had `0.38+pyra1` since 2026-10-20, replacing 0.38. The prev
 thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
-package; fix 26 installs `0.38+pyra3` along with pyra-settings.
+package; fix 26 installs `0.38+pyra4` along with pyra-settings.
 
 ### Surviving a package run: `pyra-thermal-guard`
 

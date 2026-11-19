@@ -313,7 +313,7 @@ have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
 `--no-backlight` leaves it out.
 
 **Settings app (fix 26).** Prep installs `pyra-settings` and the pyra-hacks fork
-`0.38+pyra3` its volume wheel page needs, the same way: by default it downloads
+`0.38+pyra4` its volume wheel page needs, the same way: by default it downloads
 pyra-settings' release (v0.14) and the fork's, each checked against a pinned
 SHA-256. `--settings FILE` takes a `.deb` you have (the fork comes from a copy
 beside it, or else its release). It needs fix 22's pyra-backlight.
