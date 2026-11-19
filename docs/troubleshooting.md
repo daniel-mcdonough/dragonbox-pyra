@@ -1143,8 +1143,10 @@ Everything except the shoulder buttons:
 
 Reading the file gives the current set. A code the device does not have is
 refused with `Invalid argument`, and the setting is left as it was. The
-change takes effect at the next suspend, and it does not survive a reboot,
-so make it stick the same way as `power/wakeup` above. `power/wakeup` still
+change takes effect at the next suspend, and it does not survive a reboot.
+On the image, the Pyra Settings app (fix 26) does this from its wake page and
+saves the set; its `pyra-settings-apply.service` writes it back at every boot.
+By hand, make it stick the same way as `power/wakeup` above. `power/wakeup` still
 switches the whole device: with it `disabled`, no button wakes the machine,
 whatever `wakeup_keys` says.
 
@@ -1152,6 +1154,11 @@ Tested on `5.6.19-m4-kbdled-test` (the shipped build plus 0053),
 2026-11-12, with the set above and a 45 s RTC backstop. Left shoulder top
 slept the full 46 s. A woke it after 9 s, through `48051000.gpio` (IRQ 113),
 the bank A is on. Right shoulder bottom slept the full 47 s.
+
+Through the app on the r3 CI release image, 2026-11-18: the set changed in
+the app showed in `wakeup_keys`, was written back after a reboot, and the
+buttons left out stayed masked while A still woke the machine
+(`verification-log.md`).
 
 **The other wake sources.** Every device whose `power/wakeup` reads `enabled`
 on the release card (2026-11-12, `find /sys/devices -path '*/power/wakeup'`):

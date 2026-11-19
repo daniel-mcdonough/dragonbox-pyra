@@ -2208,3 +2208,29 @@ kernel artifact as the entry above (`kernel-5.6.19-r3`, Kernel release run 44223
   size field, a theme file with no name), which do not stop the icon showing.
 - **Owner:** one sound icon in the tray. Left click mutes and unmutes, right click switches
   between speakers and headphones, and the wheel moves the volume it shows.
+
+## 2026-11-18 — wake buttons end to end through pyra-settings 0.14 (R60)
+
+The card from the 2026-11-18 entry above (Release image run 44238538079, `5.6.19-m4-kbdled`
+from `kernel-5.6.19-r3`, `pyra-settings 0.14`). ssh, and the owner at the Pyra pressing the
+buttons.
+
+- **App to sysfs:** with the shoulder buttons already off, the owner unticked the d-pad group on
+  the app's wake page. `pyra-game-buttons/wakeup_keys` read `102,104,107,109,272-273`, and
+  `/etc/pyra-settings/pyra-settings.conf` held `game-buttons = 102,104,107,109,272,273`.
+  `power/wakeup` stayed `enabled`.
+- **Across a reboot:** after `systemctl reboot`, `wakeup_keys` read the same set (the device
+  tree's default is all 14). `pyra-settings-apply.service` ran
+  `pyra-settings-helper apply` and exited 0 during boot. Before the app had saved anything, the
+  unit is skipped (`ConditionPathExists` on the config file), which is expected.
+- **Suspend:** a detached script, three rounds, each with the RTC armed 45 s out, and the owner
+  pressing that round's button a few times while the screen was dark:
+
+  | round | button | in the set | slept | `pm_wakeup_irq` | its interrupt count |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 | left shoulder bottom (54) | no | 46 s | 152 (Palmas, RTC) | 0 → 0 |
+  | 2 | d-pad up (103) | no, removed in this session | 46 s | 152 | 0 → 0 |
+  | 3 | A (102) | yes | 5 s | 113 (`48051000.gpio`) | 0 → 3 |
+
+  The buttons left out were masked, not merely ignored: their counts did not move. The card
+  was left with the d-pad off (owner).
