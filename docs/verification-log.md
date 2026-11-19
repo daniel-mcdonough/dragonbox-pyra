@@ -2261,7 +2261,8 @@ the selftest always passes `--kernel` and the CI image takes the kernel artifact
 
 ## 2026-11-19 — `pyra_volumed` retries until the card is there (fix 26, pyra-hacks 0.38+pyra4)
 
-A card written from a CI release image that installs the fork's `0.38+pyra4` (7ae5da8's pin).
+A card written from the Release image run 44602488525, which installs the fork's `0.38+pyra4`
+(7ae5da8's pin).
 `5.6.19-m4-kbdled #10` (r3); `pyra-hacks 0.38+pyra4`, `pyra-settings 0.14`, `pyra-sound 0.4`.
 ssh.
 
