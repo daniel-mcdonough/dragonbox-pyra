@@ -1967,14 +1967,16 @@ fi
 # as any other, and the machine-id (which network stacks can derive a DHCP
 # client ID from) is the same on every card on a network. Fix 23 removes the
 # vendor's and lets the first boot make the card's own. Debian's ssh.service
-# does not make keys: its `sshd -t` fails with none. pyra-ssh-hostkeys.service
-# runs ssh-keygen -A before sshd on a card with no host key. An empty
-# /etc/machine-id makes systemd write a new one on the first boot (and treat
-# that boot as the first: it applies unit presets, enable-only). That also
-# starts the image's systemd-firstboot.service, which prompts on tty1 before
-# sysinit.target for whatever of locale, keymap, timezone and root password it
-# finds unset; a vendor card never runs it (its machine-id is set), so it is
-# masked.
+# does not make keys: its `sshd -t` fails with none. openssh-server's
+# sshd-keygen.service would, but only on a systemd first boot
+# (ConditionFirstBoot), and an empty /etc/machine-id is not one (machine-id(5)
+# rule 4; skipped on a release card's first boot, 2026-11-19).
+# pyra-ssh-hostkeys.service runs ssh-keygen -A before sshd on a card with no
+# host key. An empty /etc/machine-id makes systemd write a new one on the next
+# boot, with no first-boot steps. systemd-firstboot.service (it prompts on tty1
+# for locale, keymap, timezone and root password) is masked anyway, in case a
+# card ever boots with the file missing or `uninitialized`, which is a first
+# boot.
 #
 # Only the vendor's are removed, recognised by the pins below (the SHA-256 of
 # each public key's blob, and the machine-id itself), so a card that has booted

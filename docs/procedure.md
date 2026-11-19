@@ -273,9 +273,8 @@ TTY available`.
 host keys and machine-id, the same on every card written from it, so anyone
 with another card could pose as yours on the network. Prep removes them, and
 the card makes its own on its first boot: `pyra-ssh-hostkeys.service` runs
-`ssh-keygen -A` before sshd, and systemd writes a new machine-id. It masks
-`systemd-firstboot`, which the empty machine-id would otherwise start with
-console prompts. Prep removes only the vendor's, so re-running it on a card
+`ssh-keygen -A` before sshd, and systemd writes a new machine-id. It also masks
+`systemd-firstboot`, so no first boot can stop at console prompts. Prep removes only the vendor's, so re-running it on a card
 that has booted keeps the card's own. If your PC has talked to another Pyra at
 the same address, it warns once that the host key changed; that is expected.
 

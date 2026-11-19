@@ -1567,11 +1567,16 @@ identifier from it.
 
 - the ssh host keys are removed, and `pyra-ssh-hostkeys.service`
   (`device/`) runs `ssh-keygen -A` before sshd on a card with none. Debian's
-  `ssh.service` makes no keys; its `sshd -t` fails without one;
+  `ssh.service` makes no keys; its `sshd -t` fails without one. openssh-server's
+  own `sshd-keygen.service` is enabled in the image but runs only on a systemd
+  first boot, which a prepared card's first boot is not (skipped there,
+  2026-11-19);
 - `/etc/machine-id` is emptied, so systemd writes a new one on the first boot;
   `/var/lib/dbus/machine-id`, a file in the vendor image, becomes a link to it;
-- `systemd-firstboot.service` is masked. The empty machine-id makes systemd
-  treat the boot as a first boot, which would start it, and it prompts on tty1
+- `systemd-firstboot.service` is masked. An empty machine-id is not a systemd
+  first boot (`machine-id(5)`), so it would not start on a prepared card; the
+  mask covers a card whose machine-id is missing or `uninitialized`, which is a
+  first boot. It prompts on tty1
   for whatever of locale, keymap, timezone and root password it finds unset.
 
 Prep knows the vendor's by pins in the script: the SHA-256 of each public

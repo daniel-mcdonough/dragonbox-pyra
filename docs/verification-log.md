@@ -2280,3 +2280,27 @@ ssh.
   the tray switched it between headphones and speakers. That path is pyra-sound's, not the
   daemon's. The wheel then moved the volume on the speakers and on the headphones, so the
   restarted daemon drives both.
+
+## 2026-11-19 — the vendor image's host keys, offline, and who makes them on a release card (R29)
+
+The pinned vendor image (`pyra-trixie-t1.img`, SHA-256 matches `pyra-vendor-image.sh`), its
+rootfs read as user (p2 cut out with `dd`, `udisksctl loop-setup -r`, mounted read-only), and the card from Release image run 44602488525 over
+ssh.
+
+- **Vendor keys:** three pairs in `/etc/ssh`, dated 2026-02-01 14:02:20 (-0500), comment
+  `root@tmp.hqbumtgUce`. `ssh-keygen -lf`: RSA 3072 `SHA256:iv6iHTNxKendhnQSZVsq5kt34xkCrIKKWGVj4ZbSOtw`,
+  ECDSA 256 `SHA256:qPFn0/ETBAaBT68QWH8F45z0qxu4IsfRXoB3XzBxtWA`, ED25519 256
+  `SHA256:lFvFpp1MSRkDvXSaniRV2e4MsdzRojegxgMkdXBnq74`. The SHA-256 of each public blob
+  matches fix 23's pins. `/etc/machine-id` and `/var/lib/dbus/machine-id` (a separate file)
+  both hold `79a963ec48d841ac8059acf6d6c75649`.
+- **openssh-server's keygen unit:** the image has `/usr/lib/systemd/system/sshd-keygen.service`
+  (from openssh-server; `ConditionFirstBoot=yes`, runs `ssh-keygen -A`), enabled through
+  `ssh.service.wants`, `sshd.service.wants`, `sshd@.service.wants` and `ssh.socket.wants`. On
+  a vendor card it never runs, because the set machine-id means no boot is a first boot.
+- **On the release card's first boot** (the grow boot), from its journal: `pyra-ssh-hostkeys.service`
+  started at 570.0 s and logged `generating new host keys: RSA ECDSA ED25519`;
+  `sshd-keygen.service` was `skipped because of an unmet condition check (ConditionFirstBoot=yes)`.
+  So an empty `/etc/machine-id` is not a first boot. The image's own `machine-id(5)` (systemd
+  257.9) says so (rule 4: exists and empty, not a first boot). Prep's unit is what makes the
+  keys, and `systemd-firstboot` would not have started either; its mask stays as a guard.
+  `fixes.md` fix 23 and `procedure.md` §4 said the empty file made a first boot; corrected.
