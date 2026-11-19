@@ -1006,15 +1006,30 @@ repository's maintainers, and the tag does not exist until the draft is
 published. Write the image to a card from the draft and boot it on a Pyra
 (the forced password change, new host keys, the grow). Only then publish the
 draft from the Releases page. The tag is checked before the build starts, so
-a name not starting with `image-` fails at once rather than after an hour. The
+a name not starting with `image-` fails at once rather than after the build. The
 prefix also keeps it clear of `kernel-*`, which starts the Kernel release
 workflow when the tag is created. Without `release_tag`, the workflow publishes
 nothing.
 
 **First run on GitHub** (artifact built 2026-11-11 02:01 UTC from `ef8b2dc`):
 it produced the artifact. Both `.sha256` files verified after download, and
-the image booted on a Pyra (`verification-log.md`, 2026-11-10). The run's
-duration and which f2fs path it took were not recorded.
+the image booted on a Pyra (`verification-log.md`, 2026-11-10).
+
+**Measured on hosted runners** (2026-11-18, from the job logs and the jobs API
+of the first four runs, all `ubuntu-24.04` runners). On every run
+`modprobe f2fs` worked at once: it printed nothing, and the
+`linux-modules-extra` fallback never ran. Step times, in minutes and seconds:
+
+| Run | Date | Commit | Build | Compress | Build job | Draft release job |
+| --- | --- | --- | --- | --- | --- | --- |
+| 42942941255 | 2026-11-11 | `ef8b2dc` | 2:38 | 4:19 | 8:14 | 1:47 |
+| 43138203935 | 2026-11-12 | `5c5b4a4` | 3:17 | 4:47 | 8:45 | 0:43 |
+| 44230398383 | 2026-11-18 | `ef6ee24` | 2:59 | 4:30 | 8:24 | 0:50 |
+| 44238538079 | 2026-11-18 | `1bd7e2b` | 2:49 | 3:59 | 7:49 | 1:47 |
+
+A whole run takes about ten minutes. Host tools (apt) takes 23-39 s. The
+vendor archive's download adds about 40 s when the cache misses (the first
+run). The commits are the published export's, not this repository's.
 
 **What the runner must allow, and how the workflow checks it.** The workflow
 checks each of these before the build, so that a gap fails early with a
@@ -1027,11 +1042,11 @@ clear error:
 | f2fs in the kernel | the vendor rootfs is f2fs | `modprobe f2fs`. If that fails, the workflow installs `linux-modules-extra-$(uname -r)` and tries again, then checks `/proc/filesystems` |
 | qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20, 22, 24, 26, 27). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
 | 12 GiB free in the work tree | archive (862 MB), sparse 6 GiB image (3.7 GiB used), its `.xz` | `df` before the download |
-| time | an estimate, not measured on a runner: under an hour, mostly the qemu steps | `timeout-minutes: 120` |
+| time | measured: about 8-9 minutes for the build job (table above) | `timeout-minutes: 120` |
 
-The f2fs row is the most likely to fail: runner images use a cloud kernel
-flavour, and it may not carry f2fs. If the first run fails there and the
-extra-modules package doesn't help, don't work around it inside the
+The f2fs row is the one a runner image change could break: runner images use
+a cloud kernel flavour. The four runs above loaded f2fs without the fallback.
+If a later runner image drops it and the extra-modules package doesn't help, don't work around it inside the
 workflow. Write the image with a FUSE f2fs or a VM instead, and treat that as
 a change of build shape. The other option is a self-hosted runner, which
 needs only the same packages as a PC.
@@ -1052,9 +1067,9 @@ Done on 2026-11-01 at the workflow's first commit (measured on the build PC,
 no prep warnings. `xz` took about another two minutes. The `.xz` (936 MB)
 passed `sha256sum -c` against its `.sha256`, and the unpacked image matched the
 build script's `.sha256`. Over the same image, `zstd -T0 -19` came out larger
-(993 MB) and slower (161 s against xz's 90 s), so the workflow uses xz. A
-hosted runner has 4 vCPUs, so expect the qemu steps there to take several
-times longer.
+(993 MB) and slower (161 s against xz's 90 s), so the workflow uses xz. On a
+hosted runner (4 vCPUs) the build took about as long as on the PC, and `xz`
+took about three times as long (table above).
 
 ## Backups
 
