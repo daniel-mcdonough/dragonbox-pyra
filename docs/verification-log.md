@@ -2234,3 +2234,27 @@ buttons.
 
   The buttons left out were masked, not merely ignored: their counts did not move. The card
   was left with the d-pad off (owner).
+
+## 2026-11-18 — prep's default kernel path: no `--kernel`, the pinned r3 download (R54)
+
+`pc/pyra-trixie-prep.sh` at master 0a22732, run as root on the PC against a fresh copy of the
+pinned vendor image (`pyra-trixie-t1.img`, SHA-256 `d8e98ff6…` as in `pyra-vendor-image.sh`),
+loop-mounted, user `pyra`, `--ssh-key` and no other option. This is the path a stranger takes;
+the selftest always passes `--kernel` and the CI image takes the kernel artifact.
+
+- **Download:** prep asked to download `kernel-5.6.19-r3` from the release URL (default answer
+  Y), fetched 23.00 MB and printed `OK fix19: the download matches the pinned SHA-256`. The
+  pyra-backlight 0.8, mate-panel GIR, pyra-settings 0.14, pyra-hacks 0.38+pyra3 and
+  pyra-sound 0.4 downloads matched their pins too. Fix 19 installed `5.6.19-m4-kbdled` into
+  `l5` with its initrd and ended `done`.
+- **The image it wrote** (p1 mounted read-only afterwards): `extlinux.conf` says `default l5`,
+  `user.cfg`'s `l5` boots `/vmlinuz-5.6.19-m4-kbdled`, and that file's SHA-256 is
+  `f57911a5…6dc5ce7`, the same as the `vmlinuz` in r3's `m4-kbdled-kernel.tar.gz`.
+- **Not written to a card.** The kernel prep installed is byte-for-byte the one on the r3 CI
+  card (2026-11-17 entry: same `vmlinuz` hash, boots from `l5`), installed by the same fix 19
+  code, so a boot of this image would repeat that check (owner's call).
+- **Keyboard after a key is let go during suspend** (`building.md`, "Stop the built-in keyboard
+  going silent"), on the r3 CI card, whose running `vmlinuz` has the same hash: the owner held a
+  letter key, suspended (deep), let go while asleep and woke it. The keyboard worked, the held
+  key included. The resume's only warnings were the SGX `Unbalanced enable for IRQ 144` and
+  DSI `VC busy` lines `troubleshooting.md` already lists.
