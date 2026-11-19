@@ -17,7 +17,9 @@
 # from anything else. The result is kept as a workflow artifact: the image
 # compressed with xz, the build script's .sha256 (of the uncompressed image,
 # for sha256sum -c after unxz), a .sha256 of the .xz, its .info manifest, and
-# the prep and fsck logs.
+# the prep and fsck logs. The image job attests the .xz, both .sha256 files and
+# the .info (actions/attest), so a download can be tied to this workflow and
+# commit: docs/building.md, "Checking a download".
 #
 # Needs on the runner: root (loop devices with partition scan, mounts), f2fs in
 # the kernel, qemu-user-static with binfmt's fix-binary flag (prep runs the
@@ -52,6 +54,12 @@ jobs:
     name: Build the release image
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+      id-token: write          # the attestation's signing certificate
+      attestations: write
+      artifact-metadata: write
     outputs:
       name: ${{ steps.build.outputs.name }}
     steps:
@@ -156,6 +164,15 @@ jobs:
           cat "$NAME.info"
           ls -la
 
+      # Every run, not only a release: an artifact-only image is attested too.
+      - uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ runner.temp }}/pyra/image/${{ steps.build.outputs.name }}.img.xz
+            ${{ runner.temp }}/pyra/image/${{ steps.build.outputs.name }}.img.xz.sha256
+            ${{ runner.temp }}/pyra/image/${{ steps.build.outputs.name }}.sha256
+            ${{ runner.temp }}/pyra/image/${{ steps.build.outputs.name }}.info
+
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build.outputs.name }}
@@ -190,9 +207,10 @@ jobs:
             echo "Check and write it as in the README quick start:"
             echo
             echo "    sha256sum -c $NAME.img.xz.sha256"
+            echo "    gh attestation verify $NAME.img.xz --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release-image.yml"
             echo "    xzcat $NAME.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync"
             echo
-            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. \`$NAME.info\` records the commit, the prep options, the vendor image and kernel checksums, and the versions of the Pyra packages prep installed."
+            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. The \`gh attestation verify\` line checks that this repository's Release image workflow built the file, which a matching checksum alone does not show; see \`docs/building.md\`, \"Checking a download\". \`$NAME.info\` records the commit, the prep options, the vendor image and kernel checksums, and the versions of the Pyra packages prep installed."
             echo
             echo '```'
             cat "$NAME.info"

@@ -1011,6 +1011,41 @@ prefix also keeps it clear of `kernel-*`, which starts the Kernel release
 workflow when the tag is created. Without `release_tag`, the workflow publishes
 nothing.
 
+**Checking a download.** A `.sha256` beside a file only shows that the file
+arrived intact. Anyone who re-hosts a modified image can publish matching
+hashes. So both workflows also attest what they build, with `actions/attest`:
+GitHub signs a statement, through Sigstore and with no key for anyone to keep,
+saying which repository, workflow and commit produced each file's SHA-256. The
+Release image workflow attests the `.img.xz`, both `.sha256` files and the
+`.info` on every run. The Kernel release workflow attests each build's
+tarball, config and patch list in the build job, so a manual run's artifacts
+are covered as well as a tagged release's. Check a download with the GitHub CLI
+(`gh`, version 2.49 or later):
+
+    gh attestation verify pyra-trixie-release-<commit>.img.xz \
+        --repo daniel-mcdonough/dragonbox-pyra \
+        --signer-workflow daniel-mcdonough/dragonbox-pyra/.github/workflows/release-image.yml
+
+    gh attestation verify m4-kbdled-kernel.tar.gz \
+        --repo daniel-mcdonough/dragonbox-pyra \
+        --signer-workflow daniel-mcdonough/dragonbox-pyra/.github/workflows/kernel-release.yml
+
+It exits 0 for a file this workflow built. A changed file, or one built by any
+other repository or fork, fails with `no attestations found` or a 404 and exits
+non-zero. To check the uncompressed image after `unxz`, verify its `.sha256`
+the same way, then run `sha256sum -c` on it. `gh` needs network for the check
+(the attestation and Sigstore's trust root). `gh attestation download` saves
+the bundle for a later `--bundle` check. Both release notes print the command.
+
+Tested 2026-11-19 on a PC, with the same command against a public release that
+carries attestations (the `gh` CLI's own armv6 tarball, signed by
+`cli/cli/.github/workflows/deployment.yml`): the genuine file exited 0. A copy
+with one byte changed at offset 1000 exited 1 with `no attestations found`.
+The genuine file checked against `--repo daniel-mcdonough/dragonbox-pyra` exited
+1 with a 404. The first attested runs of these two workflows have not happened
+yet. Releases built before the change (kernel-5.6.19-r1 to r3, every image
+so far) carry no attestation, and `gh attestation verify` fails on them.
+
 **First run on GitHub** (artifact built 2026-11-11 02:01 UTC from `ef8b2dc`):
 it produced the artifact. Both `.sha256` files verified after download, and
 the image booted on a Pyra (`verification-log.md`, 2026-11-10).

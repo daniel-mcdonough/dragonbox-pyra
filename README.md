@@ -31,6 +31,10 @@ reader.
 
         sha256sum -c pyra-trixie-release-<commit>.img.xz.sha256
 
+   The checksum only shows the download arrived intact. To check that this
+   repository's CI built the file, run the `gh attestation verify` line from the
+   release notes too (`docs/building.md`, "Checking a download").
+
 2. Write it to the card. On Linux:
 
         lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT      # find the card; get this right

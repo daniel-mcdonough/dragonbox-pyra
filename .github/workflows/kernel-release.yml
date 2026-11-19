@@ -18,6 +18,11 @@
 # The build script fetches the pyradef source package from
 # packages.pyra-handheld.com and checks it against the .dsc hash pinned in the
 # script, so a release cannot be built from anything else.
+#
+# Each build attests its files (actions/attest): a signed statement, kept by
+# GitHub, that this workflow built them from this repository at that commit.
+# A re-hosted copy with matching .sha256 files fails the check, which
+# docs/building.md "Checking a download" gives.
 
 name: Kernel release
 
@@ -38,6 +43,11 @@ jobs:
     name: Build 5.6.19-${{ matrix.variant }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    permissions:
+      contents: read
+      id-token: write          # the attestation's signing certificate
+      attestations: write
+      artifact-metadata: write
     strategy:
       fail-fast: false
       matrix:
@@ -64,6 +74,12 @@ jobs:
           cp "$k/src-$v/.config" "dist/config-5.6.19-$v"
           cp "$k/src-$v/.patches-applied" "dist/$v-patches.txt"
           ls -la dist
+
+      # Here rather than in the release job, so a manual run's artifacts are
+      # attested too: the Release image workflow takes its kernel from one.
+      - uses: actions/attest@v4
+        with:
+          subject-path: dist/*
 
       - uses: actions/upload-artifact@v4
         with:
@@ -94,6 +110,10 @@ jobs:
             echo "Each kernel installs beside the stock one under its own release name, and the stock kernel stays bootable. The initrd is not included: the installer generates it on the device. Install with:"
             echo
             echo '    ./pc/pyra-push-kernel.sh --install --tarball m4-kbdled-kernel.tar.gz pyra@<address>'
+            echo
+            echo "Check first that this repository's Kernel release workflow built the file you downloaded, which a matching \`SHA256SUMS\` alone does not show (\`docs/building.md\`, \"Checking a download\"):"
+            echo
+            echo "    gh attestation verify m4-kbdled-kernel.tar.gz --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/kernel-release.yml"
             echo
             echo "See \`docs/building.md\` and \`docs/kernel-changes.md\` before installing."
             echo
