@@ -2192,3 +2192,19 @@ Serial console (FTDI, 1500000 baud) and ssh.
   udev timeout on the LCD. Kernel phase 9 min 14 s (the grow), userspace 27.4 s.
 - **Not in the image:** pyra-sound, so MATE's own sound icon is in the tray. Prep never
   installed it; it ships with the release (owner, 2026-11-17).
+
+## 2026-11-18 — the CI release image with pyra-sound 0.4 (fix 27, R66)
+
+A card written from the Release image run 44238538079 (master 1bd7e2b, 2026-11-18 UTC), same
+kernel artifact as the entry above (`kernel-5.6.19-r3`, Kernel release run 44223360396). ssh.
+
+- **Image:** the run raised no "no pyra-sound" warning (its only annotations were GitHub's
+  Node.js 20 deprecation notices). `5.6.19-m4-kbdled #10`; `pyra-sound 0.4`,
+  `pyra-settings 0.14` and `pyra-backlight 0.8` installed.
+- **Fix 27 at the desktop:** `/usr/bin/pyra-sound` starts with the session, and no
+  `mate-volume-control-status-icon` runs. `/etc/xdg/pyra/autostart/mate-volume-control-status-icon.desktop`
+  is the link into `/usr/share/pyra-sound/`. No traceback in `~/.xsession-errors`; pyra-sound's
+  only lines there are Gtk warnings about the `pyra` icon theme's index (a directory with no
+  size field, a theme file with no name), which do not stop the icon showing.
+- **Owner:** one sound icon in the tray. Left click mutes and unmutes, right click switches
+  between speakers and headphones, and the wheel moves the volume it shows.
