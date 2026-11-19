@@ -2275,5 +2275,6 @@ ssh.
   for L15`, `no volume controls on hw:CARD=L15 yet`) and exited with status 1. systemd restarted it at 21.99 s and it stayed up:
   `NRestarts=1`, `active`. With 0.38+pyra3 that start would have left the wheel dead for the
   boot.
-- **Owner:** the pyra-sound tray icon works on both boots. The wheel was not tried after the
-  reboot.
+- **Owner:** the pyra-sound tray icon works on both boots. After the reboot, audio played and
+  the tray switched it between headphones and speakers. That path is pyra-sound's, not the
+  daemon's; the wheel was not tried after the reboot.
