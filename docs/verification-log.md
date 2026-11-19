@@ -2258,3 +2258,22 @@ the selftest always passes `--kernel` and the CI image takes the kernel artifact
   letter key, suspended (deep), let go while asleep and woke it. The keyboard worked, the held
   key included. The resume's only warnings were the SGX `Unbalanced enable for IRQ 144` and
   DSI `VC busy` lines `troubleshooting.md` already lists.
+
+## 2026-11-19 — `pyra_volumed` retries until the card is there (fix 26, pyra-hacks 0.38+pyra4)
+
+A card written from a CI release image that installs the fork's `0.38+pyra4` (7ae5da8's pin).
+`5.6.19-m4-kbdled #10` (r3); `pyra-hacks 0.38+pyra4`, `pyra-settings 0.14`, `pyra-sound 0.4`.
+ssh.
+
+- **Unit:** `pyra_volumed.service` has `Restart=on-failure`, `RestartSec=2`,
+  `StartLimitBurst=30`, `StartLimitIntervalSec=120`.
+- **First boot:** the root grow held the boot back, so the L15 card registered (`AESS path,
+  9 DAI links`) at 563 s and the daemon started after it, at 571.7 s: no exit, `NRestarts=0`.
+  The retry was not exercised.
+- **Second boot (owner's reboot):** the card registered at 18.04 s, but the daemon, started at
+  18.58 s, found no controls yet (`Cannot get card index for L15`, `no volume controls on
+  hw:CARD=L15 yet`) and exited with status 1. systemd restarted it at 21.99 s and it stayed up:
+  `NRestarts=1`, `active`. With 0.38+pyra3 that start would have left the wheel dead for the
+  boot.
+- **Owner:** the pyra-sound tray icon works on both boots. The wheel was not tried after the
+  reboot.
