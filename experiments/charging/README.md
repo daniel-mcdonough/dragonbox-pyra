@@ -257,7 +257,74 @@ R2001/R2002 sit in parallel with R710, the board actually trips at about
 kernel log on 2026-10-22 has `r9=11 UNPLUG HOT` at 165 s.
 
 Those figures are from another board and have not been measured on this one.
-The same thread says the thermistor line also reaches the CPU module. If so,
-a real cell temperature may be readable through the Palmas GPADC. That is the
-sensor a software guard would need, and the charge current, not the input
-limit, is what it should act on.
+The forum's own numbers don't agree with each other either (its two measured
+trip points, worked back, give different top resistors), so treat 38 °C as
+unconfirmed.
+
+#### The thermistor is readable: Palmas GPADC channel 0 (measured 2026-11-19)
+
+The thread says the thermistor line (BTEMP) also runs to the CPU module, pin
+P2001:38, through R2001 100 k and R2002 33 k to ground. On this V5.3 board
+(`5.6.19-m4-kbdled`) that tap is **`palmas-gpadc` channel 0**:
+`/sys/bus/iio/devices/iio:device1/in_voltage0_input`, in mV (the device
+number can change; match on `name` = `palmas-gpadc`). Read with `cat`, no
+writes:
+
+| state | IN0 | IN1 | IN10 (VBUS) | gauge temp |
+| --- | --- | --- | --- | --- |
+| battery, no charger | 111 mV | 5-9 mV | 0 | 27.1-27.5 °C |
+| charger in, charging | 841 mV | 6-13 mV | 4948 mV | 27.6 °C |
+| 20 min later | 800 mV | 9 mV | 4916 mV | 32.0 °C |
+
+[The 20-minute log](gpadc-in0-charge-20261119.tsv) has 40 samples at 30 s,
+charging at 335 → 199 mA, 85 → 86 %. Over it, IN0 falls as the bq27421
+gauge's temperature rises: -10.2 mV per gauge °C, correlation -0.96, scatter
+3.4 mV. That is the direction an NTC gives (warmer, lower resistance, lower
+BTEMP). Three things say it is the thermistor:
+
+- **It is only biased with a charger in.** The divider hangs off the
+  bq24297's REGN, which is off without VBUS. On battery, IN0's 111 mV is the
+  GPADC's own 5 µA channel-0 current source (`ti,channel0-current-microamp`
+  in `omap5-board-common.dtsi`) across the divider: the resistor values
+  predict 125 mV.
+- **It lands where the divider says.** 33/133 of the TS window (2.15-3.53 V
+  at REGN ≈ 4.8 V) is 0.53-0.88 V; 841 mV is inside it.
+- **It tracks the pack while charging** (the log above).
+
+**IN1 is not it.** Goldelico's `pyra-mainboard-common.dtsi` declares a
+`linux,generic-adc-battery` (`battery-monitor`) whose "temperature" is
+`<&gpadc 1>`. On this board IN1 reads under 15 mV with or without a charger.
+That driver is built as a module (`generic-adc-battery.ko`) and binds
+nothing here. Its "current" channel, `<&gpadc 11>`, reads 0 too.
+**The bq24297's `temp` is not a reading:** the driver returns a fixed
+22.5 °C, or -10 / 60 °C from the fault bits.
+
+**Converting IN0 to °C (estimated, not calibrated).** A circuit model fits
+the log: REGN on a top resistor to BTEMP; BTEMP to ground through the NTC
+(10 k, B 3435), R710 31.6 k and R2001 + R2002; plus 5 µA into the tap. With
+the pack taken to be at the gauge's temperature, the best fit is a top
+resistor of 4.7 k and REGN = VBUS - 0.02 V (rms error 4 mV). That gives,
+at VBUS 4.91 V:
+
+| pack °C | 0 | 10 | 20 | 25 | 30 | 35 | 40 | 45 | 50 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| IN0 mV | 1025 | 968 | 898 | 858 | 817 | 775 | 731 | 688 | 645 |
+
+Don't build a guard on that table yet. The fit has two unknowns that trade
+off against each other, and the bq27421 reports its own die temperature,
+not the pack's: the predicted slope (-8.4 mV/°C) is shallower than the measured
+-10.2, which suggests the pack and gauge temperatures differ. Calibrating it
+needs IN0 at two known pack temperatures.
+
+**The trip point, in IN0 terms (estimated).** The TS comparator compares
+BTEMP to a fraction of REGN, so its hot trip maps to an IN0 voltage without
+the NTC curve: 0.447 of REGN (the forum's figure) at VBUS 4.91 V is 666 mV,
+and 0.475 is 700 mV. Which fraction this charger uses is still to be checked
+against the bq24297 datasheet. A guard can compare IN0 against that level, scaled
+by VBUS (IN10), which gives a margin to the hardware trip. The 5 µA current
+source shifts BTEMP itself by only about 5 mV (about 0.1 °C at the trip).
+
+**Leave it read-only.** IN2 is the volume wheel (`pyra_volumed`, fix 26),
+read on the same ADC; a guard that reads IN0 must not reconfigure the GPADC.
+
+The charge current, not the input limit, is what a guard should act on.

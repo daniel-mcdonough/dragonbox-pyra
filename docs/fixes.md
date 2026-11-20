@@ -574,11 +574,13 @@ charging whatever the input limit says. It was always the thing doing that job.
 
 The release keeps it that way (owner decision, 2026-10-29): no software charge
 control, the TS pin alone. A proper guard is open work and not part of this
-release. It would read a real cell temperature, perhaps the thermistor through
-the Palmas GPADC (not confirmed), and act on the charge current (REG02), not
-the input limit (`experiments/charging/README.md`, "What protects the cell").
-Where the TS pin trips on this board has not been measured; the ~38°C figure
-is from another board.
+release. It would read a real cell temperature and act on the charge current
+(REG02), not the input limit. The pack thermistor is readable: Palmas GPADC
+channel 0, only while a charger is in, because the bq24297's REGN biases the
+divider (measured 2026-11-19; the °C conversion is not calibrated yet;
+`experiments/charging/README.md`, "What protects the cell"). Where the TS pin
+trips on this board has not been measured; the ~38°C figure is from another
+board.
 
 **What it assumes, which you should know before raising the number.** It
 asserts a current; it detects nothing, because nothing here can. Proper BC1.2

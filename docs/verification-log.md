@@ -2304,3 +2304,21 @@ ssh.
   257.9) says so (rule 4: exists and empty, not a first boot). Prep's unit is what makes the
   keys, and `systemd-firstboot` would not have started either; its mask stays as a guard.
   `fixes.md` fix 23 and `procedure.md` §4 said the empty file made a first boot; corrected.
+
+## 2026-11-19 — the pack thermistor on the Palmas GPADC (BACKLOG E9, read-only)
+
+The CI release image (Release image run 44602488525) on a V5.3 board, `5.6.19-m4-kbdled`, over ssh. Only
+`cat` of sysfs; no charger or GPADC writes. The owner plugged the charger in partway through.
+
+- **Channels:** `palmas-gpadc` (`iio:device1`) exposes IN0-IN2, IN4-IN11, IN14, IN15 as voltages and
+  IN3, IN12, IN13 as temperatures. The DT node (`omap5-board-common.dtsi`) enables the 5 µA channel-0
+  and 10 µA channel-3 current sources. IN3 reads 4095 raw (full scale) with or without a charger.
+- **Battery, no charger:** IN0 111 mV, IN1 5-9 mV (6 reads), IN10 0, bq27421 `temp` 27.1-27.5 °C.
+- **Charger in** (`bq2429x: VBUS became available`, `r9=00`, `Charging`): IN0 843 mV, IN1 5-9 mV,
+  IN10 4963 mV. The bq24297's `temp` stays 225: the driver's fixed value, not a reading.
+- **20 minutes charging**, 40 samples at 30 s (`experiments/charging/gpadc-in0-charge-20261119.tsv`):
+  IN0 841 → 800 mV while the gauge went 27.6 → 32.0 °C; linear fit -10.2 mV/°C, r = -0.96. IN1
+  stayed 7-13 mV.
+- **Result:** IN0 is the BTEMP tap through R2001/R2002, biased only while REGN is on. IN1, which
+  Goldelico's `battery-monitor` node names the temperature channel, carries nothing on this board.
+  The conversion to °C is a fitted model, not a calibration (`experiments/charging/README.md`).
