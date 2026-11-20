@@ -1771,7 +1771,7 @@ time spent stalled in a walk, because that time is charged to whatever process
 was unlucky enough to be running.
 
 **The test is Anno 1602 under box86 and x86 Wine.** `pyra-anno1602-test.sh`
-already runs it bounded and with a thermal guard, and `docs/box86.md` has the
+already runs it bounded and with a thermal guard, and `experiments/box86-wine` has the
 setup. It is the right load for this question for a reason beyond being the
 heaviest one documented: it stacks three layers of anonymous memory that all
 want the same TLB — the game's own heap inside the Wine prefix, box86's

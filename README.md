@@ -5,8 +5,7 @@ forums good enough to use as the Pyra's everyday OS. As published, X crashes,
 the first-run wizard powers the unit off, the nubs are dead, and there is no
 sound. This repository turns that image into a working SD card for a V5.x Pyra,
 with a MATE desktop, hardware GLES2 on the SGX, desktop GL through gl4es,
-sound, and charging. x86 software under box86 also runs, as an advanced manual
-setup outside the release (`docs/box86.md`).
+sound, and charging.
 
 It runs from an SD card. The eMMC is never touched, so your bookworm install
 stays as it is and takes over again when you pull the card.
@@ -211,7 +210,6 @@ not instructions). The logs are listed separately at the end.
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |
-| [docs/box86.md](docs/box86.md) | **Advanced, not part of the release.** Running x86 Linux binaries, x86 Wine, and Windows games, set up by hand. |
 | [docs/known-limitations.md](docs/known-limitations.md) | The hard walls, and everything already tried that did not work. |
 
 ### Porting and optimising software

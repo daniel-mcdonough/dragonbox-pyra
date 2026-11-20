@@ -1,26 +1,21 @@
 # x86 software through box86
 
-> **Type: instructions.** Steps to follow.
+> **Type: log.** An early test, kept as a record. Not a feature of this project.
 
-> **Advanced, and not part of the release.** Nothing here is installed by the
-> prebuilt image or by the prep script, and none of it is supported: if it
-> breaks, the card is still a working release card without it. box86 comes from
-> the Pyra package repository. The x86 Wine below is a third-party build that
-> this project does not check or pin; you download it and trust it yourself.
-> Everything is done by hand, and there is no script for it on purpose.
-
-Status: **working when tested**, with one significant limit. Tested 2026-09-09
-on a developer trixie card built by `procedure.md`, against the running unit over
-SSH with a MATE session live on `:0`. Not retested on the release image; on that
-image (checked 2026-11-19, `apt-cache policy`) `box86-pyra` 0.3.7.1 is available
-from the Pyra repository but not installed, and `gl4es` is present.
+x86 software under box86 and Wine was tried once, early on (2026-09-09), as an
+example of a heavy real-world workload: it is what `device/pyra-anno1602-test.sh`
+uses as a repeatable load for the thermal and TLB measurements. Nothing here is
+installed by the image or by the prep script, and it is not maintained. The x86
+Wine it uses is a third-party build this project has not checked. The steps
+below are what was done then, on a developer trixie card, against the running
+unit over SSH with a MATE session live on `:0`.
 
 Linux x86 binaries run. Windows programs run through an x86 Wine under box86.
 2D DirectDraw games run and are playable; anything that needs Wine's 3D path
 does not, for a reason that belongs to fix 4 rather than to box86. That is
 explained under "The 3D limit" below.
 
-This document assumes the machine `procedure.md` produces: fix 4 applied, so the X
+This assumes the machine `docs/procedure.md` produces: fix 4 applied, so the X
 server has no GLX, and gl4es available as the per-application GL wrapper.
 
 ---
@@ -177,7 +172,7 @@ neither half belongs to box86 or to Wine:
 - Fix 4 disables the X server's GLX extension, so Wine's window is created with
   the server's default 24-bit visual.
 - The only EGL config the SGX blob will accept is the exact
-  RGBA8 / depth24 / stencil8 one documented in `gl4es.md`, which
+  RGBA8 / depth24 / stencil8 one documented in `docs/gl4es.md`, which
   needs an alpha channel.
 
 A context on one and a surface on the other can never match, which is what
@@ -200,7 +195,7 @@ The GDI renderer sidesteps GL completely, which for a 2D game is no loss at all.
 **This would be retired by the same upstream fix as fix 4.** If xorg-server's
 AIGLX probe ever fails gracefully instead of segfaulting, fix 4 goes away, GLX
 comes back, Wine gets a visual it can match, and the 3D path becomes worth
-retesting. See the open items in `known-limitations.md`.
+retesting. See the open items in `docs/known-limitations.md`.
 
 Untested, and the obvious next thing to try if someone wants 3D: pointing Wine
 at gl4es hard enough that it never asks the X server for a visual at all, the
@@ -281,4 +276,4 @@ the armhf 64-bit `time_t` transition did not bite this particular stack.
 
 - box86: https://github.com/ptitSeb/box86
 - Wine builds: https://github.com/Kron4ek/Wine-Builds
-- The machine this runs on: `procedure.md`
+- The machine this runs on: `docs/procedure.md`

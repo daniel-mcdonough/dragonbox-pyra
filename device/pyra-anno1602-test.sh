@@ -3,7 +3,7 @@
 # pyra-anno1602-test.sh — run Anno 1602 (1602 A.D.) under box86 and x86 Wine
 # as a repeatable load test, with a thermal guard and a liveness check.
 #
-# This is the heaviest sustained load documented for this machine. docs/box86.md
+# This is the heaviest sustained load documented for this machine. experiments/box86-wine
 # measured 95 C on cpu_thermal against a 100 C passive trip, so the run is
 # bounded by time and aborts on temperature rather than trusting the trip.
 #
@@ -59,7 +59,7 @@ xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 || die "no X server on $DISPLAY"
 
 # The GDI renderer is not optional. With Wine's GL renderer the game creates a
 # window and then hangs at 0% CPU, because this image has no GLX. See
-# docs/box86.md section 5.
+# experiments/box86-wine/README.md section 5.
 if ! grep -q '"renderer"="gdi"' "$WINEPREFIX/user.reg" 2>/dev/null; then
 	echo "setting Direct3D renderer=gdi in the prefix (one time)"
 	gl4es box86 "$WINE" reg add "HKCU\\Software\\Wine\\Direct3D" \
@@ -174,7 +174,7 @@ done
 TOTAL=$(( ($(game_ticks) - T0) * 100 / HZ / DURATION ))
 echo
 echo "=== ran ${DURATION}s, peak cpu_thermal ${PEAK}C, mean game CPU ${TOTAL}% of one core"
-echo "    docs/box86.md measured 80-87% and 95C, so compare against that."
+echo "    experiments/box86-wine measured 80-87% and 95C, so compare against that."
 echo "    wine output: $BOX86TEST/anno-run.log"
 
 if [ "$PROFILE" = 1 ]; then
