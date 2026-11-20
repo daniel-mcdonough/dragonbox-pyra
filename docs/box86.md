@@ -2,9 +2,18 @@
 
 > **Type: instructions.** Steps to follow.
 
-Status: **working**, with one significant limit. Tested 2026-09-09 on the trixie
-card built by `procedure.md`, against the running unit over SSH with a MATE session
-live on `:0`.
+> **Advanced, and not part of the release.** Nothing here is installed by the
+> prebuilt image or by the prep script, and none of it is supported: if it
+> breaks, the card is still a working release card without it. box86 comes from
+> the Pyra package repository. The x86 Wine below is a third-party build that
+> this project does not check or pin; you download it and trust it yourself.
+> Everything is done by hand, and there is no script for it on purpose.
+
+Status: **working when tested**, with one significant limit. Tested 2026-09-09
+on a developer trixie card built by `procedure.md`, against the running unit over
+SSH with a MATE session live on `:0`. Not retested on the release image; on that
+image (checked 2026-11-19, `apt-cache policy`) `box86-pyra` 0.3.7.1 is available
+from the Pyra repository but not installed, and `gl4es` is present.
 
 Linux x86 binaries run. Windows programs run through an x86 Wine under box86.
 2D DirectDraw games run and are playable; anything that needs Wine's 3D path
@@ -18,7 +27,7 @@ server has no GLX, and gl4es available as the per-application GL wrapper.
 
 ## 1. Install box86
 
-`box86-pyra` is in the Pyra repository and is **not** installed by the image:
+`box86-pyra` is in the Pyra repository and is **not** installed by the image or by prep:
 
     sudo apt-get install box86-pyra
     box86 --version
@@ -77,6 +86,10 @@ Use a self-contained relocatable tarball. It is far less work than Debian's i386
 Wine packages, which would drag in the i386 libraries box86 exists to avoid:
 
     wine-9.0-x86.tar.xz     from github.com/Kron4ek/Wine-Builds
+
+This is a binary built by a third party, outside Debian and the Pyra repository.
+This project has not audited it and publishes no checksum for it, which is why
+there is no install script: a script would pin a binary nobody here can vouch for.
 
 Wine 9.0 was chosen as a stable release contemporary with this box86 build.
 Unpack it anywhere in `$HOME`; nothing needs to be installed system-wide.

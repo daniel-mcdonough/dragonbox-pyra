@@ -182,6 +182,7 @@ available: the fault is on the board, not in the device tree.
 
 ### 2.7 x86 Direct3D under Wine
 
+box86 and Wine are an advanced manual setup outside the release (`box86.md`).
 2D DirectDraw games run under box86 with an x86 Wine and are playable. Anything
 needing Wine's 3D path does not, because wined3d needs desktop GLX and fix 4
 removes the X server's GLX entirely — fix 4 exists because Xorg 21.1.16's AIGLX

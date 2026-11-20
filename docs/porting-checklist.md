@@ -240,6 +240,6 @@ device supports.
 | Forward renderer, GLES2-capable, x86 SIMD gated | **Moderate.** This is the normal case |
 | Already ships a GLES2 backend | **Small.** Mostly deployment and defaults |
 | 2D / software-rendered | **Small.** Watch allocations and readback |
-| x86 binary, dynamically linked, 2D | **box86.** See `docs/box86.md` |
+| x86 binary, dynamically linked, 2D | **box86**, an advanced manual setup outside the release. See `docs/box86.md` |
 | x86 binary, needs Direct3D | **Blocked today** — Wine's 3D path needs desktop GLX, which fix 4 removes |
 | Needs more than ~3 GB in one process | **No.** 32-bit |
