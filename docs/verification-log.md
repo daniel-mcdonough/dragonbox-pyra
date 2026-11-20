@@ -2364,3 +2364,21 @@ the charger for about 18 s and plugged it back in; then one `rtcwake -m mem -s 2
   call a `device_driver`'s legacy hooks (`drivers/base/power/main.c`), so nothing ever starts the 1 s
   polling work on a board with the interrupt.
 - **Boot:** desktop up, no new `BUG:`/`WARNING:` (only the `omap_l3_noc` one every kernel prints).
+
+## 2026-11-20 — the charge voltage limit is 4.048 V, written by the driver at probe (R71, read-only)
+
+The CI release image on a V5.3 board (`Pyra-Handheld-V5.3`), `5.6.19-m4-kbdled-test`, charger in, `Full`,
+over ssh. Nothing was written to the charger.
+
+- **Register:** `registers` reg 04 = `8a`, i.e. VREG = 3.504 V + 34 × 16 mV = 4.048 V; BATLOWV 3.0 V, VRECHG
+  100 mV. reg 05 = `8c`: watchdog off. The chip's reset value for reg 04 is `0xB2` (4.208 V; SLUSBP6D
+  §9.6.1.5), so this is a host write, not a default or a watchdog reset.
+- **Writer:** `bq2429x_init_registers()` computes min(vsys `regulator-max-microvolt` − 150 mV, battery
+  `voltage-max-design-microvolt`) = min(4.05, 4.2) V and rounds it down to 34 steps. Boot log:
+  `bat_volt_max = 4200000`, then `found regulator-max-microvolt = 4200000`. The source of the driver's init path
+  and the DT node is the same in the vendor's 5.6.19-pyradef, the shipped patch set and current letux. 0054
+  changes only the `registers` read, so `5.6.19-m4-kbdled` (l5) writes the same value (from the source; not read
+  on l5 this session).
+- **Userspace:** no udev rule, unit or script on the card writes charge voltage, `i2cset` isn't installed,
+  and the driver has no `constant_charge_voltage` property.
+- **Gauge at the limit:** `bq27421-0` 4.035 V, 87 %, charger `Full`.

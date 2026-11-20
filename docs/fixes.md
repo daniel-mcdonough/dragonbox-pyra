@@ -560,6 +560,9 @@ were supposed to and none of them do.
 
 So the limit stays wherever the chip powers up, which is the 500 mA USB floor,
 for the life of the boot.
+(`bat_volt_max` is applied, capped 150 mV under the `vsys` regulator's 4.2 V,
+so the charge voltage is 4.048 V; see "The charge voltage is 4.048 V" in
+`experiments/charging/README.md`.)
 
 **What this fix does not do, deliberately.** It does not let the thermal
 daemon's charge ladder reach the real knob, and since 2026-10-22 it enforces

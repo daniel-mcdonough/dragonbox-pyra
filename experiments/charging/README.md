@@ -420,3 +420,65 @@ termination (`ADAP CHGTERM`). IN0 fell 9.9 mV per gauge °C (correlation
 (estimated, and the gauge is not the pack), the margin would reach 0 near a
 gauge reading of 44 °C. This run doesn't measure the trip (TODO E9 b): a
 charge in a warm room, or under load, might.
+
+## The charge voltage is 4.048 V, set by the driver from the vsys limit (checked 2026-11-20)
+
+The charger stops at about 4.05 V, not the battery's 4.2 V. That is why a
+charge ends `CHGTERM` with the gauge at 87 % (the run above: 4.04 V, 87 %).
+Nothing in userspace sets it. The kernel driver does, at probe, on purpose,
+from a device-tree value that isn't the battery's.
+
+**The register.** `registers` on the release card read REG04 = `8a`. Per TI's
+datasheet (SLUSBP6D, §9.6.1.5), bits 7-2 are VREG: offset 3.504 V, 16 mV
+steps, so `100010` = 34 steps = **4.048 V**. Bit 1 (BATLOWV) is 1, 3.0 V, and
+bit 0 (VRECHG) is 0, so a new charge starts once the cell falls 100 mV below
+VREG (about 3.95 V). The chip's own default is `0xB2`, 4.208 V. So the 4.048 V
+is a host write, not a power-on or watchdog reset. A watchdog expiry would
+restore 4.208 V, and REG05 = `8c` shows the watchdog off anyway.
+
+**The writer.** In `bq2429x_init_registers()` (5.6.19, the vendor's
+`5.6.19-pyradef` and every kernel built here), the charge voltage is
+
+    max_uV = min(max_VSYS_uV - 150000, battery voltage-max-design-microvolt)
+    VREG bits = (max_uV - 3504000) / 16000          /* rounds down */
+
+`max_VSYS_uV` is the `regulator-max-microvolt` of the charger's `vsys`
+regulator node. `pyra-mainboard-common.dtsi` sets it to 4200000, and the
+battery node also says 4200000. So the result is min(4.05, 4.2) V = 4.05 V,
+which rounds down to 34 steps, 4.048 V. Boot log on the release card:
+
+    bq2429x_parse_dt,line=1547 ... bat_volt_max = 4200000
+    found regulator-max-microvolt = 4200000
+
+The driver's comment gives the reason: VSYS can sit up to 150 mV above a full
+battery when running from VBUS, so to keep VSYS under its limit it lowers
+the battery voltage. The datasheet agrees on the 150 mV (§7.5: VSYS_MAX
+4.35 V typical with VBAT up to 4.2 V and the BATFET off). The code and the
+4.2 V vsys value date from the driver's first commit (2014) and the Pyra
+board DT split (2019). Current letux still has both unchanged (checked
+2026-11-20). So every Pyra kernel has charged to 4.05 V. The 150 mV offset is
+deliberate. Nothing written down says whether 4.2 V is a real VSYS rating or
+the battery's number copied into the regulator node. The chip's default
+mode, before Linux probes it (charging while off, U-Boot), uses 4.208 V and
+lets VSYS reach about 4.35 V.
+
+**No runtime knob on 5.6.** This driver has no `constant_charge_voltage`
+property, and the image has no udev rule, unit or pyra-hacks tool that
+touches REG04 (grep of `/usr/lib/udev`, `/etc/udev`, `/etc/systemd`,
+`/usr/lib/systemd`, `/usr/local`, `/usr/bin`, `/usr/sbin` on the release
+card; `i2cset` isn't installed; the pyra-hacks, pyra-settings, pyra-sound
+and pyra-backlight sources have no `i2cset`, `0x6b` or charge-voltage
+write). Only the device tree changes it. Current letux exposes
+`constant_charge_voltage_max` as writable. Patches 0042 and 0054 don't touch
+this path.
+
+**What it costs and buys.** Measured: one charge ended at 4.04 V with the
+gauge at 87 % (2026-11-20, above). Estimated, from general Li-ion behaviour
+and not measured on this pack: stopping about 150 mV short gives up roughly
+10-15 % of capacity and gives the cell noticeably more cycle life. With the
+thermal daemon's charge ladder disconnected (fix 8), the TS pin is the only
+cell protection, so the lower voltage is also the gentler default. Raising it
+means setting the vsys `regulator-max-microvolt` to 4350000, which gives
+VREG 43 steps = 4.192 V because the battery's 4.2 V caps it and the encoding
+rounds down. Do that only after the schematic shows that everything on VSYS
+is rated for 4.35 V.
