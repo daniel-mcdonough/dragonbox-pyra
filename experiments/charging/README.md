@@ -322,13 +322,45 @@ not the pack's: the predicted slope (-8.4 mV/°C) is shallower than the measured
 -10.2, which suggests the pack and gauge temperatures differ. Calibrating it
 needs IN0 at two known pack temperatures.
 
-**The trip point, in IN0 terms (estimated).** The TS comparator compares
-BTEMP to a fraction of REGN, so its hot trip maps to an IN0 voltage without
-the NTC curve: 0.447 of REGN (the forum's figure) at VBUS 4.91 V is 666 mV,
-and 0.475 is 700 mV. Which fraction this charger uses is still to be checked
-against the bq24297 datasheet. A guard can compare IN0 against that level, scaled
-by VBUS (IN10), which gives a margin to the hardware trip. The 5 µA current
-source shifts BTEMP itself by only about 5 mV (about 0.1 °C at the trip).
+**The trip points, in IN0 terms (datasheet-derived).** The TS comparator
+compares BTEMP to fixed fractions of REGN, so each trip maps to an IN0
+voltage without the NTC curve. TI's BQ24296/BQ24297 datasheet (SLUSBP6D,
+revised April 2023, §8.5 "Cold/hot thermistor comparator" and §9.3.3.3) gives
+one window for charging, with no JEITA warm/cool steps:
+
+| threshold | what it does | % of REGN (min / typ / max) | IN0 mV at VBUS 4.91 V (min / typ / max) |
+| --- | --- | --- | --- |
+| VTCO, falling | **hot cut-off while charging**: charge suspends | 44.2 / 44.7 / 45.2 | 660 / **666** / 672 |
+| VHTF, rising | hot limit to start, or resume, a charge | 46.6 / 47.2 / 48.8 | 689 / **697** / 716 |
+| VLTF, rising | cold limit: charge suspends | 73.0 / 73.5 / 74.0 | 1010 / **1016** / 1022 |
+| VLTF − 0.4 % hysteresis, falling | cold recovery | 72.6 / 73.1 / 73.6 | 1005 / **1011** / 1017 |
+
+So 0.447 (the forum's figure) and 0.475 (this README's alternative) were
+not rival values for one threshold. 0.447 is VTCO, the trip during a charge, and it is the one a guard
+must stay above. The ~0.47 figure is VHTF, the level BTEMP must climb back
+over before charging restarts; the two together are the hot hysteresis,
+2.5 % of REGN, about 30 mV at IN0. (Revision B of the datasheet changed the
+VHTF typical to 47.2 % and its direction to rising; the earlier value is not in
+the current revision.) The datasheet also lists VBHOTx/VBCOLDx thresholds;
+those apply only in boost (OTG) mode and don't gate charging.
+
+How the IN0 column is computed: with BTEMP held at the threshold, the tap is
+IN0 = BTEMP × 33/133 + 5 µA × (100 k ‖ 33 k) = 0.2481 × f × REGN + 124 mV,
+with REGN = VBUS − 0.02 V from the fit (here 4.89 V). The datasheet gives REGN
+only at load (4.8 V typical, 4.7 V minimum, at VBUS 5 V and 20 mA) and says the
+LDO is in dropout, so REGN sits close to VBUS at light load; the divider draws
+well under 1 mA, so VBUS − 0.02 V is consistent with that but is the fit's
+number, not the datasheet's. Two things make the column an estimate around the
+datasheet values. The 5 µA source's 124 mV offset assumes 5.0 µA, and on battery
+the source read 111 mV where 125 was predicted, so the real levels may be up to
+about 13 mV lower. And REGN scales them: per 0.1 V of VBUS, VTCO moves 11 mV.
+A guard should compute the trip from IN10 each time, not use the fixed column.
+
+Checked against the provisional table: VTCO's 666 mV falls at about 47.6 °C,
+VHTF's 697 mV at about 44 °C and the cold trip at about 2 °C. The table is not
+calibrated, so those temperatures are estimates; they don't confirm or refute
+the forum's 38 °C. The 20-minute log's lowest IN0 was 797 mV (VBUS about
+4.91 V), about 130 mV above the hot cut-off.
 
 **Leave it read-only.** IN2 is the volume wheel (`pyra_volumed`, fix 26),
 read on the same ADC; a guard that reads IN0 must not reconfigure the GPADC.
