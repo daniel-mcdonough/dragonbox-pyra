@@ -281,6 +281,23 @@ was refused and left the setting alone, and with the shoulder buttons taken out 
 a shoulder press slept through to the 45 s RTC backstop twice while A woke it in 9 s. It ships
 in `kernel-5.6.19-r3` (run 44223360396), which fix 19 pins; r2 and earlier lack it.
 
+**0054 — power: supply: bq2429x: don't clear the fault register from sysfs.** REG09, the
+charger's fault register, latches a fault until it is read. The driver reads it from its
+interrupt under `var_lock`, keeps it as `r9`, and acts on it. The `registers` sysfs file
+read all eleven registers straight off the chip, without the lock, and threw REG09 away. A
+read landing between a fault and the driver's own read cleared the latch, so the driver
+never saw that fault and the kernel log never showed it. `pyra-chgwatch.sh` reads the file
+once a second in its default mode. 0054 prints the driver's cached `r9` for reg 09 and holds
+`var_lock` for the whole dump. The other ten registers are still read live (none of them
+clear on read). Reg 09 shows `00` until the driver's first read, which comes at the first
+charger interrupt (the probe doesn't read it when it has the interrupt). letux-current has
+the same fault in its regmap version of the driver (`reports/letux-bq2429x-registers-clears-reg09.md`).
+
+**0054 tested 2026-11-20** on the V5.3 unit, as `5.6.19-m4-kbdled-test` booted once from l1:
+through a charger unplug and replug, `registers` reg 09 equalled the driver's last `r9=` on
+all 118 one-second samples, `10` (UNPLUG) included (`verification-log.md`). Developer build
+only. It is in no release kernel; `kernel-5.6.19-r3` lacks it.
+
 ---
 
 ## `experiments/m4-ipu/`: in all m4 kernels, and the demo kit

@@ -383,9 +383,12 @@ registers straight off the chip, outside the driver's lock, and doesn't
 update the driver's copy. So every read of it clears REG09's latch, and a
 fault latched between two of the driver's reads can vanish before the
 kernel log sees it. On this board the driver reads REG09 only on the
-charger's interrupt (no "polling" warning at probe), so a kernel-log line
-marks an event. The default mode still reads `registers`; its reg09 column
-is the latch it just cleared.
+charger's interrupt (no "polling" warning at probe, and no polling after a
+resume either: its suspend/resume hooks never run on 5.6, measured
+2026-11-20), so a kernel-log line marks an event. The default mode still
+reads `registers`; on the shipped kernel its reg09 column is the latch it
+just cleared. `patches/0054` (developer kernels only so far) makes the file
+print the driver's copy instead, so with it the default mode is safe too.
 
 **How to read the margin.** `margin_mV` is IN0 − VTCO, computed for the VBUS
 of that sample. It shrinks as the pack warms (IN0 falls). At 0 the bq24297

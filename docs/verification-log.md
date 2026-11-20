@@ -2345,3 +2345,22 @@ plugged the charger in at 86 %.
   `r9=00` at plug-in and `r9=00` at termination.
 - **Result:** the mode works end to end. No natural `HOT`, so the trip itself (TODO E9 b) is still
   unmeasured.
+
+## 2026-11-20 — `registers` reg 09 is the driver's copy with 0054 (R70)
+
+The CI release image on a V5.3 board, `5.6.19-m4-kbdled-test` (the shipped patch set plus `patches/0054`,
+cross-built that day) booted once from `l1`; `l5` stayed the default. Over ssh, a root shell loop once a
+second: `registers` reg 09, the last `r9=` in `dmesg`, `bq24297/online`, and kprobe hit counts on
+`bq2729x_irq_work_func` (interrupt path) and `usb_detect_work_func` (polling path). The owner unplugged
+the charger for about 18 s and plugged it back in; then one `rtcwake -m mem -s 20` suspend.
+
+- **reg 09 against the driver:** 118 samples, 0 mismatches. While the charger was out, `registers` showed
+  `10` (UNPLUG) on all 16 samples, the same as the driver's `r9=10`. Before 0054 the first read would have
+  cleared it, and the next sample would show `00`. At plug-in both went back to `00` together
+  (`r9=10 UNPLUG`, then `r9=00` 0.12 s later in the log).
+- **Interrupt only, also after resume:** 4 interrupt-path calls (unplug, plug-in twice, one during
+  suspend entry), 0 polling-path calls, including the 25 s after the resume. The driver's
+  `.driver.suspend`/`.resume` hooks never run. On 5.6 the i2c bus has no PM ops, and the PM core doesn't
+  call a `device_driver`'s legacy hooks (`drivers/base/power/main.c`), so nothing ever starts the 1 s
+  polling work on a board with the interrupt.
+- **Boot:** desktop up, no new `BUG:`/`WARNING:` (only the `omap_l3_noc` one every kernel prints).

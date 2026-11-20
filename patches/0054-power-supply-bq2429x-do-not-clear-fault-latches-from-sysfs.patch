@@ -1,0 +1,53 @@
+power: supply: bq2429x: don't clear the fault register from sysfs
+
+REG09 (fault status) is read-to-clear: the first read after a fault
+returns the latched fault, the next one the current state.  The driver
+reads it in bq2429x_usb_detect(), under var_lock, keeps the value in
+di->r9, and acts on it (CHRG_FAULT drops the input, NTC_FAULT feeds
+the health property).
+
+show_registers() reads registers 0 to 10 over i2c with no lock and
+throws the values away.  A read of the "registers" file that lands
+between a fault and the driver's next read of REG09 clears the latch,
+so the driver never sees that fault and never logs it.  A monitor that
+reads the file once a second hits this window sooner or later, and the
+faults it hides (a hot battery while charging) are the ones it is
+watching for.
+
+Print the driver's cached r9 for REG09 instead of reading the chip,
+and hold var_lock for the whole dump so it can't interleave with
+bq2429x_usb_detect().  The other registers are still read live; none
+of them change when read.
+
+The value shown for REG09 is now the one from the driver's last read,
+so it is 00 until the driver has read the register once.
+---
+--- a/drivers/power/supply/bq2429x_charger.c
++++ b/drivers/power/supply/bq2429x_charger.c
+@@ -375,15 +375,25 @@
+ 	int len = 0;
+ 	int i;
+ 
++	mutex_lock(&di->var_lock);
+ 	for (i = 0; i < 11; i++) {
+ 		int n;
+ 
+-		bq2429x_read(di->client, i, &buffer, 1);
++		/*
++		 * REG09 latches faults until it is read, so reading it here
++		 * would clear a fault before bq2429x_usb_detect() sees it.
++		 * Show the value the driver read last instead.
++		 */
++		if (i == FAULT_STATS_REGISTER)
++			buffer = di->r9;
++		else
++			bq2429x_read(di->client, i, &buffer, 1);
+ 		n = scnprintf(buf, 256, "reg %02x value %02x\n",
+ 			      i, buffer);
+ 		buf += n;
+ 		len += n;
+ 	}
++	mutex_unlock(&di->var_lock);
+ 	return len;
+ }
+ 
