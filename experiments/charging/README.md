@@ -366,3 +366,54 @@ the forum's 38 °C. The 20-minute log's lowest IN0 was 797 mV (VBUS about
 read on the same ADC; a guard that reads IN0 must not reconfigure the GPADC.
 
 The charge current, not the input limit, is what a guard should act on.
+
+#### Logging the margin: `pyra-chgwatch.sh --ts` (measured 2026-11-20)
+
+`device/pyra-chgwatch.sh --ts [FILE] [SECONDS] [INTERVAL]` logs the margin
+without touching the charger or the GPADC. Run it with sudo so the kernel-log
+column works. It reads IN0 and IN10 from the `palmas-gpadc` IIO device and
+computes VTCO and VHTF from IN10 on every sample, with the formula above.
+It also logs the gauge's temperature and current and the charger's status.
+For faults it records the bq24297 driver's own `temp` (225 no fault, 600 HOT,
+-100 COLD, from the driver's copy of REG09) and any new `r8=.. r9=..` lines
+the driver put in the kernel log.
+
+It doesn't read the driver's `registers` file. That file reads all eleven
+registers straight off the chip, outside the driver's lock, and doesn't
+update the driver's copy. So every read of it clears REG09's latch, and a
+fault latched between two of the driver's reads can vanish before the
+kernel log sees it. On this board the driver reads REG09 only on the
+charger's interrupt (no "polling" warning at probe), so a kernel-log line
+marks an event. The default mode still reads `registers`; its reg09 column
+is the latch it just cleared.
+
+**How to read the margin.** `margin_mV` is IN0 − VTCO, computed for the VBUS
+of that sample. It shrinks as the pack warms (IN0 falls). At 0 the bq24297
+suspends charging and should log `HOT`. Charging restarts only once IN0 is
+back above `vhtf_mV`, about 30 mV higher. It is NA without a charger: REGN is
+off then, and IN0 is only the 5 µA source (about 111 mV). Two cautions:
+the levels may be up to about 13 mV high (the 5 µA offset, above), so treat
+a margin under about 15 mV as already at the trip; and one sample moves
+with VBUS noise (IN10 spanned 4889-4988 mV in this run, which shifts VTCO by
+±5 mV), so read the trend, not a single row.
+
+**One charge** ([ts-margin-charge-20261120.tsv](ts-margin-charge-20261120.tsv),
+`5.6.19-m4-kbdled`, release card, 10 s samples, desk at room temperature,
+idle desktop): plugged in at 86 %, fast charge at 368 → 145 mA, then
+`CHGTERM` after 27 min (the gauge still said 87 %). Over 164 samples with
+the charger in:
+
+| | start | end | min |
+| --- | --- | --- | --- |
+| IN0 | 839 mV | 786 mV | 778 mV |
+| VTCO (computed) | 668 mV | 669 mV | 666-671 mV over the run |
+| margin | 171 mV | 117 mV | **111 mV** |
+| gauge temp | 27.5 °C | 32.9 °C | |
+
+No `HOT` and no other fault: `chg_temp` stayed 225, and the only kernel-log
+lines were the plug-in (`r9=10 UNPLUG`, then `ADAP FCHG`) and the
+termination (`ADAP CHGTERM`). IN0 fell 9.9 mV per gauge °C (correlation
+−0.95), matching the 2026-11-19 log's −10.2. Extrapolating that line
+(estimated, and the gauge is not the pack), the margin would reach 0 near a
+gauge reading of 44 °C. This run doesn't measure the trip (TODO E9 b): a
+charge in a warm room, or under load, might.

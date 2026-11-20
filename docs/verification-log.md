@@ -2327,3 +2327,21 @@ The CI release image (Release image run 44602488525) on a V5.3 board, `5.6.19-m4
   780-785 mV. `battery-monitor` exists as a platform device (`MODALIAS=of:Nbattery-monitorT(null)Clinux,generic-adc-battery`)
   and the module's alias matches it. What keeps it unbound is `/etc/modprobe.d/pyra-noadcbat.conf`
   (`blacklist generic_adc_battery`, package `pyra-config-modprobe` 0.39).
+
+## 2026-11-20 — margin to the bq24297's hot cut-off through one charge (R69, read-only)
+
+The CI release image on a V5.3 board, `5.6.19-m4-kbdled`, over ssh. `pyra-chgwatch.sh --ts` run as root
+from `/tmp` (10 s samples), sysfs and `dmesg` reads only; no charger or GPADC writes. The owner
+plugged the charger in at 86 %.
+
+- **Driver:** no "failed to request chg_irq ... polling" line at probe, so the bq2429x driver reads
+  REG09 only from its interrupt handler. Its `registers` sysfs file does a raw i2c read of REG09 that
+  clears the latch without updating the driver (source, `show_registers`); `--ts` avoids it.
+- **Charge** (`experiments/charging/ts-margin-charge-20261120.tsv`): fast charge 368 → 145 mA, then
+  `r8=b4 ADAP CHGTERM` after 27 min. IN0 839 → 786 mV (min 778), computed VTCO 666-671 mV (IN10
+  4889-4988 mV), margin 171 → 117 mV, minimum **111 mV**. Gauge 27.5 → 32.9 °C; IN0 −9.9 mV per gauge
+  °C, r = −0.95.
+- **Faults:** none. The bq24297 `temp` read 225 throughout. The kernel log showed only `r9=10 UNPLUG` and
+  `r9=00` at plug-in and `r9=00` at termination.
+- **Result:** the mode works end to end. No natural `HOT`, so the trip itself (TODO E9 b) is still
+  unmeasured.
