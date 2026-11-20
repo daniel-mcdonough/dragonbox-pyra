@@ -2322,3 +2322,8 @@ The CI release image (Release image run 44602488525) on a V5.3 board, `5.6.19-m4
 - **Result:** IN0 is the BTEMP tap through R2001/R2002, biased only while REGN is on. IN1, which
   Goldelico's `battery-monitor` node names the temperature channel, carries nothing on this board.
   The conversion to °C is a fitted model, not a calibration (`experiments/charging/README.md`).
+- **Re-check for the report (R67), same card, later that night, charging at 153 mA:** IN6 (the node's
+  "voltage") 4006-4007 mV against the gauge's 4045-4046 mV; IN11 ("current") 0; IN1 2-8 mV; IN0
+  780-785 mV. `battery-monitor` exists as a platform device (`MODALIAS=of:Nbattery-monitorT(null)Clinux,generic-adc-battery`)
+  and the module's alias matches it. What keeps it unbound is `/etc/modprobe.d/pyra-noadcbat.conf`
+  (`blacklist generic_adc_battery`, package `pyra-config-modprobe` 0.39).

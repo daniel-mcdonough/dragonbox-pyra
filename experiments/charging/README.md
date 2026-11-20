@@ -295,7 +295,13 @@ BTEMP). Three things say it is the thermistor:
 `linux,generic-adc-battery` (`battery-monitor`) whose "temperature" is
 `<&gpadc 1>`. On this board IN1 reads under 15 mV with or without a charger.
 That driver is built as a module (`generic-adc-battery.ko`) and binds
-nothing here. Its "current" channel, `<&gpadc 11>`, reads 0 too.
+nothing here: the vendor's `pyra-config-modprobe` blacklists it
+(`/etc/modprobe.d/pyra-noadcbat.conf`, since pyra-config 0.26, 2020), and
+letux-current's driver matches only `adc-battery`, not the node's
+`linux,generic-adc-battery` (checked at 7.4-rc3, 2026-11-19; report draft
+`reports/letux-pyra-battery-monitor-gpadc.md`). Its voltage channel, IN6, does
+follow the battery: 4006 mV against the gauge's 4046 mV while charging
+(measured 2026-11-19). Its "current" channel, `<&gpadc 11>`, reads 0 too.
 **The bq24297's `temp` is not a reading:** the driver returns a fixed
 22.5 °C, or -10 / 60 °C from the fault bits.
 
