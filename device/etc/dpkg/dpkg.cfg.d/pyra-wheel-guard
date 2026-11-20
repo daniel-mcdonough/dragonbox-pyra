@@ -1,0 +1,5 @@
+# Warn after any package run that replaces fix 26's pyra-hacks fork, whose
+# daemon calibrates the volume wheel; see /usr/local/sbin/pyra-wheel-guard.
+# The test keeps dpkg working if the guard has been deleted: a failing
+# post-invoke hook fails every package operation.
+post-invoke="if [ -x /usr/local/sbin/pyra-wheel-guard ]; then /usr/local/sbin/pyra-wheel-guard; fi"

@@ -772,12 +772,15 @@ them. To check one initrd by hand:
   `THE THERMAL FIXES ARE NOT APPLIED` banner on every package run until it is
   dealt with. A card prepared before the hook existed gets it from step 2
   (`pyra-install-helpers.sh`). The hook leaves alone a fix you undid with
-  `--undo`, because the undo deletes the backup it keys on. Fix 12 survives
-  an upgrade by itself, because it is a drop-in beside the package rather
-  than an edit to it. The exception is a card where that drop-in was removed
-  in favour of a `0.38+pyraN` package: there, an archive upgrade also
-  brings back the uncalibrated wheel, so re-run `pyra-volumed/install.sh`.
-  The hook does not watch fix 12.
+  `--undo`, because the undo deletes the backup it keys on. On a card
+  prepared with `--no-settings`, fix 12 survives a package run by itself,
+  because it is a drop-in beside the package rather than an edit to it. On
+  every other card the calibrated wheel is the `0.38+pyraN` fork's (fix 26),
+  and a downgrade to the vendor's 0.38, or a vendor 0.39, replaces it. A third
+  dpkg hook (`/etc/dpkg/dpkg.cfg.d/pyra-wheel-guard`) then prints a
+  `THE VOLUME WHEEL IS NOT CALIBRATED` banner on every package run until the
+  fork is back (`sudo dpkg -i` its `.deb`) or fix 12 is applied
+  (`sudo pyra-volumed/install.sh`). It changes nothing itself.
 - **A `dri3wsegl-pyra` reinstall or upgrade** puts the stock
   `libpvrDRI3WSEGL.so` back, which reverts fix 21. A second dpkg hook
   (`/etc/dpkg/dpkg.cfg.d/pyra-wsegl-guard`) re-patches it after the package

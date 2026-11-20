@@ -1650,6 +1650,27 @@ file with that name to be a symlink. `/lib` is `/usr/lib` on trixie, so it is
 the package's `/usr/lib/libpvrDRI3WSEGL.so`. Any package run that triggers
 ldconfig prints it, with fix 21's patched copy or the stock one.
 
+## The volume wheel is silent for half its travel, or `THE VOLUME WHEEL IS NOT CALIBRATED` after `apt`
+
+A package run replaced the `pyra-hacks` fork that fix 26 installed, with the
+vendor's 0.38 (a downgrade) or a newer vendor release. The vendor daemon maps
+the wheel linearly (fix 12 in `fixes.md` has why the lower half is then
+silent) and does not read `/etc/pyra_volumed.conf`, so pyra-settings' wheel
+page does nothing either. The dpkg hook `pyra-wheel-guard` prints the banner
+after every package run until it is dealt with. Check:
+
+    dpkg-query -W pyra-hacks    # a fork is 0.38+pyraN
+
+Either put the fork back, with its `.deb` from the pyra-hacks release
+`v0.38+pyra4` (prep's `HACKS_URL`, checked against `HACKS_SHA256`):
+
+    sudo dpkg -i pyra-hacks_0.38+pyra4_armhf.deb
+
+or, to keep the vendor package, apply fix 12 from a copy of this repository:
+`sudo device/pyra-volumed/install.sh`. If a newer vendor release is the cause,
+apt replaces the fork again on the next upgrade, until the fork is rebased onto
+it. The banner stops either way.
+
 ## The screen never dims, and MATE's setting for it does nothing
 
 **It dims the keyboard instead.** `mate-power-backlight-helper` searches

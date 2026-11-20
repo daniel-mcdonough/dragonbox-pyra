@@ -17,7 +17,8 @@
 # unknown driver library (fix 21) each abort before fix 1 writes anything,
 # fires fix 21's dpkg guard with the image's own dpkg (it must re-patch after a
 # reinstall, leave a rolled-back card stock, and warn about an unknown build
-# without touching it), and finally runs --release twice on the same
+# without touching it), fires fix 26's wheel guard with a downgrade to the
+# vendor's pyra-hacks and a return to the fork, and finally runs --release twice on the same
 # image: what it refuses (writing nothing), the release end state (password
 # 'pyra' expired, no host keys and an empty machine-id even where the card's
 # own were kept, no prompts, no NOPASSWD rule for all commands, systemd-firstboot
@@ -60,6 +61,11 @@
 # repository) holds it with the pinned SHA-256. Without it, the stock library
 # is written back by hand and an empty dpkg run fires the same hook; the log
 # says which.
+#
+# Fix 26's wheel guard is fired by a real downgrade to the vendor's pyra-hacks
+# 0.38 deb, from PYRA_HACKS_VENDOR_DEB (by default the package archive beside
+# the repository) with the pinned SHA-256, and a return to the fork (beside
+# PYRA_SETTINGS_DEB, or the pinned release). Without either, that is a SKIP.
 #
 # Leaves its snapshots, diffs and logs in a directory it names on the way out;
 # set OUTDIR to choose one.
@@ -1030,13 +1036,39 @@ if [[ $SON == yes ]]; then
     done
     W=0; for x in $WHEEL12; do [[ -e $MNT/$x ]] && W=1; done
     [[ $W -eq 0 ]] && p "fix26: fix 12 stood aside; the packaged unit runs the fork's pyra_volumed" || f "fix26: fix 12's files are on the card beside the fork"
+    for spec in pyra-wheel-guard:/usr/local/sbin:755 \
+                etc/dpkg/dpkg.cfg.d/pyra-wheel-guard:/etc/dpkg/dpkg.cfg.d:644; do
+        IFS=: read -r src dir mode <<<"$spec"
+        D=$MNT$dir/$(basename "$src")
+        [[ -e $D ]] && cmp -s "$PAYLOADS/$src" "$D" && p "fix26: ${D#$MNT} matches repo" || f "fix26: ${D#$MNT} missing or differs from repo"
+        [[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "$mode 0:0" ]] \
+            || f "fix26: ${D#$MNT} mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null), want $mode 0:0"
+    done
 else
     printf '\e[33mSKIP\e[0m  fix26: assertions (no pyra-settings in this run)\n'
     in_chroot dpkg-query -W pyra-settings >/dev/null 2>&1 \
         && f "fix26: pyra-settings is installed though this run asked for none" || p "fix26: pyra-settings is not installed"
     W=1; for x in $WHEEL12; do [[ -e $MNT/$x ]] || W=0; done
     [[ $W -eq 1 ]] && p "fix26: without it, fix 12's calibrated wheel is in place" || f "fix26: without pyra-settings, fix 12's files are missing"
+    [[ ! -e $MNT/usr/local/sbin/pyra-wheel-guard && ! -e $MNT/etc/dpkg/dpkg.cfg.d/pyra-wheel-guard ]] \
+        && p "fix26: without the fork, no pyra-wheel-guard" || f "fix26: pyra-wheel-guard is on a card without the fork"
 fi
+# The wheel guard's judgement, from the payload, on versions it is handed: a
+# +pyra version or fix 12's drop-in is a calibrated wheel, anything else warns.
+WG=$PAYLOADS/pyra-wheel-guard
+WDROP=$(mktemp)
+for c in "0.38+pyra4|/nonexistent|silent" "0.39+pyra1|/nonexistent|silent" "0.38|/nonexistent|warn" \
+         "0.39|/nonexistent|warn" "0.38|$WDROP|silent" "|/nonexistent|silent"; do
+    IFS='|' read -r v d want <<<"$c"
+    WGO=$(PYRA_HACKS_VERSION=$v PYRA_WHEEL_DROPIN=$d "$WG" 2>&1); WGRC=$?
+    got=silent; grep -q 'THE VOLUME WHEEL IS NOT CALIBRATED' <<<"$WGO" && got=warn
+    [[ -n $WGO && $got == silent ]] && got="'$WGO'"
+    dl=absent; [[ $d == "$WDROP" ]] && dl=present
+    [[ $got == "$want" && $WGRC -eq 0 ]] \
+        && p "wheel guard: pyra-hacks '${v:-none}', drop-in $dl: $want" \
+        || f "wheel guard: pyra-hacks '${v:-none}', drop-in $dl: got $got (exit $WGRC), want $want"
+done
+rm -f "$WDROP"
 
 ########################################################################
 i "assert fix 27 — pyra-sound, installed by the image's dpkg, masks MATE's sound icon"
@@ -1412,6 +1444,58 @@ grep -q 'FIX 21 IS NOT APPLIED' <<<"$WOUT" && p "fix21 guard: an unknown build p
 [[ $(wsha) == "$UNK" ]] && p "fix21 guard: an unknown build is left unchanged" || f "fix21 guard: the guard changed an unknown build"
 mv "$WL.selftest-keep" "$WL"
 rm -f "$MNT/tmp/dri3wsegl-pyra_0.4_armhf.deb"
+
+# Fix 26's wheel guard, fired by a real downgrade to the vendor's pyra-hacks
+# 0.38 and a return to the fork, both with the image's dpkg. It needs the
+# vendor's deb (PYRA_HACKS_VENDOR_DEB, by default the package archive beside
+# the repository) with its pinned SHA-256, and the fork's: the copy beside
+# PYRA_SETTINGS_DEB, or the pinned release (network). The same downgrade fires
+# fixes 6 and 7's guard, which must put both back.
+if [[ $SON == yes ]]; then
+    i "fix 26's wheel guard — a downgrade to the vendor's pyra-hacks and back"
+    HVDEB_SHA=e7f29e4428fa03adbeb045bde4c1aadffa036d68bec07bbc65c9bc6475d12164
+    HVDEB=${PYRA_HACKS_VENDOR_DEB:-$(cd -- "$ROOT/.." && pwd)/pyra-packages-archive/packages.pyra-handheld.com/trixie/pyra-hacks_0.38_armhf.deb}
+    HFNAME=$(sed -n 's/^HACKS_DEB=//p' "$PREP")
+    HFURL=$(sed -n 's/^HACKS_URL=//p' "$PREP")
+    HFSHA=$(sed -n 's/^HACKS_SHA256=//p' "$PREP")
+    HFDEB=$MNT/tmp/$HFNAME
+    if [[ -n $SDEB && -r $(dirname -- "$SDEB")/$HFNAME ]]; then
+        cp "$(dirname -- "$SDEB")/$HFNAME" "$HFDEB"
+    elif ! curl -fsSL --proto '=https' --tlsv1.2 -o "$HFDEB" "$HFURL" \
+         || [[ $(sha256sum < "$HFDEB" | cut -d' ' -f1) != "$HFSHA" ]]; then
+        rm -f "$HFDEB"
+    fi
+    if [[ -r $HVDEB && $(sha256sum < "$HVDEB" | cut -d' ' -f1) == "$HVDEB_SHA" && -r $HFDEB ]]; then
+        cp "$HVDEB" "$MNT/tmp/pyra-hacks-vendor.deb"
+        disarm; GOUT=$(in_chroot /usr/local/sbin/pyra-wheel-guard 2>&1 || true); arm
+        [[ -z $GOUT ]] && p "wheel guard: silent on the prepared card" || f "wheel guard: on the prepared card it said: $GOUT"
+        disarm; set +e
+        GOUT=$(in_chroot dpkg -i /tmp/pyra-hacks-vendor.deb 2>&1 </dev/null); GRC=$?
+        set -e; arm
+        [[ $GRC -eq 0 ]] && p "wheel guard: the downgrade to the vendor's 0.38 exited 0" || f "wheel guard: the downgrade exited $GRC: $(tail -2 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q 'THE VOLUME WHEEL IS NOT CALIBRATED' <<<"$GOUT" && p "wheel guard: the downgrade prints the warning" \
+            || f "wheel guard: no warning after the downgrade: $(tail -3 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q 're-applied fixes 6 and 7' <<<"$GOUT" && p "fix6/7 guard: the same downgrade re-applied both fixes" \
+            || f "fix6/7 guard: no re-apply after the downgrade: $(tail -3 <<<"$GOUT" | tr '\n' ' ')"
+        disarm; set +e
+        GOUT=$(in_chroot dpkg -i "/tmp/$HFNAME" 2>&1 </dev/null); GRC=$?
+        set -e; arm
+        [[ $GRC -eq 0 ]] && p "wheel guard: the return to the fork exited 0" || f "wheel guard: the return to the fork exited $GRC: $(tail -2 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q pyra-wheel-guard <<<"$GOUT" && f "wheel guard: it still warned with the fork back" || p "wheel guard: silent once the fork is back"
+        HST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' pyra-hacks 2>/dev/null || true)
+        [[ $HST == "$HVER ii"* ]] && p "wheel guard: dpkg has the fork $HVER again" || f "wheel guard: pyra-hacks is '$HST' after the return, want $HVER ii"
+        TD=$MNT/usr/share/pyra/scripts/pyra-thermal.sh
+        for fx in pyra-thermal-fix.sh pyra-thermal-ladder.sh; do
+            "$PAYLOADS/$fx" --emit-patched "$TD" 2>/dev/null | cmp -s - "$TD" \
+                || f "wheel guard: after the return, $fx would change the thermal daemon"
+        done
+        rm -f "$MNT/tmp/pyra-hacks-vendor.deb"
+    else
+        SKIP=$((SKIP+1)); SKIPPED+=("wheel guard: no real downgrade (vendor 0.38 deb at $HVDEB or the fork's deb missing)")
+        printf '\e[33mSKIP\e[0m  wheel guard: no checked vendor 0.38 deb at %s, or no fork deb\n' "$HVDEB"
+    fi
+    rm -f "$HFDEB"
+fi
 for d in dev sys proc; do umount "$MNT/$d"; done
 [[ $(wsha) == "$SHA_FIXED" ]] || f "fix21 guard: the fixed library was not put back after the test"
 

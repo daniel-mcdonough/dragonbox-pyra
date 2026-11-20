@@ -1,0 +1,65 @@
+#!/bin/bash
+#
+# pyra-wheel-guard — say so when a package run takes the calibrated volume
+# wheel away.
+#
+# Run by dpkg after every package operation, from
+# /etc/dpkg/dpkg.cfg.d/pyra-wheel-guard. Prep installs it with fix 26 only:
+# its being on the card means fix 26 put the pyra-hacks fork here. It can also
+# be run by hand.
+#
+# WHY
+#
+# Fix 26 installs the pyra-hacks fork (0.38+pyraN), whose pyra_volumed maps the
+# wheel through its measured taper and reads /etc/pyra_volumed.conf, which
+# pyra-settings' wheel page writes. With the fork in place, fix 12 stands aside
+# and leaves no drop-in. apt keeps the fork while the vendor's repository has
+# nothing above it, but an explicit downgrade to the vendor's 0.38, or a vendor
+# 0.39, replaces it without a word: the wheel goes back to the vendor's linear
+# mapping (silent for the lower half of its travel) and the wheel page stops
+# doing anything.
+#
+# WHAT IT DOES
+#
+# Nothing, silently, while the installed pyra-hacks is a +pyra version, or while
+# fix 12's drop-in points the unit at its own calibrated daemon. Otherwise it
+# prints a banner on every package run until someone looks, and logs it to the
+# journal. It changes nothing: putting the fork back, or fix 12 on, is a
+# person's call, since a newer vendor package may have fixed the wheel itself.
+# It never fails the package run: it always exits 0.
+#
+set -uo pipefail
+
+# Both overrides are for testing (pc/pyra-prep-selftest.sh): with
+# PYRA_HACKS_VERSION set, the guard judges that version instead of asking dpkg,
+# and does not write to the journal.
+DROPIN=${PYRA_WHEEL_DROPIN:-/etc/systemd/system/pyra_volumed.service.d/calibrated.conf}
+LIVE=1
+if [ -n "${PYRA_HACKS_VERSION+set}" ]; then
+	LIVE=0; VER=$PYRA_HACKS_VERSION
+else
+	VER=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' pyra-hacks 2>/dev/null)
+	# Removed, or never installed: no wheel daemon to guard.
+	case $VER in ii*) VER=${VER#*|} ;; *) VER= ;; esac
+fi
+
+[ -n "$VER" ] || exit 0
+case $VER in *+pyra*) exit 0 ;; esac
+[ -f "$DROPIN" ] && exit 0
+
+{
+	echo
+	echo "*****************************************************************"
+	echo "pyra-wheel-guard: THE VOLUME WHEEL IS NOT CALIBRATED"
+	echo "  pyra-hacks $VER replaced the fork (0.38+pyraN) that fix 26 installed."
+	echo "  The wheel follows the vendor's mapping again (silent for the lower"
+	echo "  half of its travel), and pyra-settings' wheel page has no effect."
+	echo "  To put the fork back, install its .deb (release v0.38+pyra4 at"
+	echo "  github.com/daniel-mcdonough/pyra-hacks) with: sudo dpkg -i <file>"
+	echo "  Or apply fix 12: sudo device/pyra-volumed/install.sh, from dragonbox-pyra."
+	echo "*****************************************************************"
+	echo
+} >&2
+[ "$LIVE" = 1 ] && logger -t pyra-wheel-guard -p user.warning \
+	"pyra-hacks $VER is not the fork and fix 12 is not applied: the volume wheel is uncalibrated" 2>/dev/null
+exit 0

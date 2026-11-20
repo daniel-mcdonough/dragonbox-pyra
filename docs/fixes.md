@@ -968,7 +968,9 @@ When fix 26 installs the pyra-hacks fork, fix 12 stands aside: it writes
 nothing and removes the four files an earlier run wrote (the drop-in, the
 runner, the source and the built binary), so the packaged unit runs the fork's
 `pyra_volumed`. pyra-settings' wheel page writes `/etc/pyra_volumed.conf`, which
-only the fork's daemon reads.
+only the fork's daemon reads. The calibration then lasts only as long as the
+fork does; fix 26's *Kept in step with apt* has the guard that says when a
+package run replaces it.
 
 ## Fix 13 — no Qt5 program draws anything
 
@@ -1797,6 +1799,21 @@ repository's 0.38 sorts below `0.38+pyra4`, so apt keeps the fork. A vendor
 0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
+
+Nothing in apt says when that happens, so fix 26 also installs a dpkg
+`post-invoke` hook, `/etc/dpkg/dpkg.cfg.d/pyra-wheel-guard`, which runs
+`/usr/local/sbin/pyra-wheel-guard` after every package run. The guard is
+silent while `pyra-hacks` is a `+pyra` version, or while fix 12's drop-in
+(`calibrated.conf`) is there. Otherwise, after a downgrade to the vendor's
+0.38 (`apt install pyra-hacks=0.38` or a `dpkg -i`) or a vendor 0.39, it
+prints a `THE VOLUME WHEEL IS NOT CALIBRATED` banner on every package run
+and logs a journal warning (`journalctl -t pyra-wheel-guard`). It changes
+nothing, since a newer vendor package may have fixed the wheel itself. Only
+fix 26 installs it, because only there did fix 12 stand aside; on a
+`--no-settings` card fix 12's drop-in survives package runs by itself. The
+selftest fires it with the image's dpkg: a downgrade to the archive's 0.38
+deb warns (and fixes 6 and 7's guard re-applies both fixes in the same run),
+and the return to the fork is silent.
 
 ## Fix 27 — MATE's sound icon knows nothing of the speakers and headphones
 

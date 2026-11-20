@@ -33,7 +33,8 @@
 #
 # Fix 26 installs pyra-settings (the Pyra's own settings app) and the
 # pyra-hacks fork its volume wheel page needs (0.38+pyra4, which carries fixes
-# 6, 7 and 12; fix 12 then stands aside). With no option it downloads the pinned
+# 6, 7 and 12; fix 12 then stands aside), and a dpkg hook that warns if a
+# package run replaces the fork. With no option it downloads the pinned
 # pyra-settings release (v0.14). --settings FILE uses a .deb you
 # have (pyra-settings' build makes one); --no-settings leaves both out. It needs
 # fix 22's pyra-backlight.
@@ -604,6 +605,9 @@ if [[ $SETTINGS_MODE == file ]]; then
     [[ $BACKLIGHT_MODE == file ]] ||
         die "fix26: pyra-settings needs pyra-backlight, which --no-backlight leaves out; add --no-settings too"
     [[ -r $SETTINGS_FILE ]] || die "fix26: no .deb at $SETTINGS_FILE"
+    for f in pyra-wheel-guard etc/dpkg/dpkg.cfg.d/pyra-wheel-guard; do
+        [[ -r $PAYLOADS/$f ]] || die "fix26: $f not found (looked in $PAYLOADS)"
+    done
     if [[ -z $SETTINGS_TMP ]]; then
         sum=$(sha256sum "$SETTINGS_FILE" | cut -d' ' -f1)
         if [[ -n $SETTINGS_SHA256 && $sum == "$SETTINGS_SHA256" ]]; then
@@ -2159,6 +2163,23 @@ $out"
             die "fix26: the installed pyra-hacks' ${THERMAL_DST#$ROOT} is not one $(basename "$fx") finds fixed"
     done
     ok "fix26: pyra-settings is installed, applies its settings at boot, and pyra-hacks carries fixes 6, 7 and 12"
+    # apt keeps the fork only while the vendor's repository has nothing above
+    # it. A downgrade, or a vendor 0.39, would bring back the uncalibrated wheel
+    # without a word, and fix 12 left no drop-in to fall back on. A dpkg hook
+    # runs pyra-wheel-guard after every package run, which warns when that
+    # happens. It goes in after the dpkg run above, so it never fires during prep.
+    for spec in pyra-wheel-guard:/usr/local/sbin:0755 \
+                etc/dpkg/dpkg.cfg.d/pyra-wheel-guard:/etc/dpkg/dpkg.cfg.d:0644; do
+        IFS=: read -r src dir mode <<<"$spec"
+        dst=$ROOT$dir/$(basename "$src")
+        if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+            ok "fix26: ${dst#$ROOT} already up to date"
+        else
+            VERB=$([[ -e $dst ]] && echo updated || echo installed)
+            install -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+            ok "fix26: $VERB ${dst#$ROOT}"
+        fi
+    done
 fi
 
 # ---------------------------------------------------------------------- fix 27
