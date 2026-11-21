@@ -1712,6 +1712,10 @@ key in the same row runs the brightness script by design and sends no key.
 
 ## Fn+D (`_`), Fn+' (`:`) or other Fn symbols type nothing, or the wrong thing
 
+A card prepped with fix 28 (`fixes.md`) has both fixes below, under X and on
+the console. The manual steps are for a card prepped before it, or set up
+without prep.
+
 The Fn layer is made by the input daemon, not by the keyboard: for Fn+letter
 it sends a spare keycode (Fn+D is keycode 197, Fn+' is 196), and the X
 layout and the console keymap each decide what that keycode types. Fn plus

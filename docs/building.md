@@ -1080,7 +1080,7 @@ clear error:
 | root | loop devices and mounts | hosted runners have passwordless `sudo` |
 | `losetup --partscan` | the image's two partitions | the build script stops on a missing `p2` |
 | f2fs in the kernel | the vendor rootfs is f2fs | `modprobe f2fs`. If that fails, the workflow installs `linux-modules-extra-$(uname -r)` and tries again, then checks `/proc/filesystems` |
-| qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20, 22, 24, 26, 27). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
+| qemu-user-static, binfmt flag `F` | prep runs the image's armhf tools in a chroot (fixes 14, 19, 20, 22, 24, 26, 27, 28). The chroot can't see the host's `qemu-arm-static`, so the kernel must have opened it when it was registered | the `flags:` line of `/proc/sys/fs/binfmt_misc/qemu-arm`. Prep's own `in_chroot /bin/true` check then runs as on a PC |
 | 12 GiB free in the work tree | archive (862 MB), sparse 6 GiB image (3.7 GiB used), its `.xz` | `df` before the download |
 | time | measured: about 8-9 minutes for the build job (table above) | `timeout-minutes: 120` |
 

@@ -67,7 +67,7 @@ works.
 ### What you need
 
 - A V5.x Pyra, and an SD card as above.
-- A Linux PC with a card reader, `7z`, and root. Unless the PC is itself armhf,
+- A Linux PC with a card reader, `7z`, `patch`, and root. Unless the PC is itself armhf,
   it also needs qemu-user with binfmt (`qemu-user-static` and `binfmt-support`
   on Debian or Ubuntu; `qemu-user-static` and `qemu-user-static-binfmt` on
   Arch), because the prep script rebuilds the card's initrds in a chroot.
@@ -215,7 +215,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The twenty-seven fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The twenty-eight fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
 | [docs/dbp.md](docs/dbp.md) | DBP packages from the forum: installing one, the false "missing dependencies" dialog, and which old libraries trixie renamed. |

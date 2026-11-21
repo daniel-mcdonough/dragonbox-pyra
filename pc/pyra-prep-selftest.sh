@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 27 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 28 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -273,6 +273,8 @@ i "run 1 of pyra-trixie-prep.sh"
 TESTPW=selftest-not-a-real-password
 # Fix 23 removes the vendor's host keys; one public key is kept for its mixed test.
 cp "$MNT/etc/ssh/ssh_host_rsa_key.pub" "$OUT/vendor-rsa.pub"
+# Fix 28 appends to remap.inc; the vendor's lines must survive it.
+cp "$MNT/etc/console-setup/remap.inc" "$OUT/remap.inc.vendor"
 ssh-keygen -q -t ed25519 -N '' -C 'comment-that-must-not-land@example.invalid' -f "$OUT/testkey"
 disarm; set +e
 "$PREP" "${KARGS[@]}" --set-password --ssh-key "$OUT/testkey.pub" --grow-on-boot "$MNT" pyra \
@@ -1116,6 +1118,50 @@ else
 fi
 
 ########################################################################
+i "assert fix 28 — the Fn symbols under X and on the console"
+########################################################################
+# The pins are prep's own, so test and fix can't disagree on them; the fixed
+# file is also checked against the repository's patch applied here.
+FN_XKB=/usr/share/X11/xkb/symbols/pyra
+FN_STOCK=$(sed -n 's/^FN_XKB_STOCK_SHA256=\([0-9a-f]*\).*/\1/p' "$PREP")
+FN_FIXED=$(sed -n 's/^FN_XKB_FIXED_SHA256=\([0-9a-f]*\).*/\1/p' "$PREP")
+FN_PATCH=$ROOT/patches/userspace/pyra-config-xorg/0001-fn-d-and-fn-apostrophe-not-alt-r-t-accents.patch
+FN_KMAP=$PAYLOADS/etc/console-setup/pyra-fn.kmap
+FN_REMAP=$MNT/etc/console-setup/remap.inc
+FN_CACHE=$MNT/etc/console-setup/cached_UTF-8_del.kmap.gz
+got=$(in_chroot dpkg-divert --truename "$FN_XKB" 2>/dev/null || true)
+pkg=$(in_chroot dpkg-divert --listpackage "$FN_XKB" 2>/dev/null || true)
+[[ $got == "$FN_XKB.dist" && $pkg == LOCAL ]] && p "fix28: dpkg diverts $FN_XKB to pyra.dist (a local diversion)" || f "fix28: diversion of $FN_XKB is '$got' by '$pkg', want $FN_XKB.dist by LOCAL"
+[[ $(sha256sum < "$MNT$FN_XKB.dist" 2>/dev/null | cut -d' ' -f1) == "$FN_STOCK" ]] && p "fix28: pyra.dist is pyra-config-xorg's stock keymap" || f "fix28: pyra.dist is missing or not the stock keymap"
+[[ $(sha256sum < "$MNT$FN_XKB" 2>/dev/null | cut -d' ' -f1) == "$FN_FIXED" ]] && p "fix28: $FN_XKB has the fixed SHA-256" || f "fix28: $FN_XKB is not the fixed keymap"
+FN_TMP=$OUT/pyra.fixed
+if patch --no-backup-if-mismatch -s -o "$FN_TMP" "$MNT$FN_XKB.dist" <"$FN_PATCH" >/dev/null 2>&1 && cmp -s "$FN_TMP" "$MNT$FN_XKB"; then
+    p "fix28: $FN_XKB is the repository's patch applied to the stock file"
+else
+    f "fix28: $FN_XKB differs from the repository's patch applied to pyra.dist"
+fi
+for x in "$FN_XKB" "$FN_XKB.dist" /etc/console-setup/remap.inc /etc/console-setup/cached_UTF-8_del.kmap.gz; do
+    [[ $(stat -c '%a %u:%g' "$MNT$x" 2>/dev/null) == "644 0:0" ]] && p "fix28: $x is 0644 root:root" || f "fix28: $x mode is $(stat -c '%a %u:%g' "$MNT$x" 2>/dev/null)"
+done
+grep -qF 'fix28: X types _ and : with Fn+D and Fn+'"'"' (not Alt' "$OUT/prep-run1.log" \
+    && p "fix28: run 1 compiled the keymap with the image's xkbcomp and read back the three keys" || f "fix28: run 1 did not report the compiled keymap's check"
+# remap.inc: the vendor's lines, then one marked block that is the repo fragment.
+FN_BEGIN='# >>> pyra-fn: the Pyra Fn layer (dragonbox-pyra prep, fix 28)'
+FN_END='# <<< pyra-fn'
+[[ $(grep -cxF "$FN_BEGIN" "$FN_REMAP") -eq 1 && $(grep -cxF "$FN_END" "$FN_REMAP") -eq 1 ]] \
+    && p "fix28: remap.inc has one Fn block" || f "fix28: remap.inc has $(grep -cxF "$FN_BEGIN" "$FN_REMAP") begin and $(grep -cxF "$FN_END" "$FN_REMAP") end markers, want one each"
+[[ $(awk -v b="$FN_BEGIN" -v e="$FN_END" '$0 == e {s = 0} s {print} $0 == b {s = 1}' "$FN_REMAP") == "$(cat "$FN_KMAP")" ]] \
+    && p "fix28: the block matches device/etc/console-setup/pyra-fn.kmap" || f "fix28: the block in remap.inc differs from pyra-fn.kmap"
+[[ $(awk -v b="$FN_BEGIN" '$0 == b {exit} {print}' "$FN_REMAP") == "$(cat "$OUT/remap.inc.vendor")" ]] \
+    && p "fix28: the vendor's remap.inc lines are kept, unchanged, above the block" || f "fix28: the lines above the block differ from the vendor's remap.inc"
+# The console loads the cached keymap at boot: every line of the fragment must be in it.
+FN_MISSING=$(grep '^keycode' "$FN_KMAP" | grep -vxFf <(zcat "$FN_CACHE" 2>/dev/null) || true)
+[[ -r $FN_CACHE && -z $FN_MISSING ]] && p "fix28: the cached console keymap has all $(grep -c '^keycode' "$FN_KMAP") Fn keycode lines" || f "fix28: the cached console keymap lacks: ${FN_MISSING//$'\n'/; }"
+# setupcon makes its temporary files in /run, else /tmp, and removes them on exit.
+FN_LEFT=$(compgen -G "$MNT/run/tmpkbd.*"; compgen -G "$MNT/tmp/tmpkbd.*") || true
+[[ -z $FN_LEFT ]] && p "fix28: setupcon left no temporary file in the image" || f "fix28: setupcon left: ${FN_LEFT//$'\n'/ }"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1177,6 +1223,10 @@ if [[ $SOON == yes ]]; then
 fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
+for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
+    grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
+        && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"
+done
 
 # With no kernel option prep offers the published download. Until a release
 # is pinned in prep there is none, and it must stop before writing anything.

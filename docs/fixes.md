@@ -1,4 +1,4 @@
-# The twenty-seven fixes, and what they actually do
+# The twenty-eight fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -51,6 +51,7 @@ them out.
 | 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | `pyra-meta-polkit-ukui-timeout.md` |
 | 26 | project choice | — (the Pyra's own settings app, and the pyra-hacks fork it depends on) | — | — |
 | 27 | project choice | — (a sound icon for the AESS sink's two outputs, in place of MATE's) | — | — |
+| 28 | package fix | `pyra-config-xorg`: Fn+D and Fn+' are Alt as well as `_` and `:`, and Fn+R/Fn+T swap é and è; the patch is in `patches/userspace/pyra-config-xorg/`. The console half restores what Debian's keymap leaves out | `pyra-config-xorg` takes the patch (the console fragment stays) | — (none drafted yet) |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1883,6 +1884,66 @@ The `.deb` comes from `--sound FILE`, or by default from pyra-sound's
 (`pyra-sound_0.4_all.deb`), checked against `SOUND_SHA256` in the script
 (`67f9aa94…19eb62`, the asset as published, checked 2026-11-17). `--no-sound`
 leaves it out, and MATE's icon stays.
+
+## Fix 28 — Fn symbols that are Alt, swapped, or missing on the console
+
+**Symptom.** The Fn layer is made by the input daemon, not the keyboard: for
+Fn plus a letter, Fn+' or Fn+M it sends a spare keycode (Fn+D is 197, Fn+' is
+196), and the X layout and the console keymap each decide what it types.
+Under X (pyra-config-xorg 0.39, as 0.38) every symbol types, but Fn+D (`_`)
+and Fn+' (`:`) are also Alt while held: a key pressed before they are let go
+arrives as Alt+key (mate-terminal sends ESC b for `_b` typed fast, which moves
+bash back a word), and Shift+Fn+D or Shift+Fn+' types nothing. Fn+R types è
+and Fn+T é, the other way round from the keycaps. On a tty, Fn plus a key in
+the top two letter rows, Fn+' and Fn+M type nothing, and Fn+Q and Fn+W send
+`ESC [ M` and Delete.
+
+**Cause.** Under X, the pc symbols give keycodes 196 and 197 (`<ALT>`,
+`<META>`) Mod1 with Alt_L/Meta_L on level 2, and pyra-config-xorg's
+`symbols/pyra` adds `modifier_map Mod1 { <META> }`; XKB's catch-all
+interpretation then makes each key an Alt modifier. On the console, Debian's
+keymap (ckbcomp's output) has nothing on most of those keycodes.
+
+**Fix.** Two parts, both found and checked on the r5 card by injecting the
+daemon's keycodes through uinput (`troubleshooting.md`, development log R78):
+
+- **X.** `patches/userspace/pyra-config-xorg/0001-fn-d-and-fn-apostrophe-not-alt-r-t-accents.patch`
+  puts the symbol on both levels of `<META>` and `<ALT>` with an explicit
+  `NoAction()`, which wins over the interpretation, and swaps the accents on
+  R and T. Prep diverts `/usr/share/X11/xkb/symbols/pyra` with the image's
+  `dpkg-divert` (local, to `pyra.dist`), so a pyra-config-xorg upgrade writes
+  its new file to `pyra.dist` and leaves the fixed one alone; it then applies
+  the patch to `pyra.dist` with the PC's `patch` and installs the result.
+  X compiles the keymap at every start, so there is no cache to refresh. Prep
+  then compiles the keymap X builds (`pc+pyra(pyra)+inet(evdev)`) with the
+  image's `xkbcomp` and stops unless `<META>` is `_` and `<ALT>` `:` on both
+  levels with no action, and Fn+R/Fn+T are é and è.
+- **Console.** `device/etc/console-setup/pyra-fn.kmap` gives every Fn key its
+  keycap symbol. Prep appends it to `/etc/console-setup/remap.inc`, which
+  ckbcomp adds to every keymap it builds, as a block between two marker lines
+  (`# >>> pyra-fn` … `# <<< pyra-fn`); a re-run replaces the block rather than
+  adding a second one. `remap.inc` is a conffile of console-setup-linux, so a
+  package run keeps the edit. The console loads
+  `/etc/console-setup/cached_UTF-8_del.kmap.gz` at boot, and the image's
+  `setupcon` rebuilds it only when it is missing or older than
+  `/etc/default/keyboard`, so prep removes it and runs `setupcon --save-only`
+  in the chroot, then checks that every `keycode` line of the fragment is in
+  the new cache.
+
+**What prep checks first.** Before fix 1 writes anything: that the patch and
+the fragment are in the checkout, that the PC has `patch`, that the image's
+keymap is pyra-config-xorg's stock file (SHA-256 `1125b26a…`, 0.38 and 0.39)
+or, on a re-run, diverted with the stock file in `pyra.dist` and the fixed one
+(`19030823…`) in place, that the image has `remap.inc`, and that
+`/etc/default/console-setup` sets `CHARMAP="UTF-8"` (the cache's name depends
+on it). A keymap prep doesn't know stops it. A re-run finds the diversion, the
+fixed file, the block and the cache in place and writes nothing. Nothing in it
+is per machine, so `--release` keeps it.
+
+**Undo.** `sudo rm /usr/share/X11/xkb/symbols/pyra && sudo dpkg-divert --remove
+--rename /usr/share/X11/xkb/symbols/pyra` puts the package's file back; delete
+the marked block from `remap.inc`, then `sudo touch /etc/default/keyboard &&
+sudo setupcon --save-only`.
 
 ## Fixes 6, 7 and 12 as a package
 

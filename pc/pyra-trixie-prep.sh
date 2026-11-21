@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-seven known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-eight known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -56,8 +56,8 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20, 22, 24, 26 and 27 run the image's own tools in a chroot, so a PC that is not
-# armhf needs qemu-user with binfmt registered.
+# Fixes 14, 19, 20, 22, 24, 26, 27 and 28 run the image's own tools in a
+# chroot, so a PC that is not armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
@@ -72,8 +72,15 @@
 # stock build, before anything is written. A dpkg hook (pyra-wsegl-guard)
 # re-applies it after a package run puts the stock build back.
 #
-# Fixes 5 and 6 use files that live in device/ in the repository, so run this
-# from a checkout rather than copying the script somewhere on its own.
+# Fix 28 makes the Fn symbols work: it patches pyra-config-xorg's X keymap
+# (diverted with dpkg-divert, so a package run keeps the fix) with the patch in
+# patches/userspace/pyra-config-xorg, and gives the console the same symbols
+# through console-setup's remap.inc. It refuses a keymap that is neither the
+# known stock file nor already fixed, before anything is written.
+#
+# Fixes 5 and 6 use files that live in device/ in the repository, and fix 28
+# one in patches/, so run this from a checkout rather than copying the script
+# somewhere on its own.
 
 set -euo pipefail
 
