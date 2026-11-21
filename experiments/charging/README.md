@@ -480,5 +480,74 @@ thermal daemon's charge ladder disconnected (fix 8), the TS pin is the only
 cell protection, so the lower voltage is also the gentler default. Raising it
 means setting the vsys `regulator-max-microvolt` to 4350000, which gives
 VREG 43 steps = 4.192 V because the battery's 4.2 V caps it and the encoding
-rounds down. Do that only after the schematic shows that everything on VSYS
-is rated for 4.35 V.
+rounds down. The schematic check below found every part on VSYS rated for
+that.
+
+### Can VSYS take 4.35 V? Yes (checked 2026-11-20)
+
+With the vsys maximum at 4.35 V, VSYS can reach the bq24297's own bound.
+SLUSBP6D §8.5, "Power Path Management": VSYS_MAX is 4.35 V maximum, with
+Isys = 0 A, the BATFET off and VBAT up to 4.2 V. Every part on VSYS is listed
+below, traced on the V5.x schematics (Rev 5.1.3 zip, DragonFly sheets dated
+2016-11-16; "sheet" is the number in each title block). The ratings come
+from the vendors' current PDFs. Parts crossed out as not fitted on the
+standard (non-4G) board are left out: INA231 U702, the modem switch U704
+(VMODEM), the TPA6110 U1804, and the display rotator's LDOs U4203/U4205.
+
+| Board, sheet | Part | VSYS pin | Recommended | Abs max | Datasheet |
+|---|---|---|---|---|---|
+| main 8 | U701 TLV70233 (3V3 LDO) | IN | 2.0-5.5 V | 6.0 V | SLVSAG6D §6.3, §6.1 |
+| main 8 | R711 100k pull-up on bq24297 STAT, also the CHG-STAT line to TCA6424A U402 | STAT; P-port | open drain; up to 5.5 V | 12 V; 6.5 V | SLUSBP6D §8.1; SCPS193D §6.3, §6.1 |
+| main 2 | R202 100k pull-up on POWERON, to SN74LVC3G06 U201 and TWL6037 PWRON | input | 0-5.5 V | 6.5 V | SCES364J (AMR, ROC) |
+| main 4 | U403 IS31FL3199 (status LEDs) and the three RGB LED anodes | VCC | 2.7-5.5 V | 6.0 V | Lumissil IS31FL3199 Rev. D |
+| main 5 | U401 LM3699 (keyboard light boost) | VIN | 2.7-5.5 V | 6.0 V | SNVS821A §6.3, §6.1 |
+| main 7 | U602 TPS2505 (USB host 5 V boost) | IN | 1.8-5.25 V | 7 V | SPAS093C §6.3, §6.1 |
+| main 12 | U1101 WL1837MOD (wifi/BT) | VBAT | 2.9-4.8 V | 4.8 V | SWRS170L §7.3, §7.1 |
+| main 18 | U1702 TS3A227E (jack detect), through L1702; R1707 100k from VSYS to TIP | VDD; TIP | 2.5-4.5 V; up to VDD | 5.0 V; VDD+0.5 V | SCDS358B §7.3, §7.1 |
+| main 19 | U1803 TPA2012D2 (speaker amp) | AVDD, PVDD | 2.5-5.5 V | 6 V | SLOS438F §7.3, §7.1 |
+| display 42 | U4101 TLV70228 (2V8 LDO) | IN | 2.0-5.5 V | 6.0 V | SLVSAG6D §6.3, §6.1 |
+| display 42 | U4102 TPS61041 (panel backlight boost) | VIN | 1.8-6 V | 7 V | SLVS413L §5.3, §5.1 |
+| display 44 | U4304 IS31FL3196 (logo LED) and its LED anodes | VCC | 2.7-5.5 V | 6.0 V | Lumissil IS31FL3196 Rev. E |
+| CPU 26, 27 | U2503 TWL6037 (Palmas PMIC) | VCC, SMPS1-9 IN, SMPS10 IN (through L2502), LDO1/2, LDO5/8, LDOLN IN | 3.135-5.25 V | 6 V | TPS659037 SLIS165G §4.3, §4.1 (see below) |
+| CPU 26 | U2501 TLV70233 (3V3-CPU LDO) | IN | 2.0-5.5 V | 6.0 V | SLVSAG6D §6.3, §6.1 |
+| CPU 33 | U3201 USB3503A (USB hub) | VBAT | 2.9-5.5 V | 5.5 V | Microchip USB3503A Rev 1.1, Tables 10.1, 10.2 |
+| CPU 34 | U3301 TWL6040 (audio) | VDDHFL/R, VDDVIBL/R, VDDVREF (through L3303) | battery 2.3-5.5 V | not public | SWCS052B §1.1 (see below) |
+
+Not on VSYS: the eSATA adapter's TLV70233 runs from VBUS, and everything
+else on the CPU board runs from the Palmas outputs.
+
+Limits on the check:
+
+- The TWL6037 has no public datasheet. The ratings above are the TPS659037's
+  (same Palmas family). The TPS659037 has no LDO5 or LDO8, so those two LDO
+  inputs aren't verified. For an LDO whose output is 2.15 V or less, the
+  input is rated up to VCC1, which is VSYS itself.
+- The TWL6040's public datasheet (SWCS052B) is only an overview. It gives a
+  battery range of 2.3-5.5 V and no abs-max or recommended-conditions table.
+- Least margin at 4.35 V: the TS3A227E, 0.15 V under its recommended 4.5 V
+  and 0.65 V under abs max; then the WL1837MOD, 0.45 V under its 4.8 V. Its
+  4.8 V limit is "cumulative to 2.33 years, including charging dips and
+  peaks". The TS3A227E's TIP pin is pulled to VSYS through R1707, so TIP
+  follows VDD whatever VSYS is.
+- The bq24297 datasheet's §9.3.2.1 says that after termination the system
+  is regulated at 150 mV above the *minimum* system voltage. That doesn't fit
+  the driver's comment or the §8.5 row. The bound used here is the §8.5
+  maximum (4.35 V), which holds either way.
+
+Why the DT says 4.2 V: there is no recorded reason. The letux commit that
+added it (34e53e230c6f1, "ARM: dts: define Pyra Mainboard variants", 2019)
+has a one-line message. The earlier `omap5-uevm+pyra4.dts` had both vsys
+limits commented out (3.7 V). It looks like the battery's 4.2 V copied into
+the regulator node, not a board rating.
+
+**Result.** The hardware doesn't require 4.05 V. Every part on VSYS is rated
+for 4.35 V, and nothing fitted comes within 0.15 V of a recommended maximum.
+The draft DT change is `patches/proposed/vsys-max-4350000.patch`. It sets the
+vsys maximum to 4350000, which gives VREG 4.192 V. It sits outside
+`patches/*.patch`, so no build picks it up until the owner moves it in. The
+vsys regulator's `set_voltage` is a no-op and its `get_voltage` reads
+VSYSMIN (3.5 V), so nothing but VREG changes. Whether to raise it is now a
+cell question (cycle life, and the TS pin as the only protection while fix
+8's ladder stays off), not a board one. Before a release carries it, it
+would need one charge to 4.19 V on a Pyra, logged with `pyra-chgwatch.sh
+--ts`.

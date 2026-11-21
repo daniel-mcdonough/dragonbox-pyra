@@ -1,0 +1,38 @@
+ARM: dts: pyra: let the charger regulate the cell to 4.19 V
+
+The bq2429x driver sets the charge voltage (REG04 VREG) at probe to
+
+    min(vsys regulator-max-microvolt - 150 mV, battery voltage-max-design)
+
+because VSYS can sit up to 150 mV above a full cell while running from
+VBUS.  With the vsys maximum at 4.2 V that is 4.05 V, which the 16 mV
+encoding rounds down to 4.048 V, so every Pyra kernel stops charging
+about 150 mV short of the cell's 4.2 V (gauge about 87 % at
+termination).
+
+Every part on VSYS on the V5.x boards (main, CPU and display boards) is
+rated for 4.35 V or more: the tightest are the TS3A227E jack detector
+(VDD 2.5-4.5 V recommended, 5 V absolute) and the WL1837MOD (VBAT
+2.9-4.8 V).  The bq24297 itself bounds VSYS at 4.35 V (VSYS_MAX, with
+VBAT up to 4.2 V and the BATFET off), and its own power-on default
+VREG of 4.208 V already lets VSYS reach that while charging before
+Linux probes.
+
+Raise the vsys maximum to 4.35 V.  The battery's 4.2 V then caps VREG:
+(4200000 - 3504000) / 16000 = 43 steps = 4.192 V.  Nothing else reads
+the maximum: the vsys regulator's set_voltage is a no-op and its
+get_voltage reports VSYSMIN (3.5 V), which stays inside the range.
+
+DRAFT: not applied to any kernel until the owner decides.
+---
+--- a/arch/arm/boot/dts/pyra-mainboard-common.dtsi
++++ b/arch/arm/boot/dts/pyra-mainboard-common.dtsi
+@@ -567,7 +567,7 @@
+ 				regulator-compatible = "bq2429x-vsys";
+ 				regulator-name = "vsys";
+ 				regulator-min-microvolt = <3500000>;
+-				regulator-max-microvolt = <4200000>;
++				regulator-max-microvolt = <4350000>;
+ 				regulator-always-on;
+ 				regulator-boot-on;
+ 			};

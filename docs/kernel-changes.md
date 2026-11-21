@@ -298,6 +298,14 @@ through a charger unplug and replug, `registers` reg 09 equalled the driver's la
 all 118 one-second samples, `10` (UNPLUG) included (`verification-log.md`). Developer build
 only. It is in no release kernel; `kernel-5.6.19-r3` lacks it.
 
+**`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
+vsys `regulator-max-microvolt` from 4200000 to 4350000 in `pyra-mainboard-common.dtsi`. The
+driver then sets VREG to 4.192 V instead of 4.048 V (capped by the battery's 4.2 V). Every
+part on VSYS is rated for 4.35 V (table in `experiments/charging/README.md`, "Can VSYS take
+4.35 V?"). `patches/proposed/` is outside the `patches/*.patch` glob, so neither
+`pyra-crossbuild.sh` nor `pyra-kernel-tree.sh` applies it. To take it, the owner gives it the
+next number in `patches/` and it gets one logged charge on a Pyra first.
+
 ---
 
 ## `experiments/m4-ipu/`: in all m4 kernels, and the demo kit
