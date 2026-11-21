@@ -536,8 +536,9 @@ Limits on the check:
 
 Why the DT says 4.2 V: there is no recorded reason. The letux commit that
 added it (34e53e230c6f1, "ARM: dts: define Pyra Mainboard variants", 2019)
-has a one-line message. The earlier `omap5-uevm+pyra4.dts` had both vsys
-limits commented out (3.7 V). It looks like the battery's 4.2 V copied into
+has a one-line message. Before it, the node had min and max both 3.7 V
+until letux 383c16a6e16bc ("DT: Pyra: fix regulator nodes for bq24297",
+2016) commented them out, and `omap5-uevm+pyra4.dts` kept them that way. It looks like the battery's 4.2 V copied into
 the regulator node, not a board rating.
 
 **Result.** The hardware doesn't require 4.05 V. Every part on VSYS is rated
