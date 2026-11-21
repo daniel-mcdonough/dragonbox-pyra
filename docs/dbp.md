@@ -22,14 +22,23 @@ That can be a second SD card, or the system card itself:
     sudo mkdir -p /dragonbox/packages
     sudo chown -R "$USER": /dragonbox
     cp GBAemu-1.5.46.02.dbp /dragonbox/packages/
-    dbp-cmd register /dragonbox/packages/GBAemu-1.5.46.02.dbp
     dbp-cmd list
 
-`dbpd` reads `dragonbox/packages/` on each filesystem when it starts and when
-something new is mounted. It doesn't watch the directory, so a file copied onto
-a filesystem that's already mounted needs `dbp-cmd register` (above), a reboot,
-or `sudo systemctl restart dbpd`. Measured 2026-11-21: after the copy alone,
-`dbp-cmd list` was empty; after `register` it listed the package.
+`dbpd` registers a package as soon as its copy finishes, and unregisters it
+when the file is deleted. It does this with an inotify watch on each
+`dragonbox/packages/` folder. The watch is set only when the filesystem is
+mounted or `dbpd` starts. **If the folder didn't exist then, nothing watches it**
+until the next mount, reboot or `sudo systemctl restart dbpd`. Until then,
+register by hand with `dbp-cmd register /path/to/file.dbp`. Measured
+2026-11-21: a folder created after `dbpd` started got no watch; after a
+restart, a copy registered within 3 s and a removal unregistered it. The log line
+`An error occured while registering a package none` during a copy is harmless:
+the file is seen before the copy finishes, then registered when it does.
+
+Double-clicking a `.dbp` in the file manager opens it with `dbp-run-path`,
+which registers and runs it in one step (MIME handler set; not tried).
+Running `./file.dbp` in a shell doesn't work: the binfmt entry the package
+ships isn't registered on the card.
 
 Registering exports two things: a menu entry,
 `/usr/share/applications/__dbp__<id>_default.desktop`, and a launcher,

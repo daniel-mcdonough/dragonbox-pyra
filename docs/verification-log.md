@@ -2447,8 +2447,9 @@ The r5 release card, `5.6.19-m4-kbdled`, `dbp` 0.6.12.2-2. Package: GBA.emu 1.5.
 downloaded in the DBP repository (1532), fetched from the repository's download link, SHA-256
 `f96c710b9adc31dd79f44e33c474c992c7f101f434d23e76f5303822f9039537`. Written up in `dbp.md`.
 
-- Copied to `/dragonbox/packages/` on the root f2fs (`/dragonbox` chowned to the user). Not picked up until
-  `dbp-cmd register` or a `dbpd` restart. Registering exported `__dbp__GBAemu_default.desktop` and
+- Copied to `/dragonbox/packages/` on the root f2fs (`/dragonbox` chowned to the user). Not picked up: the
+  folder was created after `dbpd` started, and dbpd sets its inotify watches only at mount or start. After a
+  restart, removing the file unregistered it and copying it back registered it within 3 s. Registering exported `__dbp__GBAemu_default.desktop` and
   `/usr/local/games/GBAemu.sh`.
 - `dbp-cmd mount` without `dragonbox/appdata/GBAemu` present: `Unable to set up AuFS union`, dmesg
   `aufs opt_add:811:dbpd[...]: lookup failed /dragonbox/appdata/GBAemu (-2)`. In dbp's source, `dbp-run`
