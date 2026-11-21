@@ -10,8 +10,8 @@ encoding rounds down to 4.048 V, so every Pyra kernel stops charging
 about 150 mV short of the cell's 4.2 V (gauge about 87 % at
 termination).
 
-Every part on VSYS on the V5.x boards (main, CPU and display boards) is
-rated for 4.35 V or more: the tightest are the TS3A227E jack detector
+Every part fitted on VSYS on a standard (non-4G) V5.x board (main, CPU
+and display boards) is rated for 4.35 V or more: the tightest are the TS3A227E jack detector
 (VDD 2.5-4.5 V recommended, 5 V absolute) and the WL1837MOD (VBAT
 2.9-4.8 V).  The bq24297 itself bounds VSYS at 4.35 V (VSYS_MAX, with
 VBAT up to 4.2 V and the BATFET off), and its own power-on default
@@ -22,6 +22,12 @@ Raise the vsys maximum to 4.35 V.  The battery's 4.2 V then caps VREG:
 (4200000 - 3504000) / 16000 = 43 steps = 4.192 V.  Nothing else reads
 the maximum: the vsys regulator's set_voltage is a no-op and its
 get_voltage reports VSYSMIN (3.5 V), which stays inside the range.
+
+Not for 4G boards: the modem runs from VSYS and switches itself off at
+4.25 V, which is why the vsys maximum is 4.2 V (hns, forum posts 1698207
+and 1719755).  At 4.192 V VREG, VSYS can reach about 4.29 V while
+charging.  The DTs do not tell 4G boards apart, so this needs a non-4G
+variant or a boot-time modem check before any image carries it.
 
 DRAFT: not applied to any kernel until the owner decides.
 ---

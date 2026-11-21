@@ -301,8 +301,10 @@ only. It is in no release kernel; `kernel-5.6.19-r3` lacks it.
 **`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
 vsys `regulator-max-microvolt` from 4200000 to 4350000 in `pyra-mainboard-common.dtsi`. The
 driver then sets VREG to 4.192 V instead of 4.048 V (capped by the battery's 4.2 V). Every
-part on VSYS is rated for 4.35 V (table in `experiments/charging/README.md`, "Can VSYS take
-4.35 V?"). `patches/proposed/` is outside the `patches/*.patch` glob, so neither
+part fitted on VSYS on a standard board is rated for 4.35 V (table in
+`experiments/charging/README.md`, "Can VSYS take 4.35 V?"). The 4G modem is not: it switches
+off at 4.25 V, which is why the DT says 4.2 V (same section), so the patch must not reach a 4G
+board. `patches/proposed/` is outside the `patches/*.patch` glob, so neither
 `pyra-crossbuild.sh` nor `pyra-kernel-tree.sh` applies it. To take it, the owner gives it the
 next number in `patches/` and it gets one logged charge on a Pyra first. Owner, 2026-11-20:
 keep 4.048 V. Release kernels don't carry it, and it stays a draft.

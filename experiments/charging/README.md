@@ -487,9 +487,9 @@ cell protection, so the lower voltage is also the gentler default. Raising it
 means setting the vsys `regulator-max-microvolt` to 4350000, which gives
 VREG 43 steps = 4.192 V because the battery's 4.2 V caps it and the encoding
 rounds down. The schematic check below found every part on VSYS rated for
-that.
+that, except the 4G modem, which is the reason for the 4.2 V (below).
 
-### Can VSYS take 4.35 V? Yes (checked 2026-11-20)
+### Can VSYS take 4.35 V? Yes without the 4G modem (checked 2026-11-20)
 
 With the vsys maximum at 4.35 V, VSYS can reach the bq24297's own bound.
 SLUSBP6D §8.5, "Power Path Management": VSYS_MAX is 4.35 V maximum, with
@@ -540,24 +540,46 @@ Limits on the check:
   the driver's comment or the §8.5 row. The bound used here is the §8.5
   maximum (4.35 V), which holds either way.
 
-Why the DT says 4.2 V: there is no recorded reason. The letux commit that
-added it (34e53e230c6f1, "ARM: dts: define Pyra Mainboard variants", 2019)
-has a one-line message. Before it, the node had min and max both 3.7 V
-until letux 383c16a6e16bc ("DT: Pyra: fix regulator nodes for bq24297",
-2016) commented them out, and `omap5-uevm+pyra4.dts` kept them that way. It looks like the battery's 4.2 V copied into
-the regulator node, not a board rating.
+Why the DT says 4.2 V: the 4G modem. The letux commit that added it
+(34e53e230c6f1, "ARM: dts: define Pyra Mainboard variants", 2019) has a
+one-line message. Before it, the node had min and max both 3.7 V until
+letux 383c16a6e16bc ("DT: Pyra: fix regulator nodes for bq24297", 2016)
+commented them out, and `omap5-uevm+pyra4.dts` kept them that way. The
+reason is on the forum, from hns, one of the board's designers:
 
-**Result.** The hardware doesn't require 4.05 V. Every part on VSYS is rated
-for 4.35 V, and nothing fitted comes within 0.15 V of a recommended maximum.
+- 2021-09-14, https://pyra-handheld.com/boards/posts/1698207/: the modem
+  runs straight from the system rail, which sits up to 100 mV above the
+  battery while charging. The modem reports overvoltage at 4.25 V and
+  switches itself off, so a full 4.2 V charge turns it off (or stops it
+  turning on). "To avoid this we have to stop charging at 4.1V which is ca.
+  80% fuel level." The 4.25 V cut-off was found too late for a board change.
+- 2024-09-03, https://pyra-handheld.com/boards/posts/1719755/ (the PPS):
+  with a 50 mV drop in the charging circuit, an almost full battery cuts
+  the modem's transmitter, so charging is limited "to 4.15V which is
+  equivalent to ca. 85%".
+
+Those posts give 4.1 V and 4.15 V; the kernel this card runs stops at
+4.048 V (measured above), so neither figure is what the driver does. The
+modem sits behind the switch U704 (VMODEM), which the table above leaves
+out because it isn't fitted on the standard board. The cap is a 4G-board
+limit, not a limit of the parts in the table.
+
+**Result.** A board without the modem doesn't need 4.05 V: every fitted part
+on VSYS is rated for 4.35 V, and none comes within 0.15 V of a recommended
+maximum. A 4G board does need a cap. At the patch's 4.192 V VREG, VSYS can
+reach about 4.29 V while charging, above the modem's 4.25 V cut-off.
 The draft DT change is `patches/proposed/vsys-max-4350000.patch`. It sets the
 vsys maximum to 4350000, which gives VREG 4.192 V. It sits outside
 `patches/*.patch`, so no build picks it up until the owner moves it in. The
 vsys regulator's `set_voltage` is a no-op and its `get_voltage` reads
-VSYSMIN (3.5 V), so nothing but VREG changes. Whether to raise it is now a
-cell question (cycle life, and the TS pin as the only protection while fix
-8's ladder stays off), not a board one. Before a release carries it, it
+VSYSMIN (3.5 V), so nothing but VREG changes. On a board without the modem,
+whether to raise it is a cell question (cycle life, and the TS pin as the
+only protection while fix 8's ladder stays off). Before a release carries it, it
 would need one charge to 4.19 V on a Pyra, logged with `pyra-chgwatch.sh
---ts`.
+--ts`, and it must not reach a 4G board. The kernel's device trees differ by
+board revision, not by whether the modem is fitted (all of them include
+`pyra-mainboard-common.dtsi`), so the patch would need a non-4G DT variant
+or a boot-time check for the modem first.
 
 **Decision (owner, 2026-11-20): keep 4.048 V.** The release kernels keep the
 DT's 4.2 V vsys maximum, so charging stops at 4.048 V (gauge ~87 % at
