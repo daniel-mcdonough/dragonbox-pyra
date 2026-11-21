@@ -552,3 +552,10 @@ cell question (cycle life, and the TS pin as the only protection while fix
 8's ladder stays off), not a board one. Before a release carries it, it
 would need one charge to 4.19 V on a Pyra, logged with `pyra-chgwatch.sh
 --ts`.
+
+**Decision (owner, 2026-11-20): keep 4.048 V.** The release kernels keep the
+DT's 4.2 V vsys maximum, so charging stops at 4.048 V (gauge ~87 % at
+CHGTERM). It is gentler on the cell while the TS pin is the only cell
+protection. The 4.19 V test charge was not run. The draft patch stays in
+`patches/proposed/` for anyone who wants the extra capacity and will log
+that charge first.

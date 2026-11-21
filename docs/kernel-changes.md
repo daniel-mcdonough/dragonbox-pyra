@@ -304,7 +304,8 @@ driver then sets VREG to 4.192 V instead of 4.048 V (capped by the battery's 4.2
 part on VSYS is rated for 4.35 V (table in `experiments/charging/README.md`, "Can VSYS take
 4.35 V?"). `patches/proposed/` is outside the `patches/*.patch` glob, so neither
 `pyra-crossbuild.sh` nor `pyra-kernel-tree.sh` applies it. To take it, the owner gives it the
-next number in `patches/` and it gets one logged charge on a Pyra first.
+next number in `patches/` and it gets one logged charge on a Pyra first. Owner, 2026-11-20:
+keep 4.048 V. Release kernels don't carry it, and it stays a draft.
 
 ---
 
