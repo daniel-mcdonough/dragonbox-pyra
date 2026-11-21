@@ -1,0 +1,46 @@
+Fix the key names that look up nothing: Usr1, Fn+Usr1, Fn+Esc, d-pad right
+
+pyraKeyMap is a std::map, and operator[] on a name it does not hold returns 0
+(KEY_RESERVED). init() used four names that are not in pyraKeyMap.cpp:
+
+- PYRA_KEY_PAUSE and PAUSE for Usr1 (KEY_PAUSE from the keypad), so Usr1 and
+  Fn+Usr1 sent nothing. They are PYRA_KEY_USER1 and PYRA_KEY_FN_USR1.
+- ESC for Fn+Esc, so Fn+Esc sent nothing instead of SysRq (PrtScrn). It is
+  PYRA_KEY_FN_ESC.
+- PYRA_KEY_RIGHT, which the map spells PYRA_KEY_RIFHT. D-pad right stayed a
+  plain key and never moved the gamepad's ABS_HAT0X; left, up and down did.
+
+The map also spells PYRA_KEY_LEFTAL for PYRA_KEY_LEFTALT. That one is left
+alone: loadConfig() maps KEY_LEFTALT to the gamepad by its code, so Start
+works, and fixing the name would make init() override an
+altmode.right.trigger setting that moves left Alt to the right trigger.
+
+mati found the first three names (Pyra forum, November 2025).
+
+Against funkeymonkey-pyrainput 0.1.19 (applies with or without 0001 and 0002).
+Apply with: patch -p1 < this-file
+
+--- a/pyraKeyMap.cpp
++++ b/pyraKeyMap.cpp
+@@ -8,7 +8,7 @@ std::map<std::string, int> pyraKeyMap = {
+ {"PYRA_KEY_UP"				,	KEY_UP         },
+ {"PYRA_KEY_DOWN"			,	KEY_DOWN       },
+ {"PYRA_KEY_LEFT"			,	KEY_LEFT       },
+-{"PYRA_KEY_RIFHT"			,	KEY_RIGHT      },
++{"PYRA_KEY_RIGHT"			,	KEY_RIGHT      },
+ {"PYRA_KEY_LEFTAL"			,	KEY_LEFTALT    },
+ {"PYRA_KEY_LEFTCTRL"		,	KEY_LEFTCTRL   },
+ {"PYRA_KEY_HOME"			,	KEY_HOME       },
+--- a/pyrainput.cpp
++++ b/pyrainput.cpp
+@@ -70,8 +70,8 @@ void init(char const** argv, unsigned int argc) {
+ 		global.Fn.pressed = global.Fn.left || global.Fn.right;
+ 	});
+ 
+-	global.behaviors->altmap(KEY_ESC,	&global.Fn.pressed, pyraKeyMap["PYRA_KEY_ESC"],	pyraKeyMap["ESC"]);
+-	global.behaviors->altmap(KEY_PAUSE,	&global.Fn.pressed, pyraKeyMap["PYRA_KEY_PAUSE"],	pyraKeyMap["PAUSE"]);
++	global.behaviors->altmap(KEY_ESC,	&global.Fn.pressed, pyraKeyMap["PYRA_KEY_ESC"],	pyraKeyMap["PYRA_KEY_FN_ESC"]);
++	global.behaviors->altmap(KEY_PAUSE,	&global.Fn.pressed, pyraKeyMap["PYRA_KEY_USER1"],	pyraKeyMap["PYRA_KEY_FN_USR1"]);
+         global.behaviors->complex(KEY_BRIGHTNESSUP, handleBrightness);
+ 	//global.behaviors->altmap(KEY_BRIGHTNESSUP,	&global.Fn.pressed, KEY_BRIGHTNESSUP,	KEY_BRIGHTNESSDOWN);
+ 	global.behaviors->altmap(KEY_F11,	&global.Fn.pressed, pyraKeyMap["PYRA_KEY_F11"],	pyraKeyMap["PYRA_KEY_FN_F11"]);

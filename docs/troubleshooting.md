@@ -70,6 +70,8 @@ the reasons under fix 1. `/var/log/lightdm/lightdm.log` and
 **Nubs still dead.** `systemctl status pyrainput` on the device. If the unit
 failed to start, confirm `/usr/sbin/funkeymonkey`,
 `/usr/lib/funkeymonkey/libpyrainput.so` and `/etc/pyrainput.cfg` all exist.
+If it runs but a game left the nubs or buttons remapped, see "Nubs, d-pad or
+game buttons dead after a game or DBP crashed" below.
 
 **The screen freezes, every window stops responding, and the case gets hot.**
 Probably the display wedge: the X server stuck in a modeset with one core at
@@ -1650,6 +1652,63 @@ by your user. Rebooting doesn't fix it. The dependency dialog appears for
 nearly every older DBP, because dbp doesn't know Debian's renamed (t64)
 packages. Press Launch. [dbp.md](dbp.md) covers both, plus the mount and
 input mapping a crashed DBP leaves behind.
+
+## Nubs, d-pad or game buttons dead after a game or DBP crashed
+
+Many launchers (DBPs, emulators) run `sudo pyrainputctl overload <file>`
+before the program and `sudo pyrainputctl no-overload` after it. The file
+changes what the input daemon exports: GBA.emu's turns the pyraInput Gamepad
+off (`gamepad.export = 0`) and keeps the keyboard. If the program crashes or
+is killed, `no-overload` never runs and the game's mapping stays. Get it back
+with:
+
+    sudo pyrainputctl no-overload
+
+`pyrainputctl` needs no password for the `sudo` group. The overload is written
+to `/etc/pyrainput.cfg` (`profile.9` and `profile.current = 9` lines), which
+the daemon reads again at every start. A reboot does not fix it, unless the
+overload file has gone missing: a DBP's own copy disappears when its union
+mount does, and the daemon skips a profile file it cannot open (from the
+0.1.19 source, not tested). `sudo pyrainputctl enable gamepad` (or `keypad`,
+`mouse`) also works, but leaves the overload in place with its other settings.
+Checked 2026-11-21 on the r5 card with GBA.emu's overload file and its
+launcher's two commands, the script killed in between: A and the d-pad sent
+keys only, nothing on the gamepad, until `no-overload` (`verification-log.md`,
+2026-11-21, R77).
+
+`pyrainputctl` edits with `sed -ie`, which leaves a copy of the previous file
+as `/etc/pyrainput.cfge`. It is harmless and can be deleted.
+
+## A nub stays off centre in games, or Usr1, Fn+Usr1 and Fn+Esc do nothing
+
+Both are bugs in the input daemon, funkeymonkey-pyrainput 0.1.19, the same on
+bookworm and trixie. Prep does not fix either.
+
+**The nub sticks.** The daemon sends a nub's position to the pyraInput Gamepad
+only while it is outside `nubs.deadzone` (10 of ±255), and sends nothing
+inside it. A nub let go quickly lands inside the deadzone and the gamepad
+keeps its last value: measured 2026-11-21, a released right nub reading -2,6
+left the gamepad at -14,-248, nearly full deflection, until the next move. The
+desktop pointer is not affected; it has its own deadzone. Workaround: put
+
+    nubs.deadzone = -1
+
+in `/etc/pyrainput.cfg` (system-wide) or in a game's overload file, then
+`sudo systemctl reload pyrainput`. Every value then reaches the gamepad,
+including the resting one, which is a few counts off zero (up to -30 on one
+axis of the test unit), so the game's own deadzone has to absorb it. The
+source fix is
+`patches/userspace/funkeymonkey-pyrainput/0002-nub-axis-zero-inside-deadzone.patch`.
+
+**Usr1, Fn+Usr1, Fn+Esc, and d-pad right on the gamepad.** Four key names in
+the daemon look up nothing, so Usr1 and Fn+Usr1 send no key, Fn+Esc sends no
+SysRq (PrtScrn), and d-pad right is a keyboard key only, never the gamepad's
+hat (left, up and down work). There is no configuration workaround: key
+remapping in `/etc/pyrainput.cfg` only accepts names the map already holds.
+`patches/userspace/funkeymonkey-pyrainput/0003-key-names-usr1-fn-esc-dpad-right.patch`
+fixes them. With it, checked on the r5 card: Usr1 sends `KEY_PAUSE`, Fn+Usr1
+`KEY_SCALE`, Fn+Esc `KEY_SYSRQ`, and d-pad right moves the hat. The brightness
+key in the same row runs the brightness script by design and sends no key.
 
 ## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
 

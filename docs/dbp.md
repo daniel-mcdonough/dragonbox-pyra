@@ -133,10 +133,10 @@ libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
   (seen 2026-11-21 after a `timeout`). Check with `findmnt -t aufs,squashfs`.
   Remove them with
   `sudo umount /mnt/dbp/union/<id> /mnt/dbp/images/<id>`.
-- **Input can stay remapped.** Many launchers (GBA.emu's included) run
-  `sudo pyrainputctl overload <file>` before the program and `no-overload`
-  after it. If the program dies in between, the nubs and buttons keep the
-  game's mapping. Run `sudo pyrainputctl no-overload` to get them back.
+- **Input can stay remapped.** Many launchers (GBA.emu's included) remap
+  input for the game and undo it on exit, so a crash leaves the game's
+  mapping. Recovery: [troubleshooting.md](troubleshooting.md), "Nubs, d-pad or game buttons dead
+  after a game or DBP crashed".
 
 ## Not tested on this card
 

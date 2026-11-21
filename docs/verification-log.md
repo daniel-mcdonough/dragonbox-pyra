@@ -2468,3 +2468,33 @@ downloaded in the DBP repository (1532), fetched from the repository's download 
 - `python3-apt` (for the DBP Installer): not installed; the candidate after `apt update` is 3.0.0.
 - Left on the card: `/dragonbox/packages/GBAemu.dbp`, `/dragonbox/appdata/GBAemu/` (empty except AuFS's
   `.wh..wh.orph`), the registration. Undo: `dbp-cmd unregister` the file, then `rm -r /dragonbox`.
+
+## 2026-11-21 — pyrainput 0.1.19: nub deadzone, key names, recovery after a crash (R77)
+
+The r5 release card, `5.6.19-m4-kbdled`, funkeymonkey-pyrainput 0.1.19 (the bookworm and trixie source
+tarballs are identical, SHA-256 `9e8439af…5c791c`). Written up in `troubleshooting.md`. A logger read the
+`pyraInput keyboard` and `Gamepad` evdev nodes and polled `EVIOCGABS` on them and on the raw `nub0`/`nub1`
+nodes every 0.25 s; the owner pressed the keys, following a prompted script.
+
+- At rest, before any test: raw nub0 -4,-6, nub1 0,-24; gamepad X,Y 60,58 and RX,RY 78,-23, the values from
+  the last movement.
+- Stock library, nubs pushed to full travel and let go fast, three times each: after release the raw nubs
+  read 0,0 and -2,6, the gamepad stayed at -38,-232 and -14,-248.
+- The 0.1.19 tree with `patches/userspace/funkeymonkey-pyrainput/0001`-`0003`, built on the card (g++
+  14.2.0, `-std=c++20 -O2 -shared`, funkeymonkey 0.1.2 headers, 81 s), bind-mounted over the installed
+  library: the gamepad returned to 0,0 after every release. The right nub's Y came to rest anywhere from 0 to
+  -30; a resting value outside the deadzone of 10 is passed on, as it should be.
+- `nubs.deadzone = -1` through `pyrainputctl overload`, stock library: the gamepad followed the raw nubs at
+  rest (raw 4,-16, gamepad 4,-16).
+- Keys, stock: d-pad right gave `KEY_RIGHT` and no `ABS_HAT0X`; left gave both. Usr1, Fn+Usr1 and Fn+Esc
+  produced no event. Patched: d-pad right `ABS_HAT0X=65535`, Usr1 `KEY_PAUSE` (119), Fn+Usr1 `KEY_SCALE`
+  (120), Fn+Esc `KEY_SYSRQ` (99).
+- Crash path, stock: GBA.emu's overload file (`gamepad.export = 0`) through `sudo pyrainputctl overload`
+  in a shell running the launcher's two commands, then `kill -9`. `/etc/pyrainput.cfg` kept `profile.9`
+  and `profile.current = 9`; A and d-pad up sent `KEY_HOME`/`KEY_UP` only. `sudo pyrainputctl enable
+  gamepad` brought `BTN_A` back and left both profile lines; `sudo pyrainputctl no-overload` removed them,
+  with `BTN_A` still working. `pyrainputctl` left `/etc/pyrainput.cfge` (its `sed -ie`).
+- Restored: `/etc/pyrainput.cfg` equal to the original (MD5), `.cfge` deleted, bind mount removed (the
+  script's own `umount` failed while the daemon held the file; done after stopping it), stock library
+  (MD5 `52b33eec…`) running, three pyraInput devices. Left on the card: `~/r77-build/` (sources, both
+  builds, the logs).

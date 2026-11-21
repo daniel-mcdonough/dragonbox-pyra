@@ -1,0 +1,78 @@
+Send the nub axis as zero inside the gamepad deadzone
+
+handle() forwarded a nub axis to the pyraInput Gamepad only when the value was
+outside nubs.deadzone, and sent nothing otherwise. A nub released quickly
+jumps from a large value straight into the deadzone, so the gamepad kept the
+last large value: the stick stayed off centre until the nub was moved again.
+Send 0 inside the deadzone, which is what the check was meant to do. The fix
+is mati's, posted on the Pyra forum in September 2025 and tested there on
+bookworm.
+
+Without a rebuild, nubs.deadzone = -1 avoids it: every value is forwarded,
+including the resting one.
+
+Against funkeymonkey-pyrainput 0.1.19 (applies with or without 0001).
+Apply with: patch -p1 < this-file
+
+--- a/pyrainput.cpp
++++ b/pyrainput.cpp
+@@ -168,8 +168,12 @@ void handle(input_event const& e, unsigned int role) {
+ 		if (role == ROLE_LEFT_NUB) {
+ 			switch(e.code) {
+ 			case ABS_X:
+-				if (global.settings.exportGamepad && (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone)) {
+-					global.gamepad->send(EV_ABS, ABS_X, e.value);
++				if (global.settings.exportGamepad) {
++					if (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone) {
++						global.gamepad->send(EV_ABS, ABS_X, e.value);
++					} else {
++						global.gamepad->send(EV_ABS, ABS_X, 0);
++					}
+ 					global.gamepad->send(EV_SYN, 0, 0);
+ 				}
+ 				for(auto mode : global.settings.leftNubModeX) {
+@@ -177,8 +181,12 @@ void handle(input_event const& e, unsigned int role) {
+ 				}
+ 				break;
+ 			case ABS_Y:
+-				if (global.settings.exportGamepad && (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone)) {
+-					global.gamepad->send(EV_ABS, ABS_Y, e.value);
++				if (global.settings.exportGamepad) {
++					if (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone) {
++						global.gamepad->send(EV_ABS, ABS_Y, e.value);
++					} else {
++						global.gamepad->send(EV_ABS, ABS_Y, 0);
++					}
+ 					global.gamepad->send(EV_SYN, 0, 0);
+ 				}
+ 				for(auto mode : global.settings.leftNubModeY) {
+@@ -190,8 +198,12 @@ void handle(input_event const& e, unsigned int role) {
+ 		} else if (role == ROLE_RIGHT_NUB) {
+ 			switch(e.code) {
+ 			case ABS_X:
+-				if (global.settings.exportGamepad && (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone)) {
+-					global.gamepad->send(EV_ABS, ABS_RX, e.value);
++				if (global.settings.exportGamepad) {
++					if (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone) {
++						global.gamepad->send(EV_ABS, ABS_RX, e.value);
++					} else {
++						global.gamepad->send(EV_ABS, ABS_RX, 0);
++					}
+ 					global.gamepad->send(EV_SYN, 0, 0);
+ 				}
+ 				for(auto mode : global.settings.rightNubModeX) {
+@@ -199,8 +211,12 @@ void handle(input_event const& e, unsigned int role) {
+ 				}
+ 				break;
+ 			case ABS_Y:
+-				if (global.settings.exportGamepad && (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone)) {
+-					global.gamepad->send(EV_ABS, ABS_RY, e.value);
++				if (global.settings.exportGamepad) {
++					if (e.value>global.settings.joyDeadzone||e.value<-global.settings.joyDeadzone) {
++						global.gamepad->send(EV_ABS, ABS_RY, e.value);
++					} else {
++						global.gamepad->send(EV_ABS, ABS_RY, 0);
++					}
+ 					global.gamepad->send(EV_SYN, 0, 0);
+ 				}
+ 				for(auto mode : global.settings.rightNubModeY) {
