@@ -34,16 +34,18 @@ fix 24 makes MATE shut down rather than try to hibernate at critical battery, an
 fix 25 takes the login from about 35 s to a few seconds by hiding a second
 polkit agent and skipping mate-session's GL check, fix 26 installs the
 Pyra's own settings app when given one, fix 27 installs a sound icon
-that knows the speakers from the headphones in place of MATE's, and fix 28
-makes the Fn symbols type what the keycaps print, under X and on the console.
+that knows the speakers from the headphones in place of MATE's, fix 28
+makes the Fn symbols type what the keycaps print, under X and on the console,
+and fix 29 installs the input daemon's plugin rebuilt with three key and nub
+fixes and the systemd unit the vendor's trixie build lacks.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-eight fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all twenty-nine fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
-armhf, qemu-user with binfmt: fixes 14, 19, 20, 22, 24, 26, 27 and 28 run the image's own tools in a
+armhf, qemu-user with binfmt: fixes 14, 19, 20, 22, 24, 26, 27, 28 and 29 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 28 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 29 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -343,6 +345,14 @@ fix 19 installs, not on the stock one.
 Fn+' type `_` and `:` without also being Alt (and with Shift held) and Fn+R/Fn+T
 give é and è as the keycaps print, and adds the Fn layer to the console keymap.
 It has no option; it needs `patch` on the PC.
+
+**Input daemon (fix 29).** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra1,
+the vendor's 0.1.19 rebuilt with `patches/userspace/funkeymonkey-pyrainput/`:
+Usr1, Fn+Usr1, Fn+Esc and d-pad right send their keys, the nubs' gamepad axes
+return when let go, and the brightness keys follow `/etc/pyrainput.cfg` from the
+start. By default it downloads the pinned release; `--pyrainput FILE` uses a
+`.deb` you have (`./pc/pyra-crossbuild.sh pyrainput` builds the same file, byte
+for byte), and `--no-pyrainput` keeps the vendor's.
 
 ---
 
@@ -680,7 +690,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the twenty-eight fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
+and of the twenty-nine fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

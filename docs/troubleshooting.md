@@ -71,7 +71,11 @@ the reasons under fix 1. `/var/log/lightdm/lightdm.log` and
 failed to start, confirm `/usr/sbin/funkeymonkey`,
 `/usr/lib/funkeymonkey/libpyrainput.so` and `/etc/pyrainput.cfg` all exist.
 If it runs but a game left the nubs or buttons remapped, see "Nubs, d-pad or
-game buttons dead after a game or DBP crashed" below.
+game buttons dead after a game or DBP crashed" below. If `pyrainput.service`
+is missing altogether after a package run, the vendor's `funkeymonkey-pyrainput`
+replaced fix 29's and took the unit with it: `pyra-input-guard` should have put
+fix 3's back (`journalctl -t pyra-input-guard`); `sudo dpkg -i` the fixed
+`.deb` restores both.
 
 **The screen freezes, every window stops responding, and the case gets hot.**
 Probably the display wedge: the X server stuck in a modeset with one core at
@@ -1682,7 +1686,12 @@ as `/etc/pyrainput.cfge`. It is harmless and can be deleted.
 ## A nub stays off centre in games, or Usr1, Fn+Usr1 and Fn+Esc do nothing
 
 Both are bugs in the input daemon, funkeymonkey-pyrainput 0.1.19, the same on
-bookworm and trixie. Prep does not fix either.
+bookworm and trixie. Prep's fix 29 installs 0.1.19+pyra1, which fixes both:
+`dpkg-query -W funkeymonkey-pyrainput` says which one a card has. On a card
+with the vendor's 0.1.19 (prepped before fix 29, with `--no-pyrainput`, or
+after a package run put it back, which `pyra-input-guard` reports), install the
+fixed `.deb` (`fixes.md`, fix 29) with `sudo dpkg -i`, or use the workaround
+below.
 
 **The nub sticks.** The daemon sends a nub's position to the pyraInput Gamepad
 only while it is outside `nubs.deadzone` (10 of ±255), and sends nothing

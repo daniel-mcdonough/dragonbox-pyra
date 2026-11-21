@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-eight known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the twenty-nine known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -43,6 +43,13 @@
 # option it downloads the pinned release (v0.4); --sound FILE uses a .deb you
 # have; --no-sound leaves it out.
 #
+# Fix 29 installs funkeymonkey-pyrainput 0.1.19+pyra1, the input daemon's
+# plugin rebuilt with patches/userspace/funkeymonkey-pyrainput/ and its systemd
+# unit (pc/pyra-crossbuild.sh pyrainput builds the same file), and a dpkg hook
+# that warns if a package run replaces it. With no option it downloads the
+# pinned release; --pyrainput FILE uses a .deb you have; --no-pyrainput leaves
+# the vendor's 0.1.19 (fix 3 still gives it a unit).
+#
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
@@ -56,7 +63,7 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20, 22, 24, 26, 27 and 28 run the image's own tools in a
+# Fixes 14, 19, 20, 22, 24, 26, 27, 28 and 29 run the image's own tools in a
 # chroot, so a PC that is not armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
@@ -97,6 +104,8 @@ SETTINGS_MODE=auto      # auto: the pinned download if there is one; file: --set
 SETTINGS_FILE=
 SOUND_MODE=auto         # auto: the pinned download; file: --sound; none: --no-sound
 SOUND_FILE=
+PYRAINPUT_MODE=auto     # auto: the pinned download; file: --pyrainput; none: --no-pyrainput
+PYRAINPUT_FILE=
 SET_PASSWORD=no
 SSH_KEY=
 GROW_ON_BOOT=no
@@ -119,6 +128,10 @@ while [[ $# -gt 0 ]]; do
                  SOUND_MODE=file; SOUND_FILE=$2; shift 2 ;;
     --sound=*)   SOUND_MODE=file; SOUND_FILE=${1#--sound=}; shift ;;
     --no-sound)  SOUND_MODE=none; shift ;;
+    --pyrainput) [[ $# -ge 2 ]] || die "--pyrainput needs a .deb"
+                 PYRAINPUT_MODE=file; PYRAINPUT_FILE=$2; shift 2 ;;
+    --pyrainput=*) PYRAINPUT_MODE=file; PYRAINPUT_FILE=${1#--pyrainput=}; shift ;;
+    --no-pyrainput) PYRAINPUT_MODE=none; shift ;;
     --set-password) SET_PASSWORD=yes; shift ;;
     --ssh-key)   [[ $# -ge 2 ]] || die "--ssh-key needs a public key file"
                  SSH_KEY=$2; shift 2 ;;
@@ -436,13 +449,22 @@ SOUND_URL=https://github.com/daniel-mcdonough/pyra-sound/releases/download/v0.4/
 SOUND_SHA256=67f9aa94496f1a7a824e2c128cc32592c7a7d68a8d0fe11e7347f5e96619eb62
 SOUND_TMP=
 STAGED_SOUND=$ROOT/var/tmp/pyra-prep-sound.deb
+# Fix 29's .deb, the release asset as published, by SHA-256. The build is
+# reproducible: pc/pyra-crossbuild.sh pyrainput makes a file with this SHA-256.
+PYRAINPUT_TAG=pyrainput-0.1.19+pyra1
+PYRAINPUT_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/pyrainput-0.1.19%2Bpyra1/funkeymonkey-pyrainput_0.1.19%2Bpyra1_armhf.deb
+PYRAINPUT_SHA256=de94357acbd87fc84856e4e591125c850161e4f22581ff9b2e2d1913cbda2638
+PYRAINPUT_TMP=
+STAGED_PYRAINPUT=$ROOT/var/tmp/pyra-prep-pyrainput.deb
 cleanup() {
     [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
     [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
     [[ -n $BACKLIGHT_TMP ]] && rm -rf -- "$BACKLIGHT_TMP"
     [[ -n $SETTINGS_TMP ]] && rm -rf -- "$SETTINGS_TMP"
     [[ -n $SOUND_TMP ]] && rm -rf -- "$SOUND_TMP"
-    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" "$STAGED_SOUND" ${STAGED_GIR:+"$STAGED_GIR"} \
+    [[ -n $PYRAINPUT_TMP ]] && rm -rf -- "$PYRAINPUT_TMP"
+    rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" "$STAGED_SOUND" "$STAGED_PYRAINPUT" \
+        ${STAGED_GIR:+"$STAGED_GIR"} \
         ${STAGED_HACKS:+"$STAGED_HACKS"}
 }
 trap cleanup EXIT
@@ -741,6 +763,57 @@ if [[ $SOUND_MODE == file ]]; then
 $SO_MISSING
        Nothing has been written."
     ok "fix27: pyra-sound $SO_VER; the image has everything it depends on"
+fi
+
+# Fix 29, the same way: the funkeymonkey-pyrainput .deb is found, downloaded
+# and checked now. It depends on what the vendor's 0.1.19 does (funkeymonkey,
+# libc6, libstdc++6, libgcc-s1), so the image's dpkg installs it alone.
+if [[ $PYRAINPUT_MODE == auto ]]; then
+    command -v curl >/dev/null || die "fix29: the download needs curl on this PC"
+    PYRAINPUT_TMP=$(mktemp -d)
+    PYRAINPUT_FILE=$PYRAINPUT_TMP/funkeymonkey-pyrainput.deb
+    info "fix29: downloading $PYRAINPUT_URL"
+    curl -fL --proto '=https' --tlsv1.2 -o "$PYRAINPUT_FILE" "$PYRAINPUT_URL" ||
+        die "fix29: the download failed; nothing has been written"
+    sum=$(sha256sum "$PYRAINPUT_FILE" | cut -d' ' -f1)
+    [[ $sum == "$PYRAINPUT_SHA256" ]] ||
+        die "fix29: the download's SHA-256 is $sum, not the pinned $PYRAINPUT_SHA256. Not installing it."
+    ok "fix29: the download matches the pinned SHA-256"
+    PYRAINPUT_MODE=file
+elif [[ $PYRAINPUT_MODE == none ]]; then
+    warn "fix29: --no-pyrainput: the vendor's funkeymonkey-pyrainput 0.1.19 stays (Usr1, Fn+Esc, d-pad right and the nub deadzone unfixed)"
+fi
+if [[ $PYRAINPUT_MODE == file ]]; then
+    [[ -r $PYRAINPUT_FILE ]] || die "fix29: no .deb at $PYRAINPUT_FILE"
+    if [[ -z $PYRAINPUT_TMP ]]; then
+        sum=$(sha256sum "$PYRAINPUT_FILE" | cut -d' ' -f1)
+        if [[ $sum == "$PYRAINPUT_SHA256" ]]; then
+            ok "fix29: $PYRAINPUT_FILE is the published release $PYRAINPUT_TAG"
+        else
+            info "fix29: $PYRAINPUT_FILE is not the published release (a local build?); installing it as given"
+        fi
+    fi
+    install -m 0644 -o 0 -g 0 "$PYRAINPUT_FILE" "$STAGED_PYRAINPUT"
+    PI_DEB=${STAGED_PYRAINPUT#$ROOT}
+    PI_PKG=$(in_chroot dpkg-deb -f "$PI_DEB" Package 2>/dev/null) ||
+        die "fix29: $PYRAINPUT_FILE is not a .deb the image's dpkg-deb can read; nothing has been written"
+    [[ $PI_PKG == funkeymonkey-pyrainput ]] ||
+        die "fix29: $PYRAINPUT_FILE is the package '$PI_PKG', not funkeymonkey-pyrainput; nothing has been written"
+    PI_VER=$(in_chroot dpkg-deb -f "$PI_DEB" Version)
+    [[ $PI_VER == *+pyra* ]] ||
+        die "fix29: $PYRAINPUT_FILE is funkeymonkey-pyrainput $PI_VER, not a +pyra build; nothing has been written"
+    # Read whole first: grep -q leaving early would SIGPIPE dpkg-deb under pipefail.
+    PI_LIST=$(in_chroot dpkg-deb -c "$PI_DEB") ||
+        die "fix29: could not list the contents of $PYRAINPUT_FILE"
+    grep -q '/systemd/system/pyrainput\.service$' <<<"$PI_LIST" ||
+        die "fix29: funkeymonkey-pyrainput $PI_VER ships no systemd unit; nothing has been written"
+    unset PI_LIST
+    PI_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "$PI_DEB") ||
+        die "fix29: could not read the dependencies of $PYRAINPUT_FILE"
+    [[ -z $PI_MISSING ]] || die "fix29: the image lacks what funkeymonkey-pyrainput $PI_VER depends on:
+$PI_MISSING
+       Nothing has been written."
+    ok "fix29: funkeymonkey-pyrainput $PI_VER; the image has everything it depends on"
 fi
 
 
@@ -2346,6 +2419,56 @@ $out"; }
     chroot_unmount
     fn_cache_ok || die "fix28: setupcon rebuilt $FN_KMAP_CACHE without the Fn keys"
     ok "fix28: rebuilt $FN_KMAP_CACHE with the Fn keys (the console loads it at boot)"
+fi
+
+# ---------------------------------------------------------------------- fix 29
+#
+# funkeymonkey-pyrainput 0.1.19 has three bugs patches/userspace/
+# funkeymonkey-pyrainput/ fixes: the brightness-key settings in pyrainput.cfg
+# wait for a reload (0001; fix 15's drop-in sends one), the nubs' gamepad axes
+# keep their last value outside the deadzone when let go (0002), and four key
+# names look up nothing, so Usr1, Fn+Usr1 and Fn+Esc send nothing and d-pad
+# right never moves the gamepad's hat (0003). The vendor's trixie build also
+# lacks its unit (fix 3). The rebuilt package carries all of it; it takes over
+# the unit fix 3 wrote, which is byte-identical, and its postinst keeps it
+# enabled. Nothing in it is per machine, so --release keeps it.
+
+PI_UNIT=/usr/lib/systemd/system/pyrainput.service
+if [[ $PYRAINPUT_MODE == file ]]; then
+    have=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' funkeymonkey-pyrainput 2>/dev/null || true)
+    if [[ $have == "$PI_VER ii"* ]]; then
+        ok "fix29: funkeymonkey-pyrainput $PI_VER already installed"
+    else
+        chroot_mount
+        info "fix29: installing funkeymonkey-pyrainput $PI_VER with the image's dpkg"
+        if ! out=$(in_chroot dpkg -i "$PI_DEB" 2>&1); then
+            die "fix29: dpkg -i failed in the chroot:
+$out"
+        fi
+        chroot_unmount
+        ok "fix29: installed funkeymonkey-pyrainput $PI_VER (was: ${have:-not installed})"
+    fi
+    rm -f -- "$STAGED_PYRAINPUT"
+    [[ $(in_chroot dpkg-query -S "$PI_UNIT" 2>/dev/null) == "funkeymonkey-pyrainput: $PI_UNIT" ]] ||
+        die "fix29: $PI_UNIT is not funkeymonkey-pyrainput's after the install"
+    [[ -L $ROOT/etc/systemd/system/multi-user.target.wants/pyrainput.service ]] ||
+        die "fix29: pyrainput.service is not enabled in multi-user.target"
+    ok "fix29: funkeymonkey-pyrainput $PI_VER owns pyrainput.service, which stays enabled"
+    # As fix 26's guard: a downgrade or a vendor 0.1.20 would bring the bugs
+    # back without a word, and one built like the vendor's 0.1.19 would delete
+    # the unit. The hook goes in after the dpkg run, so it never fires in prep.
+    for spec in pyra-input-guard:/usr/local/sbin:0755 \
+                etc/dpkg/dpkg.cfg.d/pyra-input-guard:/etc/dpkg/dpkg.cfg.d:0644; do
+        IFS=: read -r src dir mode <<<"$spec"
+        dst=$ROOT$dir/$(basename "$src")
+        if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+            ok "fix29: ${dst#$ROOT} already up to date"
+        else
+            VERB=$([[ -e $dst ]] && echo updated || echo installed)
+            install -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+            ok "fix29: $VERB ${dst#$ROOT}"
+        fi
+    done
 fi
 
 # ------------------------------------------------------------------- release

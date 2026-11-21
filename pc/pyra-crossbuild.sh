@@ -22,6 +22,8 @@
 #                                            release name, to try a change beside it
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks, the pyra
 #                                            integration branch unless REF says otherwise
+#   ./pyra-crossbuild.sh pyrainput           funkeymonkey-pyrainput with patches/userspace/
+#                                            funkeymonkey-pyrainput/, as 0.1.19+pyra1 (fix 29)
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
 #   ./pyra-crossbuild.sh kernel-jack         stock source plus the jack-detect work and nothing else
 #
@@ -83,9 +85,13 @@ fetch() {
 }
 
 # Run a build inside a container, with this user owning whatever comes out.
+# The platform is the docker host's own: a tag such as debian:trixie can be
+# left pointing at an armhf image by an unrelated pull, and the build would then
+# run under qemu instead of cross-compiling.
+PLATFORM=$(docker version -f '{{.Server.Os}}/{{.Server.Arch}}')
 run() {
 	local image=$1 dir=$2 script=$3
-	docker run --rm -v "$dir":/src -w /src "$image" bash -euo pipefail -c "
+	docker run --rm --platform "$PLATFORM" -v "$dir":/src -w /src "$image" bash -euo pipefail -c "
 		export DEBIAN_FRONTEND=noninteractive
 		$script
 		chown -R $(id -u):$(id -g) /src
@@ -136,6 +142,66 @@ build_pyra_hacks() {
 	echo
 	echo "built from $ref ($(git -C "$PYRA_HACKS_REPO" rev-parse --short "$ref")):"
 	ls -la "$dir"/*.deb
+}
+
+# funkeymonkey-pyrainput 0.1.19 with patches/userspace/funkeymonkey-pyrainput/
+# applied, as 0.1.19+pyra1 (prep's fix 29). It build-depends on
+# funkeymonkey-dev, which only the Pyra repository has, so that .deb is pinned
+# too and installed by hand. systemd-dev is added to Build-Depends: trixie moved
+# systemd.pc there from systemd, and without it CMake skips the unit, which is
+# why the vendor's trixie build has none (fix 3). The changelog entry's date is
+# fixed, so dpkg's SOURCE_DATE_EPOCH, and with it the .deb, stays the same from
+# one build to the next.
+PYRAINPUT_DSC=funkeymonkey-pyrainput_0.1.19.dsc
+PYRAINPUT_SHA=898e5703232eeb543d4b0dfd37a000951501419873bd35bd6d7c0b245a0424e2
+FKM_DEV_DEB=funkeymonkey-dev_0.1.2_all.deb
+FKM_DEV_SHA=48c30ff0ad97d1c306d599f4112ef61c6f81069023f0e17e6a65b6679fedef4d
+PYRAINPUT_VERSION=0.1.19+pyra1
+PYRAINPUT_DATE='Sat, 21 Nov 2026 12:00:00 +0000'
+build_pyrainput() {
+	local dir=$BUILD_DIR/pyrainput got p
+	fetch "$PYRAINPUT_DSC" "$PYRAINPUT_SHA" "$dir"
+	rm -rf "$dir/patches" "$dir"/funkeymonkey-pyrainput*.deb "$dir"/*.buildinfo "$dir"/*.changes
+	[ -f "$FKM_DEV_DEB" ] || curl -fsS --retry 3 -O "$REPO/$FKM_DEV_DEB" || die "cannot fetch $FKM_DEV_DEB"
+	got=$(sha256sum "$FKM_DEV_DEB" | cut -d' ' -f1)
+	[ "$got" = "$FKM_DEV_SHA" ] || die "$FKM_DEV_DEB has the wrong sha256: $got"
+	mkdir -p "$dir/patches"
+	for p in "$SELF_DIR"/../patches/userspace/funkeymonkey-pyrainput/*.patch; do
+		cp "$p" "$dir/patches/"
+	done
+	run debian:trixie "$dir" '
+		dpkg --add-architecture armhf
+		apt-get update -qq
+		apt-get install -y --no-install-recommends \
+			build-essential crossbuild-essential-armhf dpkg-dev devscripts >/dev/null
+		# dpkg-shlibdeps reads the armhf libraries the .so links against.
+		apt-get install -y --no-install-recommends ./'"$FKM_DEV_DEB"' \
+			libc6:armhf libstdc++6:armhf libgcc-s1:armhf >/dev/null
+		rm -rf build
+		dpkg-source -x '"$PYRAINPUT_DSC"' build
+		cd build
+		for p in ../patches/*.patch; do
+			echo "applying ${p##*/}"
+			patch -p1 --no-backup-if-mismatch < "$p"
+		done
+		sed -i "s/^\(Build-Depends:.*\), systemd$/\1, systemd-dev/" debian/control
+		grep -q "^Build-Depends:.*systemd-dev" debian/control
+		{
+			printf "%s\n\n" "funkeymonkey-pyrainput ('"$PYRAINPUT_VERSION"') unstable; urgency=medium"
+			printf "%s\n" "  * dragonbox-pyra build: brightness-key defaults before the config file"
+			printf "%s\n" "    (0001), nub axes back to 0 inside the deadzone (0002), the key names"
+			printf "%s\n" "    for Usr1, Fn+Usr1, Fn+Esc and d-pad right (0003), and systemd-dev in"
+			printf "%s\n\n" "    Build-Depends so the systemd unit is installed again."
+			printf "%s\n\n" " -- dragonbox-pyra <noreply@invalid>  '"$PYRAINPUT_DATE"'"
+			cat debian/changelog
+		} > debian/changelog.new
+		mv debian/changelog.new debian/changelog
+		apt-get build-dep -y -a armhf . >/dev/null
+		DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -aarmhf -us -uc -b -j$(nproc)
+	'
+	echo
+	ls -la "$dir"/*.deb
+	sha256sum "$dir"/funkeymonkey-pyrainput_*_armhf.deb
 }
 
 build_kernel() {
@@ -505,6 +571,7 @@ build_kernel_m4_kbdled_test() { build_kernel_variant m4-kbdled-test \
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;
 	pyra-hacks)   shift; build_pyra_hacks "$@" ;;
+	pyrainput)    shift; build_pyrainput ;;
 	kernel)       shift; build_kernel "$@" ;;
 	kernel-debug) shift; build_kernel_debug ;;
 	kernel-fix)   shift; build_kernel_fix ;;
@@ -519,5 +586,5 @@ case "${1:-}" in
 	kernel-m4-kbdled-test) shift; build_kernel_m4_kbdled_test ;;
 	kernel-m4demo) shift; build_kernel_m4demo ;;
 	kernel-jack)  shift; build_kernel_jack ;;
-	*)            die "usage: $0 ddx | pyra-hacks [REF] | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4-kbdled-sched | kernel-m4-kbdled-test | kernel-m4demo | kernel-jack" ;;
+	*)            die "usage: $0 ddx | pyra-hacks [REF] | pyrainput | kernel [make target...] | kernel-debug | kernel-fix | kernel-c2 | kernel-freq | kernel-oc | kernel-m4 | kernel-m4-uprobe | kernel-m4-uprobe-kprobe | kernel-m4-kbdled | kernel-m4-kbdled-sched | kernel-m4-kbdled-test | kernel-m4demo | kernel-jack" ;;
 esac

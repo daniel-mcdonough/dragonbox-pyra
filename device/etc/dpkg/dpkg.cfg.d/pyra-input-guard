@@ -1,0 +1,5 @@
+# Warn after any package run that replaces fix 29's funkeymonkey-pyrainput
+# build, and put its systemd unit back if the run deleted it; see
+# /usr/local/sbin/pyra-input-guard. The test keeps dpkg working if the guard
+# has been deleted: a failing post-invoke hook fails every package operation.
+post-invoke="if [ -x /usr/local/sbin/pyra-input-guard ]; then /usr/local/sbin/pyra-input-guard; fi"

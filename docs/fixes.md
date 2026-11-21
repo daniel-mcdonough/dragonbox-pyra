@@ -1,4 +1,4 @@
-# The twenty-eight fixes, and what they actually do
+# The twenty-nine fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -51,6 +51,7 @@ them out.
 | 25 | workaround | `pyra-meta`: `pyra-meta-mate` depends on `mate-polkit` ahead of `network-manager-gnome`, so apt never installs ukui-polkit; the patch is in `patches/userspace/pyra-meta-polkit/`. The GL-check half is a setting | the image no longer ships ukui-polkit (the GL-check snippet stays) | `pyra-meta-polkit-ukui-timeout.md` |
 | 26 | project choice | — (the Pyra's own settings app, and the pyra-hacks fork it depends on) | — | — |
 | 27 | project choice | — (a sound icon for the AESS sink's two outputs, in place of MATE's) | — | — |
+| 29 | package fix | `funkeymonkey-pyrainput`: four key names that look up nothing, nub axes left off-centre inside the deadzone, brightness defaults after the config; `systemd-dev` in Build-Depends for the unit (fix 3). Patches in `patches/userspace/funkeymonkey-pyrainput/` | the vendor ships a build with the patches and the unit | `pyra-funkeymonkey-pyrainput-brightness-order.md` (0001; 0002/0003 not drafted yet) |
 | 28 | package fix | `pyra-config-xorg`: Fn+D and Fn+' are Alt as well as `_` and `:`, and Fn+R/Fn+T swap é and è; the patch is in `patches/userspace/pyra-config-xorg/`. The console half restores what Debian's keymap leaves out | `pyra-config-xorg` takes the patch (the console fragment stays) | — (none drafted yet) |
 
 
@@ -139,6 +140,14 @@ work.
 A genuine packaging bug. `funkeymonkey-pyrainput` 0.1.19 in the **trixie** repo
 ships without `/lib/systemd/system/pyrainput.service`. The identical version in
 the **bookworm** repo has it. The script writes the unit and enables it offline.
+
+Why (found 2026-11-21, R87): the package's CMake file asks pkg-config for
+`systemd`'s `systemdsystemunitdir` and installs the unit only if it finds
+`systemd.pc`. Trixie moved that file from `systemd` to `systemd-dev`, and the
+package's `Build-Depends: systemd` was not updated, so the build silently
+skipped the unit. Fix 29's rebuild adds `systemd-dev` and ships the unit
+again, byte-identical to the one this fix writes; fix 3 stays for
+`--no-pyrainput`.
 
 Verified by pulling both `.deb`s and diffing their contents. Same version
 0.1.19 in both suites; bookworm's ships `lib/systemd/system/pyrainput.service`
@@ -1123,6 +1132,12 @@ belongs upstream: set the four defaults before `loadConfig()` in `init()`
 `reports/pyra-funkeymonkey-pyrainput-brightness-order.md`; the start-up signal windows
 are in `reports/pyra-funkeymonkey-early-signals.md`).
 
+Fix 29's rebuilt package carries that patch (0001), so on a prepped card the
+file applies at start without the reload: checked 2026-11-21 with the drop-in
+moved aside (`verification-log.md`, R87). The drop-in stays anyway. It costs one
+reload at start, and it keeps the keys working if a package run puts the
+vendor's 0.1.19 back (fix 29's guard warns when that happens).
+
 Checked 2026-10-31 on the fix 19 card (`verification-log.md`): two cold boots
 each logged the reload at about 23 s, the handler up 300 and 100 ms after
 the process started. After the second, with nothing run by hand, both key
@@ -1944,6 +1959,60 @@ is per machine, so `--release` keeps it.
 --rename /usr/share/X11/xkb/symbols/pyra` puts the package's file back; delete
 the marked block from `remap.inc`, then `sudo touch /etc/default/keyboard &&
 sudo setupcon --save-only`.
+
+## Fix 29 — Usr1, Fn+Esc and d-pad right send nothing, and the nubs stick off-centre
+
+**Symptom.** In `funkeymonkey-pyrainput` 0.1.19, Usr1 and Fn+Usr1 send nothing,
+Fn+Esc sends no SysRq, and d-pad right moves only the keyboard's `KEY_RIGHT`,
+never the gamepad's hat (left, up and down do both). A nub pushed hard and let
+go fast can leave the gamepad axis at its last value outside the deadzone (seen
+at -38,-232 and -14,-248 with the raw nub back at 0,0), so a game keeps walking.
+The brightness-key lines in `/etc/pyrainput.cfg` wait for a reload (fix 15).
+Diagnosis: development log, R77; workarounds for a card without this fix in
+`troubleshooting.md`.
+
+**Fix.** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra1: the vendor's 0.1.19
+source package with the three patches in `patches/userspace/funkeymonkey-pyrainput/`
+(0001 brightness defaults before the config, 0002 the axes back to 0 inside the
+deadzone, 0003 the four key names) and `systemd-dev` added to Build-Depends, so
+it ships `pyrainput.service` again (fix 3 has why the vendor's trixie build
+lacks it). The unit is byte-identical to fix 3's; dpkg takes over the file fix 3
+wrote, and the package's postinst keeps it enabled. Depends are the vendor
+build's (`funkeymonkey (>= 0.1.1)`, libc6, libgcc-s1, libstdc++6), all in the
+image.
+
+**Where the .deb comes from.** `./pc/pyra-crossbuild.sh pyrainput` builds it in
+a trixie container from the vendor's `.dsc` (pinned by SHA-256) and the Pyra
+repository's `funkeymonkey-dev` 0.1.2 headers (pinned too). The changelog entry
+has a fixed date, so the build is reproducible: two builds on 2026-11-21 gave
+the same file, SHA-256 `de94357a…cbda2638`. Prep pins that hash and downloads
+the release asset `pyrainput-0.1.19+pyra1` from this repository's releases;
+`--pyrainput FILE` uses a `.deb` you have (a local build has the same hash),
+`--no-pyrainput` keeps the vendor's 0.1.19. Before fix 1 writes anything prep
+checks that the file is `funkeymonkey-pyrainput`, a `+pyra` version, ships the
+unit, and that the image has its dependencies. A second run sees the version
+installed and does nothing.
+
+**Kept in step with apt.** As fix 26: no apt hold (it would also hold back a
+vendor release that fixes these bugs). The vendor's 0.1.19 sorts below
+`0.1.19+pyra1`, so apt keeps it, but a downgrade or a vendor 0.1.20 replaces it.
+A dpkg `post-invoke` hook, `/etc/dpkg/dpkg.cfg.d/pyra-input-guard`, runs
+`/usr/local/sbin/pyra-input-guard` after every package run. It is silent while
+the package is a `+pyra` version. Otherwise it prints a `THE INPUT DAEMON IS
+NOT THE FIXED BUILD` banner and logs a warning (`journalctl -t
+pyra-input-guard`). One thing it does change: a replacement built like the
+vendor's 0.1.19 has no unit, so dpkg deletes ours as the old package's file and
+the daemon would not start at the next boot (no nubs, no gamepad, no Fn layer).
+Then the guard writes fix 3's unit back and enables it. The selftest fires it
+with the image's dpkg: a downgrade to the archive's vendor 0.1.19 warns and
+leaves fix 3's unit enabled, and the return to 0.1.19+pyra1 is silent and owns
+the unit again.
+
+**Checked** 2026-11-21 on the r5 release card with the package installed by
+`dpkg -i` (`verification-log.md`, R87): d-pad right sets `ABS_HAT0X`, Usr1 sends
+`KEY_PAUSE`, Fn+Usr1 `KEY_SCALE`, the nubs' gamepad axes follow the raw nub back
+to rest, and Fn+brightness steps the keyboard light from the config with fix
+15's drop-in moved aside.
 
 ## Fixes 6, 7 and 12 as a package
 

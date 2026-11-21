@@ -40,7 +40,7 @@ TOP=$(cd -- "$HERE/.." && pwd)
 PREP=$HERE/pyra-trixie-prep.sh
 BUILD_DIR=${PYRA_BUILD_DIR:-$(cd -- "$TOP/.." && pwd)/dragonbox-pyra-build}
 KTAR=${PYRA_KERNEL_TARBALL:-$BUILD_DIR/kernel/m4-kbdled-kernel.tar.gz}
-PREP_PKGS="pyra-backlight pyra-settings pyra-hacks pyra-sound"   # recorded in the .info
+PREP_PKGS="pyra-backlight pyra-settings pyra-hacks pyra-sound funkeymonkey-pyrainput"   # recorded in the .info
 # shellcheck source=pyra-vendor-image.sh
 . "$HERE/pyra-vendor-image.sh"
 
@@ -110,7 +110,7 @@ set -e
 [[ $RC -eq 0 ]] || die "prep exited $RC; see $BASE.prep.log. No image written"
 
 # What prep installed of the packages it can download or be given (fixes 22,
-# 26 and 27), read from the image's dpkg status: a download leaves no file in
+# 26, 27 and 29), read from the image's dpkg status: a download leaves no file in
 # PREP_ARGS to checksum, and the PC may have no dpkg.
 INSTALLED=$(awk -v want=" $PREP_PKGS " '
     /^Package: / { p = $2; st = ""; v = "" }

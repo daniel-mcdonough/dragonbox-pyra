@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 28 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 29 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -18,7 +18,8 @@
 # fires fix 21's dpkg guard with the image's own dpkg (it must re-patch after a
 # reinstall, leave a rolled-back card stock, and warn about an unknown build
 # without touching it), fires fix 26's wheel guard with a downgrade to the
-# vendor's pyra-hacks and a return to the fork, and finally runs --release twice on the same
+# vendor's pyra-hacks and a return to the fork, fires fix 29's input guard the
+# same way with the vendor's funkeymonkey-pyrainput, and finally runs --release twice on the same
 # image: what it refuses (writing nothing), the release end state (password
 # 'pyra' expired, no host keys and an empty machine-id even where the card's
 # own were kept, no prompts, no NOPASSWD rule for all commands, systemd-firstboot
@@ -55,6 +56,17 @@
 # dependency the image lacks, and (with PYRA_SOUND_DEB unset) a copy of prep
 # whose pin the download does not match must each stop prep before fix 1
 # writes anything.
+#
+# Fix 29 installs the rebuilt funkeymonkey-pyrainput: PYRA_PYRAINPUT_DEB names a
+# .deb (--pyrainput); unset, the cross-build's output
+# (PYRA_BUILD_DIR/pyrainput/funkeymonkey-pyrainput_<version>_armhf.deb, from
+# ./pc/pyra-crossbuild.sh pyrainput) if there is one, else prep downloads the
+# pinned release (network); PYRA_PYRAINPUT_DEB=none runs prep with
+# --no-pyrainput, and that is a SKIP. A .deb that is not funkeymonkey-pyrainput,
+# and one that is not a +pyra build, must each stop prep before fix 1 writes.
+# Its guard is fired by a real downgrade to the vendor's 0.1.19 deb
+# (PYRA_PYRAINPUT_VENDOR_DEB, by default the package archive beside the
+# repository, with its pinned SHA-256), which has no unit, and a return.
 #
 # Fix 21's guard is fired by a real reinstall of the vendor's dri3wsegl-pyra 0.4
 # deb when PYRA_WSEGL_DEB (by default the package archive beside the
@@ -93,6 +105,7 @@ KSLOT=l5
 BDEB=${PYRA_BACKLIGHT_DEB:-}
 SDEB=${PYRA_SETTINGS_DEB:-}
 SODEB=${PYRA_SOUND_DEB:-}
+PIDEB=${PYRA_PYRAINPUT_DEB:-}
 
 PASS=0; FAIL=0; SKIP=0; ABORTED=0; BANNERED=0
 SKIPPED=()
@@ -216,6 +229,25 @@ elif [[ -n $SODEB ]]; then
     i "fix 27 installs $SODEB"
 else
     i "fix 27: prep downloads the pinned pyra-sound release (network)"
+fi
+# PION: whether fix 29 installs the rebuilt funkeymonkey-pyrainput in this run.
+PIVER=$(sed -n 's/^PYRAINPUT_TAG=pyrainput-//p' "$PREP")
+PION=yes
+if [[ $PIDEB == none ]]; then
+    KARGS+=(--no-pyrainput)
+    PION=no
+    SKIP=$((SKIP+1)); SKIPPED+=("fix 29 installed no rebuilt funkeymonkey-pyrainput (PYRA_PYRAINPUT_DEB=none)")
+    printf '\e[33mSKIP\e[0m  fix29: PYRA_PYRAINPUT_DEB=none; prep runs with --no-pyrainput\n'
+else
+    [[ -n $PIDEB || ! -r $BUILD_DIR/pyrainput/funkeymonkey-pyrainput_${PIVER}_armhf.deb ]] ||
+        PIDEB=$BUILD_DIR/pyrainput/funkeymonkey-pyrainput_${PIVER}_armhf.deb
+    if [[ -n $PIDEB ]]; then
+        [[ -r $PIDEB ]] || { echo "PYRA_PYRAINPUT_DEB=$PIDEB is not readable" >&2; exit 2; }
+        KARGS+=(--pyrainput "$PIDEB")
+        i "fix 29 installs $PIDEB"
+    else
+        i "fix 29: prep downloads the pinned funkeymonkey-pyrainput release (network)"
+    fi
 fi
 
 ########################################################################
@@ -1162,6 +1194,73 @@ FN_LEFT=$(compgen -G "$MNT/run/tmpkbd.*"; compgen -G "$MNT/tmp/tmpkbd.*") || tru
 [[ -z $FN_LEFT ]] && p "fix28: setupcon left no temporary file in the image" || f "fix28: setupcon left: ${FN_LEFT//$'\n'/ }"
 
 ########################################################################
+i "assert fix 29 — the rebuilt funkeymonkey-pyrainput, its unit, and the input guard"
+########################################################################
+PIUNIT=/usr/lib/systemd/system/pyrainput.service
+PIWANTS=/etc/systemd/system/multi-user.target.wants/pyrainput.service
+PILIB=$MNT/usr/lib/funkeymonkey/libpyrainput.so
+# The unit fix 3 writes, from prep itself: the package's must be the same.
+FIX3UNIT=$OUT/fix3-pyrainput.service
+awk '/^    cat > "\$UNIT" <<.EOF.$/ {s = 1; next} s && /^EOF$/ {exit} s' "$PREP" > "$FIX3UNIT"
+[[ -s $FIX3UNIT ]] || f "fix29: could not read fix 3's unit out of prep"
+if [[ $PION == yes ]]; then
+    [[ -z $PIDEB ]] && { grep -qF 'fix29: the download matches the pinned SHA-256' "$OUT/prep-run1.log" \
+        && p "fix29: run 1 downloaded funkeymonkey-pyrainput $PIVER and it matched the pin" || f "fix29: run 1 did not report a matching download"; }
+    PST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' funkeymonkey-pyrainput 2>/dev/null || true)
+    [[ $PST == "$PIVER ii"* ]] && p "fix29: dpkg has funkeymonkey-pyrainput $PIVER installed and configured" || f "fix29: dpkg says '$PST', want $PIVER ii"
+    [[ $(in_chroot dpkg-query -S "$PIUNIT" 2>/dev/null) == "funkeymonkey-pyrainput: $PIUNIT" ]] \
+        && p "fix29: the package owns $PIUNIT" || f "fix29: $PIUNIT is not funkeymonkey-pyrainput's"
+    cmp -s "$FIX3UNIT" "$MNT$PIUNIT" && p "fix29: its unit is byte-identical to fix 3's" || f "fix29: its unit differs from fix 3's"
+    in_chroot test -e "$PIWANTS" && p "fix29: pyrainput.service is enabled ($PIWANTS resolves)" || f "fix29: $PIWANTS is missing or dangling"
+    # 0003's names, as strings in the library: the vendor's has the bad ones.
+    if ! grep -qaE 'PYRA_KEY_RIFHT|PYRA_KEY_PAUSE' "$PILIB" && grep -qa 'PYRA_KEY_FN_ESC' "$PILIB"; then
+        p "fix29: libpyrainput.so has 0003's key names and none of the four bad ones"
+    else
+        f "fix29: libpyrainput.so still names PYRA_KEY_RIFHT or PYRA_KEY_PAUSE"
+    fi
+    SAUDIT=$(in_chroot dpkg --audit 2>&1 || true)
+    [[ -z $SAUDIT ]] && p "fix29: dpkg --audit finds nothing wrong" || f "fix29: dpkg --audit: $(head -3 <<<"$SAUDIT" | tr '\n' ' ')"
+    for spec in pyra-input-guard:/usr/local/sbin:755 \
+                etc/dpkg/dpkg.cfg.d/pyra-input-guard:/etc/dpkg/dpkg.cfg.d:644; do
+        IFS=: read -r src dir mode <<<"$spec"
+        D=$MNT$dir/$(basename "$src")
+        [[ -e $D ]] && cmp -s "$PAYLOADS/$src" "$D" && p "fix29: ${D#$MNT} matches repo" || f "fix29: ${D#$MNT} missing or differs from repo"
+        [[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "$mode 0:0" ]] && p "fix29: ${D#$MNT} is $mode root:root" \
+            || f "fix29: ${D#$MNT} mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null), want $mode 0:0"
+    done
+else
+    printf '\e[33mSKIP\e[0m  fix29: assertions (no rebuilt funkeymonkey-pyrainput in this run)\n'
+    PST=$(in_chroot dpkg-query -W -f='${Version}' funkeymonkey-pyrainput 2>/dev/null || true)
+    [[ $PST != *+pyra* ]] && p "fix29: the vendor's funkeymonkey-pyrainput $PST stays" || f "fix29: $PST is installed though this run asked for none"
+    [[ ! -e $MNT/usr/local/sbin/pyra-input-guard && ! -e $MNT/etc/dpkg/dpkg.cfg.d/pyra-input-guard ]] \
+        && p "fix29: without it, no pyra-input-guard" || f "fix29: pyra-input-guard is on a card without the rebuilt package"
+fi
+# The input guard's judgement, from the payload, on versions it is handed, with
+# the unit and its link in a scratch directory: a +pyra version or none is
+# silent and writes nothing; anything else warns, and puts back a missing unit
+# (fix 3's, byte for byte) and its link.
+IG=$PAYLOADS/pyra-input-guard
+for c in "0.1.19+pyra1|silent" "0.1.20+pyra1|silent" "|silent" "0.1.19|warn" "0.1.20|warn"; do
+    IFS='|' read -r v want <<<"$c"
+    IGD=$(mktemp -d)
+    IGO=$(PYRA_PYRAINPUT_VERSION=$v PYRA_INPUT_UNIT=$IGD/pyrainput.service PYRA_INPUT_WANTS=$IGD/wants/pyrainput.service "$IG" 2>&1); IGRC=$?
+    got=silent; grep -q 'THE INPUT DAEMON IS NOT THE FIXED BUILD' <<<"$IGO" && got=warn
+    [[ -n $IGO && $got == silent ]] && got="'$IGO'"
+    [[ $got == "$want" && $IGRC -eq 0 ]] \
+        && p "input guard: funkeymonkey-pyrainput '${v:-none}': $want" \
+        || f "input guard: funkeymonkey-pyrainput '${v:-none}': got $got (exit $IGRC), want $want"
+    if [[ $want == warn ]]; then
+        cmp -s "$FIX3UNIT" "$IGD/pyrainput.service" && [[ $(readlink "$IGD/wants/pyrainput.service") == "$IGD/pyrainput.service" ]] \
+            && grep -q "put fix 3's back" <<<"$IGO" \
+            && p "input guard: '$v' with no unit puts fix 3's unit and its link back, and says so" \
+            || f "input guard: '$v' did not restore fix 3's unit and its link"
+    else
+        [[ -z $(ls -A "$IGD") ]] && p "input guard: '${v:-none}' writes nothing" || f "input guard: '${v:-none}' wrote $(ls -A "$IGD")"
+    fi
+    rm -rf "$IGD"
+done
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1220,6 +1319,11 @@ if [[ $SON == yes ]]; then
 fi
 if [[ $SOON == yes ]]; then
     grep -qE 'fix27: pyra-sound .* already installed' "$OUT/prep-run2.log" && p "run 2 reported pyra-sound already installed" || f "run 2 did not report pyra-sound already installed"
+fi
+if [[ $PION == yes ]]; then
+    grep -qE 'fix29: funkeymonkey-pyrainput .* already installed' "$OUT/prep-run2.log" && p "run 2 reported funkeymonkey-pyrainput already installed" || f "run 2 did not report funkeymonkey-pyrainput already installed"
+    [[ $(grep -cE 'fix29: .*pyra-input-guard already up to date' "$OUT/prep-run2.log") -eq 2 ]] \
+        && p "run 2 reported both of fix29's guard files already up to date" || f "run 2 did not report both of fix29's guard files up to date"
 fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
@@ -1440,6 +1544,31 @@ done
 rm -rf "$PINDIR"
 
 ########################################################################
+i "fix 29 — a wrong .deb and one that is not a +pyra build stop prep before fix 1 writes"
+########################################################################
+# --no-backlight, --no-settings and --no-sound get these runs to fix 29 with no
+# download. mkdeb's version, 0.0selftest, is not a +pyra build.
+mkdeb "$OUT/selftest-not-pyrainput.deb" other-package python3
+mkdeb "$OUT/selftest-pyrainput-vendor.deb" funkeymonkey-pyrainput funkeymonkey
+for c in "selftest-not-pyrainput|is the package 'other-package', not funkeymonkey-pyrainput" \
+         "selftest-pyrainput-vendor|is funkeymonkey-pyrainput 0.0selftest, not a +pyra build"; do
+    IFS='|' read -r pideb piwant <<<"$c"
+    ln -sf kms_swrast_dri.so "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+    ARC=0
+    disarm
+    ABORT=$("$PREP" --kernel "$KTAR" --no-backlight --no-settings --no-sound --pyrainput "$OUT/$pideb.deb" "$MNT" pyra 2>&1 </dev/null) || ARC=$?
+    arm
+    if [[ $ARC -ne 0 ]] && grep -qF "$piwant" <<<"$ABORT"; then
+        p "fix29: a .deb that $piwant stops prep (exit $ARC)"
+    else
+        f "fix29: a .deb that $piwant: exit $ARC:"; tail -3 <<<"$ABORT" | sed 's/^/      /'
+    fi
+    [[ -L $MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so ]] && p "fix29: and it stopped before fix 1 wrote anything" || f "fix29: fix 1 ran before prep stopped"
+    [[ ! -e $MNT/var/tmp/pyra-prep-pyrainput.deb ]] && p "fix29: and left no staged .deb" || f "fix29: the staged .deb was left in /var/tmp"
+    rm -f "$MNT/usr/lib/arm-linux-gnueabihf/dri/armsoc_dri.so"
+done
+
+########################################################################
 i "fix 21's guard — a package run that puts the stock library back"
 ########################################################################
 # The image's dpkg, in the chroot, fires the hook prep installed. The image
@@ -1560,6 +1689,52 @@ if [[ $SON == yes ]]; then
         printf '\e[33mSKIP\e[0m  wheel guard: no checked vendor 0.38 deb at %s, or no fork deb\n' "$HVDEB"
     fi
     rm -f "$HFDEB"
+fi
+# Fix 29's input guard, the same way: a downgrade to the vendor's 0.1.19, whose
+# package has no unit, so dpkg deletes the rebuilt package's; the guard must
+# warn and put fix 3's unit back. Then the return, which must be silent. It
+# needs the vendor's deb (PYRA_PYRAINPUT_VENDOR_DEB, by default the package
+# archive beside the repository) with its pinned SHA-256, and the rebuilt one:
+# the run's own, or the pinned release (network).
+if [[ $PION == yes ]]; then
+    i "fix 29's input guard — a downgrade to the vendor's funkeymonkey-pyrainput and back"
+    PVDEB_SHA=f959dbbda1e4c39524f85a955c66f2af6275274ed687292de8fcd100f3aacea4
+    PVDEB=${PYRA_PYRAINPUT_VENDOR_DEB:-$(cd -- "$ROOT/.." && pwd)/pyra-packages-archive/packages.pyra-handheld.com/trixie/funkeymonkey-pyrainput_0.1.19_armhf.deb}
+    PFDEB=$MNT/tmp/pyrainput-fixed.deb
+    if [[ -n $PIDEB ]]; then
+        cp "$PIDEB" "$PFDEB"
+    elif ! curl -fsSL --proto '=https' --tlsv1.2 -o "$PFDEB" "$(sed -n 's/^PYRAINPUT_URL=//p' "$PREP")" \
+         || [[ $(sha256sum < "$PFDEB" | cut -d' ' -f1) != "$(sed -n 's/^PYRAINPUT_SHA256=//p' "$PREP")" ]]; then
+        rm -f "$PFDEB"
+    fi
+    if [[ -r $PVDEB && $(sha256sum < "$PVDEB" | cut -d' ' -f1) == "$PVDEB_SHA" && -r $PFDEB ]]; then
+        cp "$PVDEB" "$MNT/tmp/pyrainput-vendor.deb"
+        disarm; GOUT=$(in_chroot /usr/local/sbin/pyra-input-guard 2>&1 || true); arm
+        [[ -z $GOUT ]] && p "input guard: silent on the prepared card" || f "input guard: on the prepared card it said: $GOUT"
+        disarm; set +e
+        GOUT=$(in_chroot dpkg -i /tmp/pyrainput-vendor.deb 2>&1 </dev/null); GRC=$?
+        set -e; arm
+        [[ $GRC -eq 0 ]] && p "input guard: the downgrade to the vendor's 0.1.19 exited 0" || f "input guard: the downgrade exited $GRC: $(tail -2 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q 'THE INPUT DAEMON IS NOT THE FIXED BUILD' <<<"$GOUT" && p "input guard: the downgrade prints the warning" \
+            || f "input guard: no warning after the downgrade: $(tail -3 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q "put fix 3's back" <<<"$GOUT" && in_chroot dpkg-query -S "$PIUNIT" >/dev/null 2>&1 && f "input guard: the vendor's package owns a unit after all"
+        cmp -s "$FIX3UNIT" "$MNT$PIUNIT" && in_chroot test -e "$PIWANTS" \
+            && p "input guard: after the downgrade, fix 3's unit is back and enabled" || f "input guard: after the downgrade, no enabled pyrainput.service"
+        disarm; set +e
+        GOUT=$(in_chroot dpkg -i /tmp/pyrainput-fixed.deb 2>&1 </dev/null); GRC=$?
+        set -e; arm
+        [[ $GRC -eq 0 ]] && p "input guard: the return to $PIVER exited 0" || f "input guard: the return exited $GRC: $(tail -2 <<<"$GOUT" | tr '\n' ' ')"
+        grep -q pyra-input-guard <<<"$GOUT" && f "input guard: it still warned with $PIVER back" || p "input guard: silent once $PIVER is back"
+        PST=$(in_chroot dpkg-query -W -f='${Version} ${db:Status-Abbrev}' funkeymonkey-pyrainput 2>/dev/null || true)
+        [[ $PST == "$PIVER ii"* && $(in_chroot dpkg-query -S "$PIUNIT" 2>/dev/null) == "funkeymonkey-pyrainput: $PIUNIT" ]] \
+            && p "input guard: dpkg has $PIVER again, owning the unit" || f "input guard: after the return, '$PST', unit $(in_chroot dpkg-query -S "$PIUNIT" 2>&1)"
+        in_chroot test -e "$PIWANTS" && p "input guard: and pyrainput.service is still enabled" || f "input guard: pyrainput.service is not enabled after the return"
+        rm -f "$MNT/tmp/pyrainput-vendor.deb"
+    else
+        SKIP=$((SKIP+1)); SKIPPED+=("input guard: no real downgrade (vendor 0.1.19 deb at $PVDEB or the rebuilt deb missing)")
+        printf '\e[33mSKIP\e[0m  input guard: no checked vendor 0.1.19 deb at %s, or no rebuilt deb\n' "$PVDEB"
+    fi
+    rm -f "$PFDEB"
 fi
 for d in dev sys proc; do umount "$MNT/$d"; done
 [[ $(wsha) == "$SHA_FIXED" ]] || f "fix21 guard: the fixed library was not put back after the test"

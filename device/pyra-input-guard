@@ -1,0 +1,100 @@
+#!/bin/bash
+#
+# pyra-input-guard — say so when a package run takes the fixed input daemon
+# away, and put its systemd unit back if the run deleted it.
+#
+# Run by dpkg after every package operation, from
+# /etc/dpkg/dpkg.cfg.d/pyra-input-guard. Prep installs it with fix 29. It can
+# also be run by hand.
+#
+# WHY
+#
+# Fix 29 installs funkeymonkey-pyrainput 0.1.19+pyraN, the vendor's 0.1.19
+# rebuilt with patches/userspace/funkeymonkey-pyrainput/ (Usr1, Fn+Usr1, Fn+Esc
+# and d-pad right send their keys, the nubs' gamepad axes go back to 0 when let
+# go, the brightness keys follow /etc/pyrainput.cfg from the start) and with
+# its systemd unit, which the vendor's trixie build lacks (fix 3). apt keeps it
+# while the vendor's repository has nothing above it, but an explicit downgrade
+# to the vendor's 0.1.19, or a vendor 0.1.20, replaces it without a word. If
+# the new package has no unit either, dpkg deletes ours as the old package's
+# file, and at the next boot the input daemon does not start: no nubs, no
+# gamepad, no Fn layer.
+#
+# WHAT IT DOES
+#
+# Nothing, silently, while the installed funkeymonkey-pyrainput is a +pyra
+# version, or is not installed. Otherwise it prints a banner on every package
+# run and logs it to the journal; that part changes nothing, since a newer
+# vendor package may have fixed the bugs itself. If the unit is gone, it writes
+# the same unit fix 3 writes, and enables it if it is not, and says so. It never
+# fails the package run: it always exits 0.
+#
+set -uo pipefail
+
+# The overrides are for testing (pc/pyra-prep-selftest.sh): with
+# PYRA_PYRAINPUT_VERSION set, the guard judges that version instead of asking
+# dpkg, and does not write to the journal; the two paths move the unit and its
+# multi-user.target link.
+UNIT=${PYRA_INPUT_UNIT:-/lib/systemd/system/pyrainput.service}
+WANTS=${PYRA_INPUT_WANTS:-/etc/systemd/system/multi-user.target.wants/pyrainput.service}
+LIVE=1
+if [ -n "${PYRA_PYRAINPUT_VERSION+set}" ]; then
+	LIVE=0; VER=$PYRA_PYRAINPUT_VERSION
+else
+	VER=$(dpkg-query -W -f='${db:Status-Abbrev}|${Version}' funkeymonkey-pyrainput 2>/dev/null)
+	# Removed, or never installed: no daemon to guard.
+	case $VER in ii*) VER=${VER#*|} ;; *) VER= ;; esac
+fi
+
+[ -n "$VER" ] || exit 0
+case $VER in *+pyra*) exit 0 ;; esac
+
+RESTORED=; UNIT_BACK=; LINK_BACK=
+if [ ! -e "$UNIT" ]; then
+	cat > "$UNIT" <<'EOF'
+[Unit]
+Description=Pyra Input Deamon (funkeymonkey)
+After=network.target
+Documentation=https://dev.pyra-handheld.com/packages/funkeymonkey-pyrainput
+
+[Service]
+ExecStart=/usr/sbin/funkeymonkey -g -p /usr/lib/funkeymonkey/libpyrainput.so -r 0,1,2,3 -m nub0 -m nub1  -m "tca8418" -m "pyra-game-buttons" -X config=/etc/pyrainput.cfg
+ExecReload=/bin/kill -USR1 $MAINPID
+KillMode=process
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+Alias=pyrainput.service
+EOF
+	chmod 0644 "$UNIT"
+	RESTORED=yes; UNIT_BACK=yes
+fi
+# Only with a unit it just wrote: a unit someone disabled stays disabled.
+if [ -n "$UNIT_BACK" ] && [ ! -L "$WANTS" ]; then
+	mkdir -p "$(dirname "$WANTS")"
+	ln -s "$UNIT" "$WANTS"
+	RESTORED=yes; LINK_BACK=yes
+fi
+[ -n "$RESTORED" ] && [ "$LIVE" = 1 ] && systemctl daemon-reload 2>/dev/null
+
+{
+	echo
+	echo "*****************************************************************"
+	echo "pyra-input-guard: THE INPUT DAEMON IS NOT THE FIXED BUILD"
+	echo "  funkeymonkey-pyrainput $VER replaced 0.1.19+pyraN, which fix 29"
+	echo "  installed. Usr1, Fn+Usr1, Fn+Esc and d-pad right may send nothing"
+	echo "  again, and the nubs' gamepad axes may stick off-centre when let go."
+	[ -n "$UNIT_BACK" ] &&
+	echo "  The package has no systemd unit: the guard put fix 3's back ($UNIT)."
+	[ -n "$LINK_BACK" ] &&
+	echo "  pyrainput.service was not enabled: the guard enabled it ($WANTS)."
+	echo "  To put the fixed build back, install its .deb (release"
+	echo "  pyrainput-0.1.19+pyra1 at github.com/daniel-mcdonough/dragonbox-pyra)"
+	echo "  with: sudo dpkg -i <file>"
+	echo "*****************************************************************"
+	echo
+} >&2
+[ "$LIVE" = 1 ] && logger -t pyra-input-guard -p user.warning \
+	"funkeymonkey-pyrainput $VER is not the fixed build${RESTORED:+; restored its systemd unit}" 2>/dev/null
+exit 0

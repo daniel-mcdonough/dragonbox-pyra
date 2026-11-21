@@ -2530,3 +2530,27 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
   first (`loadkeys` of the cache alone leaves added keycodes in place), the X keymap identical to its
   `xkbcomp` dump (rebuilt with `setxkbmap`; reloading the dump with `xkbcomp` dropped a mod3 entry). Left on the
   card: the test files in `~/r77-build/`.
+
+## 2026-11-21 — funkeymonkey-pyrainput 0.1.19+pyra1 as a package (R87, fix 29)
+
+- Card: the r5 release card, `5.6.19-m4-kbdled`. Package: `./pc/pyra-crossbuild.sh pyrainput`, SHA-256
+  `de94357a…cbda2638`; a second build gave the same file. Its unit is byte-identical to fix 3's (`ff41b7f2…`).
+- Install: `sudo dpkg -i` over the vendor's 0.1.19. dpkg took over fix 3's unowned unit without a word
+  (`dpkg -S` now names the package), the existing `multi-user.target.wants` link (to `/lib/...`) stayed, the
+  self-`Alias=` made no extra link, and the postinst restarted the daemon (new PID, library MD5 `4910982c…`).
+- Method: a prompted script run by the owner over `ssh -t`; R77's logger polled the uinput keyboard and gamepad
+  and the raw nubs; the keyboard LED's sysfs value was read before and after each step. Fix 15's drop-in was
+  moved aside and the daemon restarted first (`DropInPaths=` empty), so nothing reloaded it.
+- Brightness (0001): Fn+brightness twice took the light 5 → 20, Fn+Shift+brightness twice 20 → 5:
+  `pyra-kbdlight.sh`'s steps, from `/etc/pyrainput.cfg`, with no reload since the start.
+- Keys (0003): d-pad right `KEY_RIGHT` with `ABS_HAT0X=65535`, left `-65535`; Usr1 `KEY_PAUSE` (119);
+  Fn+Usr1 `KEY_SCALE` (120). Fn+Esc not pressed in this run (the owner pressed Fn+Usr1 twice); R77 saw
+  `KEY_SYSRQ` (99) from the same patch.
+- Nubs (0002): three hard flicks on each; after every release the gamepad axis followed the raw value back
+  (left: pad 0,0 or 0,-12 with raw 2,-12; right: pad 0,14 with raw -6,14, the nub's own rest point outside the
+  deadzone of 10). No stuck values like R77's -14,-248.
+- Selftest: 401 pass, 0 fail, 0 skip (owner, 2026-11-21), including the input guard fired by a real downgrade to
+  the vendor's 0.1.19 (unit put back, enabled) and the return.
+- Left: the drop-in back (`DropInPaths=` lists it), 0.1.19+pyra1 installed (rollback: `sudo dpkg -i
+  ~/r77-build/funkeymonkey-pyrainput_0.1.19_armhf.deb`), test files in `~/r77-build/r87/`. The guard is not on
+  this card (only prep installs it).

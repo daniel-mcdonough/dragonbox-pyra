@@ -104,6 +104,7 @@ Which suite matters, and the two builds do not want the same one:
 | --- | --- | --- |
 | the X driver | `debian:trixie` | must match the X server ABI on the card |
 | the kernel | `debian:bookworm` | 5.6 does not build with gcc 14. Bookworm's gcc 12 is what upstream used |
+| `funkeymonkey-pyrainput` (fix 29) | `debian:trixie` | links against the card's libstdc++ |
 
 The kernel source package agrees: its `Maintainer:` field reads
 `pyra <pyra@nspawn-bookworm-armhf>`, so upstream builds it in a bookworm
@@ -111,7 +112,15 @@ container too.
 
 `pyra-crossbuild.sh` does all of this. It needs `docker` on the PC and nothing
 else — no toolchain installed on the host, no `binfmt` registration, no qemu,
-and nothing whatsoever installed on the Pyra.
+and nothing whatsoever installed on the Pyra. It asks docker for the host's own
+platform, because a local tag such as `debian:trixie` can be left pointing at
+an armhf image by some unrelated `docker pull`, and the build would then run
+under qemu without saying so (found 2026-11-21).
+
+`./pc/pyra-crossbuild.sh pyrainput` builds fix 29's
+`funkeymonkey-pyrainput_0.1.19+pyra1_armhf.deb` into `pyrainput/` of the work
+tree and prints its SHA-256; it should match the `PYRAINPUT_SHA256` pinned in
+prep (`fixes.md`, fix 29). About 4 minutes, most of it apt in the container.
 
 ---
 
