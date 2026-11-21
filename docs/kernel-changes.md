@@ -195,7 +195,11 @@ the first attempt, through that port, saw nothing. A narrow plug in the wide soc
 enough for USB 2.0. Not exercised: host mode (the one path where `otg_path` is turned
 on). It needs an adapter that grounds ID; with the micro-to-A adapter tried, a phone
 took the host role itself, and a controller dongle got no power, extcon staying at
-`USB-HOST=0` both times. Also not exercised: the IRQ failure path. Unloading `g_serial`
+`USB-HOST=0` both times. On the vendor's stock kernel, forum users got partway:
+a mouse worked through an OTG cable and anything bigger failed (TrashyMG,
+https://pyra-handheld.com/boards/posts/1693342/), and xhci enumerated a
+SuperSpeed root hub and then logged `Cannot enable` for a USB3 SSD (rosietastic,
+2021, `5.6.19-daveiii-pyradef`, https://pyra-handheld.com/boards/posts/1693339/). Also not exercised: the IRQ failure path. Unloading `g_serial`
 while the PC still had `ttyACM0` configured gave a `WARN_ON(cdev->config)` in
 `__composite_unbind()`. That is the gadget core removing a configured gadget without a
 disconnect first, which 0043-0047 do not touch; the same unload with nothing connected

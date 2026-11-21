@@ -15,8 +15,10 @@ A working rescue logs `hub absent from the USB bus, re-resetting` and then `hub
 enumerated after 1 s`. If the unit is missing entirely, the prep script never
 ran fix 5 — most likely it was run from a copy of the script with its two
 payload files left behind, which now aborts rather than half-applying. See fix
-5 in `fixes.md` for the diagnosis and the manual rebind. A cold power cycle avoids the
-problem entirely and is the way back in if you are locked out.
+5 in `fixes.md` for the diagnosis and the manual rebind. A power cycle with
+the machine left off for a few minutes avoids the problem and is the way
+back in if you are locked out; forum users saw a quick off/on fail the same
+way (fix 5).
 
 **USB dies while running: `disabled by hub (EMI?)`, then `port 2 reset error
 -110`.** This is not the warm-reboot case and fix 5 does not cover it. Seen on
@@ -75,7 +77,9 @@ game buttons dead after a game or DBP crashed" below. If `pyrainput.service`
 is missing altogether after a package run, the vendor's `funkeymonkey-pyrainput`
 replaced fix 29's and took the unit with it: `pyra-input-guard` should have put
 fix 3's back (`journalctl -t pyra-input-guard`); `sudo dpkg -i` the fixed
-`.deb` restores both.
+`.deb` restores both. A hardware input tester reads the devices directly and
+conflicts with pyrainput, so stop it first (`sudo systemctl stop pyrainput`;
+EvilDragon, 2021-06-09, https://pyra-handheld.com/boards/posts/1693625/).
 
 **The screen freezes, every window stops responding, and the case gets hot.**
 Probably the display wedge: the X server stuck in a modeset with one core at
@@ -470,6 +474,13 @@ Each one reprograms the mode and re-applies the rotation property to all four
 display planes, which is what `TilerRotation 270` costs. An ordinary desktop
 session does three at startup and then none, so this is not something normal use
 runs into quickly.
+
+A milder, recoverable blank screen may be a variant or a different fault: in
+2021 spy-d's screen went black after 15-30 min idle, logging `omapdss DSI
+error: VC(0-3) busy` at that moment, with ssh still working, and `restart
+lightdm` brought it back (https://pyra-handheld.com/boards/posts/1694318/).
+Here the VC-busy lines are per-boot noise and lightdm's restart hangs, so
+this is not the same picture. Not seen on this unit.
 
 `x11perf` is the reliable way to reproduce it, because it disables and restores
 DPMS around every single test. A seven-test suite is fourteen modesets and both
@@ -1125,9 +1136,12 @@ of two things:
   That file is for a V5.3 mainboard. `/boot/dtb/linux-image-*/` holds one per
   board revision, so edit the one your board boots. It takes effect at the
   next boot. A new kernel install replaces the blob,
-  so the edit has to be made again. Not tested on hardware. The node and
-  property names are the ones read back from `/proc/device-tree` on the
-  running kernel.
+  so the edit has to be made again. The `fdtput` form is not tested on
+  hardware. The node and property names are the ones read back from
+  `/proc/device-tree` on the running kernel. The same edit in the dts source
+  (`/delete-property/ gpio-key,wakeup;` on the four shoulder-button nodes)
+  stopped wakes in a bag and on lid close for a forum user on bookworm
+  (johnicboom, 2025, https://pyra-handheld.com/boards/posts/1723713/).
 - **A driver change**, `patches/0053`. It gives every `gpio-keys` device
   writable `wakeup_keys` and `wakeup_switches` files, in the keycode-list
   format `disabled_keys` uses. The device tree supplies the starting set.
@@ -1389,7 +1403,8 @@ time spent down.
 ### What it saves, which is not measured
 
 Nobody has measured the difference between the two, or between either of them
-and an idle machine. The messages above give good reason to expect `mem` to be
+and an idle machine, on this card (one forum figure for bookworm is in
+`power-testing.md` §3). The messages above give good reason to expect `mem` to be
 disappointing, since the parts of the chip that hold the most power refuse to
 enter their target state.
 
@@ -1708,6 +1723,14 @@ including the resting one, which is a few counts off zero (up to -30 on one
 axis of the test unit), so the game's own deadzone has to absorb it. The
 source fix is
 `patches/userspace/funkeymonkey-pyrainput/0002-nub-axis-zero-inside-deadzone.patch`.
+
+**The desktop pointer drifts.** That is the pointer's own deadzone,
+`mouse.deadzone` in `/etc/pyrainput.cfg`, then `sudo systemctl reload
+pyrainput` (EvilDragon, https://pyra-handheld.com/boards/posts/1686894/). Not
+tuned here. EvilDragon also blamed over-tight screws near the heatsink and in
+the battery bay, which squeeze the nubs on cases made without spacers
+(https://pyra-handheld.com/boards/posts/1714732/); gorillero loosened them and
+saw no change (https://pyra-handheld.com/boards/posts/1721158/).
 
 **Usr1, Fn+Usr1, Fn+Esc, and d-pad right on the gamepad.** Four key names in
 the daemon look up nothing, so Usr1 and Fn+Usr1 send no key, Fn+Esc sends no

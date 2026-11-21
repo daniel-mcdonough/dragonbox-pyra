@@ -85,6 +85,16 @@ complete is meaningless.
       export SDL_VIDEO_X11_FORCE_EGL=1
       export SDL_VIDEO_GL_DRIVER=/opt/omap5-sgx-ddk-um-linux/lib/libGLESv2.so.1
 
+- [ ] **SDL 1.2 programs:** stock SDL 1.2 fullscreen is offset or uses a
+      portrait-sized framebuffer on the Pyra
+      (https://pyra-handheld.com/boards/posts/1686988/,
+      https://pyra-handheld.com/boards/posts/1691314/). The card has ouzle's
+      patched SDL 1.2, `libsdl1.2pyra` 1.2.15+dfsg2-9, which fixes it;
+      trixie's `libsdl1.2debian` (sdl12-compat) is not installed. Forum users
+      ran sdl12-compat with gl4es instead, `LD_PRELOAD`ed or ahead on
+      `LD_LIBRARY_PATH` (https://pyra-handheld.com/boards/posts/1714445/), and
+      saw segfaults and audio bugs in some titles
+      (https://pyra-handheld.com/boards/posts/1716793/). Not tested here.
 - [ ] **Print `GL_RENDERER` at startup and assert on it.** Check it is non-NULL
       *and* contains `PowerVR`. The failure mode where a context is created and
       every entry point resolves to NULL looks exactly like success.

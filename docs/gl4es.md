@@ -69,6 +69,15 @@ This bites glmark2, which will not start until it is told exactly what exists:
 EGL with gl4es nowhere in the picture, refuses the same loose configs and needs
 the same exact one. The strictness is in the blob.
 
+Older gl4es made it worse: with gl4es 1.1.5, DuckStation logged
+`EGL_BAD_ATTRIBUTE` and `No EGL configs found` and failed to start, and Stunt
+Car Remake logged `No EGL configs found (depth=24, stencil=8)` and segfaulted;
+updating gl4es fixed both
+(https://pyra-handheld.com/boards/posts/1703368/,
+https://pyra-handheld.com/boards/posts/1695646/). Several DBPs say to update
+gl4es or get artifacts or crashes. The card has `libgl-gl4es-pyra`
+1.1.7.1 (checked 2026-11-21), newer than those reports.
+
 ### glmark2 results, and why ten scenes fail
 
 Full run under gl4es, 800x600, score **246**. The scenes that run, run at

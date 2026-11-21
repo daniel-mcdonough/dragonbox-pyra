@@ -196,7 +196,10 @@ seconds, USB3 port, before the fix:
 So host writes during detection are lost, and the detection result is written
 last: 3 A for the brick on the USB3 port (0.12 s after VBUS), **500 mA** on
 the normal micro port, where detection ends with no type (`r8=24`) after
-0.55 s. Without the re-check, a replug on the normal port put the machine back
+0.55 s. Forum draws fit this: up to 2.7 A on the USB3 port (ljones, 2021,
+https://pyra-handheld.com/boards/posts/1695342/), and 860 mA at 4.88 V on a
+battery-less boot, above the 500 mA floor (TeDaDeS, port and charger not
+given, https://pyra-handheld.com/boards/posts/1723734/). Without the re-check, a replug on the normal port put the machine back
 at the floor that drains it. With the re-check (same day, same brick): USB3
 3000000 → 2000000 0.21 s after detection, normal port 500000 → 2000000 0.10 s
 after. Each correction logs `limit was N, set 2000000 again` under the
@@ -281,8 +284,14 @@ given 3 A in `/etc/default/pyra-charge-current`.
 ### What protects the cell, now that nothing in software does
 
 The charger's TS pin, on the pack's 10 k 103AT thermistor. A community
-member measured that divider on a stock board
-([forum thread](https://pyra-handheld.com/boards/threads/bq24297-thermistor-ntc-resistors-hot-fault.99405/)).
+member measured that divider
+([forum thread](https://pyra-handheld.com/boards/threads/bq24297-thermistor-ntc-resistors-hot-fault.99405/)),
+on a board they had reworked: they had reflowed the BQ24297, then read
+37.5 kΩ instead of 133 kΩ at the R710 pads and wrote "I've probably broken
+something on my board" (#12, https://pyra-handheld.com/boards/posts/1691080/;
+#16, https://pyra-handheld.com/boards/posts/1691208/). The ~38 °C below is
+worked out from an in-circuit 18 kΩ reading, and their pyrometer trip of
+39 °C was taken with R710 removed.
 The design intends a hot cut-off at 45 °C. Because the CPU module's
 R2001/R2002 sit in parallel with R710, the board actually trips at about
 **38 °C**. That is conservative. This machine has latched the fault: the
@@ -292,6 +301,14 @@ Those figures are from another board and have not been measured on this one.
 The forum's own numbers don't agree with each other either (its two measured
 trip points, worked back, give different top resistors), so treat 38 °C as
 unconfirmed.
+
+Users report the behaviour, without temperatures: a warm pack stops
+charging and charges again once cooled (PowerGod, 2025-06-12, a fridge; the
+LED blinked red until the battery cooled,
+https://pyra-handheld.com/boards/posts/1722897/,
+https://pyra-handheld.com/boards/posts/1722900/; Cooper, 2021,
+https://pyra-handheld.com/boards/posts/1699837/; Bosbeetle, 2025,
+https://pyra-handheld.com/boards/posts/1722968/).
 
 #### The thermistor is readable: Palmas GPADC channel 0 (measured 2026-11-19)
 
@@ -331,7 +348,10 @@ nothing here: the vendor's `pyra-config-modprobe` blacklists it
 (`/etc/modprobe.d/pyra-noadcbat.conf`, since pyra-config 0.26, 2020), and
 letux-current's driver matches only `adc-battery`, not the node's
 `linux,generic-adc-battery` (checked at 7.4-rc3, 2026-11-19; report draft
-`reports/letux-pyra-battery-monitor-gpadc.md`). Its voltage channel, IN6, does
+`reports/letux-pyra-battery-monitor-gpadc.md`). Forced in with `modprobe` on
+the vendor OS, it "logs iio_charge:0 ... then proceeds to immediately shut
+down the system" (FelixNemis, https://pyra-handheld.com/boards/posts/1719430/;
+not tried here), which is a practical reason to keep the blacklist. Its voltage channel, IN6, does
 follow the battery: 4006 mV against the gauge's 4046 mV while charging
 (measured 2026-11-19). Its "current" channel, `<&gpadc 11>`, reads 0 too.
 **The bq24297's `temp` is not a reading:** the driver returns a fixed
@@ -457,6 +477,20 @@ charge in a warm room, or under load, might.
 
 The charger stops at about 4.05 V, not the battery's 4.2 V. That is why a
 charge ends `CHGTERM` with the gauge at 87 % (the run above: 4.04 V, 87 %).
+Users have reported the same for years: EvilDragon in 2019 ("a few times
+already, years ago", https://pyra-handheld.com/boards/posts/1455499/),
+pimaster 4.035 V at 86-87 % (2022, https://pyra-handheld.com/boards/posts/1709363/),
+elvissteinjr "fully-charged" at 4.048 V (2022,
+https://pyra-handheld.com/boards/posts/1709511/). Farox's "fully-charged"
+4.124 V at 99 % after charging "for some hours" on the 2022 image
+(https://pyra-handheld.com/boards/posts/1709387/) is above any VREG the
+driver sets; most likely the unit charged while off, at the chip's 4.208 V
+default (below). So the percentage after a charge depends on whether it
+charged on or off. The gauge's percentage is not the only one shown either:
+the vendor's `/root/charger` script prints a linear voltage estimate beside
+the bq27421 percentage, and they differ (hns,
+https://pyra-handheld.com/boards/posts/1719951/); Askarus saw 95 % at 4.1 V
+in XFCE's applet (https://pyra-handheld.com/boards/posts/1719926/).
 Nothing in userspace sets it. The kernel driver does, at probe, on purpose,
 from a device-tree value that isn't the battery's.
 
@@ -493,6 +527,16 @@ deliberate. Nothing written down says whether 4.2 V is a real VSYS rating or
 the battery's number copied into the regulator node. The chip's default
 mode, before Linux probes it (charging while off, U-Boot), uses 4.208 V and
 lets VSYS reach about 4.35 V.
+
+Two forum reports about that default mode, not checked here. With no
+bootable SD or eMMC, the OMAP keeps retrying the boot, "sits and sucks power
+and prevents charging" (ToastBucket, 2019,
+https://pyra-handheld.com/boards/posts/1457844/). And a fully-off Pyra may
+not stay off: the Palmas turns the unit on when a cable goes in (hns, 2021,
+https://pyra-handheld.com/boards/posts/1690637/), only on the OTG port by
+PowerGod's account, and no longer at all after they moved to bookworm (2025,
+https://pyra-handheld.com/boards/posts/1722971/,
+https://pyra-handheld.com/boards/posts/1724203/).
 
 **No runtime knob on 5.6.** This driver has no `constant_charge_voltage`
 property, and the image has no udev rule, unit or pyra-hacks tool that

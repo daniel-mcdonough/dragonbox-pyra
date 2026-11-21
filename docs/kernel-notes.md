@@ -105,6 +105,18 @@ faults are worth knowing as hardware lessons rather than as bugs:
 - **The machine crosses its passive trip in 16 seconds from idle** under two
   cores. A 20-second poll lands after the trip. The poll is now 2 seconds.
 
+The vendor's stated reason for a daemon at all (EvilDragon, 2020-10-29,
+https://pyra-handheld.com/boards/posts/1681396/,
+https://pyra-handheld.com/boards/posts/1681416/): above 1 GHz the OMAP5's
+power rises steeply, and the built-in protection drops the clock to 200 MHz
+until the chip is 5-10 °C cooler, so games oscillate; a daemon should step
+down in about 100 MHz steps instead. They also report charging while idling
+once took the CPU to 70 °C and the battery to about 60 °C, and the battery
+shut off; and "seen up to 120C in the OMAP5" (2021-06-14,
+https://pyra-handheld.com/boards/posts/1693856/). The 200 MHz drop has not
+been seen on this card, where the passive trip throttles through
+`step_wise` (above).
+
 ### 2.3 Rotation is already in hardware
 
 Boot cmdline carries `drm.force_hw_rotation` and
@@ -276,7 +288,11 @@ effect, and not the first thing to try.
 - **`cpufreq-set` does not exist on trixie.** The `cpufrequtils` package is not
   in the archive at all. The vendor thermal daemon shells out to it every 20
   seconds and has failed on every cycle since the image's first boot — 1031
-  failures in one journal. Write `scaling_max_freq` directly.
+  failures in one journal. Write `scaling_max_freq` directly. On bookworm,
+  where `cpufrequtils` is installed, the same daemon does cap, and it resets a
+  user's ceiling within seconds (elvissteinjr,
+  https://pyra-handheld.com/boards/posts/1719440/,
+  https://pyra-handheld.com/boards/posts/1719433/).
 - **`/dev/usb_max_current`** is an ordinary file that nothing reads. The udev
   rules that were supposed to create it as a symlink name `twl4030`, which is
   not this machine's PMIC. The vendor daemon's charge ladder has never
@@ -317,6 +333,12 @@ re-derive.
 | Touchscreen: TSC2007 on i2c4, rotated to 1280x720 | `pyra-display.dtsi` |
 | AESS: `ti,aess`, `aess_fclk` at 196.608 MHz | live DT |
 | Nubs: AS5013 on i2c, **interrupt lines held low on the board**, 25 ms polled | `improvements.md` item 11 |
+
+Askarus runs other brightness tables (https://pyra-handheld.com/boards/posts/1719714/):
+screen `<0 1 2 3 5 7 10 15 20 27 35 45 60 77 100>`, so the screen can go
+darker than the old minimum of 5, and keyboard `<0 1 20 100>`; lower keyboard
+values flicker visibly on their units. Not tried here (fix 15 has this
+card's keyboard table).
 
 Five steps below 1.5 GHz — 375, 625, 875, 1125 and 1400 MHz — exist in a
 third-party table and are carried by `pc/pyra-crossbuild.sh kernel-freq`. Every

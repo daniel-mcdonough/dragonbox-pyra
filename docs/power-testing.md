@@ -163,8 +163,15 @@ Voltage stays at VDD_MM nominal either way. Do not touch the voltage.
 
 ### 3. Suspend-to-RAM draw
 
-**Question:** what does a suspended Pyra draw? Nobody has measured it
-(`docs/troubleshooting.md`, "What it saves"). The gauge cannot be sampled while
+**Question:** what does a suspended Pyra draw? Not measured on this card
+(`docs/troubleshooting.md`, "What it saves"). The one figure is a forum
+report, not ours: johnicboom, on bookworm with the stock kernel, the TXS02612
+node disabled in the DT, wifi on and the conservative governor, saw about
+3 %/h suspended in three tests, and 87 % → 55 % over an 08:00-17:00 day of
+suspend, about 3.5 %/h (https://pyra-handheld.com/boards/posts/1723609/,
+https://pyra-handheld.com/boards/posts/1723618/). Estimated from that, at a
+nominal 6000 mAh pack: about 200 mAh/h, roughly 0.75 W, which fits the
+expectation that `mem` disappoints. The gauge cannot be sampled while
 the machine sleeps, so use its coulomb counter instead: read `charge_now` (µAh)
 before and after a long `mem` suspend (30–60 min, RTC wake through
 `pyra-sleep-test.sh --mode mem --seconds N`). Compare with the same span awake

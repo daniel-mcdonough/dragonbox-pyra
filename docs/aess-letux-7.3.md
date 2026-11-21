@@ -29,6 +29,17 @@ drafts are in `reports/letux-aess-*.md`, starting with `reports/letux-aess-INDEX
 - **The way forward is to port our six fixes onto 7.3**, not to choose one
   tree over the other.
 
+Upstream's own timeline, from the forum: in 2021 the AESS needed the
+twl6040-abe+aess ALSA extension, which in LetuxOS kernels was "neither
+debugged nor working", and its firmware had to be repacked for modern loaders
+(hns, 2021-12-27, https://pyra-handheld.com/boards/posts/1702896/). The team
+funded hns to do it (EvilDragon, 2022-01-09,
+https://pyra-handheld.com/boards/posts/1703380/), and it was still pending in
+2025 (hns, 2025-01-27, https://pyra-handheld.com/boards/posts/1721541/). This
+work adds to that line, and the reports are written as help for it. Moving
+the whole image off 5.6 has costs beyond audio (the SGX, AUFS):
+`decisions.md`, "A current kernel".
+
 ## Where everything is
 
 | what | where |
@@ -87,7 +98,11 @@ DAPM graph (0019) is hand-written. On 7.3 the topology loader sets it from
 the firmware's widgets (`omap-aess-fw.c:135, 268`), so whether the fault
 shows depends on what the topology declares. The shift is undefined behaviour
 either way, and the one-line guard ports unchanged. Check on hardware: during
-playback `/sys/kernel/debug/omap-aess/opp_level` should read 100.
+playback `/sys/kernel/debug/omap-aess/opp_level` should read 100. hns reports
+the symptom on their current kernels: "at the moment only the round plug
+provides audio signals in AESS mode. Handsfree only works in twl6040-legacy
+mode" (2025-12-04, https://pyra-handheld.com/boards/posts/1724821/). That
+fits the OPP50 fault, though the cause on their tree is not confirmed.
 
 The smaller leftovers also stand: `aess_gain_to_val()` uses `val`, not its
 parameter (`omap-aess-fw.c:53`); `omap_aess_load_fw_param()` copies images
@@ -103,7 +118,12 @@ an error (`"firmware exists but was not loaded"`), and the component probe
 fails with it. If `/lib/firmware/omap_aess-adfw.bin` is the linux-firmware
 copy, the version our 5.6 image uses, stock 7.3 should lose the AESS
 component, and with it the card, until 0014 is ported or the file is
-replaced with one built by `build-aess-fw`. This follows from the code and
+replaced with one built by `build-aess-fw`. hns publishes a prebuilt copy
+next to the letux 6.18 kernels, `download.goldelico.com/letux-kernel/letux-6.18-lpae/`,
+after the build was fixed for letux 6.16 and later
+(https://pyra-handheld.com/boards/posts/1724757/,
+https://pyra-handheld.com/boards/posts/1724804/); it saves building the
+firmware on the device for a first test. This follows from the code and
 has not been seen on hardware.
 
 ## Porting our fixes to 7.3

@@ -44,6 +44,27 @@ confirmed to be on a boot-capable controller.
 **USB boot.** OMAP5 peripheral boot exists, but it is an SPL-over-USB recovery
 mechanism, not a way to run a rootfs.
 
+**A current kernel (letux 6.18 or 7.3) instead of 5.6.** The GPU is the reason
+the vendor stays on 5.6: on newer kernels both the SGX and etnaviv drivers broke
+(EvilDragon, 2021-07-29, https://pyra-handheld.com/boards/posts/1696253/), and
+DDK 1.14.3699939 with the Pyra userspace was the combination that worked below
+5.8 (aTc, 2021-07-30, https://pyra-handheld.com/boards/posts/1696319/).
+Upstream added only the SGX5 device tree, letux 6.8 carries a small change, and
+there are "rumors the driver isn't working with v5.10 and later", with no
+working userspace to test (hns, 2024-01-31,
+https://pyra-handheld.com/boards/posts/1717221/). A move also loses AUFS, and
+with it DBP mounting (`dbp.md`): AUFS was in LetuxOS kernels around 2019 but
+"neither stable nor needed ... So we stopped" (hns, 2026-11-09,
+https://pyra-handheld.com/boards/posts/1727201/). The audio side of a move is
+`aess-letux-7.3.md`.
+
+**Wayland (Weston) instead of X and MATE.** Not tried here. rootshell reports
+"hardware Weston running with rotation", through gl4es on the SGX with
+Xwayland, with screenshots (2026-09-01,
+https://pyra-handheld.com/boards/posts/1726735/). The image keeps the vendor's
+X stack, which is what fixes 4 (GLX off) and 21 (the SGX's X window-system library)
+were made for; a Weston session would need its own check of each.
+
 ---
 
 
@@ -137,3 +158,18 @@ anything can be pressed. The button was confirmed to still wake the machine on
 build for a theory that turned out to be about the wrong device. It was kept,
 and it is what confirmed the keypad interrupt was not disabled two days later.
 It costs nothing at runtime.
+
+**The phantom SD hosts: driver, not disabling the node.** Disabling the
+TXS02612 in the device tree (`&{/txs02612} { status = "disabled"; }`) is the
+obvious route, and it breaks eMMC boot: the eMMC root never appears, because
+the TXS02612's select line also picks the eMMC. johnicboom found this and
+restored boot with a `gpio-hog` on gpio3 line 18, output low ("emmc_sel"),
+which selects the eMMC by hand; reboot from the eMMC still failed after that,
+with the LEDs flashing "kind of alarmingly" (bookworm, 2025,
+https://pyra-handheld.com/boards/posts/1723761/,
+https://pyra-handheld.com/boards/posts/1723804/). `patches/0003` instead
+stops the driver registering the two hosts it cannot serve and leaves the mux
+alone. johnicboom also reports that with the node disabled reboot works on
+the stock kernel, not only suspend
+(https://pyra-handheld.com/boards/posts/1723606/); whether 0003 also fixes a
+stock-kernel reboot has not been checked.

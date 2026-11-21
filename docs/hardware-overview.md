@@ -40,6 +40,7 @@ The thermal envelope, not the clock ceiling, decides what the machine sustains.
 | GPU | PowerVR SGX544MP2, 2 cores, 425 MHz (NOM rail) | Tool-reported (`omapconf`); consistent with 862 Mpix/s measured fill. `clk_summary`'s 33.77 MHz for the GPU mux is wrong — see improvements.md §5 |
 | GPU API | OpenGL ES 2.0 only, GLSL ES 1.00. **No GLES 3 path exists** | Measured |
 | RAM | 4 GB, 2x EMIF, 531 MHz, **no swap configured** | Measured |
+| RAM chips and timings | Samsung K4B8G1646D (early 2 GB units: Micron MT41K256M16HA-125), a DDR3L-1600 bin run at 533 MHz with DDR3-1066 timings. **U-Boot sets the timings**, so bandwidth can differ between U-Boot builds, and some CPU boards fail RAM calibration at boot | Community report: [part](https://pyra-handheld.com/boards/posts/1711954/), [timings](https://pyra-handheld.com/boards/posts/1712922/), [EMIF power saving](https://pyra-handheld.com/boards/posts/1713378/) |
 | Memory peak, theoretical | ~8.5 GB/s (2 x 32-bit x ~1064 MT/s) | Reasoning |
 | Memory, single-core `memcpy` | **2130 MB/s** — i.e. ~4.3 GB/s of traffic | Measured |
 | L3 / DMM / EMIF interconnect | 265 MHz — already the top CORE operating point | Measured |
@@ -48,10 +49,12 @@ The thermal envelope, not the clock ceiling, decides what the machine sustains.
 | Display scanout cost | 221 MB/s of DDR reads, continuous, unavoidable | Reasoning |
 | 2D engine | Vivante GC320 ("bb2d"): fills and blits; the X driver also uses it for Xv's YUV conversion and scaling (rendering-guidelines.md §1.7) | Measured (fills, blits); driver source (Xv) |
 | Audio codec | TWL6040, accepts **only S32_LE at 88200 or 96000 Hz** | Measured |
+| Why the TWL6040 | the Pandora's Burr-Brown DAC was planned, but the OMAP5 couldn't drive it | [Community report](https://pyra-handheld.com/boards/posts/1706378/) (EvilDragon, 2022) |
 | Audio DSP | OMAP5 AESS — live silicon, driven only by this repo's patches | Measured |
 | Thermal trips | passive 100 °C on `cpu_thermal`, critical 125 °C | Kernel source |
 | Cooling | fanless, and the SoC heatsink ships with insulating adhesive on it | Community report |
 | Idle states | exactly one, `C1` (WFI, MPUSS ON). `C2` retention hangs the machine | Measured |
+| USB ports | real USB 3 only on the micro-USB OTG port; the blue USB-A port is USB 2.0 (its USB 3 pins carry SATA) | Community report ([FAQ item 7](https://pyra-handheld.com/boards/posts/1685443/), EvilDragon, 2021) |
 | Userspace | Debian 13 trixie, armhf, **32-bit**, hard float | Measured |
 | Kernel | 5.6.19, out-of-tree Pyra/Letux tree, `PREEMPT`, `HZ=100`, `ARM_LPAE=y` | Measured |
 

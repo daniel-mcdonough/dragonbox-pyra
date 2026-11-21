@@ -142,12 +142,17 @@ which includes anything doing deterministic simulation or replay.
 
 **LTO.** Unmeasured here. Plausible on paper for the same I-cache reason as
 `-mthumb`, and it substantially increases build time and memory on a cross
-build. If you try it, measure it; do not assume it.
+build. If you try it, measure it; do not assume it. Two forum ports used it,
+neither measured: ptitSeb's Doom 3 "faster build (using lto)"
+(https://pyra-handheld.com/boards/posts/1695695/), and jedi23's Firefox
+rebuild with PGO, ThinLTO and frame pointers off, "slightly noticeable
+performance improvements" (https://pyra-handheld.com/boards/posts/1726809/).
 
 **`-funroll-loops`.** See `-O3`. Code size on a 32 KB I-cache.
 
 **PGO.** Would probably pay on the Fast3D-style interpreter loop that dominates
-this class of workload, and nobody has tried it. Recorded as an idea, not a
+this class of workload, and nobody has measured it (jedi23's Firefox build
+above is the one anecdote). Recorded as an idea, not a
 recommendation.
 
 **A blanket archive rebuild with these flags.** This one is a genuine trap and

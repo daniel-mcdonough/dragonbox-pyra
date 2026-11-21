@@ -226,8 +226,21 @@ sequence is a no-op and the hub never connects. `dmesg` gives it away:
 
     usb3503 0-0008: reset gpio state 1
 
-On a cold boot that reads `0`. Rebinding the driver re-runs the reset from a
-known state, and everything behind the hub returns within seconds:
+On a cold boot that reads `0`. A quick off/on may not count as cold. Forum
+users on the vendor OS logged `reset gpio state 1` after a power-off and
+power-on, at a time when its `reboot` was broken anyway (Kazuki, 2021,
+https://pyra-handheld.com/boards/posts/1693629/). fritata found that an
+immediate off/on fails and that waiting several minutes before powering on
+avoids it (https://pyra-handheld.com/boards/posts/1694105/). Bosbeetle's 30
+boots, each after a shutdown, lost USB on 2 of 10 on the black port (both
+logging `port 2 reset error -110`, which troubleshooting.md otherwise lists
+as the separate charger-pull case), 4 of 10 on the blue, and none on the
+USB3 port, which is the OTG controller's and not behind the hub
+(https://pyra-handheld.com/boards/posts/1693656/). `SP_ILOCK failed (-121)`
+appeared in those logs too, but it is also on the bookworm baseline's cold
+boot, so it tells the two apart from nothing. Rebinding the driver re-runs
+the reset from a known state, and everything behind the hub returns within
+seconds:
 
     echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/unbind
     echo 0-0008 | sudo tee /sys/bus/i2c/drivers/usb3503/bind
@@ -244,7 +257,11 @@ carries `ConditionPathExists` on the usb3503 driver so it is inert on anything
 that is not a Pyra.
 
 **Why this matters more than it sounds.** The USB ethernet adapter is very
-likely how you are talking to the machine. Without this fix, one `reboot` over
+likely how you are talking to the machine. The 4G modem sits behind the same
+hub, and forum users saw it vanish with the ports (Kazuki,
+https://pyra-handheld.com/boards/posts/1693465/; EvilDragon,
+https://pyra-handheld.com/boards/posts/1693461/), so on a 4G unit the rescue
+should bring the modem back too (not tested; this unit has no modem). Without this fix, one `reboot` over
 SSH and the unit is off the network with no way back in except the screen.
 
 This is a workaround, not a fix. The GPIO should be reasserted on shutdown, or
@@ -626,7 +643,8 @@ port, 2 A gave +1342 mA and 3 A gave +1518 mA. A short cable on the normal
 micro port gave +999 mA at 2 A. The default stays at 2 A, because it applies to
 whatever gets plugged in, and fix 8 holds it on a detected adapter too, where
 the chip alone would pick 3 A (owner decision, 2026-11-21). One more reason not
-to raise it: a forum post (2021) says the charger's coil "can only take 2.7A".
+to raise it: a forum post (ouzle, 2021-04-20,
+https://pyra-handheld.com/boards/posts/1691490/) says the charger's coil "can only take 2.7A".
 The inductor's rating has not been checked on the schematic. Estimated, not
 measured (90 % efficiency, 3.8 V): at 3 A in from 5 V the buck can deliver about 3.5 A at the cell
 voltage under full load, about 2.4 A at 2 A in.
@@ -696,7 +714,9 @@ connected to anything.
 
 Setting the four routes to `HF DAC` / `HS DAC` and lifting the headset volume
 produces sound immediately, on both outputs, with no reboot and no other
-change. Confirmed by ear on the hardware, 2026-09-20.
+change. Confirmed by ear on the hardware, 2026-09-20. The vendor knew the
+cause in 2021: for a silent speaker, check both HF DACs in alsamixer
+(EvilDragon, 2021-06-04, https://pyra-handheld.com/boards/posts/1693405/).
 
 ### Why it is off
 
@@ -1917,7 +1937,15 @@ the top two letter rows, Fn+' and Fn+M type nothing, and Fn+Q and Fn+W send
 `<META>`) Mod1 with Alt_L/Meta_L on level 2, and pyra-config-xorg's
 `symbols/pyra` adds `modifier_map Mod1 { <META> }`; XKB's catch-all
 interpretation then makes each key an Alt modifier. On the console, Debian's
-keymap (ckbcomp's output) has nothing on most of those keycodes.
+keymap (ckbcomp's output) has nothing on most of those keycodes. On bullseye and
+bookworm forum users found `_` and `:` dead outright, blamed the boot rule's
+`evdev(inet)` part for overriding the pyra symbols, and found that
+`setxkbmap -symbols pyra` brings them back but breaks the Pyra key (mapped to
+MenuKB) and that `~/.Xmodmap` has no effect (Askarus,
+https://pyra-handheld.com/boards/posts/1717515/,
+https://pyra-handheld.com/boards/posts/1717722/; the chain as aTc describes
+it, https://pyra-handheld.com/boards/posts/1716997/). On trixie both symbols
+type and the fault is the Alt modifier above.
 
 **Fix.** Two parts, both found and checked on the r5 card by injecting the
 daemon's keycodes through uinput (`troubleshooting.md`, development log R78):

@@ -102,6 +102,12 @@ at 48000 and PulseAudio converts 44.1 kHz material with `speex-float-1` — not
 `trivial`, which aliases audibly. Before the resampler change a 44.1 kHz song
 into a 48 kHz sink measured 9% of a core; that has not been re-measured with
 `speex-float-1`. Most music is 44.1 kHz, so this is the case that matters.
+One forum report suggests the old Letux 3.15 AESS kernel may have played
+44.1 kHz in the DSP: "playing a 96 kHz audio sample consumes around 1-2% cpu
+... same with a 44.1 kHz audio sample" (Risca, 2024-12-01,
+https://pyra-handheld.com/boards/posts/1720836/). It doesn't say whether the
+stream ran at its native rate or at the right speed, so read the 3.15
+`omap-audio` branch before calling 44.1 kHz impossible.
 
 **Headphones versus speakers is a port, switched at the codec.** In the DSP,
 DL1 feeds the headset and DL2 the handsfree amplifier, and both DSP paths stay
@@ -189,7 +195,13 @@ been measured.
 
 **The direct link is still on this kernel, as `hw:L15,9`, and plays 1.47x
 fast.** `legacy_link=1` keeps it as a reference for debugging (development log
-§34). Nothing should use it for real audio.
+§34). Nothing should use it for real audio. Its cause here is not known. On
+hns's current kernels the legacy link plays at double speed, "one octave
+higher", once the AESS has been used (legacy, then AESS, then legacy again;
+2026-10-19, https://pyra-handheld.com/boards/posts/1727023/), which they
+report solved, unreleased, probably for letux-7.3.1 and 6.18.y (2026-10-22,
+https://pyra-handheld.com/boards/posts/1727058/). That may be the same
+clock interaction; their fix is the lead to read once it is out.
 
 ## The direct McPDM path
 
@@ -437,6 +449,11 @@ daemon the control is set only by fix 9's floor and by hand). On the AESS path t
 
     pactl list sinks | grep -E 'Name:|Mute:|Volume: front'
 
+**6. One speaker dead with everything above fine: the contacts.** The
+speakers sit on press-fit spring contacts, and a dead one is often contact
+pressure; the first batch was soldered by mistake (hns, 2025-03-29,
+https://pyra-handheld.com/boards/posts/1722157/). Not seen on this unit.
+
 ## Consequences of the PulseAudio design
 
 These all look like faults and are not. Each has been chased at least once.
@@ -457,7 +474,12 @@ These all look like faults and are not. Each has been chased at least once.
   4-channel open the Speakers/Headphones split depends on. That trade has been
   considered and rejected twice; see fixes 9 and 10. On the AESS path that
   argument does not apply, and `pyra-aess.pa` loads `module-alsa-card` itself,
-  still without `module-udev-detect`.
+  still without `module-udev-detect`. The vendor turned it off first, for a
+  different reason: it "makes a huge mess of wrongly configured audio
+  devices", and on earlier kernels it "would even completely lock up, because
+  it started to probe devices that didn't really exist" (aTc,
+  https://pyra-handheld.com/boards/posts/1693049/). Re-check that lockup
+  before re-enabling it for USB audio.
 * **Why a profile set and not UCM.** A UCM profile for this card was written
   and loaded first. PulseAudio 17 turns UCM devices that share a PCM into one
   *profile* each, so Speakers and Headphones became two profiles in the

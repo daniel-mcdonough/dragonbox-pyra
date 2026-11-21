@@ -130,6 +130,15 @@ invocations, and shader invocations are what this GPU is short of.
 **Render to an offscreen target at a fraction of native and draw it as one
 fullscreen quad.** That final upscale costs one cheap pass. Expose the fraction
 as a user setting; 0.5x is the right default for anything 3D on this machine.
+ptitSeb's Doom 3 port does the same, into an 853x480 FBO, and applies gamma
+at the blit (https://pyra-handheld.com/boards/posts/1695695/); its
+`sys/linux/gles2.cpp` is a reference implementation.
+
+**"Upscaling" in an emulator is not necessarily GPU work.** DuckStation's
+"linear upscaling" ran on the CPU under the software renderer; turning it off
+took one game from 60-70 % speed to about 100 % and stopped the audio
+crackle (https://pyra-handheld.com/boards/posts/1704168/; forum report, not
+measured here). §6 is why a CPU overrun crackles.
 
 ### 1.4 Turn the desktop compositor off
 
@@ -215,7 +224,11 @@ RGB and scale it into the window, as a two-pass filtered blit with a 9-tap
 sinc kernel. The CPU does neither.
 
 - **Formats:** YV12, I420, UYVY, YUY2 (`Viv2DGetFormats`). I420 is passed to the
-  hardware as YV12.
+  hardware as YV12. Unless the U and V planes are swapped on the way, that
+  gives a blue or red tint, and a 2021 forum user saw "the XV decoder made
+  everything have a blue tint" on buster
+  (https://pyra-handheld.com/boards/posts/1688810/). On the first run, test
+  `mpv --vo=xv` with both an I420 and a YV12 source.
 - **NV12 is commented out** in both `armsoc_xv.c` and `Viv2DGetFormats`. The
   GC320's register file defines `DE_FORMAT_NV12` (`viv2d/state_2d.xml.h`), so
   the hardware should take it. Enabling it means adding the format and setting

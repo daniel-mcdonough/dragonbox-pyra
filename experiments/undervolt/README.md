@@ -86,6 +86,30 @@ Checked on the device:
 - 890 mV at 625 MHz ran for about a second at the desktop: that says nothing about
   stability.
 
+## Other units, from the forum (2024)
+
+Not measured here; claims from Askarus's 2024 runs on the vendor OS, worth
+reading before anyone extends the undervolt to more points.
+
+- **Floors across 10 units, each OPP enabled alone:** 250 MHz 670 mV, 500/770,
+  750/810, 1000/920, 1250/1010, 1500/1130 mV, against their table's
+  750/850/950/1050/1100/1250 (https://pyra-handheld.com/boards/posts/1719761/,
+  https://pyra-handheld.com/boards/posts/1719816/). Their 810 mV at 750 MHz is
+  independent evidence for the margin under this unit's 870 mV.
+- **Points that hold alone fail together.** Minimums found with one OPP
+  enabled "fell apart once I tested multiple frequencies together": 250 MHz
+  booted at 0.69 V alone but needed 0.75 V with other OPPs present, and one
+  unit of 36 was clearly weaker (https://pyra-handheld.com/boards/posts/1719736/,
+  https://pyra-handheld.com/boards/posts/1719745/). hns put it down to the
+  order of clock and voltage changes when stepping up from a slow clock
+  (https://pyra-handheld.com/boards/posts/1719766/). So a soak for a new point
+  needs the governor moving between OPPs, not only a pin; the single-point
+  stepping above would not catch this.
+- The Palmas SMPS step in 10 mV (some 20 mV), the LDOs in 50 mV (hns, same
+  thread), which agrees with the 10 mV grid here.
+- Below 40 MHz the display corrupts; 1.9 GHz froze; 1.8 GHz at 1300 mV was
+  usable with a temperature curve.
+
 ## Why
 
 The CPU's voltage comes from `operating-points` on `cpu0` (patch 0007's table,

@@ -370,14 +370,22 @@ because the Pyra never shows one.
 
 **U-Boot has no display driver.** Booting from this card, the Pyra runs the
 card's own U-Boot, from the raw area at the front of the card before
-partition 1: 2016.11 from the vendor's `u-boot-pyra` 0.1.5 (built 2024-09-11).
+partition 1. The boot ROM tries the card slot before the eMMC, so a card with
+a bootloader wins; a 2026 forum claim that the eMMC always boots first
+(https://pyra-handheld.com/boards/posts/1725133/) is wrong on this unit, as
+pimaster says from the TRM (https://pyra-handheld.com/boards/posts/1724464/)
+and as `procedure.md` §5 shows. The card's U-Boot is 2016.11 from the vendor's `u-boot-pyra` 0.1.5 (built 2024-09-11).
 The eMMC carries its own copy, which varies by unit: the one tested has a
 2016.11 build from December 2020, and units built later may have a newer one.
 Search either image for `vidconsole` or `usb_kbd` and nothing comes back, while
 `sysboot`, `pxelinux.cfg` and `Enter choice:` are all there (both checked
 2026-11-21). So the extlinux menu is
-written to the serial console on `ttyO2` at 1500000 baud and never reaches the
-LCD. There is no `usb_kbd` in it either, so even a visible menu could not be
+written to the serial console on `ttyO2` and never reaches the LCD. Which
+baud U-Boot uses has not been checked: the kernel runs the line at 1500000,
+but the vendor's buster kernel used `console=ttyO2,115200n8`, and a forum
+user reached U-Boot SPL 2016.11 at 115200
+(https://pyra-handheld.com/boards/posts/1696012/), so the menu is probably
+at 115200 and only the kernel switches to 1500000. There is no `usb_kbd` in it either, so even a visible menu could not be
 answered from the built-in keyboard.
 
 **And `timeout 30` is three seconds, not thirty.** extlinux timeouts are in

@@ -356,7 +356,19 @@ Ordered. Effort is one person's evenings, not ideal-world estimates.
 - [ ] **Map the controls.** SDL2 found `pyraInput Gamepad` by itself, which is
       further than expected; what is unchecked is whether the shoulder buttons
       and the nubs land somewhere sane, and whether an `SDL_GAMECONTROLLERCONFIG`
-      entry is worth writing for this device. — *a few hours*
+      entry is worth writing for this device. ptitSeb posted one
+      (https://pyra-handheld.com/boards/posts/1703335/):
+
+          03000000010000000100000001000000,pyraInput Gamepad,a:b3,b:b1,x:b0,y:b4,back:b10,start:b11,leftshoulder:b8,rightshoulder:b9,dpup:h0.1,dpdown:h0.4,dpleft:h0.8,dpright:h0.2,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:b6,righttrigger:b7,platform:Linux,
+
+      Its GUID matches the device on the r5 card (checked 2026-11-21:
+      `Bus=0003 Vendor=0001 Product=0001 Version=0001` with
+      funkeymonkey-pyrainput 0.1.19+pyra1, SDL 2.32.4, which has no built-in
+      entry for it). In the daemon's button order (A, B, C, X, Y, Z, TL, TR,
+      TL2, TR2, Select, Start, nub clicks) it leaves out b2 and b5 (the I and
+      II buttons) and b12/b13 (the nub clicks), and it puts A on SDL's x and X
+      on SDL's a. Whether that matches the keycaps better than SDL's own
+      guess from the evdev codes is untested. — *a few hours*
 - [ ] **Write `PyraDevice`.** The C++ object, the `Api.h` registration, the
       logind D-Bus calls for both backlights, polled reads for the rest, and
       the three rules above enforced in the class rather than in the theme. —
