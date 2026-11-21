@@ -1821,8 +1821,8 @@ positions already corrected by that matrix, works out evdev min/max values,
 and suggests a `MatchDriver "evdev"` snippet that libinput never reads. So
 nothing it prints changes anything.
 
-Use `device/pyra-touch-calibrate` instead, from a terminal in the desktop
-session. It needs `xinput` (`sudo apt install xinput`). It sets the matrix to
+Use `pyra-touch-calibrate` instead, from the menu or a terminal in the desktop
+session. It sets the matrix to
 identity, shows five crosses (hold each until it turns green), fits an affine
 matrix to them, applies it at once, and saves it with sudo to
 `/etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf`. X reads that file
@@ -1830,6 +1830,12 @@ after the vendor's, and its matrix wins (the Xorg log lists `Applying
 InputClass "Pyra touchscreen calibration"` after `"TSC2007 Touchscreen"`), so
 the vendor file stays untouched and a package upgrade asks nothing. A fit
 whose worst point is more than 20 px out, or Esc, restores the previous matrix.
+It sets the property through libXi (Python's ctypes), so it needs no `xinput`.
+
+A card prepped with fix 30 has it as `/usr/local/bin/pyra-touch-calibrate`, and
+the menu's "Calibrate Touchscreen" opens it in a terminal in place of
+`xinput_calibrator`. On a card without fix 30, copy `device/pyra-touch-calibrate`
+over and run it from a terminal.
 
     pyra-touch-calibrate             # calibrate, apply, save
     pyra-touch-calibrate --no-save   # until X restarts
@@ -1841,6 +1847,13 @@ and 3.9 px in two runs; the saved matrix was back after `systemctl restart
 lightdm`. The vendor matrix misses the same taps by about 5 px at the centre
 and 7-11 px near a corner (computed from those taps), so it was made on a
 different unit or panel. Expect that on yours too.
+
+X reads `xorg.conf.d` only when it starts. `--reset`, or deleting the saved
+file, changes the live matrix, but X keeps the config it started with. Each time
+it re-adds the touchscreen, it applies that config again, until X restarts. A
+`udevadm trigger` that reaches the touchscreen makes X re-add it. Seen on
+2026-11-21 (R89): a trigger brought back a matrix whose file had been deleted
+since X started. Run `--reset` again, or restart X.
 
 The evdev axes look wrong but work: `ABS_X` runs 0..719 and spans the 1280 px
 width, and `ABS_Y` runs 0..1279 and spans the 720 px height (the DT's
@@ -1863,9 +1876,25 @@ kernel for touchscreens (`LIBINPUT_FUZZ_00=5` and `LIBINPUT_FUZZ_01=5` in
 touchscreen path then doesn't use those values. With the kernel fuzz put back
 to 5 by hand (`EVIOCSABS`), two firm holds sent about 7 reports/s and moved
 by no more than 1 px. The owner thought the pointer looked steadier. Those holds
-were short (1.5 s), so take that as a sign, not a figure. A rule to keep the
-kernel fuzz is not in prep yet. Whether part of the remaining noise is the hand
-rather than the ADC would need a weighted stylus to tell.
+were short (1.5 s), so take that as a sign, not a figure. Whether part of the
+remaining noise is the hand rather than the ADC would need a weighted stylus to
+tell.
+
+Fix 30 keeps the kernel fuzz with `/etc/udev/rules.d/91-pyra-touch-fuzz.rules`
+(`fixes.md` has how it works). Check it with `sudo evtest /dev/input/event4`,
+which should list `Fuzz 5` under `ABS_X` and `ABS_Y`. With it, the Xorg log has
+`(EE) ... libinput bug: kernel fuzz of 5 even with LIBINPUT_FUZZ_00 present`
+(and `_01`) each time X opens the touchscreen. That is expected: libinput 1.28
+logs it whenever the kernel fuzz isn't 0, and then leaves the filtering to the
+kernel. To go back to libinput's behaviour, delete the rule and reboot.
+
+If a mass `udevadm trigger` (every input device at once) leaves the touchscreen
+dead in X, with `not using input device '/dev/input/event4'` and `Couldn't
+init device "TSC2007 Touchscreen"` in the Xorg log, trigger the touchscreen
+alone: `sudo udevadm trigger --action=change /sys/class/input/event4`. Seen once
+on 2026-11-21 (R89), with fix 30's rule in place, while X re-added `mouse0` and
+`event4` together. A trigger of the touchscreen alone, with the same rule,
+re-added it cleanly every time.
 
 ## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
 

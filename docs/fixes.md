@@ -1,4 +1,4 @@
-# The twenty-nine fixes, and what they actually do
+# The thirty fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -53,6 +53,7 @@ them out.
 | 27 | project choice | — (a sound icon for the AESS sink's two outputs, in place of MATE's) | — | — |
 | 29 | package fix | `funkeymonkey-pyrainput`: four key names that look up nothing, nub axes left off-centre inside the deadzone, brightness defaults after the config; `systemd-dev` in Build-Depends for the unit (fix 3). Patches in `patches/userspace/funkeymonkey-pyrainput/` | the vendor ships a build with the patches and the unit | `pyra-funkeymonkey-pyrainput-brightness-order.md` (0001; 0002/0003 not drafted yet) |
 | 28 | package fix | `pyra-config-xorg`: Fn+D and Fn+' are Alt as well as `_` and `:`, and Fn+R/Fn+T swap é and è; the patch is in `patches/userspace/pyra-config-xorg/`. The console half restores what Debian's keymap leaves out | `pyra-config-xorg` takes the patch (the console fragment stays) | — (none drafted yet) |
+| 30 | workaround | the image's menu offers `xinput_calibrator`, which knows only the evdev driver; libinput drops the DT's kernel fuzz on a touchscreen and does not filter in its place | the image ships a libinput calibrator, and libinput keeps or applies a touchscreen's fuzz | — (none drafted yet) |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2045,6 +2046,67 @@ the unit again.
 `KEY_PAUSE`, Fn+Usr1 `KEY_SCALE`, the nubs' gamepad axes follow the raw nub back
 to rest, and Fn+brightness steps the keyboard light from the config with fix
 15's drop-in moved aside.
+
+## Fix 30 — touchscreen calibration does nothing, and the pointer jitters
+
+**Symptom.** The menu's "Calibrate Touchscreen" runs `xinput_calibrator` 0.8.0.
+It prints a result, and nothing changes. With the stylus held still, the
+pointer jumps around by a few pixels. Diagnosis: `troubleshooting.md`,
+"Touchscreen calibration does nothing", and development log, R81.
+
+**Calibration.** X drives the TSC2007 with libinput, which takes a calibration
+only as its `libinput Calibration Matrix` property. `xinput_calibrator` knows
+only the evdev driver. Prep installs `/usr/local/bin/pyra-touch-calibrate`
+(from `device/`), which fits that matrix to five held targets, applies it
+live and saves it with sudo in `/etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf`.
+That file overrides the vendor's matrix and leaves the vendor's file alone. The
+tool sets and reads the property through libXi with Python's ctypes, the two
+calls `xinput` would make. The image has no `xinput` package, and prep runs no apt.
+libxi6 and python3-gi are on the image, and prep checks for both before fix 1
+writes anything. The menu entry `/usr/local/share/applications/xinput_calibrator.desktop`
+has the same name as `xinput-calibrator`'s. The session's `XDG_DATA_DIRS` is
+`/usr/share/mate:/usr/local/share/:/usr/share/`, so the menu shows this one,
+which opens the tool in a terminal (it asks for the sudo password there).
+`xinput-calibrator` itself stays installed.
+
+**Jitter.** The DT asks for `touchscreen-fuzz-x/-y = <5>`. libinput's
+`90-libinput-fuzz-override.rules` copies that into `LIBINPUT_FUZZ_00/01`, and
+its RUN (`libinput-fuzz-to-zero`) sets the kernel fuzz to 0. libinput 1.28 does
+not use those values for a touchscreen, so the raw noise reaches the pointer.
+`/etc/udev/rules.d/91-pyra-touch-fuzz.rules`, for the TSC2007 only, sets
+`EVDEV_ABS_00/01` to `:::<LIBINPUT_FUZZ>` and adds `RUN{builtin}+="keyboard"`.
+RUN entries run in the order they were added, so udev's keyboard builtin puts
+the fuzz back after libinput's program has zeroed it. A hwdb entry can't do it,
+because `60-evdev.rules` applies hwdb values before libinput's rule runs. Two
+side effects:
+
+- libinput logs `libinput bug: kernel fuzz of 5 even with LIBINPUT_FUZZ_00
+  present` (and `_01`) in the Xorg log, twice each time X opens the
+  touchscreen. It logs this whether the property is there or not
+  (`evdev_read_fuzz_prop` in 1.28.1), and then uses a fuzz of 0 for its own
+  view, so the kernel filters once and libinput adds nothing. The lines are
+  expected.
+- The kernel's filter (`input_defuzz_abs_event`) works in axis steps. With
+  fuzz 5, a change of 1 step from the last reported value is dropped, 2 to 4
+  steps move a quarter of the way, and 5 to 9 move halfway; 10 or more pass
+  as they are. One step is 1.78 px across (`ABS_X`, 720 steps over 1280 px)
+  and 0.56 px down, so a slow stroke lags by a few pixels and a still stylus
+  holds still.
+
+The rule also removes the drawback libinput's own rule notes: a second trigger
+no longer loses the fuzz, because the kernel value is 5 again when
+`libinput-fuzz-extract` reads it.
+
+Nothing in fix 30 is per machine, so `--release` keeps all three files. A
+second run finds them up to date.
+
+**Checked** 2026-11-21 on the r5 release card, with the three files copied in
+by hand (`verification-log.md`, R89). After `udevadm trigger`, `evtest` showed
+Fuzz 5 on `ABS_X` and `ABS_Y`. X re-added the touchscreen with the two expected
+lines and nothing else. The owner opened the tool from the menu, calibrated and
+saved, and found dragging and writing fine. The selftest asserts the files, that
+the image's python3 and ctypes have everything the tool calls, that the menu
+resolves to the new entry, and that the image's `udevadm verify` passes the rule.
 
 ## Fixes 6, 7 and 12 as a package
 

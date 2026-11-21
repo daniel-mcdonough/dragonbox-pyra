@@ -1,0 +1,16 @@
+[Desktop Entry]
+# Installed by pyra-trixie-prep.sh (fix 30). Same name as xinput-calibrator's
+# entry in /usr/share/applications, which /usr/local/share comes before in
+# XDG_DATA_DIRS, so the menu shows this one instead: xinput_calibrator only
+# knows the evdev driver and changes nothing under libinput.
+Name=Calibrate Touchscreen
+Name[de]=Touchscreen Kalibrieren
+Name[nl]=Touchscreen Kalibreren
+Name[ru]=Калибровка тачскрина
+Comment=Calibrate the touchscreen for the libinput driver and keep it
+Exec=/bin/sh -c "/usr/local/bin/pyra-touch-calibrate; echo; echo Press Enter to close this window.; read x"
+Terminal=true
+Type=Application
+Icon=xinput_calibrator
+StartupNotify=true
+Categories=System;Settings;

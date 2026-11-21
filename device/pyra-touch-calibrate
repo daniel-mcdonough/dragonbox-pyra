@@ -15,7 +15,7 @@ This tool does the job for libinput:
   2. shows five targets, one at a time; touch and hold each one until it turns
      green, then lift. The median of the samples while held is used;
   3. fits an affine matrix to the five points (least squares) and applies it
-     at once with xinput;
+     at once (through libXi, as xinput set-prop would);
   4. saves it to /etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf
      (with sudo), which X reads after the vendor's 99-pyra-touchscreen.conf
      and which overrides its matrix. The vendor file is left alone, so a
@@ -30,9 +30,10 @@ saves nothing.
     pyra-touch-calibrate --reset     remove the saved file, back to the vendor matrix
 
 Run it from a terminal in the desktop session (it asks for the sudo password
-there). Needs xinput (apt install xinput) and python3-gi.
+there), or from the menu: "Calibrate Touchscreen" opens it in one. Needs
+python3-gi and libXi (libxi6); both are on the Pyra's image.
 """
-import os, shutil, subprocess, sys, tempfile
+import ctypes, os, subprocess, sys, tempfile
 
 DEVICE = "TSC2007 Touchscreen"
 PROP = "libinput Calibration Matrix"
@@ -49,21 +50,93 @@ def die(msg):
     sys.exit(1)
 
 
-def xinput(*args):
-    return subprocess.run(["xinput"] + list(args), check=True,
-                          capture_output=True, text=True).stdout
+class _XIDeviceInfo(ctypes.Structure):
+    _fields_ = [("deviceid", ctypes.c_int), ("name", ctypes.c_char_p),
+                ("use", ctypes.c_int), ("attachment", ctypes.c_int),
+                ("enabled", ctypes.c_int), ("num_classes", ctypes.c_int),
+                ("classes", ctypes.c_void_p)]
+
+
+class _XI:
+    """The two calls xinput makes for us, through libXi (no xinput package).
+
+    XI2 property data of format 32 is 32-bit items, so the matrix travels as
+    nine C floats, as xinput's own XI2 code sends it."""
+
+    def __init__(self):
+        x11 = ctypes.CDLL("libX11.so.6")
+        xi = ctypes.CDLL("libXi.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XInternAtom.restype = ctypes.c_ulong
+        x11.XInternAtom.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_int]
+        x11.XSync.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        x11.XFree.argtypes = [ctypes.c_void_p]
+        xi.XIQueryVersion.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_int)] * 2
+        xi.XIQueryDevice.restype = ctypes.POINTER(_XIDeviceInfo)
+        xi.XIQueryDevice.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(ctypes.c_int)]
+        xi.XIFreeDeviceInfo.argtypes = [ctypes.POINTER(_XIDeviceInfo)]
+        xi.XIGetProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_long, ctypes.c_long,
+            ctypes.c_int, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.c_void_p)]
+        xi.XIChangeProperty.argtypes = [
+            ctypes.c_void_p, ctypes.c_int, ctypes.c_ulong, ctypes.c_ulong,
+            ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_int]
+        self.x11, self.xi = x11, xi
+        self.dpy = x11.XOpenDisplay(None)
+        if not self.dpy:
+            die("cannot open the X display %r" % os.environ.get("DISPLAY"))
+        major, minor = ctypes.c_int(2), ctypes.c_int(0)
+        if xi.XIQueryVersion(self.dpy, ctypes.byref(major), ctypes.byref(minor)) != 0:
+            die("the X server has no XInput 2")
+        n = ctypes.c_int()
+        devs = xi.XIQueryDevice(self.dpy, 0, ctypes.byref(n))   # XIAllDevices
+        ids = [devs[i].deviceid for i in range(n.value) if devs[i].name == DEVICE.encode()]
+        xi.XIFreeDeviceInfo(devs)
+        if not ids:
+            die("X has no input device named %r" % DEVICE)
+        self.dev = ids[0]
+        self.prop = x11.XInternAtom(self.dpy, PROP.encode(), True)
+        self.float = x11.XInternAtom(self.dpy, b"FLOAT", True)
+
+    def get(self):
+        type_, fmt_, n, after = ctypes.c_ulong(), ctypes.c_int(), ctypes.c_ulong(), ctypes.c_ulong()
+        data = ctypes.c_void_p()
+        if (not self.prop or self.xi.XIGetProperty(
+                self.dpy, self.dev, self.prop, 0, 9, False, 0, ctypes.byref(type_),
+                ctypes.byref(fmt_), ctypes.byref(n), ctypes.byref(after), ctypes.byref(data)) != 0
+                or type_.value != self.float or fmt_.value != 32 or n.value != 9):
+            if data:
+                self.x11.XFree(data)
+            die("%r has no %r property: is X using the libinput driver for it?" % (DEVICE, PROP))
+        m = list(ctypes.cast(data, ctypes.POINTER(ctypes.c_float * 9)).contents)
+        self.x11.XFree(data)
+        return m
+
+    def set(self, m):
+        arr = (ctypes.c_float * 9)(*m)
+        self.xi.XIChangeProperty(self.dpy, self.dev, self.prop, self.float, 32, 0, arr, 9)
+        self.x11.XSync(self.dpy, False)   # PropModeReplace; XSync reports errors now
+
+
+_xi = None
+
+
+def _xinput():
+    global _xi
+    if _xi is None:
+        _xi = _XI()
+    return _xi
 
 
 def get_matrix():
-    for line in xinput("list-props", DEVICE).splitlines():
-        name, _, value = line.strip().partition(":")
-        if name.rsplit(" (", 1)[0] == PROP:
-            return [float(v) for v in value.split(",")]
-    die("%r has no %r property: is X using the libinput driver for it?" % (DEVICE, PROP))
+    return _xinput().get()
 
 
 def set_matrix(m):
-    xinput("set-prop", DEVICE, "--type=float", PROP, *["%.6f" % v for v in m])
+    _xinput().set(m)
 
 
 def vendor_matrix():
@@ -275,8 +348,6 @@ def main():
         return 0
     if not os.environ.get("DISPLAY"):
         die("no DISPLAY: run this in the desktop session")
-    if not shutil.which("xinput"):
-        die("xinput is not installed (sudo apt install xinput)")
     if args == ["--show"]:
         print("current:  " + fmt(get_matrix()))
         print("vendor:   " + fmt(vendor_matrix()))

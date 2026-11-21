@@ -2610,3 +2610,43 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
 - Left: nothing. The calibration file was removed with `--reset` (vendor matrix back, verified with `--show`),
   the two packages and their automatic dependencies (`python3-libevdev`, `python3-pyudev`) were purged, and the
   `/tmp` files were deleted. The libinput security update above stays.
+
+## 2026-11-21 — fix 30: the calibration tool, its menu entry and the kernel fuzz (R89)
+
+- Card: the r5 release card, `5.6.19-m4-kbdled`, libinput 1.28.1-1+deb13u1, systemd 257.9-1~deb13u1. No
+  `xinput` installed. Fix 30's three files copied in by hand to their prep paths.
+- Before: `evtest` on `/dev/input/event4` showed no fuzz on `ABS_X`/`ABS_Y` (`ABS_PRESSURE` fuzz 50);
+  `udevadm info`: `LIBINPUT_FUZZ_00=5`, `LIBINPUT_FUZZ_01=5`.
+- First version of the rule: no effect. udev's debug log showed none of its lines: `ATTRS{name}!="TSC2007
+  Touchscreen"` is true at `event4` itself, which has no `name`, so it jumped to the end. With a positive
+  `ATTRS{name}==` match: kernel fuzz set back to 5 by hand (the boot state, before libinput's rule), then
+  `udevadm trigger --action=change` on `event4`. udev's debug log ran `libinput-fuzz-to-zero`, then the keyboard
+  builtin: `keyboard: 0 overridden with 0/719/0/5/0`, `keyboard: 1 overridden with 0/1279/0/5/0`. Kernel fuzz
+  read back 5 and 5 (`EVIOCGABS`), and `udevadm info` added `EVDEV_ABS_00=:::5` and `EVDEV_ABS_01=:::5`.
+  `udevadm test` can't show this: it skips `libinput-fuzz-extract`, so `LIBINPUT_FUZZ` is never set.
+- A second trigger, with nothing reset by hand: `evtest` showed `Fuzz 5` on `ABS_X` and `ABS_Y`. The journal
+  had nothing from libinput. The Xorg log, each time X opened the device: `(EE) event4 - TSC2007 Touchscreen:
+  libinput bug: kernel fuzz of 5 even with LIBINPUT_FUZZ_00 present` and the same for `_01`. libinput
+  1.28.1's `evdev_read_fuzz_prop` logs that whenever the kernel fuzz is not 0, and returns 0 for its own view.
+- One `udevadm trigger --subsystem-match=input` (all input devices): X added `mouse0` as "TSC2007
+  Touchscreen", then failed to re-add `event4` (`not using input device '/dev/input/event4'`, `Couldn't init
+  device`). The touchscreen was gone from X's device list. A trigger of `event4` alone re-added it, with the
+  rule still in place; so did the two before it.
+- Each re-add applied R81's run-1 matrix, whose file was deleted after X last started: X keeps the
+  `xorg.conf.d` it read at startup. `--reset` put the vendor matrix back.
+- `pyra-touch-calibrate` through ctypes `libXi`: `--show` read the live matrix; a set/get round trip of
+  `1.01 0.02 -0.03 0.04 1.05 -0.06 0 0 1` read back exactly to 6 places; `--reset` set the vendor matrix.
+  The selftest's checks, run natively: `--help`, libXi's and Xlib's calls found, GTK 3 present, the entry
+  loads with Terminal and the tool in Exec, Gio with the session's `XDG_DATA_DIRS`
+  (`/usr/share/mate:/usr/local/share/:/usr/share/`, from mate-panel's environment) resolves
+  `xinput_calibrator.desktop` to `/usr/local/share/applications`, `udevadm verify` passes the rule.
+- The owner opened "Calibrate Touchscreen" from the menu: the tool ran in a terminal, and saved with sudo
+  (journal: `TTY=pts/0 ... install -m 644 /tmp/tmp….conf /etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf`),
+  matrix `0.996126 0.003231 0.011264 0.006748 1.067094 -0.035172`. With fuzz 5, dragging and writing with the
+  stylus: "the touch screen feels fine" (owner).
+- Prep selftest (owner, same day): 417 passed, 0 failed, 0 skipped, up from 401 (fix 30's 15 assertions and its
+  run-2 check).
+- Left: nothing. The saved calibration was removed with `--reset`, the three files deleted (and the empty
+  `/usr/local/share/applications`), then `event4` triggered again: kernel fuzz 0, the touchscreen re-added
+  in X with no fuzz lines, and `--reset` once more after the re-add restored R81's stale matrix. `--show`:
+  the vendor matrix. `/tmp` files deleted.

@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 29 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 30 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1261,6 +1261,60 @@ for c in "0.1.19+pyra1|silent" "0.1.20+pyra1|silent" "|silent" "0.1.19|warn" "0.
 done
 
 ########################################################################
+i "assert fix 30 — the touchscreen calibration tool, its menu entry, and the kernel fuzz"
+########################################################################
+TOUCH_FILES="pyra-touch-calibrate:/usr/local/bin:755
+usr/local/share/applications/xinput_calibrator.desktop:/usr/local/share/applications:644
+etc/udev/rules.d/91-pyra-touch-fuzz.rules:/etc/udev/rules.d:644"
+for spec in $TOUCH_FILES; do
+    IFS=: read -r src dir mode <<<"$spec"
+    D=$MNT$dir/$(basename "$src")
+    [[ -e $D ]] && cmp -s "$PAYLOADS/$src" "$D" && p "fix30: ${D#$MNT} matches repo" || f "fix30: ${D#$MNT} missing or differs from repo"
+    [[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "$mode 0:0" ]] && p "fix30: ${D#$MNT} is $mode root:root" \
+        || f "fix30: ${D#$MNT} mode is $(stat -c '%a %u:%g' "$D" 2>/dev/null), want $mode 0:0"
+done
+[[ $(stat -c '%a %u:%g' "$MNT/usr/local/share/applications" 2>/dev/null) == "755 0:0" ]] \
+    && p "fix30: /usr/local/share/applications is 755 root:root" || f "fix30: /usr/local/share/applications is $(stat -c '%a %u:%g' "$MNT/usr/local/share/applications" 2>/dev/null)"
+# The image's python3 runs the tool (--help needs no display), and its ctypes
+# finds every libXi and Xlib call the tool makes, so no xinput is needed.
+got=$(in_chroot /usr/local/bin/pyra-touch-calibrate --help 2>&1 | head -1 || true)
+[[ $got == "Calibrate the Pyra's touchscreen for the libinput X driver, and keep it." ]] \
+    && p "fix30: the image's python3 runs pyra-touch-calibrate --help" || f "fix30: pyra-touch-calibrate --help printed '$got'"
+got=$(in_chroot python3 -c 'import ctypes
+xi, x11 = ctypes.CDLL("libXi.so.6"), ctypes.CDLL("libX11.so.6")
+for n in ("XIQueryVersion", "XIQueryDevice", "XIFreeDeviceInfo", "XIGetProperty", "XIChangeProperty"): getattr(xi, n)
+for n in ("XOpenDisplay", "XInternAtom", "XSync", "XFree"): getattr(x11, n)
+import gi; gi.require_version("Gtk", "3.0"); gi.require_version("Gdk", "3.0"); print("ok")' 2>&1 || true)
+[[ $got == ok ]] && p "fix30: the image's ctypes finds libXi's and Xlib's calls, and GTK 3 is there" || f "fix30: the tool's libraries: $got"
+[[ ! -e $MNT/usr/bin/xinput ]] && i "fix30: the image has no xinput, as expected" || i "fix30: the image has /usr/bin/xinput"
+# The entry loads with the image's GLib, runs the installed tool in a terminal,
+# and wins over xinput-calibrator's with the session's XDG_DATA_DIRS (as read
+# from mate-panel's environment on a running card).
+got=$(in_chroot python3 -c 'from gi.repository import GLib
+k = GLib.KeyFile(); k.load_from_file("/usr/local/share/applications/xinput_calibrator.desktop", 0)
+print(k.get_boolean("Desktop Entry", "Terminal"), "/usr/local/bin/pyra-touch-calibrate;" in k.get_string("Desktop Entry", "Exec"))' 2>&1 || true)
+[[ $got == "True True" ]] && p "fix30: the menu entry loads, runs the tool, in a terminal" || f "fix30: the menu entry reads '$got', want Terminal and the tool in Exec"
+got=$(in_chroot env XDG_DATA_DIRS=/usr/share/mate:/usr/local/share/:/usr/share/ python3 -c 'from gi.repository import Gio
+print(Gio.DesktopAppInfo.new("xinput_calibrator.desktop").get_filename())' 2>&1 || true)
+[[ $got == /usr/local/share/applications/xinput_calibrator.desktop ]] \
+    && p "fix30: the menu's xinput_calibrator.desktop is fix 30's" || f "fix30: xinput_calibrator.desktop resolves to '$got'"
+[[ -e $MNT/usr/share/applications/xinput_calibrator.desktop ]] && p "fix30: xinput-calibrator's own entry is untouched" || f "fix30: xinput-calibrator's own entry is gone"
+# The rule parses with the image's udevadm, and its RUN comes after the RUN of
+# libinput's rule, which is what sets the fuzz to 0.
+got=$(in_chroot udevadm verify --resolve-names=never /etc/udev/rules.d/91-pyra-touch-fuzz.rules 2>&1 || true)
+grep -q 'Fail: *0' <<<"$got" && p "fix30: the image's udevadm verify passes the fuzz rule" || f "fix30: udevadm verify: $(tr '\n' ' ' <<<"$got")"
+LI=$MNT/usr/lib/udev/rules.d/90-libinput-fuzz-override.rules
+# udev reads the rule files of all its directories in one order, by name.
+ORDER=$(find "$MNT/usr/lib/udev/rules.d" "$MNT/etc/udev/rules.d" -name '*.rules' -printf '%f\n' | LC_ALL=C sort -u)
+grep -q 'RUN{program}+="libinput-fuzz-to-zero' "$LI" 2>/dev/null \
+    && (( $(grep -nxF 90-libinput-fuzz-override.rules <<<"$ORDER" | cut -d: -f1) < $(grep -nxF 91-pyra-touch-fuzz.rules <<<"$ORDER" | cut -d: -f1) )) \
+    && p "fix30: the rule sorts after libinput's, whose RUN zeroes the fuzz" || f "fix30: no libinput fuzz-to-zero rule before 91-pyra-touch-fuzz.rules"
+R=$MNT/etc/udev/rules.d/91-pyra-touch-fuzz.rules
+grep -qF 'ENV{EVDEV_ABS_00}=":::$env{LIBINPUT_FUZZ_00}"' "$R" && grep -qF 'ENV{EVDEV_ABS_01}=":::$env{LIBINPUT_FUZZ_01}"' "$R" \
+    && grep -qF 'RUN{builtin}+="keyboard"' "$R" && p "fix30: the rule hands libinput's fuzz back to the kernel with RUN{builtin}" \
+    || f "fix30: the rule does not set EVDEV_ABS_00/01 from LIBINPUT_FUZZ and RUN the keyboard builtin"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1327,6 +1381,7 @@ if [[ $PION == yes ]]; then
 fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
+[[ $(grep -cE 'fix30: .*already up to date' "$OUT/prep-run2.log") -eq 3 ]] && p "run 2 reported fix30's three files already up to date" || f "run 2 did not report fix30's three files up to date"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"

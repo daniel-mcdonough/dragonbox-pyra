@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the twenty-nine known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -49,6 +49,11 @@
 # that warns if a package run replaces it. With no option it downloads the
 # pinned release; --pyrainput FILE uses a .deb you have; --no-pyrainput leaves
 # the vendor's 0.1.19 (fix 3 still gives it a unit).
+#
+# Fix 30 installs pyra-touch-calibrate (a touchscreen calibration for the
+# libinput driver, which xinput_calibrator is not) with a menu entry in place
+# of xinput_calibrator's, and a udev rule that gives the touchscreen back the
+# kernel fuzz libinput's rule takes away.
 #
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
@@ -323,6 +328,18 @@ esac
 HOSTKEYS_UNIT_SRC=$PAYLOADS/pyra-ssh-hostkeys.service
 [[ -r $HOSTKEYS_UNIT_SRC ]] || die "fix23: pyra-ssh-hostkeys.service not found (looked in $PAYLOADS)"
 [[ -x $ROOT/usr/bin/ssh-keygen ]] || die "fix23: the image has no /usr/bin/ssh-keygen to make host keys on the first boot"
+# Fix 30's three files, "source destination-directory mode". The tool calls
+# libXi through ctypes and draws with GTK 3, so the image must have both.
+TOUCH_FILES="pyra-touch-calibrate:/usr/local/bin:0755
+usr/local/share/applications/xinput_calibrator.desktop:/usr/local/share/applications:0644
+etc/udev/rules.d/91-pyra-touch-fuzz.rules:/etc/udev/rules.d:0644"
+for spec in $TOUCH_FILES; do
+    [[ -r $PAYLOADS/${spec%%:*} ]] || die "fix30: ${spec%%:*} not found (looked in $PAYLOADS)"
+done
+for f in usr/lib/arm-linux-gnueabihf/libXi.so.6 usr/lib/arm-linux-gnueabihf/libX11.so.6 \
+         usr/lib/arm-linux-gnueabihf/girepository-1.0/Gtk-3.0.typelib usr/lib/python3/dist-packages/gi/__init__.py; do
+    [[ -e $ROOT/$f ]] || die "fix30: the image has no /$f, which pyra-touch-calibrate needs"
+done
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -2470,6 +2487,37 @@ $out"
         fi
     done
 fi
+
+# ---------------------------------------------------------------------- fix 30
+#
+# The menu's "Calibrate Touchscreen" runs xinput_calibrator, which knows only
+# the evdev driver. X drives the TSC2007 with libinput, so nothing it prints
+# changes anything. pyra-touch-calibrate fits libinput's calibration matrix,
+# applies it through libXi (by ctypes: the image has no xinput and prep runs no
+# apt) and saves it in an X config file of its own. An entry of the same name in
+# /usr/local/share/applications, which comes before /usr/share in the session's
+# XDG_DATA_DIRS, puts it in the menu instead.
+#
+# The pointer jitters with the stylus held still. The DT asks for a kernel fuzz
+# of 5; libinput's 90-libinput-fuzz-override.rules sets it to 0, and libinput
+# 1.28 does not use the value for a touchscreen. The rule here runs after it and
+# puts the fuzz back. libinput then logs two "libinput bug: kernel fuzz of 5"
+# lines each time it opens the touchscreen, and leaves the filtering to the
+# kernel. Nothing here is per machine, so --release keeps all three.
+
+for spec in $TOUCH_FILES; do
+    IFS=: read -r src dir mode <<<"$spec"
+    dst=$ROOT$dir/$(basename "$src")
+    if [[ -e $dst ]] && cmp -s "$PAYLOADS/$src" "$dst"; then
+        ok "fix30: ${dst#$ROOT} already up to date"
+    else
+        VERB=$([[ -e $dst ]] && echo updated || echo installed)
+        install -D -m "$mode" -o 0 -g 0 "$PAYLOADS/$src" "$dst"
+        ok "fix30: $VERB ${dst#$ROOT}"
+    fi
+done
+grep -qs 'RUN{program}+="libinput-fuzz-to-zero' "$ROOT/usr/lib/udev/rules.d/90-libinput-fuzz-override.rules" ||
+    warn "fix30: the image's libinput has no fuzz-to-zero rule; 91-pyra-touch-fuzz.rules will find nothing to put back"
 
 # ------------------------------------------------------------------- release
 #

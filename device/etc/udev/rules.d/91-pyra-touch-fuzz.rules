@@ -1,0 +1,25 @@
+# Installed by pyra-trixie-prep.sh (fix 30). Puts the TSC2007's kernel fuzz
+# back after libinput's 90-libinput-fuzz-override.rules takes it away.
+#
+# The DT asks for touchscreen-fuzz-x/-y = <5>. libinput's rule copies that into
+# LIBINPUT_FUZZ_00/01 and its RUN sets the kernel fuzz to 0, but libinput 1.28
+# does not use those values for a touchscreen, so the raw ADC noise reaches the
+# pointer (docs/troubleshooting.md, "Touchscreen calibration does nothing").
+# RUN entries run in the order they were added, so this one runs after
+# libinput-fuzz-to-zero. udev's keyboard builtin applies EVDEV_ABS_<axis>
+# (min:max:res:fuzz:flat; empty fields keep the kernel's values).
+# A hwdb entry cannot do this: 60-evdev applies it before libinput's rule.
+
+ACTION=="remove", GOTO="pyra_touch_fuzz_end"
+KERNEL!="event*", GOTO="pyra_touch_fuzz_end"
+ENV{ID_INPUT_TOUCHSCREEN}!="1", GOTO="pyra_touch_fuzz_end"
+# Not ATTRS{name}!=: that is true at event4 itself, which has no name.
+ATTRS{name}=="TSC2007 Touchscreen", GOTO="pyra_touch_fuzz_tsc2007"
+GOTO="pyra_touch_fuzz_end"
+LABEL="pyra_touch_fuzz_tsc2007"
+
+ENV{LIBINPUT_FUZZ_00}=="?*", ENV{EVDEV_ABS_00}=":::$env{LIBINPUT_FUZZ_00}"
+ENV{LIBINPUT_FUZZ_01}=="?*", ENV{EVDEV_ABS_01}=":::$env{LIBINPUT_FUZZ_01}"
+ENV{EVDEV_ABS_00}=="?*", RUN{builtin}+="keyboard"
+
+LABEL="pyra_touch_fuzz_end"
