@@ -257,6 +257,35 @@ done
 # GOption keeps the long name without its dashes; --help adds them.
 grep -qaF disable-acceleration-check "$ROOT/usr/bin/mate-session" 2>/dev/null ||
     die "fix25: the image's mate-session has no --disable-acceleration-check option"
+# Fix 28 patches pyra-config-xorg's keymap with the patch in the repository
+# and appends a fragment to console-setup's remap.inc. A keymap that is
+# neither the known stock file nor already fixed stops prep here.
+FN_XKB=/usr/share/X11/xkb/symbols/pyra
+FN_XKB_DIST=$FN_XKB.dist
+FN_XKB_PATCH=$SCRIPTDIR/../patches/userspace/pyra-config-xorg/0001-fn-d-and-fn-apostrophe-not-alt-r-t-accents.patch
+FN_XKB_STOCK_SHA256=1125b26a7ed6599c7c8558f20ac1b3d886e55684565e8435443840841aa033a0   # pyra-config-xorg 0.38, 0.39
+FN_XKB_FIXED_SHA256=19030823f8cc776b63dc070db1d1e1ba4b3f9d850a3b7e6323b58cf855466db7
+FN_KMAP_SRC=$PAYLOADS/etc/console-setup/pyra-fn.kmap
+FN_REMAP=/etc/console-setup/remap.inc
+FN_KMAP_CACHE=/etc/console-setup/cached_UTF-8_del.kmap.gz
+[[ -r $FN_XKB_PATCH ]] || die "fix28: $(basename "$FN_XKB_PATCH") not found (looked in patches/userspace/pyra-config-xorg)"
+[[ -r $FN_KMAP_SRC ]] || die "fix28: pyra-fn.kmap not found (looked in $PAYLOADS/etc/console-setup)"
+command -v patch >/dev/null || die "fix28: this PC has no 'patch' (the keymap fix applies the repository's patch)"
+fn_sha() { sha256sum "$1" 2>/dev/null | cut -d' ' -f1; }
+if [[ -e $ROOT$FN_XKB_DIST ]]; then
+    [[ $(fn_sha "$ROOT$FN_XKB_DIST") == "$FN_XKB_STOCK_SHA256" ]] ||
+        die "fix28: $FN_XKB_DIST is not the known stock keymap of pyra-config-xorg 0.39; start from the vendor image"
+    case $(fn_sha "$ROOT$FN_XKB") in
+    "$FN_XKB_FIXED_SHA256"|"$FN_XKB_STOCK_SHA256"|"") ;;
+    *) die "fix28: $FN_XKB is neither the stock nor the fixed keymap; start from the vendor image" ;;
+    esac
+else
+    [[ $(fn_sha "$ROOT$FN_XKB") == "$FN_XKB_STOCK_SHA256" ]] ||
+        die "fix28: $FN_XKB is not the known stock keymap of pyra-config-xorg 0.39; start from the vendor image"
+fi
+[[ -r $ROOT$FN_REMAP ]] || die "fix28: the image has no $FN_REMAP (console-setup-linux)"
+grep -qx 'CHARMAP="UTF-8"' "$ROOT/etc/default/console-setup" 2>/dev/null ||
+    die "fix28: the image's /etc/default/console-setup does not set CHARMAP=\"UTF-8\"; fix 28 rebuilds ${FN_KMAP_CACHE##*/}"
 # Fix 21 runs the device script on the image, so the patch has one
 # implementation. A library it doesn't know stops prep here, before fix 1.
 WSEGL_FIX=$PAYLOADS/pyra-wsegl-fdfix.sh
@@ -2221,6 +2250,95 @@ $out"
     grep -qs 'XDG_CONFIG_DIRS=/etc/xdg/pyra' "$ROOT/etc/X11/Xsession.d/65pyra_xdg-config" ||
         warn "fix27: the image has no /etc/X11/Xsession.d/65pyra_xdg-config (pyra-config-desktop); MATE's sound icon will show beside pyra-sound's"
     ok "fix27: pyra-sound starts at login and MATE's sound icon is masked"
+fi
+
+# ---------------------------------------------------------------------- fix 28
+#
+# The input daemon makes the Fn layer by sending spare keycodes (Fn+D is 197,
+# Fn+' 196). Under X, pyra-config-xorg's keymap gives them their symbols, but
+# the pc symbols also make 196 and 197 Alt: a key pressed before `_` or `:` is
+# let go arrives as Alt+key, and Shift+Fn+D or Shift+Fn+' types nothing.
+# Fn+R and Fn+T give the accents the other way round from the keycaps. The
+# patch in patches/userspace/pyra-config-xorg fixes all three. The file is
+# diverted (dpkg-divert, to pyra.dist) so a package run doesn't put the stock
+# one back; X compiles the keymap at every start, so nothing is cached.
+#
+# On a tty, Debian's console keymap has nothing on most of those keycodes:
+# Fn plus a letter in the top two rows, Fn+' and Fn+M type nothing. A fragment
+# appended to remap.inc, which ckbcomp adds to every keymap it builds, gives
+# them their keycap symbols; the cached keymap the boot loads is rebuilt with
+# the image's setupcon, which rebuilds it only when it is missing or older
+# than /etc/default/keyboard, so prep removes it first. docs/fixes.md.
+
+if [[ $(in_chroot dpkg-divert --truename "$FN_XKB") == "$FN_XKB_DIST" ]]; then
+    ok "fix28: $FN_XKB is already diverted to ${FN_XKB_DIST##*/}"
+else
+    in_chroot dpkg-divert --add --rename --divert "$FN_XKB_DIST" "$FN_XKB" >/dev/null ||
+        die "fix28: dpkg-divert could not divert $FN_XKB"
+    ok "fix28: diverted pyra-config-xorg's $FN_XKB to ${FN_XKB_DIST##*/}"
+fi
+if [[ $(fn_sha "$ROOT$FN_XKB") == "$FN_XKB_FIXED_SHA256" ]]; then
+    ok "fix28: $FN_XKB already fixed"
+else
+    FN_TMP=$(mktemp)
+    patch --no-backup-if-mismatch -s -o "$FN_TMP" "$ROOT$FN_XKB_DIST" <"$FN_XKB_PATCH" ||
+        { rm -f -- "$FN_TMP"; die "fix28: the keymap patch does not apply to $FN_XKB_DIST"; }
+    [[ $(fn_sha "$FN_TMP") == "$FN_XKB_FIXED_SHA256" ]] ||
+        { rm -f -- "$FN_TMP"; die "fix28: the patched keymap's SHA-256 is not the pinned one"; }
+    install -m 0644 -o 0 -g 0 "$FN_TMP" "$ROOT$FN_XKB"
+    rm -f -- "$FN_TMP"
+    ok "fix28: installed the fixed $FN_XKB"
+fi
+# Compile the keymap X builds at boot with the image's xkbcomp and read back
+# the three keys.
+FN_KM=$(in_chroot xkbcomp -w0 -xkb - - 2>/dev/null <<'EOF'
+xkb_keymap {
+    xkb_keycodes { include "evdev+aliases(qwerty)" };
+    xkb_types    { include "complete" };
+    xkb_compat   { include "complete" };
+    xkb_symbols  { include "pc+pyra(pyra)+inet(evdev)" };
+    xkb_geometry { include "pc(pc104)" };
+};
+EOF
+) || die "fix28: the image's xkbcomp could not compile the Pyra keymap with the fixed file"
+fn_key() { awk -v k="^ *key +<$1> +[{]" '$0 ~ k {p = 1} p {print} p && /};/ {exit}' <<<"$FN_KM" | tr -s ' \n' ' '; }
+[[ $(fn_key META) == *"underscore, underscore"*"NoAction(), NoAction()"* ]] ||
+    die "fix28: the compiled keymap's Fn+D (<META>) is not underscore without an action: $(fn_key META)"
+[[ $(fn_key ALT) == *"colon, colon"*"NoAction(), NoAction()"* ]] ||
+    die "fix28: the compiled keymap's Fn+' (<ALT>) is not colon without an action: $(fn_key ALT)"
+[[ $(fn_key I154) == *"eacute, Eacute"* && $(fn_key I168) == *"egrave, Egrave"* ]] ||
+    die "fix28: the compiled keymap's Fn+R/Fn+T are not é/è"
+unset FN_KM
+ok "fix28: X types _ and : with Fn+D and Fn+' (not Alt, also with Shift), é on Fn+R and è on Fn+T"
+
+FN_BEGIN='# >>> pyra-fn: the Pyra Fn layer (dragonbox-pyra prep, fix 28)'
+FN_END='# <<< pyra-fn'
+# The image's own lines, without an earlier copy of the block (and without
+# trailing blank lines, which $() drops), then the block.
+FN_WANT=$(awk -v b="$FN_BEGIN" -v e="$FN_END" '$0 == b {s = 1} !s {print} $0 == e {s = 0}' "$ROOT$FN_REMAP")
+FN_WANT+=$'\n\n'"$FN_BEGIN"$'\n'"$(cat "$FN_KMAP_SRC")"$'\n'"$FN_END"
+if [[ $(cat "$ROOT$FN_REMAP") == "$FN_WANT" ]]; then
+    ok "fix28: $FN_REMAP already carries the Fn fragment"
+else
+    VERB=$(grep -qxF "$FN_BEGIN" "$ROOT$FN_REMAP" && echo updated || echo appended)
+    printf '%s\n' "$FN_WANT" >"$ROOT$FN_REMAP"
+    ok "fix28: $VERB the Fn fragment in $FN_REMAP"
+fi
+fn_cache_ok() {
+    [[ -r $ROOT$FN_KMAP_CACHE ]] &&
+        ! grep '^keycode' "$FN_KMAP_SRC" | grep -vxFf <(zcat "$ROOT$FN_KMAP_CACHE" 2>/dev/null) | grep -q .
+}
+if fn_cache_ok; then
+    ok "fix28: $FN_KMAP_CACHE already has the Fn keys"
+else
+    rm -f -- "$ROOT$FN_KMAP_CACHE"
+    chroot_mount
+    out=$(in_chroot setupcon --save-only 2>&1) ||
+        { chroot_unmount; die "fix28: setupcon --save-only failed in the chroot:
+$out"; }
+    chroot_unmount
+    fn_cache_ok || die "fix28: setupcon rebuilt $FN_KMAP_CACHE without the Fn keys"
+    ok "fix28: rebuilt $FN_KMAP_CACHE with the Fn keys (the console loads it at boot)"
 fi
 
 # ------------------------------------------------------------------- release
