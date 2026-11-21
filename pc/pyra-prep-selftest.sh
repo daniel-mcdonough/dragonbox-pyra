@@ -582,6 +582,21 @@ else
     f "fix8: the helper is not executable, so the udev rule cannot run it"
 fi
 
+# After a replug the chip's own D+/D- detection sets the limit about 0.1-0.6 s
+# after the plug event that runs the helper (3 A on an adapter, 500 mA on the
+# normal port; R74). The helper has to start its delayed re-check, and the
+# image has to have the systemd-run it starts it with.
+if grep -q -- '--settle' "$F8_HELPER" && grep -q 'systemd-run --no-block' "$F8_HELPER"; then
+    p "fix8: the helper re-checks the limit after the chip's detection"
+else
+    f "fix8: the helper does not re-check after detection; a replug leaves the chip's limit"
+fi
+if [[ -x $MNT/usr/bin/systemd-run ]]; then
+    p "fix8: systemd-run is on the image for the delayed re-check"
+else
+    f "fix8: no /usr/bin/systemd-run on the image; the re-check after a replug never runs"
+fi
+
 # The rule has to name this board's charger, not the twl4030 the stock rules
 # were written for, and it has to fire on the events that reset the register.
 if grep -q 'KERNEL=="bq24297"' "$F8_RULE"; then

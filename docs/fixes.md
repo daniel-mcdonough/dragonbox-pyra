@@ -614,24 +614,34 @@ thicker one should be worth real charge rate; a bigger number here is not.
 That held for that cable. On 2026-10-22, with a 15 W brick on the USB3 micro
 port, 2 A gave +1342 mA and 3 A gave +1518 mA. A short cable on the normal
 micro port gave +999 mA at 2 A. The default stays at 2 A, because it applies to
-whatever gets plugged in.
+whatever gets plugged in, and fix 8 holds it on a detected adapter too, where
+the chip alone would pick 3 A (owner decision, 2026-11-21). One more reason not
+to raise it: a forum post (2021) says the charger's coil "can only take 2.7A".
+The inductor's rating has not been checked on the schematic. Estimated, not
+measured (90 % efficiency, 3.8 V): at 3 A in from 5 V the buck can deliver about 3.5 A at the cell
+voltage under full load, about 2.4 A at 2 A in.
 
 **Where it is applied.** `device/pyra-charge-current.sh` installs four files
 and verifies the result:
 
     /etc/default/pyra-charge-current              the number
-    /usr/local/sbin/pyra-charge-current-apply     one idempotent sysfs write
+    /usr/local/sbin/pyra-charge-current-apply     an idempotent sysfs write, and a re-check
     /etc/udev/rules.d/60-pyra-charge-current.rules
     /etc/udev/rules.d/charging.rules              masks the stock rules
 
 The limit is a register: it resets on every unplug and every boot, which is
-what the udev rule is for. At boot the rule's 2 A sticks. After a physical
-replug it may not: on the USB3 port the bq24297 finishes its own D+/D−
-detection about 0.12 s after the driver reports VBUS, classifies the brick as
-an adapter and leaves the limit at 3 A (measured 2026-11-20, below). Charging
-is still not capped at 500 mA, which is what this fix is for; the cell's
-current is still REG02's 2048 mA; and VINDPM still protects a weak supply. A
-fix that re-applies the limit after detection is open work. `--check` reports the state, `--undo` puts 500 mA
+what the udev rule is for. A physical replug needs more than the rule. The
+bq24297 runs its own D+/D− detection after the plug event that runs the
+helper: it holds 100 mA while it detects, discards writes made meanwhile, and
+then sets the limit it detected. That is 3 A for the brick on the USB3 port
+(0.12 s after VBUS) and 500 mA on the normal micro port, where detection
+finds no type (0.55 s). Traced 2026-11-21; the timeline is in
+`experiments/charging/README.md`, "What a replug does to the limit". So the
+helper, besides its immediate write, starts a transient `systemd-run` job
+(udev `RUN` must return quickly) that re-checks every 0.5 s for 10 s, puts the
+configured limit back, and logs `limit was N, set 2000000 again` under the
+`pyra-charge-current` tag. A supply whose detection takes longer than 10 s
+would keep the chip's value; none seen. `--check` reports the state, `--undo` puts 500 mA
 and the stock rules back. `device/pyra-chgwatch.sh` watches the charge path
 once a second and changes nothing.
 
@@ -642,14 +652,12 @@ will not silently revert it. Its rule and its mask both live in
 
 **Verified:** the rule re-applies the limit on both `add` and `change` events,
 tested by knocking the register down to 500000 and firing each event with
-`udevadm trigger`. A physical unplug and replug on the USB3 port, on the r5
-release image (2026-11-20, `verification-log.md`): `max_current` read
-2000000 after boot and **3000000** after the replug. The kernel log has
-`VBUS became available` (the driver writes the limit, and the change event
-fires), then `r8=a4 ADAP` 0.12 s later. The likeliest reading is that the
-helper saw 2 A, which the driver had just written, and exited, and the chip's
-adapter detection then raised it. That was not traced. The normal micro port
-and a laptop port after a replug are untested.
+`udevadm trigger`. Physical replugs on the r5 card with the re-check
+installed (2026-11-21, `verification-log.md`): the USB3 port went 100000 →
+3000000 (the chip) → **2000000** 0.21 s after detection, the normal micro port
+100000 → 500000 (the chip) → **2000000** 0.10 s after. Without the re-check
+(2026-11-20 and 2026-11-21) the USB3 port stayed at 3000000. A laptop port
+after a replug is untested.
 
 ## Fix 9 — the machine has never had sound
 

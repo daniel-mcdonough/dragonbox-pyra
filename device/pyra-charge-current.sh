@@ -126,12 +126,15 @@
 # WHAT IT INSTALLS
 #
 #   /etc/default/pyra-charge-current        the number, so you can change it
-#   /usr/local/sbin/pyra-charge-current-apply   one idempotent sysfs write
+#   /usr/local/sbin/pyra-charge-current-apply   idempotent sysfs write + re-check
 #   /etc/udev/rules.d/60-pyra-charge-current.rules   re-apply on plug events
 #   /etc/udev/rules.d/charging.rules        masks the stock rules, see above
 #
 # The limit is a register. It does not survive an unplug or a reboot, which is
-# what the udev rule is for.
+# what the udev rule is for. After a replug the chip's own D+/D- detection
+# overwrites it 0.1-0.6 s after the event (3 A on an adapter, 500 mA when it
+# finds no type, traced 2026-11-21), so the helper also starts a transient
+# systemd job that re-checks for ten seconds.
 
 set -u
 
@@ -244,16 +247,45 @@ EOF
 # Installed by pyra-charge-current.sh. See that script's header for why this
 # is needed and what it assumes about the supply.
 
+#
+# The write alone does not hold after a replug. The driver writes its own
+# limit when VBUS appears, which is the event that runs this, and the chip
+# finishes its D+/D- detection after that and sets the limit it detected (3 A
+# for a wall adapter, measured). So with no argument this also starts
+# "--settle" as a transient systemd job (udev RUN must return quickly), which
+# re-checks every half second for ten seconds and puts the configured value
+# back, logging each time it has to.
+
 UA=$ua
 [ -r $CONF ] && . $CONF
 UA=\${PYRA_INPUT_CURRENT_UA:-$ua}
 
-for knob in /sys/bus/i2c/drivers/bq2429x_charger/*/max_current; do
-	[ -w "\$knob" ] || continue
-	now=\$(cat "\$knob" 2>/dev/null) || continue
-	[ "\$now" = "\$UA" ] && exit 0
-	printf '%s\\n' "\$UA" > "\$knob" 2>/dev/null
-done
+apply() {
+	for knob in /sys/bus/i2c/drivers/bq2429x_charger/*/max_current; do
+		[ -w "\$knob" ] || continue
+		now=\$(cat "\$knob" 2>/dev/null) || continue
+		[ "\$now" = "\$UA" ] && return 0
+		printf '%s\\n' "\$UA" > "\$knob" 2>/dev/null
+		[ -n "\${1:-}" ] && logger -t $MARKER "limit was \$now, set \$UA again"
+		return 0
+	done
+}
+
+if [ "\${1:-}" = --settle ]; then
+	n=0
+	while [ \$n -lt 20 ]; do
+		sleep 0.5
+		apply log
+		n=\$((n + 1))
+	done
+	exit 0
+fi
+
+apply
+command -v systemd-run >/dev/null 2>&1 &&
+	systemd-run --no-block --collect --quiet \\
+		--description="$MARKER: hold the limit after charger detection" \\
+		$HELPER --settle >/dev/null 2>&1
 exit 0
 EOF
 	chmod 0755 "$root$HELPER"

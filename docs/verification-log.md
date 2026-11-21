@@ -2401,3 +2401,24 @@ on a V5.3 board. Checks over ssh, read-only; the owner unplugged and replugged t
   writer on the card is `pyra-charge-current-apply` (2 A); so the chip's own adapter detection set 3 A after
   the rule ran (inferred, not traced). Fix 8's purpose holds (not stuck at 500 mA); the "2 A after every plug"
   claim did not.
+
+## 2026-11-21 — fix 8 after a charger replug, traced and fixed (R74)
+
+The r5 release card, `5.6.19-m4-kbdled` (l5), same 15 W brick and cable throughout; the owner did the
+replugs. Tracing: kprobes on `bq2429x_set_input_current_limit_uA` (with its `uA` argument),
+`bq2429x_input_current_limit_uA_store` and `bq2429x_usb_detect`; the `i2c_write` tracepoint filtered to
+address 0x6b and length > 1; a python poller reading `max_current` every 10 ms (REG00 only, `registers` not
+read). Times are monotonic seconds.
+
+- **Cause (USB3 port, stock helper):** VBUS interrupt 11853.517, driver writes REG00 `0x36` at .522;
+  `max_current` 100000 from .526; the helper writes `0x36` at .548 and the reads stay 100000; detection
+  interrupt (`r8=a4 ADAP`) at .639 with no host write; `max_current` 3000000 at .643. The chip holds 100 mA
+  during D+/D− detection, discards host writes, and writes its result last.
+- **With the re-check helper, USB3 port:** 100000 at 11986.964, 3000000 at 11987.089 (ADAP), 2000000 at
+  11987.301 from the settle job; journal `limit was 3000000, set 2000000 again`.
+- **With the re-check helper, normal micro port:** 100000 at 12015.490, 500000 at 12016.040 (detection
+  ends `r8=24`, no type, 0.55 s after VBUS), 2000000 at 12016.137; journal `limit was 500000, set 2000000
+  again`. Two helper writes during detection (12015.535, .898) were lost, as on USB3.
+- After both: `max_current` 2000000, no failed units, the transient units collected.
+- Not tested: a laptop port after a replug (does the chip detect SDP and pick 500 mA, and does 2 A pull
+  it out of spec); a supply whose detection takes longer than the 10 s re-check window.

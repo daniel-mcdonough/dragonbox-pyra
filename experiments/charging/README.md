@@ -166,16 +166,42 @@ the gauge will lie.
 
 ## What went in
 
-`device/pyra-charge-current.sh` — config, an idempotent one-line helper, and a
-udev rule in `/etc/udev/rules.d` that re-applies the limit on `add` and
-`change`. The limit is a register and does not survive an unplug or a boot.
+`device/pyra-charge-current.sh` — config, an idempotent helper, and a udev
+rule in `/etc/udev/rules.d` that re-applies the limit on `add` and `change`.
+The limit is a register and does not survive an unplug or a boot.
 
 The rule was verified by knocking the register down to 500000 and firing each
 event with `udevadm trigger`; it came back to 2000000 both times. A physical
-unplug and replug on the USB3 port (2026-11-20, r5 release image) left
-**3000000**, not 2000000: the chip's adapter detection lands about 0.12 s
-after the driver's plug event and the helper has already run (see "USB3 micro
-port against the normal micro port" and `docs/fixes.md` fix 8).
+replug is different, because the chip runs its own D+/D− detection after the
+plug event (traced 2026-11-21, below). The helper therefore also starts a
+transient `systemd-run` job that re-checks every 0.5 s for 10 s and puts the
+configured limit back.
+
+### What a replug does to the limit (traced 2026-11-21)
+
+Traced on the r5 card (`5.6.19-m4-kbdled`) with kprobes on
+`bq2429x_set_input_current_limit_uA` and the sysfs store, the `i2c_write`
+tracepoint for address 0x6b, and a 10 ms poller of `max_current` (REG00 only;
+never `registers`, which clears REG09 latches without `0054`). Monotonic
+seconds, USB3 port, before the fix:
+
+| t | event |
+| --- | --- |
+| 11853.517 | VBUS interrupt; the driver writes REG00 `0x36` (2 A) at .522 |
+| 11853.526 | `max_current` reads 100000: the chip holds 100 mA while detection runs |
+| 11853.548 | the udev helper reads 100000 and writes `0x36`; every read up to .643 is still 100000 |
+| 11853.639 | interrupt, `r8=a4 ADAP`; no host write |
+| 11853.643 | `max_current` reads 3000000, set by the chip |
+
+So host writes during detection are lost, and the detection result is written
+last: 3 A for the brick on the USB3 port (0.12 s after VBUS), **500 mA** on
+the normal micro port, where detection ends with no type (`r8=24`) after
+0.55 s. Without the re-check, a replug on the normal port put the machine back
+at the floor that drains it. With the re-check (same day, same brick): USB3
+3000000 → 2000000 0.21 s after detection, normal port 500000 → 2000000 0.10 s
+after. Each correction logs `limit was N, set 2000000 again` under the
+`pyra-charge-current` tag. Owner decision 2026-11-21: 2 A on any supply,
+including a detected adapter (the coil-rating concern in fix 8).
 
 Deliberately *not* done: connecting the thermal daemon's charge ladder to the
 working knob. That ladder reads the fuel gauge's die temperature and caps at
@@ -231,10 +257,10 @@ On plug events the charger classified the brick as an adapter on the USB3
 port (REG08 `0xac`, `VBUS_STAT` `10`) and as unknown on the normal port
 (`0x2c`). After a boot with the cable already in, it reads `00` on either,
 and `bq24297/online` reads `0` while charging at 1.2 A. The adapter
-classification does affect the limit after a replug (measured 2026-11-20):
-`max_current` went from the helper's 2000000 to 3000000, written after the
-helper ran, so a replugged USB3 brick charges at the 3 A row below. The normal
-port's "unknown" after a replug is untested.
+classification sets the limit after a replug: 3 A on the USB3 port, 500 mA on
+the normal port, both written by the chip after the helper ran (traced
+2026-11-21, "What a replug does to the limit"). The helper's re-check puts
+2 A back on both.
 
 ### 2 A against 3 A, with nothing else touching the limit
 

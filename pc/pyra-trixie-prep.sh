@@ -1183,6 +1183,11 @@ done
 #   The driver parses usb_input_current and adp_input_current out of the
 #   device tree at probe and does not apply either.
 #
+# After a replug the chip's own D+/D- detection overwrites the limit 0.1-0.6 s
+# after the plug event (3 A on an adapter, 500 mA when it finds no type), so
+# the helper also starts a transient systemd-run job that re-checks it for ten
+# seconds.
+#
 # This writes a rule in /etc/udev/rules.d, and a charging.rules there that
 # masks the stock one of the same name in /lib without editing it. Unlike
 # fixes 6 and 7 it edits no packaged file, so an upgrade will not silently
