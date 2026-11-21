@@ -1710,6 +1710,68 @@ fixes them. With it, checked on the r5 card: Usr1 sends `KEY_PAUSE`, Fn+Usr1
 `KEY_SCALE`, Fn+Esc `KEY_SYSRQ`, and d-pad right moves the hat. The brightness
 key in the same row runs the brightness script by design and sends no key.
 
+## Fn+D (`_`), Fn+' (`:`) or other Fn symbols type nothing, or the wrong thing
+
+The Fn layer is made by the input daemon, not by the keyboard: for Fn+letter
+it sends a spare keycode (Fn+D is keycode 197, Fn+' is 196), and the X
+layout and the console keymap each decide what that keycode types. Fn plus
+a key in the bottom row (Z X C V B N , .) sends the ordinary keycode for
+`= - [ ] \ ` ; /`, so those work everywhere.
+
+**On the desktop (X), with pyra-config-xorg 0.38 or later** (the trixie card
+has 0.39), every Fn symbol types, but three things are wrong:
+
+- `_` and `:` are also Alt while the key is down. A key pressed before you
+  let go of D or ' arrives as Alt+key: in mate-terminal `my_bar` typed fast can
+  come out as `my_` plus Alt+b, which moves bash back a word; xterm types `â`.
+- Shift+Fn+D and Shift+Fn+' type nothing, so `MY_VAR` typed with Shift held
+  loses its underscore. Let go of Shift for the `_`.
+- Fn+R types è and Fn+T types é, but the keycaps print é on R and è on T.
+
+`patches/userspace/pyra-config-xorg/0001-fn-d-and-fn-apostrophe-not-alt-r-t-accents.patch`
+fixes all three. Divert the package's file so an upgrade doesn't put it back,
+patch the copy, then reboot:
+
+    sudo dpkg-divert --add --rename --divert /usr/share/X11/xkb/symbols/pyra.dist /usr/share/X11/xkb/symbols/pyra
+    sudo cp /usr/share/X11/xkb/symbols/pyra.dist /usr/share/X11/xkb/symbols/pyra
+    sudo patch -d / -p1 < 0001-fn-d-and-fn-apostrophe-not-alt-r-t-accents.patch
+
+`sudo rm /usr/share/X11/xkb/symbols/pyra && sudo dpkg-divert --remove --rename
+/usr/share/X11/xkb/symbols/pyra` undoes it. The forum reports of `_` and `:`
+missing entirely come from bullseye and early bookworm images:
+pyra-config-xorg 0.36 put both symbols on keycodes the daemon never sends.
+0.38 (September 2024) moved them. On such an image, `sudo apt install
+pyra-config-xorg` and reboot. The forum's old workaround, `setxkbmap
+-symbols pyra`, is not needed on 0.38 or later; it was reported to break the
+Pyra key (not checked here).
+
+**On the console (tty1-tty6)**, the Debian keymap has nothing on most of the
+daemon's keycodes. Fn+E to Fn+P, Fn+A to Fn+L, Fn+' and Fn+M type nothing;
+Fn+Q sends `ESC [ M` and Fn+W sends Delete. Use the bottom row with Shift
+instead: Shift+Fn+X `_`, Shift+Fn+, `:`, Shift+Fn+. `?`, Shift+Fn+Z `+`,
+Shift+Fn+C `{`, Shift+Fn+V `}`, Shift+Fn+B `|`, Shift+Fn+N `~`. The fix is
+`device/etc/console-setup/pyra-fn.kmap`, which gives every Fn key its keycap
+symbol:
+
+    cat pyra-fn.kmap | sudo tee -a /etc/console-setup/remap.inc
+    sudo touch /etc/default/keyboard
+    sudo setupcon --save-only
+
+and reboot. `setupcon` rebuilds the cached keymap only when
+`/etc/default/keyboard` is newer than it, hence the `touch`; without it
+nothing changes.
+
+**In the initramfs rescue shell** the daemon isn't running, so there is no
+Fn layer at all, and the keyboard has no key for `-`, `/`, `_` or `:`. It
+types letters, digits, Shift+digit, `' " , < . >`, space and Enter. A USB
+keyboard should work there (USB HID is built into the kernel and the USB
+host modules are in the initramfs; not tested).
+
+Checked 2026-11-21 on the r5 card (`verification-log.md`, 2026-11-21, R78).
+The keycodes were injected through a uinput keyboard, the same path the
+daemon uses, so the daemon's Fn+key-to-keycode step is taken from its
+source (`pyraKeyMap.cpp`), not pressed by hand.
+
 ## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
 
 Expected, and nothing to fix. The vendor package `dri3wsegl-pyra` installs the

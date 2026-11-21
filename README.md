@@ -285,7 +285,7 @@ GPL-2.0-only, in `LICENSE`, with the exceptions below. The kernel patches in `pa
 the BSD-3-Clause header that `experiments/m4-ipu/0009-*.patch` adds, since the
 kernel file it touches is BSD-3-Clause upstream. Likewise, the patches in
 `patches/userspace/` carry the licence of the package they change: MIT for
-pyra-hacks and pyra-meta, BSD-2-Clause for funkeymonkey-pyrainput. So does
+pyra-hacks, pyra-meta and pyra-config, BSD-2-Clause for funkeymonkey-pyrainput. So does
 `experiments/kms-plane/armsoc-0001-*.patch`: MIT, for xf86-video-armsoc.
 
 The exception is the Cortex-M4 test firmware in `experiments/m4-ipu/firmware/`

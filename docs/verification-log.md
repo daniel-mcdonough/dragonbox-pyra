@@ -2498,3 +2498,35 @@ nodes every 0.25 s; the owner pressed the keys, following a prompted script.
   script's own `umount` failed while the daemon held the file; done after stopping it), stock library
   (MD5 `52b33eec…`) running, three pyraInput devices. Left on the card: `~/r77-build/` (sources, both
   builds, the logs).
+
+## 2026-11-21 — Fn symbols under X and on the console (R78)
+
+The r5 release card, `5.6.19-m4-kbdled`, pyra-config-xorg 0.39 (`symbols/pyra` MD5 `6de8513e…`), console-setup
+1.242~deb13u1 (layout `us`, variant `euro`), funkeymonkey-pyrainput 0.1.19. Written up in `troubleshooting.md`.
+No keys were pressed by hand: `experiments/fn-keys/` sends the keycodes the daemon's `pyraKeyMap.cpp` gives
+each Fn key through a throwaway uinput keyboard, into a terminal on `:0` (`fn-x.sh`) or tty1's login prompt
+read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends with the list.
+
+- X layout: `pc+pyra(pyra)+inet(evdev)`. xterm and mate-terminal, Fn+Q..P, ', A..L, M, Z..N , . typed
+  `° § € è é à ç ¨ ü ß : ? + _ { } | ~ ö ä ´ = - [ ] \ ` ; /`. With Shift: capitals for the accented letters
+  and `+ _ { } | ~ : ?` for the bottom row, but nothing for Fn+D and Fn+' (level 2 of keycodes 204/205 is
+  `Alt_L`/`Meta_L`).
+- `xmodmap -pm`: mod1 holds `colon (0xcc)` and `underscore (0xcd)`. Rollover (a, 197 down, b down/up, 197 up,
+  c): xterm `a_âc`, mate-terminal `a_` ESC `bc`; the same with 196. With 195 (Fn+M, acute) held: `a´bc`.
+- Keycaps (owner): é on R, è on T; all other legends match the keymap.
+- `patches/userspace/pyra-config-xorg/0001`, compiled with `xkbcomp -I` and loaded on `:0`: both terminals
+  typed the full set with é/è on R/T, Shift+Fn+D `_`, Shift+Fn+' `:`, rollover `a_bc` and `a:bc`. The
+  documented divert-copy-patch steps produce the tested file; undone, `dpkg -V pyra-config-xorg` clean.
+- Package history (archive copies): 0.36 (bullseye) has `key <I221> { [ underscore ] }` and `<I247>` colon;
+  0.38 and 0.39 have `<META>`/`<ALT>`.
+- tty1, stock keymap: only Fn+Z X C V B N , . typed (`= - [ ] \ ` ; /`, Shift `+ _ { } | ~ : ?`). Fn+Q gave
+  `^[[M`, Fn+W `^[[3~`, all the other Fn letters, Fn+' and Fn+Space nothing.
+- `device/etc/console-setup/pyra-fn.kmap` with `loadkeys`: every Fn key typed its keycap symbol, Shift giving
+  the capitals. Through `remap.inc`: `setupcon --save-only` left the cache unchanged (MD5 `f4c6c62b…`) until
+  `/etc/default/keyboard` was touched; then the cached map held the lines and typed the same.
+- Initramfs: KEYMAP=n and no input daemon, so there is no Fn layer there (from the image, not booted into).
+- Restored: `remap.inc`, the cached keymap and `cached_setup_keyboard.sh` equal to their MD5s before, the
+  mtime of `/etc/default/keyboard` put back, the live console keymap byte-identical to the `dumpkeys` taken
+  first (`loadkeys` of the cache alone leaves added keycodes in place), the X keymap identical to its
+  `xkbcomp` dump (rebuilt with `setxkbmap`; reloading the dump with `xkbcomp` dropped a mod3 entry). Left on the
+  card: the test files in `~/r77-build/`.

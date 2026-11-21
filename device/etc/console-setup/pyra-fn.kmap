@@ -1,0 +1,30 @@
+# The Pyra's Fn layer on the Linux console. Append to
+# /etc/console-setup/remap.inc, then rebuild the cached keymap:
+#   sudo touch /etc/default/keyboard && sudo setupcon --save-only
+# and reboot (or: sudo loadkeys /etc/console-setup/cached_UTF-8_del.kmap.gz).
+#
+# The input daemon (funkeymonkey-pyrainput) sends these spare keycodes for
+# Fn+letter, Fn+' and Fn+M. Debian's console keymap has nothing on most of
+# them, so they type nothing on a tty; 112 and 121 send ESC [ M and Delete.
+# Symbols as printed on the keycaps (é on R, è on T).
+keycode 112 = U+00B0
+keycode 121 = U+00A7
+keycode 141 = U+20AC
+keycode 146 = +U+00E9 +U+00C9
+keycode 160 = +U+00E8 +U+00C8
+keycode 170 = +U+00E0 +U+00C0
+keycode 175 = +U+00E7 +U+00C7
+keycode 176 = U+00A8
+keycode 222 = +U+00FC +U+00DC
+keycode 209 = U+00DF
+keycode 196 = U+003A
+keycode 214 = U+003F
+keycode 240 = U+002B
+keycode 197 = U+005F
+keycode 211 = U+007B
+keycode 89 = U+007D
+keycode 95 = U+007C
+keycode 124 = U+007E
+keycode 189 = +U+00F6 +U+00D6
+keycode 194 = +U+00E4 +U+00C4
+keycode 195 = U+00B4

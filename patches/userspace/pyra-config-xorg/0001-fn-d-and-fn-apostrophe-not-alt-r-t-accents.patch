@@ -1,0 +1,89 @@
+Fn symbols: Fn+D and Fn+' are not also Alt; Fn+R/Fn+T match the keycaps
+
+The input daemon (funkeymonkey-pyrainput) makes the Fn layer by sending
+spare keycodes, and this file gives them their symbols. Two of them are
+wrong in 0.39:
+
+- Fn+D (KEY 197, <META>) and Fn+' (KEY 196, <ALT>) type `_` and `:`, but
+  the pc symbols give both codes Mod1 and Alt_L/Meta_L on level 2, and this
+  file adds `modifier_map Mod1 { <META> }`. XKB's catch-all interpretation
+  then makes each key an Alt modifier while it is down. A key pressed before
+  `_` or `:` is released arrives as Alt+key (xterm types `â` for b,
+  mate-terminal sends ESC b, which moves bash back a word), and Shift+Fn+D or
+  Shift+Fn+' types nothing. Both levels now hold the symbol and the key has
+  an explicit NoAction(), which wins over the interpretation.
+- Fn+R types è and Fn+T types é; the keycaps print é on R and è on T.
+
+Checked 2026-11-21 on the trixie card by injecting the keycodes through
+uinput into xterm and mate-terminal (development log, R78).
+
+Against pyra-config-xorg 0.39 (/usr/share/X11/xkb/symbols/pyra; 0.38 has the
+same file).
+
+--- a/usr/share/X11/xkb/symbols/pyra
++++ b/usr/share/X11/xkb/symbols/pyra
+@@ -72,12 +72,12 @@
+     key <AD04> {
+         type= "ALPHABETIC",
+         symbols[Group1]= [               r,               R ],
+-        symbols[Group2]= [          egrave,          Egrave ]
++        symbols[Group2]= [          eacute,          Eacute ]
+     };
+     key <AD05> {
+         type= "ALPHABETIC",
+         symbols[Group1]= [               t,               T ],
+-        symbols[Group2]= [          eacute,          Eacute ]
++        symbols[Group2]= [          egrave,          Egrave ]
+     };
+     key <AD06> {
+         type= "ALPHABETIC",
+@@ -329,8 +329,6 @@
+     key <RWIN> {         [         Super_R ] };
+     key <COMP> {         [            Menu ] };
+     key <MDSW> {         [     Mode_switch ] };
+-    key  <ALT> {         [        NoSymbol,           Alt_L ] };
+-    key <META> {         [        NoSymbol,          Meta_L ] };
+     key <SUPR> {         [        NoSymbol,         Super_L ] };
+     key <HYPR> {         [        NoSymbol,         Hyper_L ] };
+ 
+@@ -340,17 +338,28 @@
+     key <I120> {         [          degree ] };
+     key <I129> {         [         section ] };
+     key <I149> {         [        EuroSign ] };
+-    key <I154> {         [          egrave,          Egrave ] };
+-    key <I168> {         [          eacute,          Eacute ] };
++    key <I154> {         [          eacute,          Eacute ] };
++    key <I168> {         [          egrave,          Egrave ] };
+     key <I178> {         [          agrave,          Agrave ] };
+     key <I183> {         [        ccedilla,        Ccedilla ] };
+     key <I184> {         [       diaeresis ] };
+     key <I217> {         [          ssharp ] };
+     key <I219> {         [       braceleft ] };
+-    key <META> {         [      underscore ] };
++    // Fn+D and Fn+apostrophe (pyrainput sends KEY_197 and KEY_196). Both
++    // levels set and no action, so the key is not also Alt (pc gives these
++    // codes Mod1) and Shift+Fn still types the symbol.
++    key <META> {
++        type= "TWO_LEVEL",
++        symbols[Group1]= [      underscore,      underscore ],
++        actions[Group1]= [      NoAction(),      NoAction() ]
++    };
+     key <I222> {         [        question ] };
+     key <I230> {         [      udiaeresis,      Udiaeresis ] };
+-    key <ALT>  {         [           colon ] };
++    key <ALT> {
++        type= "TWO_LEVEL",
++        symbols[Group1]= [           colon,           colon ],
++        actions[Group1]= [      NoAction(),      NoAction() ]
++    };
+     key <I248> {         [            plus ] };
+ 
+     key <AB11> {         [      braceright ] };
+@@ -371,7 +380,6 @@
+     modifier_map Mod4 { <LWIN> };
+     modifier_map Mod4 { <RWIN> };
+     modifier_map Mod5 { <MDSW> };
+-    modifier_map Mod1 { <META> };
+     modifier_map Mod4 { <SUPR> };
+     modifier_map Mod4 { <HYPR> };
+ };
