@@ -2422,3 +2422,21 @@ read). Times are monotonic seconds.
 - After both: `max_current` 2000000, no failed units, the transient units collected.
 - Not tested: a laptop port after a replug (does the chip detect SDP and pick 500 mA, and does 2 A pull
   it out of spec); a supply whose detection takes longer than the 10 s re-check window.
+
+## 2026-11-21 — which U-Boot runs, and the vendor archive upstream (R75, read-only)
+
+The r5 release card in the left slot, `5.6.19-m4-kbdled`; the card is `mmcblk1`, the eMMC `mmcblk0`. Method:
+`dd` of the first 8192 sectors of each device through `strings -n 6`, grepping for the version banners and
+for `vidconsole`, `usb_kbd`, `sysboot`, `pxelinux.cfg`, `Enter choice`.
+
+- **Card:** `U-Boot SPL 2016.11 (Sep 11 2024 - 22:42:22)` and `U-Boot 2016.11 (Sep 11 2024 - 22:42:22 +0000)`,
+  matching the installed `u-boot-pyra` 0.1.5 (`/usr/lib/u-boot/pyra/MLO`, `u-boot.img`).
+- **eMMC (this unit):** `U-Boot SPL 2016.11-g8e417ba870-dirty (Jan 07 2021 - 21:35:15)` and
+  `U-Boot 2016.11-g0fecbc0a98-dirty (Dec 24 2020 - 19:14:56 +0100)`. Forum posts by the team (2021-2025) say
+  later units were flashed with newer U-Boot builds; their version is not known here.
+- Both: no `vidconsole` or `usb_kbd`; `sysboot`, `pxelinux.cfg` and `Enter choice` present. building.md's
+  "no display driver" holds for both copies.
+- **Vendor archive, 07:34-07:36 UTC from the PC:** `images/trixie/pyra-trixie-t1-brokenxorg.7z` HTTP 200,
+  862273362 bytes, last-modified 2026-02-01 20:33:15 GMT; the downloaded file's SHA-256 equals `SHA_7Z` in
+  `pc/pyra-vendor-image.sh`. A request for the apt repo's `/trixie/` directory answers 403 (individual
+  files not checked). The Wayback Machine has no snapshot of the archive.

@@ -228,5 +228,5 @@ if you need a byte-identical rebuild.
 download URL, and the packages installed on first boot come from that
 project's apt repository. Neither is under this repository's control.
 
-**Not captured at all.** The eMMC bookworm install, which is left untouched as
+**Not captured at all.** The OS on the eMMC, which is left untouched as
 a recovery path, and anything you install into the desktop afterwards.

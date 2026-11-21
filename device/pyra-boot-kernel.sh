@@ -28,8 +28,8 @@
 #
 # The documented way to run a test kernel is to add a second extlinux entry,
 # leave `default` on the stock kernel, and pick the test entry from the boot
-# menu. On this machine there is no boot menu to pick from. U-Boot 2016.11 on
-# the Pyra has no display driver at all — grep its image for "vidconsole" or
+# menu. On this machine there is no boot menu to pick from. The card's U-Boot
+# (2016.11) has no display driver at all — grep its image for "vidconsole" or
 # "panel" and nothing comes back — so the menu is written to the serial console
 # at ttyO2 and never reaches the LCD. There is no USB keyboard driver in it
 # either. Without a serial cable the menu cannot be seen or answered, and

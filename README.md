@@ -7,8 +7,9 @@ sound. This repository turns that image into a working SD card for a V5.x Pyra,
 with a MATE desktop, hardware GLES2 on the SGX, desktop GL through gl4es,
 sound, and charging.
 
-It runs from an SD card. The eMMC is never touched, so your bookworm install
-stays as it is and takes over again when you pull the card.
+It runs from an SD card. The eMMC is never touched, so the OS on the eMMC
+(buster or bookworm, whichever your unit shipped with) stays as it is and takes
+over again when you pull the card.
 
 There are two ways to get a card:
 
@@ -78,6 +79,8 @@ works.
 On the PC:
 
     wget https://packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z
+    echo "b2220b3f5ab9974d397d9fbac6c6190c8ff6690fdf977d0b52c4a6ade3fd28c7  pyra-trixie-t1-brokenxorg.7z" \
+        | sha256sum -c                                # the archive the fixes were made for
     7z x pyra-trixie-t1-brokenxorg.7z
 
     lsblk -o NAME,SIZE,MODEL,TRAN,MOUNTPOINT          # find the card; get this right
@@ -90,6 +93,12 @@ On the PC:
     sudo ./pc/pyra-trixie-prep.sh /mnt yourname       # your user (not 'pyra'); asks for a password
                                                       # and needs a kernel: see below
     sudo umount /mnt/boot /mnt && sync
+
+The vendor's server is the only source of that archive. It was reported down
+in April 2026 and served it again, unchanged, when checked on 2026-11-21. If
+it is down, any copy whose SHA-256 matches the line above will do; there is no
+mirror we know of. Otherwise write the prebuilt image instead, which is made
+from the same archive.
 
 Boot it as in step 3 of the quick start (hold the power button until both
 LEDs go green).

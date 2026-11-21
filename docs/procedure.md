@@ -68,9 +68,18 @@ Class 10 / U1 or better. Nothing exotic is required.
 
     cd dragonbox-pyra                 # your checkout of this repository
     wget https://packages.pyra-handheld.com/images/trixie/pyra-trixie-t1-brokenxorg.7z
+    echo "b2220b3f5ab9974d397d9fbac6c6190c8ff6690fdf977d0b52c4a6ade3fd28c7  pyra-trixie-t1-brokenxorg.7z" \
+        | sha256sum -c
     7z x pyra-trixie-t1-brokenxorg.7z
 
-842 MB compressed, dated 2026-02-01. Confirmed present upstream on 2026-09-07.
+842 MB compressed (862273362 bytes), dated 2026-02-01. The checksum is the one
+pinned in `pc/pyra-vendor-image.sh`. Checked upstream on 2026-11-21: HTTP 200,
+same size and date, same SHA-256.
+
+The server was reported down in April 2026 (pyra-handheld.com forums, "The rise
+of Pyra"). There is no known mirror (the Wayback Machine had no copy on
+2026-11-21). If the server is down, use any copy of the archive whose SHA-256
+matches, or write the prebuilt release image, which is made from this archive.
 
 There is also a `pyra-trixie-brokenxorg.img.7z` from 2025-06-28 in the same
 directory — that is the older pre-t1 build. **Use the t1 one.**
@@ -340,9 +349,10 @@ Card in the **left** slot.
 A short tap gives you a quarter second of LED and then silence, which looks
 exactly like a dead card or a flat battery. It is neither. This image's U-Boot
 (2016.11, rebuilt 2024) asks the Palmas PMIC why the unit powered on and refuses
-anything that is not a real long press. The older U-Boot on a stock eMMC has no
-such check, which is why bookworm boots off a tap and this card appears not to
-boot at all.
+anything that is not a real long press. The older U-Boot on the eMMC of the unit
+tested (a 2016.11 build from December 2020) has no such check, which is why the
+eMMC OS boots off a tap and this card appears not to boot at all. Units built
+later may carry a newer eMMC U-Boot.
 
 ---
 

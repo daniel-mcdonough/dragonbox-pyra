@@ -359,10 +359,14 @@ Do not edit `linux.cfg`; it is meant to be regenerated and would lose the entry.
 The entry above is correct and necessary, but you cannot pick it from a menu,
 because the Pyra never shows one.
 
-**U-Boot has no display driver.** The Pyra runs U-Boot 2016.11 out of the raw
-area at the front of the eMMC, before partition 1. Search its image for
-`vidconsole`, `panel`, `lcd` or `dss` and nothing comes back, while `sysboot`,
-`pxelinux.cfg` and `Enter choice:` are all there. So the extlinux menu is
+**U-Boot has no display driver.** Booting from this card, the Pyra runs the
+card's own U-Boot, from the raw area at the front of the card before
+partition 1: 2016.11 from the vendor's `u-boot-pyra` 0.1.5 (built 2024-09-11).
+The eMMC carries its own copy, which varies by unit: the one tested has a
+2016.11 build from December 2020, and units built later may have a newer one.
+Search either image for `vidconsole` or `usb_kbd` and nothing comes back, while
+`sysboot`, `pxelinux.cfg` and `Enter choice:` are all there (both checked
+2026-11-21). So the extlinux menu is
 written to the serial console on `ttyO2` at 1500000 baud and never reaches the
 LCD. There is no `usb_kbd` in it either, so even a visible menu could not be
 answered from the built-in keyboard.
@@ -374,8 +378,9 @@ The practical effect is that the machine appears to boot straight into the
 stock kernel with no prompt of any kind, which is exactly what it does. To
 check any of this yourself:
 
-    sudo dd if=/dev/mmcblk0 bs=512 count=2048 2>/dev/null | strings -n 6 \
-        | grep -iE "^U-Boot 20|vidconsole|panel|sysboot|Enter choice"
+    # the card is /dev/mmcblk1 when booted from it; the eMMC is /dev/mmcblk0
+    sudo dd if=/dev/mmcblk1 bs=512 count=8192 2>/dev/null | strings -n 6 \
+        | grep -iE "^U-Boot( SPL)? 20|vidconsole|usb_kbd|sysboot|Enter choice"
 
 **So a test kernel has to be made the default**, and `pyra-boot-kernel.sh` is
 what does it:
@@ -1126,4 +1131,4 @@ From the PC, with the card mounted, the same tarballs extract to the mounted
 rootfs — but note that `/boot` is a separate ext4 partition, so mount both.
 
 The stock packages are also still downloadable from the Pyra repository, and
-the eMMC bookworm install is untouched and remains the last resort.
+the OS on the eMMC is untouched and remains the last resort.
