@@ -2440,3 +2440,30 @@ for `vidconsole`, `usb_kbd`, `sysboot`, `pxelinux.cfg`, `Enter choice`.
   862273362 bytes, last-modified 2026-02-01 20:33:15 GMT; the downloaded file's SHA-256 equals `SHA_7Z` in
   `pc/pyra-vendor-image.sh`. A request for the apt repo's `/trixie/` directory answers 403 (individual
   files not checked). The Wayback Machine has no snapshot of the archive.
+
+## 2026-11-21 — a forum DBP on the trixie card (R76)
+
+The r5 release card, `5.6.19-m4-kbdled`, `dbp` 0.6.12.2-2. Package: GBA.emu 1.5.46.02 (`GBAemu`), the most
+downloaded in the DBP repository (1532), fetched from the repository's download link, SHA-256
+`f96c710b9adc31dd79f44e33c474c992c7f101f434d23e76f5303822f9039537`. Written up in `dbp.md`.
+
+- Copied to `/dragonbox/packages/` on the root f2fs (`/dragonbox` chowned to the user). Not picked up until
+  `dbp-cmd register` or a `dbpd` restart. Registering exported `__dbp__GBAemu_default.desktop` and
+  `/usr/local/games/GBAemu.sh`.
+- `dbp-cmd mount` without `dragonbox/appdata/GBAemu` present: `Unable to set up AuFS union`, dmesg
+  `aufs opt_add:811:dbpd[...]: lookup failed /dragonbox/appdata/GBAemu (-2)`. In dbp's source, `dbp-run`
+  creates that directory as the user and `dbp_loop_mount` never does.
+- With the directory present: `squashfs` on `/dev/loop7` at `/mnt/dbp/images/GBAemu` and `aufs` at
+  `/mnt/dbp/union/GBAemu`. The modules (`aufs 5.6-20200622`, `squashfs`) loaded on demand. A file written in
+  the union landed in `/dragonbox/appdata/GBAemu`. `ldd` of `gbaemu`: no `not found`; EGL and GLESv2 from
+  the SGX DDK.
+- `DISPLAY=:0 timeout 25 dbp-run --log-output --chdir GBAemu gbaemu`: the appdata directory was created,
+  `xwininfo` showed a `"GBA.emu"` window, 1280x720. The timeout killed `dbp-run` before its unmount, which
+  left both mounts until they were unmounted by hand. No game was loaded and input wasn't tried. The
+  launcher's `pyrainputctl overload` was skipped.
+- `dbp-run GBAemu <nonexistent>` printed the dependency check: `System packages: libvorbisidec1,
+  libpng16-16, libglib2.0-0`. The first isn't in trixie, the other two are installed as `t64` packages.
+  dbp matches names in `/var/lib/dpkg/status` exactly and ignores `Provides:`.
+- `python3-apt` (for the DBP Installer): not installed; the candidate after `apt update` is 3.0.0.
+- Left on the card: `/dragonbox/packages/GBAemu.dbp`, `/dragonbox/appdata/GBAemu/` (empty except AuFS's
+  `.wh..wh.orph`), the registration. Undo: `dbp-cmd unregister` the file, then `rm -r /dragonbox`.

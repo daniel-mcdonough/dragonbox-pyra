@@ -1642,6 +1642,15 @@ If a program misbehaves with the patched library, `sudo pyra-wsegl-fdfix.sh
 rollback` puts the stock file back, checked against its SHA-256, and keeps
 the guard from re-patching it; `install` undoes both.
 
+## A DBP won't start: `Unable to set up AuFS union`, or a "missing dependencies" dialog
+
+`Unable to set up AuFS union. This is likely a bug.` means `dbp-run` couldn't
+create `dragonbox/appdata/<id>`. The `dragonbox/` directory has to be writable
+by your user. Rebooting doesn't fix it. The dependency dialog appears for
+nearly every older DBP, because dbp doesn't know Debian's renamed (t64)
+packages. Press Launch. [dbp.md](dbp.md) covers both, plus the mount and
+input mapping a crashed DBP leaves behind.
+
 ## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
 
 Expected, and nothing to fix. The vendor package `dri3wsegl-pyra` installs the

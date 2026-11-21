@@ -218,6 +218,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/fixes.md](docs/fixes.md) | The twenty-seven fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software. |
+| [docs/dbp.md](docs/dbp.md) | DBP packages from the forum: installing one, the false "missing dependencies" dialog, and which old libraries trixie renamed. |
 | [docs/qt-gles.md](docs/qt-gles.md) | GLES2 for Qt and other toolkit programs, which fails silently as shipped. |
 | [docs/known-limitations.md](docs/known-limitations.md) | The hard walls, and everything already tried that did not work. |
 
