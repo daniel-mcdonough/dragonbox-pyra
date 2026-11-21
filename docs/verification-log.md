@@ -2382,3 +2382,22 @@ over ssh. Nothing was written to the charger.
 - **Userspace:** no udev rule, unit or script on the card writes charge voltage, `i2cset` isn't installed,
   and the driver has no `constant_charge_voltage` property.
 - **Gauge at the limit:** `bq27421-0` 4.035 V, 87 %, charger `Full`.
+
+## 2026-11-20 — the r5 release image on a Pyra, and a charger replug (R29, R15)
+
+Release image run 44856229687 (draft `image-2026.11-r5`, built from 19234e0) written to a card and booted
+on a V5.3 board. Checks over ssh, read-only; the owner unplugged and replugged the charger.
+
+- **Download:** `sha256sum -c` OK; `gh attestation verify` with `--signer-workflow
+  .../release-image.yml` exits 0 for the `.img.xz`, both `.sha256` and the `.info`. A copy with one byte
+  changed gets HTTP 404 (no attestation). `.info`: `repo_dirty=no`, pyra-hacks 0.38+pyra4, pyra-settings
+  0.14, pyra-sound 0.4, pyra-backlight 0.8, the r3 kernel tarball.
+- **Card:** `5.6.19-m4-kbdled`, `systemctl is-system-running` = running, no failed units, root grown to
+  239 G, host keys and machine-id made at first boot, password changed at first login, dpkg guards
+  `pyra-thermal-guard`, `pyra-wheel-guard`, `pyra-wsegl-guard`.
+- **Charger limit (fix 8, R15):** charger in at boot, `max_current` 2000000. After a physical unplug and
+  replug on the USB3 micro port: **3000000**. Kernel log: `VBUS became available` at 2240.640 s, then
+  `r8=a4 ADAP FCHG PWRGOOD` at 2240.761 s. The udev rule matches the device (`udevadm test`), and the only
+  writer on the card is `pyra-charge-current-apply` (2 A); so the chip's own adapter detection set 3 A after
+  the rule ran (inferred, not traced). Fix 8's purpose holds (not stuck at 500 mA); the "2 A after every plug"
+  claim did not.

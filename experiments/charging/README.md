@@ -171,8 +171,11 @@ udev rule in `/etc/udev/rules.d` that re-applies the limit on `add` and
 `change`. The limit is a register and does not survive an unplug or a boot.
 
 The rule was verified by knocking the register down to 500000 and firing each
-event with `udevadm trigger`; it came back to 2000000 both times. **A physical
-unplug and replug has not been tested.** That needs hands on the device.
+event with `udevadm trigger`; it came back to 2000000 both times. A physical
+unplug and replug on the USB3 port (2026-11-20, r5 release image) left
+**3000000**, not 2000000: the chip's adapter detection lands about 0.12 s
+after the driver's plug event and the helper has already run (see "USB3 micro
+port against the normal micro port" and `docs/fixes.md` fix 8).
 
 Deliberately *not* done: connecting the thermal daemon's charge ladder to the
 working knob. That ladder reads the fuel gauge's die temperature and caps at
@@ -227,8 +230,11 @@ paths differ in adapter as well as port.
 On plug events the charger classified the brick as an adapter on the USB3
 port (REG08 `0xac`, `VBUS_STAT` `10`) and as unknown on the normal port
 (`0x2c`). After a boot with the cable already in, it reads `00` on either,
-and `bq24297/online` reads `0` while charging at 1.2 A. Neither affects the
-limit, which is set by the helper regardless.
+and `bq24297/online` reads `0` while charging at 1.2 A. The adapter
+classification does affect the limit after a replug (measured 2026-11-20):
+`max_current` went from the helper's 2000000 to 3000000, written after the
+helper ran, so a replugged USB3 brick charges at the 3 A row below. The normal
+port's "unknown" after a replug is untested.
 
 ### 2 A against 3 A, with nothing else touching the limit
 

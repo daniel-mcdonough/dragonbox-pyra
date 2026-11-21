@@ -625,7 +625,13 @@ and verifies the result:
     /etc/udev/rules.d/charging.rules              masks the stock rules
 
 The limit is a register: it resets on every unplug and every boot, which is
-what the udev rule is for. `--check` reports the state, `--undo` puts 500 mA
+what the udev rule is for. At boot the rule's 2 A sticks. After a physical
+replug it may not: on the USB3 port the bq24297 finishes its own D+/D−
+detection about 0.12 s after the driver reports VBUS, classifies the brick as
+an adapter and leaves the limit at 3 A (measured 2026-11-20, below). Charging
+is still not capped at 500 mA, which is what this fix is for; the cell's
+current is still REG02's 2048 mA; and VINDPM still protects a weak supply. A
+fix that re-applies the limit after detection is open work. `--check` reports the state, `--undo` puts 500 mA
 and the stock rules back. `device/pyra-chgwatch.sh` watches the charge path
 once a second and changes nothing.
 
@@ -636,8 +642,14 @@ will not silently revert it. Its rule and its mask both live in
 
 **Verified:** the rule re-applies the limit on both `add` and `change` events,
 tested by knocking the register down to 500000 and firing each event with
-`udevadm trigger`. A physical unplug and replug has **not** been tested — that
-needs hands on the device.
+`udevadm trigger`. A physical unplug and replug on the USB3 port, on the r5
+release image (2026-11-20, `verification-log.md`): `max_current` read
+2000000 after boot and **3000000** after the replug. The kernel log has
+`VBUS became available` (the driver writes the limit, and the change event
+fires), then `r8=a4 ADAP` 0.12 s later. The likeliest reading is that the
+helper saw 2 A, which the driver had just written, and exited, and the chip's
+adapter detection then raised it. That was not traced. The normal micro port
+and a laptop port after a replug are untested.
 
 ## Fix 9 — the machine has never had sound
 
