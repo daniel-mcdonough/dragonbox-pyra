@@ -53,6 +53,109 @@ or may not hold up. The upstream package ships a wrapper rather than replacing
 
     Exec=gl4es /usr/games/something          # in a .desktop file
 
+The wrapper appends gl4es's directory to `LD_LIBRARY_PATH`. A launcher that
+sets `LD_LIBRARY_PATH` to a bundled `lib/` holding its own `libGL.so.1` still
+gets its own.
+
+### Programs that need GLX, and what to do about them
+
+A program that links `libGL.so.1` and is started without the wrapper gets
+glvnd's `libGL`. glvnd asks the X server for GLX, and fix 4 has turned GLX
+off, so there is no window at all. On bookworm the same program ran in
+software, slowly. Two kinds of program do this:
+
+- **A DBP from a developer who runs gl4es system-wide.** ptitSeb replaces
+  mesa's `libGL` with gl4es on their own Pyra and so forgets the wrapper
+  (https://pyra-handheld.com/boards/posts/1703338/: DuckStation build 01
+  gave a black screen until it was repacked with `gl4es`).
+- **A "mesa-only" program,** one whose author found that it ran with mesa
+  and not with gl4es: Ice Field Frenzy
+  (https://pyra-handheld.com/boards/posts/1715635/), ft2-clone run in
+  mesa mode to dodge audio trouble
+  (https://pyra-handheld.com/boards/posts/1704299/).
+
+What it looks like, on the card (r5 release image, 2026-11-21):
+
+| Program | Prints |
+| --- | --- |
+| SDL2 program (a test program, `SDL_CreateWindow` with `SDL_WINDOW_OPENGL`) | `SDL_CreateWindow: GLX is not supported` |
+| SDL 1.2 program (Ice Field Frenzy 1.0.0.2, DBP from the repo) | `Unable to open graphics mode!` (its own message; SDL's error is `Couldn't find matching GLX visual`) |
+| plain GLX (`glxinfo`, `glxgears`) | the messages at the top of this page |
+
+**The fix is the wrapper.** For a DBP, start its launcher from a terminal with
+the wrapper in front:
+
+    gl4es /usr/local/games/<Exec>
+
+`dbp-run` passes the environment through to the program (checked with Ice
+Field Frenzy's launcher, 2026-11-21). `LD_LIBRARY_PATH=/usr/lib/arm-linux-gnueabihf/gl4es`
+does the same as the wrapper (checked with the SDL2 test program). The SDL2 test
+program then reported `GL_RENDERER: GL4ES wrapper`.
+
+**A "mesa-only" program may only be asking for something gl4es doesn't
+have.** Ice Field Frenzy fails under the wrapper too, with the same message.
+It asks SDL for a 32-bit depth buffer (`SDL_GL_DEPTH_SIZE` 32), and every
+gl4es config has depth 24 (next section). Mesa's software GLX presumably
+offered a deeper one (not checked). Clamp the request with a small preload
+library. gcc is on the image:
+
+    mkdir -p ~/.local/lib
+    cat > /tmp/sdl-depth24.c <<'EOF'
+    #define _GNU_SOURCE
+    #include <dlfcn.h>
+    /* SDL_GL_DEPTH_SIZE is 6 in SDL 1.2. gl4es offers depth 24 only. */
+    int SDL_GL_SetAttribute(int a, int v) {
+      int (*real)(int, int) = dlsym(RTLD_NEXT, "SDL_GL_SetAttribute");
+      if (a == 6 && v > 24) v = 24;
+      return real(a, v);
+    }
+    EOF
+    gcc -shared -fPIC -O1 -o ~/.local/lib/sdl-depth24.so /tmp/sdl-depth24.c -ldl
+    LD_PRELOAD=~/.local/lib/sdl-depth24.so gl4es /usr/local/games/runicefieldfrenzy.sh
+
+With that, Ice Field Frenzy opens fullscreen at 1280x720 and draws its title
+screen on the SGX (checked 2026-11-21, through its DBP launcher).
+`SDL_GL_DEPTH_SIZE` is 6 in SDL2 too, so the same library should serve an SDL2
+program (not tried). To find what a program asks for, log its
+`SDL_GL_SetAttribute` calls the same way.
+
+ft2-clone was not tried: the forum attachment is the only build. Its audio
+trouble under gl4es predates the AESS fixes and may not be a GL matter at all.
+
+What does not help:
+
+- `SDL_VIDEO_X11_FORCE_EGL=1`. SDL2 then opens desktop GL through EGL, but
+  `libEGL.so.1` is the SGX blob, which has no desktop GL:
+  `SDL_CreateWindow: Could not create GLES window surface`.
+- gl4es in `ld.so.conf`, for the reasons above.
+
+### Fullscreen crashes under gl4es that a window doesn't have
+
+jedi23's Fade to Black port (F2BGL, https://pyra-handheld.com/boards/posts/1714399/)
+crashed under gl4es in fullscreen, "mostly" when gameplay started, with
+`ERROR: I/O error on seeking to offset #####!`. It never crashed in a window
+or under mesa. That is very likely fix 21's descriptor double-close, but it
+can't be shown on this card.
+
+What fits: f2bgl (upstream source, commit `0b84f41`) creates its window,
+sets the swap interval and only then opens its data files. It handles `SDL_WINDOWEVENT_RESIZED` by resizing. When
+the window changes size, the SGX window system rebuilds its buffers, and the
+stock library then closes descriptor numbers it no longer owns. A test program
+in f2bgl's order (open eight files after the swap interval, then resize the
+window) lost one data file in 3 of 3 runs with the stock library: the file's
+descriptor closed from `libpvrDRI3WSEGL.so+0x154d` and its next `fseek`
+returned -1. That is the call behind f2bgl's message. With fix 21's library it
+lost none in 3 of 3 runs (2026-11-21). Mesa doesn't go through that library.
+The guess is that on jedi23's desktop the window manager resized the window
+after it went fullscreen, and a window that keeps its size never triggers it.
+
+Why it can't be shown here: the game data is commercial, the DBP needs
+`libfluidsynth.so.1` (trixie has `.so.3`), and on this card's MATE a
+`SDL_WINDOW_FULLSCREEN_DESKTOP` window already has its full size when created
+and isn't resized later, so the trigger doesn't happen here at all. jedi23 was
+on buster or bullseye. Bullseye's library has the same bug (fix 21), and
+`pyra-wsegl-fdfix.sh` patches it.
+
 ### The one real limitation: fbconfig matching
 
 Asking for a framebuffer config that does not exactly match one the driver

@@ -126,13 +126,23 @@ libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
 `libGLEW.so.2.2` to `.so.2.1` (a workaround from the forum on bookworm), mixes
 32-bit and 64-bit `time_t` callers, and the result fails silently.
 
+## A DBP that needs GLX
+
+Fix 4 turns GLX off, so a DBP that runs desktop GL without the `gl4es` wrapper
+doesn't start at all (on bookworm it ran slowly). Start its launcher as
+`gl4es /usr/local/games/<Exec>`: `dbp-run` passes the environment on (checked
+2026-11-21 with Ice Field Frenzy). [gl4es.md](gl4es.md), "Programs that need
+GLX", has the messages and the one game that needed more.
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
   normally. If `dbp-run` itself is killed, the union and the image stay mounted
   (seen 2026-11-21 after a `timeout`). Check with `findmnt -t aufs,squashfs`.
   Remove them with
-  `sudo umount /mnt/dbp/union/<id> /mnt/dbp/images/<id>`.
+  `sudo umount /mnt/dbp/union/<id> /mnt/dbp/images/<id>`. The two empty
+  mount points stay, and if the `.dbp` was deleted meanwhile, so does its loop
+  device (`sudo losetup -l` shows it `(deleted)`; `sudo losetup -d` frees it).
 - **Input can stay remapped.** Many launchers (GBA.emu's included) remap
   input for the game and undo it on exit, so a crash leaves the game's
   mapping. Recovery: [troubleshooting.md](troubleshooting.md), "Nubs, d-pad or game buttons dead
@@ -149,8 +159,5 @@ libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
   checked 2026-11-21). On bookworm it fails with
   `ModuleNotFoundError: No module named 'apt_pkg'` until that package is
   installed.
-- **Programs that need mesa's software GLX.** Fix 4 turns GLX off, so a DBP
-  that runs desktop GL without the `gl4es` wrapper doesn't start at all (on
-  bookworm it ran slowly). [gl4es.md](gl4es.md) has the details.
 - **A package on a second SD card.** `dbpd` searches every mounted filesystem,
   so it should work the same way, but only the system card's root was tried.

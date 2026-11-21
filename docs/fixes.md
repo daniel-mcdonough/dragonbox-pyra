@@ -1450,7 +1450,11 @@ calls `close()` on the stored number again (`destroy_buffer`, `dri3_ws.c:324`
 in the 0.4 source; the `blx close@plt` at file offset `0x1548`). By then the
 number has usually gone to the next file the program opened, and that file
 loses its descriptor. Buffers are rebuilt when a client sets its swap
-interval, so it happens early, just after a program opens its own files. An
+interval, so it happens early, just after a program opens its own files. A
+window resize rebuilds them too: a test program that opened eight files and
+then resized its window lost one of them in 3 of 3 runs with the stock build,
+and none with the fixed one (2026-11-21, `gl4es.md`, "Fullscreen crashes").
+Setting the interval to 0 and back to 1 within one frame rebuilt nothing. An
 `LD_PRELOAD` shim caught the library closing the game's log from
 `+0x154d`, the return address of that call.
 

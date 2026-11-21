@@ -2554,3 +2554,29 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
 - Left: the drop-in back (`DropInPaths=` lists it), 0.1.19+pyra1 installed (rollback: `sudo dpkg -i
   ~/r77-build/funkeymonkey-pyrainput_0.1.19_armhf.deb`), test files in `~/r77-build/r87/`. The guard is not on
   this card (only prep installs it).
+
+## 2026-11-21 — programs that need GLX, and the F2BGL crash (R80)
+
+- Card: the r5 release card, `5.6.19-m4-kbdled`, `libgl-gl4es-pyra` 1.1.7.1, fix 21's library in place
+  (`pyra-wsegl-fdfix.sh status`: fixed). X has 27 extensions and no GLX (`xdpyinfo`).
+- Ice Field Frenzy 1.0.0.2 (`icefieldfrenzy.farox`, repo MD5 matched): SDL 1.2 (`libsdl1.2pyra`) plus
+  `libGL`, launcher without `gl4es`. Plain and under `gl4es`: `Unable to open graphics mode!`. An
+  `LD_PRELOAD` logger showed `SDL_GL_SetAttribute(DEPTH=32)`, then `SDL_SetVideoMode` failing with
+  `Couldn't find matching GLX visual`. Clamping depth to 24 (gl4es.md's shim) under `gl4es`: the mode set
+  succeeded and the title screen drew fullscreen at 1280x720 (`xwd` screenshot), run from the extracted image
+  and again through the registered DBP's launcher, so `dbp-run` passes `LD_PRELOAD` and `LD_LIBRARY_PATH` on.
+- SDL2 test program (window with `SDL_WINDOW_OPENGL`, context, `glGetString`): plain `SDL_CreateWindow: GLX is
+  not supported`; `gl4es` and `LD_LIBRARY_PATH=/usr/lib/arm-linux-gnueabihf/gl4es` both `GL_RENDERER: GL4ES
+  wrapper`; `SDL_VIDEO_X11_FORCE_EGL=1` `Could not create GLES window surface`.
+- F2BGL 0.3.1 (repo MD5 matched): not runnable here (needs the commercial data and `libfluidsynth.so.1`;
+  trixie has `.so.3`). A test program in f2bgl's order (window, context, swap interval 1, eight `fopen`s,
+  180 frames under `gl4es`), with the stock library selected by `LD_LIBRARY_PATH` (`/etc/powervr.ini` names it
+  by bare name; `/proc/<pid>/maps` confirmed the copy) and a `close()` logger:
+  - window or `FULLSCREEN_DESKTOP`, no resize: no close from `libpvrDRI3WSEGL`, no file lost, both builds.
+  - resize to 800x480 at frame 60: stock closed fd 10 three times from `+0x154d` (the first returned 0), the
+    file's `fseek` returned -1; 3 of 3 runs lost one file. Fixed build: 0 of 3.
+  - swap interval 0 then 1 at frame 60: no rebuild, no loss, both builds.
+  - `FULLSCREEN_DESKTOP` plus the resize: the window stayed 1280x720 and nothing was lost.
+- Left: nothing. The DBP was unregistered; its image and union mounts (left by a `timeout`-killed `dbp-run`)
+  were unmounted, the loop device detached and the mount points removed; `/tmp/r80` and `/tmp/dragonbox`
+  deleted. The card's library was not touched (still `fixed`).
