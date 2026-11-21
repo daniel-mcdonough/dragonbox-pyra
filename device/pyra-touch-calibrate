@@ -1,0 +1,297 @@
+#!/usr/bin/env python3
+"""Calibrate the Pyra's touchscreen for the libinput X driver, and keep it.
+
+The X server drives the TSC2007 with libinput, which takes its calibration as a
+matrix: the "libinput Calibration Matrix" property, set from an X config with
+Option "CalibrationMatrix". The packaged xinput_calibrator (0.8.0) only knows
+the evdev driver. On libinput it computes evdev min/max values from pointer
+positions that are already corrected by the current matrix, and it suggests a
+MatchDriver "evdev" snippet that libinput never reads. So its result changes
+nothing.
+
+This tool does the job for libinput:
+
+  1. sets the matrix to identity, so taps arrive uncorrected;
+  2. shows five targets, one at a time; touch and hold each one until it turns
+     green, then lift. The median of the samples while held is used;
+  3. fits an affine matrix to the five points (least squares) and applies it
+     at once with xinput;
+  4. saves it to /etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf
+     (with sudo), which X reads after the vendor's 99-pyra-touchscreen.conf
+     and which overrides its matrix. The vendor file is left alone, so a
+     package upgrade does not ask about it.
+
+Esc, or a fit worse than MAX_RESIDUAL_PX, puts the previous matrix back and
+saves nothing.
+
+    pyra-touch-calibrate             calibrate, apply and save
+    pyra-touch-calibrate --no-save   calibrate and apply until X restarts
+    pyra-touch-calibrate --show      print the current, vendor and saved matrices
+    pyra-touch-calibrate --reset     remove the saved file, back to the vendor matrix
+
+Run it from a terminal in the desktop session (it asks for the sudo password
+there). Needs xinput (apt install xinput) and python3-gi.
+"""
+import os, shutil, subprocess, sys, tempfile
+
+DEVICE = "TSC2007 Touchscreen"
+PROP = "libinput Calibration Matrix"
+VENDOR_CONF = "/etc/X11/xorg.conf.d/99-pyra-touchscreen.conf"
+CONF = "/etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf"
+IDENTITY = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+INSET = 0.1            # targets this far in from each edge, as a fraction
+HOLD_MS = 500          # a target needs the stylus held this long
+MAX_RESIDUAL_PX = 20   # refuse a fit whose worst point misses by more
+
+
+def die(msg):
+    print("FAILED: " + msg, file=sys.stderr)
+    sys.exit(1)
+
+
+def xinput(*args):
+    return subprocess.run(["xinput"] + list(args), check=True,
+                          capture_output=True, text=True).stdout
+
+
+def get_matrix():
+    for line in xinput("list-props", DEVICE).splitlines():
+        name, _, value = line.strip().partition(":")
+        if name.rsplit(" (", 1)[0] == PROP:
+            return [float(v) for v in value.split(",")]
+    die("%r has no %r property: is X using the libinput driver for it?" % (DEVICE, PROP))
+
+
+def set_matrix(m):
+    xinput("set-prop", DEVICE, "--type=float", PROP, *["%.6f" % v for v in m])
+
+
+def vendor_matrix():
+    try:
+        with open(VENDOR_CONF) as f:
+            for line in f:
+                if "CalibrationMatrix" in line:
+                    return [float(v) for v in line.split('"')[3].split()]
+    except (OSError, IndexError, ValueError):
+        pass
+    return IDENTITY
+
+
+def fmt(m):
+    return " ".join("%.6f" % v for v in m)
+
+
+def solve3(a, b):
+    """Gaussian elimination with partial pivoting for a 3x3 system."""
+    m = [row[:] + [v] for row, v in zip(a, b)]
+    for c in range(3):
+        p = max(range(c, 3), key=lambda r: abs(m[r][c]))
+        if abs(m[p][c]) < 1e-12:
+            raise ValueError("the points do not span the screen")
+        m[c], m[p] = m[p], m[c]
+        for r in range(3):
+            if r != c:
+                f = m[r][c] / m[c][c]
+                m[r] = [x - f * y for x, y in zip(m[r], m[c])]
+    return [m[r][3] / m[r][r] for r in range(3)]
+
+
+def fit(measured, targets):
+    """Least-squares affine map, normalised coordinates: target = M * measured."""
+    ata = [[0.0] * 3 for _ in range(3)]
+    atx, aty = [0.0] * 3, [0.0] * 3
+    for (mx, my), (tx, ty) in zip(measured, targets):
+        row = (mx, my, 1.0)
+        for i in range(3):
+            for j in range(3):
+                ata[i][j] += row[i] * row[j]
+            atx[i] += row[i] * tx
+            aty[i] += row[i] * ty
+    return solve3(ata, atx) + solve3(ata, aty) + [0.0, 0.0, 1.0]
+
+
+def median(v):
+    v = sorted(v)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def save(m):
+    text = ('# Written by pyra-touch-calibrate. Overrides the matrix in\n'
+            '# 99-pyra-touchscreen.conf; delete this file (or run\n'
+            '# pyra-touch-calibrate --reset) to go back to it.\n'
+            'Section "InputClass"\n'
+            '\tIdentifier "Pyra touchscreen calibration"\n'
+            '\tMatchProduct "%s"\n'
+            '\tOption "CalibrationMatrix" "%s"\n'
+            'EndSection\n') % (DEVICE, fmt(m))
+    with tempfile.NamedTemporaryFile("w", suffix=".conf", delete=False) as f:
+        f.write(text)
+    try:
+        subprocess.run(["sudo", "install", "-m", "644", f.name, CONF], check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Not saved. To keep it, put this in %s:\n\n%s" % (CONF, text))
+        return False
+    finally:
+        os.unlink(f.name)
+    print("Saved to " + CONF)
+    return True
+
+
+def calibrate(no_save):
+    import gi
+    gi.require_version("Gtk", "3.0")
+    from gi.repository import Gtk, Gdk, GLib
+
+    old = get_matrix()
+    set_matrix(IDENTITY)
+    root = Gdk.get_default_root_window()
+    w, h = root.get_width(), root.get_height()
+    win = Gtk.Window()
+    targets = [(INSET, INSET), (1 - INSET, INSET), (1 - INSET, 1 - INSET),
+               (INSET, 1 - INSET), (0.5, 0.5)]
+    st = {"i": 0, "samples": [], "held": False, "t0": 0, "long": False,
+          "measured": [], "spread": [], "ok": False}
+
+    def draw(widget, cr):
+        cr.set_source_rgb(0, 0, 0)
+        cr.paint()
+        cr.set_source_rgb(0.8, 0.8, 0.8)
+        cr.select_font_face("Sans")
+        cr.set_font_size(22)
+        cr.move_to(w * 0.25, h * 0.35)
+        cr.show_text("Touch and hold each cross until it turns green.  Esc cancels.")
+        cr.move_to(w * 0.25, h * 0.35 + 30)
+        cr.show_text("Point %d of %d" % (st["i"] + 1, len(targets)))
+        if st["i"] < len(targets):
+            x, y = targets[st["i"]][0] * w, targets[st["i"]][1] * h
+            if st["held"] and st["long"]:
+                cr.set_source_rgb(0.2, 1, 0.2)
+            else:
+                cr.set_source_rgb(1, 0.3, 0.3)
+            cr.set_line_width(2)
+            for dx, dy in ((-30, 0), (30, 0), (0, -30), (0, 30)):
+                cr.move_to(x, y)
+                cr.line_to(x + dx, y + dy)
+            cr.stroke()
+            cr.arc(x, y, 12, 0, 6.2832)
+            cr.stroke()
+
+    def add(ev):
+        st["samples"].append((ev.x_root / w, ev.y_root / h))
+        area.queue_draw()
+
+    def long_enough(t0):
+        if st["held"] and st["t0"] == t0:
+            st["long"] = True
+            area.queue_draw()
+        return False
+
+    # A still stylus may send few motion events (none at all with kernel
+    # fuzz), so a target is done by time held, not by samples.
+    def press(widget, ev):
+        st["held"], st["samples"], st["t0"], st["long"] = True, [], ev.time, False
+        GLib.timeout_add(HOLD_MS, long_enough, ev.time)
+        add(ev)
+
+    def motion(widget, ev):
+        if st["held"]:
+            add(ev)
+
+    def release(widget, ev):
+        st["held"] = False
+        s = st["samples"]
+        if ev.time - st["t0"] < HOLD_MS:
+            area.queue_draw()
+            return
+        xs, ys = [p[0] for p in s], [p[1] for p in s]
+        st["measured"].append((median(xs), median(ys)))
+        st["spread"].append(((max(xs) - min(xs)) * w, (max(ys) - min(ys)) * h, len(s)))
+        st["i"] += 1
+        st["samples"] = []
+        if st["i"] == len(targets):
+            st["ok"] = True
+            Gtk.main_quit()
+        area.queue_draw()
+
+    def key(widget, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            Gtk.main_quit()
+
+    area = Gtk.DrawingArea()
+    area.add_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK
+                    | Gdk.EventMask.POINTER_MOTION_MASK)
+    area.connect("draw", draw)
+    area.connect("button-press-event", press)
+    area.connect("motion-notify-event", motion)
+    area.connect("button-release-event", release)
+    win.connect("key-press-event", key)
+    win.connect("destroy", lambda *a: Gtk.main_level() and Gtk.main_quit())
+    win.add(area)
+    win.fullscreen()
+    win.show_all()
+    try:
+        Gtk.main()
+    finally:
+        if not st["ok"]:
+            set_matrix(old)
+    win.destroy()
+    if not st["ok"]:
+        print("Cancelled; matrix left as it was.")
+        return 1
+
+    for n, ((mx, my), (sx, sy, k)) in enumerate(zip(st["measured"], st["spread"]), 1):
+        print("point %d: tapped %.0f,%.0f px for target %.0f,%.0f; %d samples, "
+              "spread while held %.0f x %.0f px"
+              % (n, mx * w, my * h, targets[n - 1][0] * w, targets[n - 1][1] * h, k, sx, sy))
+    try:
+        m = fit(st["measured"], targets)
+    except ValueError as e:
+        set_matrix(old)
+        die(str(e) + "; matrix left as it was")
+    worst = 0.0
+    for (mx, my), (tx, ty) in zip(st["measured"], targets):
+        cx = m[0] * mx + m[1] * my + m[2]
+        cy = m[3] * mx + m[4] * my + m[5]
+        worst = max(worst, ((cx - tx) * w) ** 2 + ((cy - ty) * h) ** 2)
+    worst **= 0.5
+    print("matrix: %s\nworst point after the fit: %.1f px" % (fmt(m), worst))
+    if worst > MAX_RESIDUAL_PX:
+        set_matrix(old)
+        print("That is more than %d px: a target was probably missed. "
+              "Matrix left as it was; run it again." % MAX_RESIDUAL_PX)
+        return 1
+    set_matrix(m)
+    print("Applied.")
+    if not no_save:
+        save(m)
+    return 0
+
+
+def main():
+    args = sys.argv[1:]
+    if args and args[0] in ("-h", "--help"):
+        print(__doc__)
+        return 0
+    if not os.environ.get("DISPLAY"):
+        die("no DISPLAY: run this in the desktop session")
+    if not shutil.which("xinput"):
+        die("xinput is not installed (sudo apt install xinput)")
+    if args == ["--show"]:
+        print("current:  " + fmt(get_matrix()))
+        print("vendor:   " + fmt(vendor_matrix()))
+        print("saved:    " + (CONF if os.path.exists(CONF) else "none"))
+        return 0
+    if args == ["--reset"]:
+        if os.path.exists(CONF):
+            subprocess.run(["sudo", "rm", "-f", CONF], check=True)
+        set_matrix(vendor_matrix())
+        print("Back to the vendor matrix: " + fmt(get_matrix()))
+        return 0
+    if args not in ([], ["--no-save"]):
+        die("unknown arguments %s; see --help" % " ".join(args))
+    return calibrate(args == ["--no-save"])
+
+
+if __name__ == "__main__":
+    sys.exit(main())

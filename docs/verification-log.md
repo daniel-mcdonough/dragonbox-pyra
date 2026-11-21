@@ -2580,3 +2580,33 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
 - Left: nothing. The DBP was unregistered; its image and union mounts (left by a `timeout`-killed `dbp-run`)
   were unmounted, the loop device detached and the mount points removed; `/tmp/r80` and `/tmp/dragonbox`
   deleted. The card's library was not touched (still `fixed`).
+
+## 2026-11-21 — touchscreen calibration and stylus jitter (R81)
+
+- Card: the r5 release card, `5.6.19-m4-kbdled`, fix 29's package installed by hand. `xinput` and
+  `libinput-tools` installed for the test and purged after. The install also brought Debian's security update
+  `libinput10`/`libinput-bin` 1.28.1-1+deb13u1 (CVE-2026-50292). It was left installed: 1.28.1-1 is no longer in
+  the archive.
+- X uses libinput for the TSC2007 (`Applying InputClass "libinput touchscreen catchall"`, then
+  `"TSC2007 Touchscreen"`). `xinput list-props`: `libinput Calibration Matrix` = the vendor's
+  `0.998032 -0.004569 0.016723 -0.006564 1.083056 -0.031356 0 0 1` from `99-pyra-touchscreen.conf`
+  (`pyra-config-xorg`), so the X config matrix is honoured. `strings xinput_calibrator` (0.8.0): only evdev
+  properties and an evdev `Option "Calibration"` snippet.
+- `evtest`: `ABS_X` 0..719, `ABS_Y` 0..1279, no fuzz on either; `ABS_PRESSURE` 0..1000 fuzz 50. DT:
+  `touchscreen-fuzz-x/-y = <5>`, `touchscreen-swapped-x-y`, `ti,min-x/y = <50>`, `ti,max-x/y = <3900>`.
+  `udevadm info`: `LIBINPUT_FUZZ_00=5`, `LIBINPUT_FUZZ_01=5`, moved there by `90-libinput-fuzz-override.rules`.
+- `pyra-touch-calibrate`, owner's taps: run 1 (sample-count version) matrix
+  `1.006181 0.004592 0.002738 0.016297 1.053841 -0.032213`, worst point 7.1 px, saved. Spreads while held at the
+  first two corners 84 x 43 and 176 x 57 px, which are the raw `evtest` ranges for those touches (47 and 99
+  `ABS_X` steps, 1.78 px per step); the median absorbed them. `systemctl restart lightdm` (owner's OK): the Xorg log
+  applied `"Pyra touchscreen calibration"` after `"TSC2007 Touchscreen"`, and the property read the saved matrix.
+  Run 2 (hold-time version, `--no-save`): `1.002628 0.000913 0.008262 0.002850 1.062362 -0.033482`, worst
+  3.9 px, spreads 4-7 x 4-11 px. The owner: taps land right. No reboot was made.
+- Firm still hold, 4.12 s, kernel fuzz 0 (middle of the touch, 0.25 s dropped each end): 78 reports, position
+  changed in 75; sd 3.9 px across, 2.8 px down; range 12 x 10 px. `libinput debug-events` run alongside:
+  99 positions, identical to the 115 evdev reports with consecutive repeats removed.
+- Kernel fuzz set to 5 on both axes with `EVIOCSABS` (by hand, live), two firm holds of 1.55 s: about 7
+  reports/s against 22, X did not change, Y range 1 px. The owner: "I think it's steadier". Fuzz reset to 0.
+- Left: nothing. The calibration file was removed with `--reset` (vendor matrix back, verified with `--show`),
+  the two packages and their automatic dependencies (`python3-libevdev`, `python3-pyudev`) were purged, and the
+  `/tmp` files were deleted. The libinput security update above stays.

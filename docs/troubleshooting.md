@@ -1808,6 +1808,65 @@ The keycodes were injected through a uinput keyboard, the same path the
 daemon uses, so the daemon's Fn+key-to-keycode step is taken from its
 source (`pyraKeyMap.cpp`), not pressed by hand.
 
+## Touchscreen calibration does nothing, or the pointer jitters while the stylus is held
+
+**Calibration.** X drives the TSC2007 with the libinput driver. libinput takes
+a calibration only as a matrix: the `libinput Calibration Matrix` property,
+set from an X config with `Option "CalibrationMatrix"`. `pyra-config-xorg`'s
+`/etc/X11/xorg.conf.d/99-pyra-touchscreen.conf` sets one, and on the trixie
+card it is applied (`xinput list-props "TSC2007 Touchscreen"` shows its values;
+`verification-log.md`, 2026-11-21, R81). The "Calibrate Touchscreen" menu entry runs
+`xinput_calibrator` 0.8.0, which only knows the evdev driver: it reads pointer
+positions already corrected by that matrix, works out evdev min/max values,
+and suggests a `MatchDriver "evdev"` snippet that libinput never reads. So
+nothing it prints changes anything.
+
+Use `device/pyra-touch-calibrate` instead, from a terminal in the desktop
+session. It needs `xinput` (`sudo apt install xinput`). It sets the matrix to
+identity, shows five crosses (hold each until it turns green), fits an affine
+matrix to them, applies it at once, and saves it with sudo to
+`/etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf`. X reads that file
+after the vendor's, and its matrix wins (the Xorg log lists `Applying
+InputClass "Pyra touchscreen calibration"` after `"TSC2007 Touchscreen"`), so
+the vendor file stays untouched and a package upgrade asks nothing. A fit
+whose worst point is more than 20 px out, or Esc, restores the previous matrix.
+
+    pyra-touch-calibrate             # calibrate, apply, save
+    pyra-touch-calibrate --no-save   # until X restarts
+    pyra-touch-calibrate --show      # current, vendor and saved matrices
+    pyra-touch-calibrate --reset     # delete the saved file, back to the vendor matrix
+
+Measured on the owner's unit (2026-11-21): worst point after the fit 7.1 px
+and 3.9 px in two runs; the saved matrix was back after `systemctl restart
+lightdm`. The vendor matrix misses the same taps by about 5 px at the centre
+and 7-11 px near a corner (computed from those taps), so it was made on a
+different unit or panel. Expect that on yours too.
+
+The evdev axes look wrong but work: `ABS_X` runs 0..719 and spans the 1280 px
+width, and `ABS_Y` runs 0..1279 and spans the 720 px height (the DT's
+`touchscreen-swapped-x-y` swaps the ranges, while the driver's scaling already
+produced screen-oriented values). libinput normalises each axis to the screen,
+so the only effect is that one `ABS_X` step is 1.78 px.
+
+**Jitter.** The noise is in the hardware readings, and libinput takes away the
+filter that would hide it. Held firmly and still for 4 s, the raw `evtest`
+position changed in 75 of 77 reports (22 reports/s), standard deviation 3.9 px
+across and 2.8 px down, range 12 x 10 px. Landing and lifting the stylus, at
+low pressure, the range reached 176 px across. The positions that `libinput
+debug-events` produced matched the raw reports one for one (99 of 99, once
+repeats were dropped), so libinput adds no noise and smooths nothing.
+
+The DT asks for kernel smoothing (`touchscreen-fuzz-x/-y = <5>`), but
+libinput's udev rule `90-libinput-fuzz-override.rules` moves fuzz out of the
+kernel for touchscreens (`LIBINPUT_FUZZ_00=5` and `LIBINPUT_FUZZ_01=5` in
+`udevadm info /dev/input/event4`, kernel fuzz 0 in `evtest`). libinput 1.28's
+touchscreen path then doesn't use those values. With the kernel fuzz put back
+to 5 by hand (`EVIOCSABS`), two firm holds sent about 7 reports/s and moved
+by no more than 1 px. The owner thought the pointer looked steadier. Those holds
+were short (1.5 s), so take that as a sign, not a figure. A rule to keep the
+kernel fuzz is not in prep yet. Whether part of the remaining noise is the hand
+rather than the ADC would need a weighted stylus to tell.
+
 ## `ldconfig: /lib/libpvrDRI3WSEGL.so is not a symbolic link` during `apt install`
 
 Expected, and nothing to fix. The vendor package `dri3wsegl-pyra` installs the
