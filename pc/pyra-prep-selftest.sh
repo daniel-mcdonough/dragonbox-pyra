@@ -1352,12 +1352,12 @@ i "fix 27 — a wrong .deb, a missing dependency and a wrong pin stop prep befor
 ########################################################################
 # --no-backlight and --no-settings get these runs past fixes 22 and 26 with no
 # download. The pin case runs a copy of prep whose SOUND_SHA256 the release
-# cannot match, beside a link to device/ (prep finds its payloads there); bash
+# cannot match, beside links to device/ and patches/ (prep finds its payloads there); bash
 # runs it, in case OUT is on a noexec /tmp.
 mkdeb "$OUT/selftest-not-sound.deb" other-package python3
 mkdeb "$OUT/selftest-sound-nodep.deb" pyra-sound "python3, pyra-selftest-no-such-package (>= 1)"
 PINDIR=$OUT/pin
-rm -rf "$PINDIR"; mkdir -p "$PINDIR/pc"; ln -s "$PAYLOADS" "$PINDIR/device"
+rm -rf "$PINDIR"; mkdir -p "$PINDIR/pc"; ln -s "$PAYLOADS" "$PINDIR/device"; ln -s "$ROOT/patches" "$PINDIR/patches"
 sed 's/^SOUND_SHA256=.*/SOUND_SHA256=0000000000000000000000000000000000000000000000000000000000000000/' \
     "$PREP" > "$PINDIR/pc/pyra-trixie-prep.sh"
 chmod 0755 "$PINDIR/pc/pyra-trixie-prep.sh"
