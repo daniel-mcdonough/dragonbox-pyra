@@ -1843,9 +1843,7 @@ package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4
 had both in Depends; 0.14 moved them to Recommends.) Prep installs both anyway,
 so fix 26 also
 installs the fork's `pyra-hacks_0.38+pyra5_armhf.deb`, pinned by SHA-256
-(`4c554a21…45ff07`, a local build of the tag: the fork's build is not
-reproducible, so the pin moves to the release asset once that is published),
-from a copy beside the pyra-settings `.deb` or else from that release. It
+(`28e6242f…2c5d73`, the release asset as published), from a copy beside the pyra-settings `.deb` or else from that release. It
 replaces the vendor's 0.38; an image that already has 0.38+pyra5 or later
 keeps it. 0.38+pyra5 also keeps a CPU ceiling you set (*A CPU ceiling of your
 own*, below). The fork's thermal
