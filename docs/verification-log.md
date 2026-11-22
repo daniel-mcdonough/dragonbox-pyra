@@ -2662,6 +2662,8 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
 - `dpkg -i` of a local build of `0.38+pyra5` (SHA-256 `4c554a21…45ff07`) over pyra4: `dpkg --verify` clean, both
   `pyra-thermal-fix.sh` and `pyra-thermal-ladder.sh --emit-patched` pass the installed file through unchanged,
   `pyra-thermal-guard` silent (no output, no journal entry), the postinst restarted the daemon.
+  The release asset published afterwards (SHA-256 `28e6242f…2c5d73`, what prep pins) hashes differently, as the
+  fork's builds do, but carries a byte-identical `pyra-thermal.sh`.
 - No restart needed: `CPU_MAX_MHZ=875` written, `scaling_max_freq` 875000 at +1 s, +2 s, +3 s. 1500000 written
   by hand: 875000 again 2.5 s later. File deleted: 1500000 2.5 s later. `NRestarts=0`, same start time throughout.
 - Two busy-loop shells (`while :; do :; done`, one per core) started 5 s in, then samples of `scaling_max_freq`,
