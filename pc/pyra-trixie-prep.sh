@@ -32,8 +32,9 @@
 # --no-backlight leaves it out.
 #
 # Fix 26 installs pyra-settings (the Pyra's own settings app) and the
-# pyra-hacks fork its volume wheel page needs (0.38+pyra4, which carries fixes
-# 6, 7 and 12; fix 12 then stands aside), and a dpkg hook that warns if a
+# pyra-hacks fork its volume wheel page needs (0.38+pyra5, which carries fixes
+# 6, 7 and 12, fix 12 then standing aside, and keeps a CPU ceiling set in
+# /etc/default/pyra-thermal), and a dpkg hook that warns if a
 # package run replaces the fork. With no option it downloads the pinned
 # pyra-settings release (v0.14). --settings FILE uses a .deb you
 # have (pyra-settings' build makes one); --no-settings leaves both out. It needs
@@ -447,18 +448,20 @@ GIR_SHA256=5c75b6aae0881990a2555c83502d93d22fd3700265ba9eebaa5841de05dd5684
 GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
           https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
 STAGED_GIR=
-# Fix 26's two .debs, both release assets as published, by SHA-256: pyra-settings
-# v0.14 and the pyra-hacks fork v0.38+pyra4. A copy of the fork beside the
+# Fix 26's two .debs, by SHA-256: pyra-settings v0.14, the release asset as
+# published, and the pyra-hacks fork v0.38+pyra5, for now the hash of a local
+# build of tag v0.38+pyra5 (the fork's build is not reproducible, so the asset
+# its release workflow publishes will hash differently). A copy of the fork beside the
 # pyra-settings .deb is used instead, so a run with --settings can be offline.
 SETTINGS_TAG=v0.14
 SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings/releases/download/v0.14/pyra-settings_0.14_all.deb
 SETTINGS_SHA256=9c30888738ccbc3eae638418c5b38094e2ff16623c8ce1a12ec2b1d9643d8db4
 SETTINGS_TMP=
 STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
-HACKS_VER=0.38+pyra4
-HACKS_DEB=pyra-hacks_0.38+pyra4_armhf.deb
-HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra4/pyra-hacks_0.38%2Bpyra4_armhf.deb
-HACKS_SHA256=45c16412efb8732eac1c470444ab777a27f0811badfd1bae329c8fada97f3e9b
+HACKS_VER=0.38+pyra5
+HACKS_DEB=pyra-hacks_0.38+pyra5_armhf.deb
+HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra5/pyra-hacks_0.38%2Bpyra5_armhf.deb
+HACKS_SHA256=4c554a21fbcccdc1ce09a9ab8120413c5e13db6599fea7159600f8f33e45ff07
 STAGED_HACKS=
 # Fix 27's .deb, the release asset as published, by SHA-256.
 SOUND_TAG=v0.4

@@ -1916,9 +1916,9 @@ after every package run until it is dealt with. Check:
     dpkg-query -W pyra-hacks    # a fork is 0.38+pyraN
 
 Either put the fork back, with its `.deb` from the pyra-hacks release
-`v0.38+pyra4` (prep's `HACKS_URL`, checked against `HACKS_SHA256`):
+`v0.38+pyra5` (prep's `HACKS_URL`, checked against `HACKS_SHA256`):
 
-    sudo dpkg -i pyra-hacks_0.38+pyra4_armhf.deb
+    sudo dpkg -i pyra-hacks_0.38+pyra5_armhf.deb
 
 or, to keep the vendor package, apply fix 12 from a copy of this repository:
 `sudo device/pyra-volumed/install.sh`. If a newer vendor release is the cause,

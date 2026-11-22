@@ -2650,3 +2650,27 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
   `/usr/local/share/applications`), then `event4` triggered again: kernel fuzz 0, the touchscreen re-added
   in X with no fuzz lines, and `--reset` once more after the re-add restored R81's stale matrix. `--show`:
   the vendor matrix. `/tmp` files deleted.
+
+## 2026-11-22 — a CPU ceiling the thermal daemon keeps (pyra-hacks 0.38+pyra5, R82)
+
+- Card: the r5 release card, `5.6.19-m4-kbdled` (`0007`: 250-1500 MHz in eleven steps), `ondemand`, pyra-hacks
+  `0.38+pyra4`, its thermal script byte-identical to the fork's. No `/etc/default/pyra-thermal`.
+- The reader under the card's `/bin/sh` (dash), extracted from the new script, 14 cases: `CPU_MAX_MHZ=1000`,
+  `CPU_MAX_MHZ = 1000  # cool`, `"875"`, `'750'` and a last line with no newline (`1250`) are taken; `#CPU_MAX_MHZ=500`,
+  `0800`, `abc`, `99999`, `2000`, an empty value, `$(touch …)` (nothing ran) and a missing file all leave 1500;
+  with `1125` and `1400` on two lines, 1125.
+- `dpkg -i` of a local build of `0.38+pyra5` (SHA-256 `4c554a21…45ff07`) over pyra4: `dpkg --verify` clean, both
+  `pyra-thermal-fix.sh` and `pyra-thermal-ladder.sh --emit-patched` pass the installed file through unchanged,
+  `pyra-thermal-guard` silent (no output, no journal entry), the postinst restarted the daemon.
+- No restart needed: `CPU_MAX_MHZ=875` written, `scaling_max_freq` 875000 at +1 s, +2 s, +3 s. 1500000 written
+  by hand: 875000 again 2.5 s later. File deleted: 1500000 2.5 s later. `NRestarts=0`, same start time throughout.
+- Two busy-loop shells (`while :; do :; done`, one per core) started 5 s in, then samples of `scaling_max_freq`,
+  `scaling_cur_freq`, `core_thermal`, `cpu_thermal`, `bq27421-0` with a 1 s sleep between them. The reads add to
+  that, so under load samples came about 1.3 s apart (estimated: the 180 s load ended near sample 140):
+  - ceiling 1000, 150 s of load: 1000000 in all 170 samples; `scaling_cur_freq` at most 1000000. Peaks: core
+    60.6°C, cpu 63.6°C, gauge 31.6°C. No rung reached.
+  - ceiling 1400, 180 s of load: 1400000 in 94 samples and 1250000 in 106, never above 1400000. Four changes:
+    1250 at sample 28 (cpu 78.5°C), 1400 at 41 (73.0°C), 1250 at 47 (78.9°C), and 1400 at 140, the first sample
+    after the load ended (cpu 69.6°C, clock 375 MHz). Peaks: core 73.0°C, cpu 79.4°C, gauge 35.1°C.
+- Left: pyra5 stays installed (it changes nothing without the file). `/etc/default/pyra-thermal` deleted,
+  `scaling_max_freq` 1500000, `ondemand`; `/tmp` files deleted.

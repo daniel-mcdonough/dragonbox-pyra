@@ -47,7 +47,8 @@ Tags as elsewhere: **measured** on the device, **spec** from the TRM,
 2. **Wait for `bq24297/online` = 0** before measuring, then settle 20–30 s.
 3. **Pin the CPU**: userspace governor + `scaling_setspeed`, both cores, and put
    `ondemand` back on exit. Never pin with min == max: `pyra-thermal` rewrites
-   `scaling_max_freq` every 2 s. 1000 MHz
+   `scaling_max_freq` every 2 s (to the ceiling in `/etc/default/pyra-thermal`,
+   if there is one: keep it at or above the pin). 1000 MHz
    is the default here, since Ship of Harkinian holds 30 fps there.
 4. **Keep the panel on.** MATE blanks it after 10 idle minutes on battery, and that
    alone is a 0.45 W step *(measured)*. Run `xset s reset` as the `pyra` user every

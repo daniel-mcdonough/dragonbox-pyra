@@ -111,7 +111,9 @@ Three rules that matter more than the feature list:
    apply it. A slider writing `scaling_max_freq` from the launcher would be
    overwritten within one poll and would fight the one piece of thermal
    protection this machine has. If profiles are wanted later, they go through
-   the daemon's configuration, not around it.
+   the daemon's configuration, not around it: since pyra-hacks `0.38+pyra5`
+   that is `CPU_MAX_MHZ` in `/etc/default/pyra-thermal` (fixes.md, "A CPU
+   ceiling of your own").
 
 ## Building it: cross, on the PC
 

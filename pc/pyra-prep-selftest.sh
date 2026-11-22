@@ -1083,6 +1083,30 @@ if [[ $SON == yes ]]; then
         "$PAYLOADS/$fx" --emit-patched "$TD" 2>/dev/null | cmp -s - "$TD" \
             && p "fix26: $fx finds the fork's thermal daemon already fixed" || f "fix26: $fx would change the fork's thermal daemon"
     done
+    # The fork's daemon keeps a ceiling from /etc/default/pyra-thermal (0.38+pyra5).
+    # Its reader runs under the image's own sh against test files: a valid value
+    # lowers the top, anything else leaves 1500, and nothing in the file runs.
+    [[ ! -e $MNT/etc/default/pyra-thermal ]] && p "fix26: no /etc/default/pyra-thermal, so no ceiling by default" \
+        || f "fix26: prep left an /etc/default/pyra-thermal on the card"
+    CT=$MNT/tmp/pyra-ceiling-test; rm -rf "$CT"; mkdir -p "$CT"
+    sed -n '/^pyraCeilingConf=/,/^}/p' "$TD" | sed 's|^pyraCeilingConf=.*|pyraCeilingConf=/tmp/pyra-ceiling-test/conf|' > "$CT/reader.sh"
+    if grep -q '^pyraReadCeiling()' "$CT/reader.sh" \
+        && sed -n '/^doThermal()/,/current_maxFreq=\${maxFreq}/p' "$TD" | grep -q '^[[:space:]]*pyraReadCeiling$'; then
+        p "fix26: the fork's daemon reads the ceiling at the start of every pass"
+        for c in 'CPU_MAX_MHZ=1000|1000' 'CPU_MAX_MHZ = "875"  # quiet|875' 'CPU_MAX_MHZ=2000|1500' \
+                 '#CPU_MAX_MHZ=500|1500' 'CPU_MAX_MHZ=0800|1500' 'CPU_MAX_MHZ=$(touch /tmp/pyra-ceiling-test/ran)|1500' \
+                 'none|1500'; do
+            IFS='|' read -r line want <<<"$c"
+            rm -f "$CT/conf"; [[ $line == none ]] || printf '%s\n' "$line" > "$CT/conf"
+            got=$(in_chroot sh -c 'maxFreq=1500; . /tmp/pyra-ceiling-test/reader.sh; pyraReadCeiling; echo $maxFreq' 2>&1)
+            [[ $got == "$want" ]] && p "fix26: ceiling file '$line' gives a top of $want MHz" \
+                || f "fix26: ceiling file '$line' gives '$got', want $want"
+        done
+        [[ ! -e $CT/ran ]] || f "fix26: the ceiling reader executed text from its file"
+    else
+        f "fix26: the fork's daemon has no ceiling reader called from doThermal (pyra-hacks older than 0.38+pyra5?)"
+    fi
+    rm -rf "$CT"
     W=0; for x in $WHEEL12; do [[ -e $MNT/$x ]] && W=1; done
     [[ $W -eq 0 ]] && p "fix26: fix 12 stood aside; the packaged unit runs the fork's pyra_volumed" || f "fix26: fix 12's files are on the card beside the fork"
     for spec in pyra-wheel-guard:/usr/local/sbin:755 \

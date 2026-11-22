@@ -292,7 +292,9 @@ effect, and not the first thing to try.
   where `cpufrequtils` is installed, the same daemon does cap, and it resets a
   user's ceiling within seconds (elvissteinjr,
   https://pyra-handheld.com/boards/posts/1719440/,
-  https://pyra-handheld.com/boards/posts/1719433/).
+  https://pyra-handheld.com/boards/posts/1719433/). With pyra-hacks
+  `0.38+pyra5`, set the ceiling in `/etc/default/pyra-thermal` instead
+  (fixes.md, "A CPU ceiling of your own").
 - **`/dev/usb_max_current`** is an ordinary file that nothing reads. The udev
   rules that were supposed to create it as a symlink name `twl4030`, which is
   not this machine's PMIC. The vendor daemon's charge ladder has never

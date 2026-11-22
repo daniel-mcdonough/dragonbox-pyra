@@ -519,6 +519,10 @@ in the order they were applied:
 conffile, so a package run reverts it, and the same dpkg hook re-applies it.
 `pyra-thermal-ladder.sh --check` says what state the file is in.
 
+A ceiling of your own below 1500 MHz needs the packaged form, pyra-hacks
+`0.38+pyra5` (*A CPU ceiling of your own*, under "Fixes 6, 7 and 12 as a
+package"); this transformation of the vendor's script has none.
+
 ---
 
 ## Fix 8 — the machine cannot charge while it runs
@@ -1838,10 +1842,13 @@ package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4
 (fix 22), which its display and keyboard light page needs. (0.13 and earlier
 had both in Depends; 0.14 moved them to Recommends.) Prep installs both anyway,
 so fix 26 also
-installs the fork's `pyra-hacks_0.38+pyra4_armhf.deb`, pinned by SHA-256
-(`45c16412…f3e9b`, the release asset as published), from a copy beside the
-pyra-settings `.deb` or else from that release. It replaces the vendor's 0.38;
-an image that already has 0.38+pyra4 or later keeps it. The fork's thermal
+installs the fork's `pyra-hacks_0.38+pyra5_armhf.deb`, pinned by SHA-256
+(`4c554a21…45ff07`, a local build of the tag: the fork's build is not
+reproducible, so the pin moves to the release asset once that is published),
+from a copy beside the pyra-settings `.deb` or else from that release. It
+replaces the vendor's 0.38; an image that already has 0.38+pyra5 or later
+keeps it. 0.38+pyra5 also keeps a CPU ceiling you set (*A CPU ceiling of your
+own*, below). The fork's thermal
 script is byte-identical to what fixes 6 and 7 make, so their dpkg guard finds
 nothing to do, and prep checks that after the install. Fix 12 stands aside
 (above). Fix 8 stays: the fork does not set the charger's limit.
@@ -1861,7 +1868,7 @@ The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
-repository's 0.38 sorts below `0.38+pyra4`, so apt keeps the fork. A vendor
+repository's 0.38 sorts below `0.38+pyra5`, so apt keeps the fork. A vendor
 0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
@@ -2132,7 +2139,8 @@ debs attached:
 | `0.38+pyra1` | 2026-10-20 | fixes 6, 7 and 12 (the wheel's taper, speakers only) |
 | `0.38+pyra2` | 2026-11-14 | the wheel drives the headphones too (fix 12, patch 0002) |
 | `0.38+pyra3` | 2026-11-14 | the wheel's off position has its own band, so it doesn't flutter at the bottom |
-| `0.38+pyra4` | 2026-11-19 | `pyra_volumed` exits when the sound card or the wheel's ADC is not there yet and systemd restarts it every 2 s, up to 30 times, so a daemon started before the card registered no longer leaves the wheel dead for the boot; prep's fix 26 installs this one |
+| `0.38+pyra4` | 2026-11-19 | `pyra_volumed` exits when the sound card or the wheel's ADC is not there yet and systemd restarts it every 2 s, up to 30 times, so a daemon started before the card registered no longer leaves the wheel dead for the boot |
+| `0.38+pyra5` | 2026-11-22 | the thermal daemon keeps a CPU ceiling set in `/etc/default/pyra-thermal` (*A CPU ceiling of your own*, below); prep's fix 26 installs this one |
 
 To install 0.38+pyra2 on the Pyra:
 
@@ -2160,7 +2168,46 @@ The running unit has had `0.38+pyra1` since 2026-10-20, replacing 0.38. The prev
 thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
-package; fix 26 installs `0.38+pyra4` along with pyra-settings.
+package; fix 26 installs `0.38+pyra5` along with pyra-settings.
+
+### A CPU ceiling of your own
+
+The thermal daemon writes `scaling_max_freq` every 2 seconds, so a lower
+limit written there by hand, or by `cpupower frequency-set -u`, is gone
+within one pass. From `0.38+pyra5` (`dpkg-query -W pyra-hacks`) it reads a
+ceiling from `/etc/default/pyra-thermal` instead:
+
+    echo CPU_MAX_MHZ=1000 | sudo tee /etc/default/pyra-thermal
+
+The daemon reads the file on every pass, so the ceiling applies within 2 s
+with no restart. It never raises the clock past it, and when hot the ladder
+still caps below it, as before. To lift it, delete the file
+(`sudo rm /etc/default/pyra-thermal`); the top goes back to 1500 MHz within
+2 s. The package does not ship the file, so no file means no ceiling.
+
+- The value is in MHz. The kernel rounds it down to a step: `0007`'s are 250,
+  375, 500, 625, 750, 875, 1000, 1125, 1250, 1400 and 1500 MHz, so 1300
+  gives 1250.
+- `CPU_MAX_MHZ = "875"  # comment` works too. A value that is not a plain
+  number from 1 to 9999 (empty, a leading zero, letters) is ignored, as is
+  anything above 1500. With several valid lines the lowest wins.
+- The daemon reads the file with the shell's own `read`, and does not source
+  it, so nothing in it is executed. It is root's to write, like the rest of
+  `/etc/default`.
+- A card prepared with `--no-settings` keeps the vendor's 0.38 with fixes 6
+  and 7, which has no ceiling. Install the fork (above) to get one.
+- pyra-settings has no page for it yet.
+
+Checked on the card on 2026-11-22 (measured, ondemand, two busy-loop shells,
+`scaling_max_freq` sampled about once a second); details in `verification-log.md`:
+
+| ceiling | load | `scaling_max_freq` seen | peak `cpu_thermal` |
+| --- | --- | --- | --- |
+| 1000 MHz | 150 s | 1000 MHz in all 170 samples | 63.6°C |
+| 1400 MHz | 180 s | 1400 MHz, and 1250 MHz twice when `cpu_thermal` passed 77°C (106 of 200 samples) | 79.4°C |
+
+A 1500 MHz written by hand under a 875 MHz ceiling was back to 875 MHz
+2.5 s later.
 
 ### Surviving a package run: `pyra-thermal-guard`
 
