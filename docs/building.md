@@ -1009,7 +1009,7 @@ The runner needs network for both, as it does for the vendor image.
 It passes no `--settings` either, and should not: the image gets pyra-settings
 and the pyra-hacks fork only from prep's pins (fix 26), never from a `.deb` the
 workflow hands prep, which no checksum in the repository would cover. Prep pins
-pyra-settings v0.15; if an image ends up without it, the build step prints a
+pyra-settings v0.16; if an image ends up without it, the build step prints a
 warning. pyra-sound (fix 27) comes from prep's pin the same way (v0.4), with
 the same warning. The `.info` names the versions prep installed
 (`installed_pyra-backlight=`, `installed_pyra-settings=`, `installed_pyra-hacks=`,

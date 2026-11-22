@@ -36,7 +36,7 @@
 # 6, 7 and 12, fix 12 then standing aside, and keeps a CPU ceiling set in
 # /etc/default/pyra-thermal), and a dpkg hook that warns if a
 # package run replaces the fork. With no option it downloads the pinned
-# pyra-settings release (v0.15). --settings FILE uses a .deb you
+# pyra-settings release (v0.16). --settings FILE uses a .deb you
 # have (pyra-settings' build makes one); --no-settings leaves both out. It needs
 # fix 22's pyra-backlight.
 #
@@ -451,9 +451,9 @@ STAGED_GIR=
 # Fix 26's two .debs, both release assets as published, by SHA-256: pyra-settings
 # v0.15 and the pyra-hacks fork v0.38+pyra5. A copy of the fork beside the
 # pyra-settings .deb is used instead, so a run with --settings can be offline.
-SETTINGS_TAG=v0.15
-SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings/releases/download/v0.15/pyra-settings_0.15_all.deb
-SETTINGS_SHA256=6a45ace30f5806bf34c40769196208907a6f198b1f0108cbe3fbcd6879735c5e
+SETTINGS_TAG=v0.16
+SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings/releases/download/v0.16/pyra-settings_0.16_all.deb
+SETTINGS_SHA256=8b82699067f91fee8b4e807561db483762fbfee10ccc33e9146db101ce124f34
 SETTINGS_TMP=
 STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
 HACKS_VER=0.38+pyra5

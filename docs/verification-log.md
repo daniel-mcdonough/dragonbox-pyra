@@ -2737,3 +2737,8 @@ payload identical to the published `v0.15` asset), ondemand governor, idle, no c
   No limit deleted the file each time.
 - Not tested here: the pkexec password dialog on this page, and the page's look on the Pyra's own theme (the
   layout was checked under Xvfb at 1280x720 on the PC).
+- **0.15 too wide; 0.16.** Opened on the Pyra itself, 0.15's window would not maximize: at the Pyra's font
+  (Sans 12, 117 dpi) the Performance row's buttons beside the label needed 1009 px, the window 1403 px
+  (`get_preferred_width`, measured on the card). The Xvfb check above ran at the PC's smaller font. 0.16 puts the
+  buttons on their own line: row 845 px, window 1239 px, maximized at 1280x720; checked on the Pyra by the owner
+  in Menta. Fix 26 pins `v0.16` (asset `8b826990…124f34`, payload identical to the local build).

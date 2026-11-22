@@ -1854,16 +1854,17 @@ nothing to do, and prep checks that after the install. Fix 12 stands aside
 **How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
 `.deb`s in one run, after checking before fix 1 that the file is
 `pyra-settings` and that the image has every package either depends on (the
-vendor image has all seven of pyra-settings 0.15's: python3, python3-gi,
+vendor image has all seven of pyra-settings 0.16's: python3, python3-gi,
 gir1.2-gtk-3.0, pkexec, polkitd, alsa-utils, pulseaudio-utils).
 `--settings` with `--no-backlight` is refused, since a page of pyra-settings
 needs pyra-backlight. A second run sees the version installed and does nothing.
 
 The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
-[release v0.15](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.15)
-(`pyra-settings_0.15_all.deb`), checked against `SETTINGS_SHA256` in the script
-(`6a45ace3…735c5e`, the asset as published). 0.15 adds the Performance page
-(*A CPU ceiling of your own*). `--no-settings` leaves both packages
+[release v0.16](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.16)
+(`pyra-settings_0.16_all.deb`), checked against `SETTINGS_SHA256` in the script
+(`8b826990…124f34`, the asset as published). 0.15 added the Performance page
+(*A CPU ceiling of your own*); 0.16 fits it on the Pyra's screen (0.15's window
+was wider than 1280 px and would not maximize). `--no-settings` leaves both packages
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
