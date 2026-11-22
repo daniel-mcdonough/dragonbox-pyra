@@ -15,6 +15,10 @@ trees. The log is `verification-log.md`, 2026-11-22.
 
 ## From a running card
 
+`pyra-info` (prep's fix 31) prints the first two lines below, with the kernel
+and package versions, for a bug report. It leaves the RAM size out, for the
+reason below. By hand:
+
     tr '\0' '\n' < /proc/device-tree/model
     tr '\0' '\n' < /proc/device-tree/compatible | head -1
     grep MemTotal /proc/meminfo

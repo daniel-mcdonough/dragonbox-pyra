@@ -166,6 +166,9 @@ suspend first: the stock kernel can't complete one.
 
 ## If something goes wrong
 
+- Reporting a bug: paste the output of `pyra-info` (or press Copy on the About
+  page of Pyra Settings). It names the boards, kernel, boot entry, how the card
+  was prepared and the versions of the packages prep pins (fix 31).
 - It boots wrong, a service fails, or something freezes:
   [docs/troubleshooting.md](docs/troubleshooting.md).
 - The card itself misbehaves, or you suspect the reader: run
@@ -216,7 +219,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The thirty fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The thirty-one fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software; DBPs that need GLX; fullscreen crashes under gl4es. |
 | [docs/dbp.md](docs/dbp.md) | DBP packages from the forum: installing one, the false "missing dependencies" dialog, and which old libraries trixie renamed. |

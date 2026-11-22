@@ -1,0 +1,102 @@
+#!/bin/bash
+#
+# pyra-info — print what a bug report about this Pyra needs: the boards, the
+# kernel and boot entry, the OS, how the card was prepared and the versions of
+# the packages the prep pins. Paste all of it into the report.
+#
+#   pyra-info
+#
+# Reads only, needs no root, changes nothing. Installed by prep's fix 31;
+# pyra-settings' About page shows the same text.
+#
+# RAM is not printed as a size. The card's U-Boot (u-boot-pyra 0.1.5) is a
+# 4 GB build and hands the kernel two fixed banks whatever is fitted, so
+# MemTotal says what the bootloader declared, not what the board has.
+# docs/board-revision.md says how to read the real size off U-Boot's serial
+# line.
+
+set -u
+
+case ${1:-} in
+'') ;;
+-h|--help) sed -n '2,/^$/s/^# \?//p' "$0"; exit 0 ;;
+*) echo "usage: pyra-info" >&2; exit 2 ;;
+esac
+
+EXTLINUX=/boot/extlinux
+MARKER=/etc/dragonbox-pyra-prep
+# u-boot-pyra is the card's bootloader. The rest are what prep installs from
+# its own pins (fixes 21, 22, 26, 27, 29); dri3wsegl-pyra is the vendor's
+# package that fix 21 patches.
+PACKAGES="u-boot-pyra pyra-hacks pyra-settings pyra-backlight pyra-sound funkeymonkey-pyrainput dri3wsegl-pyra"
+
+# A device-tree string property, first entry only; "unknown" if absent.
+dt_first() {
+    local v
+    v=$(tr '\0' '\n' <"/proc/device-tree/$1" 2>/dev/null | head -1)
+    echo "${v:-unknown}"
+}
+
+# One key from the prep marker, read as text and never sourced.
+marker() {
+    sed -n "s/^$1=//p" "$MARKER" 2>/dev/null | head -1
+}
+
+# The extlinux entry the running system came from: same kernel image and same
+# command line. U-Boot passes no label, so this is matched, not read; the
+# stock kernel's l0, l0r and l0h differ only in their command lines.
+boot_entry() {
+    local files=() f
+    for f in extlinux.conf linux.cfg user.cfg; do
+        [[ -r $EXTLINUX/$f ]] && files+=("$EXTLINUX/$f")
+    done
+    [[ ${#files[@]} -gt 0 ]] || { echo "unknown (no $EXTLINUX)"; return; }
+    awk -v kernel="/vmlinuz-$(uname -r)" -v cmdline="$(cat /proc/cmdline)" '
+        function norm(s) { gsub(/[ \t]+/, " ", s); sub(/^ /, "", s); sub(/ $/, "", s); return s }
+        function flush() {
+            if (label != "" && linux == kernel) {
+                if (norm(append) == norm(cmdline)) exact = exact (exact ? ", " : "") label
+                else near = near (near ? ", " : "") label
+            }
+            label = linux = append = ""
+        }
+        $1 == "default" && dflt == "" { dflt = $2 }
+        $1 == "label"  { flush(); label = $2 }
+        $1 == "linux"  { linux = $2 }
+        $1 == "append" { $1 = ""; append = $0 }
+        END {
+            flush()
+            if (exact != "")     printf "%s", exact
+            else if (near != "") printf "%s (same kernel, other command line)", near
+            else                 printf "none matches the running kernel"
+            printf "; default %s\n", (dflt != "" ? dflt : "unknown")
+        }' "${files[@]}"
+}
+
+os_name() {
+    local v
+    v=$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' /etc/os-release 2>/dev/null)
+    echo "${v:-unknown}"
+}
+
+prep_line() {
+    [[ -r $MARKER ]] || { echo "no record (prepared before fix 31, or not by dragonbox-pyra's prep)"; return; }
+    local commit date kernel release
+    commit=$(marker prep); date=$(marker date); kernel=$(marker kernel); release=$(marker release)
+    printf 'commit %s, %s, %s%s\n' "${commit:-unknown}" "${date:-unknown date}" \
+        "${kernel:-unknown}" "$([[ $release == yes ]] && echo ', release image')"
+}
+
+echo "Mainboard  : $(dt_first model)"
+echo "CPU board  : $(dt_first compatible)"
+echo "RAM        : not readable from Linux (the card's U-Boot declares 4 GB on every unit)"
+echo "Kernel     : $(uname -r) $(uname -v)"
+echo "Boot entry : $(boot_entry)"
+echo "OS         : $(os_name)"
+echo "Prepared   : $(prep_line)"
+echo "Packages   :"
+# shellcheck disable=SC2086
+dpkg-query -W -f='${db:Status-Abbrev} ${Package} ${Version}\n' $PACKAGES 2>/dev/null |
+    awk '{ v = ($1 ~ /^.i/) ? $3 : "not installed"; printf "  %-24s %s\n", $2, v; seen[$2] = 1 }
+         END { n = split(want, w, " "); for (i = 1; i <= n; i++) if (!(w[i] in seen)) printf "  %-24s %s\n", w[i], "not installed" }' \
+        want="$PACKAGES"

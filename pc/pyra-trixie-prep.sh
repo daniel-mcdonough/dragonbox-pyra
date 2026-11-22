@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-one known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -55,6 +55,10 @@
 # libinput driver, which xinput_calibrator is not) with a menu entry in place
 # of xinput_calibrator's, and a udev rule that gives the touchscreen back the
 # kernel fuzz libinput's rule takes away.
+#
+# Fix 31 installs pyra-info (the facts a bug report needs) and writes
+# /etc/dragonbox-pyra-prep, which records the prep's commit, the date and the
+# kernel, so pyra-info can say how the card was made.
 #
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
@@ -341,6 +345,9 @@ for f in usr/lib/arm-linux-gnueabihf/libXi.so.6 usr/lib/arm-linux-gnueabihf/libX
          usr/lib/arm-linux-gnueabihf/girepository-1.0/Gtk-3.0.typelib usr/lib/python3/dist-packages/gi/__init__.py; do
     [[ -e $ROOT/$f ]] || die "fix30: the image has no /$f, which pyra-touch-calibrate needs"
 done
+# Fix 31's tool.
+INFO_SRC=$PAYLOADS/pyra-info
+[[ -r $INFO_SRC ]] || die "fix31: pyra-info not found (looked in $PAYLOADS)"
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -512,6 +519,7 @@ if [[ $KERNEL_MODE == ask ]]; then
 fi
 [[ -r $KERNEL_FILE ]] || die "fix19: no tarball at $KERNEL_FILE"
 sum=$(sha256sum "$KERNEL_FILE" | cut -d' ' -f1)
+KERNEL_SUM=$sum   # fix 31 records it; later fixes reuse $sum
 if [[ -n $KERNEL_TMP ]]; then
     [[ $sum == "$KERNEL_SHA256" ]] ||
         die "fix19: the download's SHA-256 is $sum, not the pinned $KERNEL_SHA256. Not installing it."
@@ -2519,6 +2527,54 @@ for spec in $TOUCH_FILES; do
 done
 grep -qs 'RUN{program}+="libinput-fuzz-to-zero' "$ROOT/usr/lib/udev/rules.d/90-libinput-fuzz-override.rules" ||
     warn "fix30: the image's libinput has no fuzz-to-zero rule; 91-pyra-touch-fuzz.rules will find nothing to put back"
+
+# ---------------------------------------------------------------------- fix 31
+#
+# A bug report has to say which boards, kernel and packages it is about, and
+# nothing on the vendor image says how a card was prepared. pyra-info prints
+# both; the marker is the second half. It is data in key=value lines, which
+# pyra-info reads as text. The commit is the checkout prep ran from ("-dirty"
+# with uncommitted changes to tracked files, "unknown" outside git). The kernel
+# is the release tag when fix 19's tarball matched the pin, else the tarball's
+# SHA-256. Nothing here is per machine, so --release keeps both.
+
+dst=$ROOT/usr/local/bin/pyra-info
+if [[ -e $dst ]] && cmp -s "$INFO_SRC" "$dst"; then
+    ok "fix31: /usr/local/bin/pyra-info already up to date"
+else
+    VERB=$([[ -e $dst ]] && echo updated || echo installed)
+    install -D -m 0755 -o 0 -g 0 "$INFO_SRC" "$dst"
+    ok "fix31: $VERB /usr/local/bin/pyra-info"
+fi
+TOPDIR=$(cd -- "$SCRIPTDIR/.." && pwd)
+# Prep runs as root in a checkout someone else owns, which git refuses without safe.directory.
+if PREP_COMMIT=$(git -c safe.directory="$TOPDIR" -C "$TOPDIR" rev-parse --short=12 HEAD 2>/dev/null); then
+    [[ -z $(git -c safe.directory="$TOPDIR" -C "$TOPDIR" status --porcelain --untracked-files=no 2>/dev/null) ]] ||
+        PREP_COMMIT+=-dirty
+else
+    PREP_COMMIT=unknown
+fi
+if [[ -n $KERNEL_SHA256 && $KERNEL_SUM == "$KERNEL_SHA256" ]]; then
+    PREP_KERNEL=$KERNEL_TAG
+else
+    PREP_KERNEL="local build, sha256 $KERNEL_SUM"
+fi
+MARKER_TEXT="# Written by dragonbox-pyra's pc/pyra-trixie-prep.sh (fix 31); pyra-info prints it.
+prep=$PREP_COMMIT
+date=$(date -u +%Y-%m-%d)
+kernel=$PREP_KERNEL
+release=$RELEASE"
+dst=$ROOT/etc/dragonbox-pyra-prep
+if [[ -f $dst ]] && cmp -s "$dst" <(printf '%s\n' "$MARKER_TEXT"); then
+    ok "fix31: /etc/dragonbox-pyra-prep already up to date"
+else
+    VERB=$([[ -e $dst ]] && echo updated || echo wrote)
+    rm -f -- "$dst"   # not through a link the image might have there
+    printf '%s\n' "$MARKER_TEXT" >"$dst"
+    chmod 0644 "$dst"
+    chown 0:0 "$dst"
+    ok "fix31: $VERB /etc/dragonbox-pyra-prep (prep $PREP_COMMIT, kernel $PREP_KERNEL, release $RELEASE)"
+fi
 
 # ------------------------------------------------------------------- release
 #

@@ -2764,3 +2764,24 @@ payload identical to the published `v0.15` asset), ondemand governor, idle, no c
 - From source, not seen on hardware: a missing `.dtb` makes `sysboot` print `Skipping <label> for failure
   retrieving fdt` and try the next entry; an unknown resistor code names `v0.0`. No 2 GB unit tried.
 - Docs: new `board-revision.md`, indexed in README.
+
+## 2026-11-22 — pyra-info and pyra-settings 0.17's About page (R93)
+
+The r5 release card (`5.6.19-m4-kbdled`, boot entry `l5`), `device/pyra-info` installed by hand in
+`/usr/local/bin` (755 root:root, as fix 31 does), pyra-settings 0.17 by `dpkg -i` (local docker build of the
+`v0.17` commit; the release asset is CI's, not byte-identical).
+
+- **pyra-info as user `pyra`:** exit 0 in 0.11 s (`time`). Mainboard `Pyra-Handheld-V5.3`, CPU board
+  `goldelico,lc15-v5.3`, kernel `5.6.19-m4-kbdled #10 SMP PREEMPT Wed Nov 18 02:28:17 UTC 2026`, boot entry
+  `l5; default l5`, OS `Debian GNU/Linux 13 (trixie)`, "Prepared: no record" (r5 predates fix 31), and the
+  seven packages at the versions `dpkg-query -W` gives. `--help` prints the header; an unknown argument exits 2.
+- **Boot-entry fallback and the marker,** with copies of the card's `extlinux` files (default changed to `l0`,
+  `l5`'s kernel renamed) and a sample marker: "none matches the running kernel; default l0", and
+  "commit abc1234, 2026-11-22, kernel-5.6.19-r3, release image".
+- **About page,** the installed app on the Pyra's screen (Menta, Sans 12 at 117 dpi), opened through
+  `_go_page`, measured with `get_preferred_width`: window 1239 px (unchanged from 0.16), About's page box
+  398 px minimum (the text wraps), maximized at 1280x651. The Copy button's action put the text on the
+  clipboard (`wait_for_text` read it back) and the status line said "Copied". Screenshot checked: long lines
+  (RAM, kernel, Prepared) wrap; the package list lines up.
+- Not run here: prep's fix 31 and the selftest (need root on the PC; handed to the owner), and the page's Copy
+  pasted into another app by hand.

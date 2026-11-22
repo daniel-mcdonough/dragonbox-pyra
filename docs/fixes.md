@@ -1,4 +1,4 @@
-# The thirty fixes, and what they actually do
+# The thirty-one fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -54,6 +54,7 @@ them out.
 | 29 | package fix | `funkeymonkey-pyrainput`: four key names that look up nothing, nub axes left off-centre inside the deadzone, brightness defaults after the config; `systemd-dev` in Build-Depends for the unit (fix 3). Patches in `patches/userspace/funkeymonkey-pyrainput/` | the vendor ships a build with the patches and the unit | `pyra-funkeymonkey-pyrainput-brightness-order.md` (0001; 0002/0003 not drafted yet) |
 | 28 | package fix | `pyra-config-xorg`: Fn+D and Fn+' are Alt as well as `_` and `:`, and Fn+R/Fn+T swap é and è; the patch is in `patches/userspace/pyra-config-xorg/`. The console half restores what Debian's keymap leaves out | `pyra-config-xorg` takes the patch (the console fragment stays) | — (none drafted yet) |
 | 30 | workaround | the image's menu offers `xinput_calibrator`, which knows only the evdev driver; libinput drops the DT's kernel fuzz on a touchscreen and does not filter in its place | the image ships a libinput calibrator, and libinput keeps or applies a touchscreen's fuzz | — (none drafted yet) |
+| 31 | project choice | — (a bug-report tool, and a record of how the card was prepared) | — | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2114,6 +2115,50 @@ lines and nothing else. The owner opened the tool from the menu, calibrated and
 saved, and found dragging and writing fine. The selftest asserts the files, that
 the image's python3 and ctypes have everything the tool calls, that the menu
 resolves to the new entry, and that the image's `udevadm verify` passes the rule.
+
+## Fix 31 — a bug report can't say which Pyra, card or packages it is about
+
+**Symptom.** Nothing on the card says how it was made. The r5 release image has
+no marker in `/etc`, the boot entry U-Boot chose is not passed to the kernel,
+and `MemTotal` looks like the fitted RAM but isn't (`board-revision.md`). A
+report then needs several rounds of questions.
+
+**Fix.** Prep installs `/usr/local/bin/pyra-info` (from `device/`), a
+read-only script that needs no root. It prints:
+
+- the mainboard (device-tree `model`) and CPU board (first `compatible`);
+- RAM as "not readable from Linux": U-Boot 0.1.5 is a 4 GB build and hands the
+  kernel two fixed banks whatever is fitted, so no size is printed;
+- the kernel (`uname -r` and `uname -v`, so two builds of one name differ);
+- the boot entry: the `extlinux` label whose `linux` line is the running
+  kernel and whose `append` line is `/proc/cmdline`, and the default. It is
+  matched, not read: the stock kernel's `l0`, `l0r` and `l0h` differ only in
+  their command lines;
+- the OS (`PRETTY_NAME`);
+- how the card was prepared, from `/etc/dragonbox-pyra-prep`;
+- the versions of `u-boot-pyra`, `pyra-hacks`, `pyra-settings`,
+  `pyra-backlight`, `pyra-sound`, `funkeymonkey-pyrainput` and
+  `dri3wsegl-pyra` (`dpkg-query`), or "not installed".
+
+`/etc/dragonbox-pyra-prep` is written on every prep run, `key=value` lines that
+`pyra-info` reads as text and never sources: `prep` (the checkout's commit,
+`-dirty` with uncommitted changes to tracked files, `unknown` outside git),
+`date` (UTC), `kernel` (the release tag when fix 19's tarball matched the pin,
+else `local build, sha256 …`) and `release` (`yes` for `--release`). A second
+run on the same day with the same checkout finds it up to date. Prep runs as
+root in a checkout the user owns, so it calls git with `safe.directory` set to
+that checkout. A card prepared before fix 31 says "no record".
+
+Pyra Settings 0.17's About page runs `pyra-info` and shows its text with a
+button that copies it.
+
+**Checked** 2026-11-22 on the r5 release card with `pyra-info` copied in by
+hand (`verification-log.md`, R93): every line matched the card (V5.3/V5.3,
+`l5`, the seven packages), in 0.11 s as user `pyra`. The selftest asserts the
+file and mode, the marker's commit, kernel, date and release lines (and
+`release=yes` after `--release`), that the image's own bash and dpkg-query run
+the script and list the image's `u-boot-pyra` and fix 26's `pyra-settings`, and
+that a second run reports both files up to date.
 
 ## Fixes 6, 7 and 12 as a package
 

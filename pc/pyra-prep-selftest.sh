@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 30 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 31 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1353,6 +1353,41 @@ grep -qF 'ENV{EVDEV_ABS_00}=":::$env{LIBINPUT_FUZZ_00}"' "$R" && grep -qF 'ENV{E
     || f "fix30: the rule does not set EVDEV_ABS_00/01 from LIBINPUT_FUZZ and RUN the keyboard builtin"
 
 ########################################################################
+i "assert fix 31 — pyra-info and the prep marker"
+########################################################################
+D=$MNT/usr/local/bin/pyra-info
+[[ -e $D ]] && cmp -s "$PAYLOADS/pyra-info" "$D" && p "fix31: /usr/local/bin/pyra-info matches repo" || f "fix31: /usr/local/bin/pyra-info missing or differs from repo"
+[[ $(stat -c '%a %u:%g' "$D" 2>/dev/null) == "755 0:0" ]] && p "fix31: pyra-info is 755 root:root" || f "fix31: pyra-info is $(stat -c '%a %u:%g' "$D" 2>/dev/null)"
+M=$MNT/etc/dragonbox-pyra-prep
+[[ $(stat -c '%a %u:%g' "$M" 2>/dev/null) == "644 0:0" ]] && p "fix31: /etc/dragonbox-pyra-prep is 644 root:root" || f "fix31: /etc/dragonbox-pyra-prep is $(stat -c '%a %u:%g' "$M" 2>/dev/null)"
+TOP=$(cd -- "$(dirname -- "$PREP")/.." && pwd)
+WANT_COMMIT=$(git -c safe.directory="$TOP" -C "$TOP" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
+[[ $WANT_COMMIT != unknown && -n $(git -c safe.directory="$TOP" -C "$TOP" status --porcelain --untracked-files=no 2>/dev/null) ]] && WANT_COMMIT+=-dirty
+KPIN=$(sed -n 's/^KERNEL_SHA256=//p' "$PREP")
+KSUM=$(sha256sum < "$KTAR" | cut -d' ' -f1)
+if [[ -n $KPIN && $KSUM == "$KPIN" ]]; then WANT_KERNEL=$(sed -n 's/^KERNEL_TAG=//p' "$PREP"); else WANT_KERNEL="local build, sha256 $KSUM"; fi
+grep -qx "prep=$WANT_COMMIT" "$M" && p "fix31: the marker names the checkout prep ran from ($WANT_COMMIT)" || f "fix31: marker prep= is '$(sed -n 's/^prep=//p' "$M")', want $WANT_COMMIT"
+grep -qxF "kernel=$WANT_KERNEL" "$M" && p "fix31: the marker names the kernel fix 19 installed ($WANT_KERNEL)" || f "fix31: marker kernel= is '$(sed -n 's/^kernel=//p' "$M")', want $WANT_KERNEL"
+grep -qxE 'date=[0-9]{4}-[0-9]{2}-[0-9]{2}' "$M" && grep -qx 'release=no' "$M" && p "fix31: the marker has a date and release=no" || f "fix31: the marker's date or release line is wrong"
+# The image's own bash, dpkg-query and awk run it. The chroot has no
+# /proc/device-tree, so only the lines that come from the image are checked.
+set +e; got=$(in_chroot /usr/local/bin/pyra-info 2>/dev/null); rc=$?; set -e
+[[ $rc -eq 0 ]] && p "fix31: the image runs pyra-info (exit 0)" || f "fix31: pyra-info exited $rc in the image"
+grep -qxF "Prepared   : commit $WANT_COMMIT, $(sed -n 's/^date=//p' "$M"), $WANT_KERNEL" <<<"$got" \
+    && p "fix31: pyra-info prints the marker" || f "fix31: pyra-info's Prepared line: '$(grep '^Prepared' <<<"$got")'"
+grep -qx 'RAM        : not readable from Linux.*' <<<"$got" && ! grep -q MemTotal <<<"$got" \
+    && p "fix31: pyra-info prints no RAM size" || f "fix31: pyra-info's RAM line: '$(grep '^RAM' <<<"$got")'"
+UB=$(in_chroot dpkg-query -W -f='${Version}' u-boot-pyra 2>/dev/null || true)
+grep -qE "^  u-boot-pyra +${UB//./\\.}\$" <<<"$got" && [[ -n $UB ]] \
+    && p "fix31: pyra-info lists the image's u-boot-pyra ($UB)" || f "fix31: pyra-info's u-boot-pyra line: '$(grep 'u-boot-pyra' <<<"$got")'"
+if [[ $SON == yes ]]; then
+    SV=$(in_chroot dpkg-query -W -f='${Version}' pyra-settings 2>/dev/null || true)
+    grep -qE "^  pyra-settings +${SV//./\\.}\$" <<<"$got" && [[ -n $SV ]] \
+        && p "fix31: pyra-info lists fix 26's pyra-settings ($SV)" || f "fix31: pyra-info's pyra-settings line: '$(grep 'pyra-settings' <<<"$got")'"
+fi
+[[ $(grep -c '^  ' <<<"$got") -eq 7 ]] && p "fix31: pyra-info lists all seven packages" || f "fix31: pyra-info lists $(grep -c '^  ' <<<"$got") packages, want 7"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1420,6 +1455,7 @@ fi
 grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix24 already up to date" || f "run 2 did not report fix24 already up to date"
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
 [[ $(grep -cE 'fix30: .*already up to date' "$OUT/prep-run2.log") -eq 3 ]] && p "run 2 reported fix30's three files already up to date" || f "run 2 did not report fix30's three files up to date"
+[[ $(grep -cE 'fix31: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported pyra-info and the marker already up to date" || f "run 2 did not report pyra-info and the marker up to date"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"
@@ -1911,6 +1947,10 @@ grep -qE 'fix21: .*already patched' "$OUT/prep-run3.log" && [[ $(sha256sum < "$W
 APTLEFT=$(find "$MNT/var/lib/apt/lists" "$MNT/var/cache/apt" -maxdepth 2 -type f \( -path '*/lists/*' ! -name lock -o -name '*pkgcache.bin' \) 2>/dev/null | wc -l)
 [[ $APTLEFT -eq 0 && -e $MNT/var/lib/apt/lists/lock && -d $MNT/var/lib/apt/lists/partial ]] && grep -qE 'release: removed [1-9][0-9]* apt package list and cache files' "$OUT/prep-run3.log" \
     && p "release: the vendor's stale apt package lists are gone; the lock and partial/ stay" || f "release: $APTLEFT apt list or cache files left, or the lock or partial/ removed, or run 3 did not report removing them"
+
+grep -qx 'release=yes' "$MNT/etc/dragonbox-pyra-prep" && grep -q 'fix31: updated /etc/dragonbox-pyra-prep' "$OUT/prep-run3.log" \
+    && p "release: the marker says release=yes" || f "release: the marker's release line is '$(grep '^release=' "$MNT/etc/dragonbox-pyra-prep")'"
+[[ -x $MNT/usr/local/bin/pyra-info ]] && p "release: pyra-info stays" || f "release: pyra-info is gone"
 
 # Run 4: release mode is idempotent too.
 snapshot > "$OUT/rootfs-after3.txt"
