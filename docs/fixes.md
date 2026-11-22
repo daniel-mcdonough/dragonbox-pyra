@@ -1854,15 +1854,16 @@ nothing to do, and prep checks that after the install. Fix 12 stands aside
 **How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
 `.deb`s in one run, after checking before fix 1 that the file is
 `pyra-settings` and that the image has every package either depends on (the
-vendor image has all seven of pyra-settings 0.14's: python3, python3-gi,
+vendor image has all seven of pyra-settings 0.15's: python3, python3-gi,
 gir1.2-gtk-3.0, pkexec, polkitd, alsa-utils, pulseaudio-utils).
 `--settings` with `--no-backlight` is refused, since a page of pyra-settings
 needs pyra-backlight. A second run sees the version installed and does nothing.
 
 The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
-[release v0.14](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.14)
-(`pyra-settings_0.14_all.deb`), checked against `SETTINGS_SHA256` in the script
-(`9c308887…d8db4`, the asset as published). `--no-settings` leaves both packages
+[release v0.15](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.15)
+(`pyra-settings_0.15_all.deb`), checked against `SETTINGS_SHA256` in the script
+(`6a45ace3…735c5e`, the asset as published). 0.15 adds the Performance page
+(*A CPU ceiling of your own*). `--no-settings` leaves both packages
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
@@ -2194,7 +2195,10 @@ still caps below it, as before. To lift it, delete the file
   `/etc/default`.
 - A card prepared with `--no-settings` keeps the vendor's 0.38 with fixes 6
   and 7, which has no ceiling. Install the fork (above) to get one.
-- pyra-settings has no page for it yet.
+- pyra-settings 0.15 and later set it from their Performance page (No limit,
+  or a step from 1400 down to 250 MHz), through their root helper. The page
+  shows "Custom" for a value between steps written by hand; saving a choice
+  rewrites the file whole, so comments in it go.
 
 Checked on the card on 2026-11-22 (measured, ondemand, two busy-loop shells,
 `scaling_max_freq` sampled about once a second); details in `verification-log.md`:

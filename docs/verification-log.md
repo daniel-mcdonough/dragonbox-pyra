@@ -2706,3 +2706,34 @@ Written up in `troubleshooting.md`, "No LED at all, even with a long press".
   less compatible uboot"; with the new one 74 dead boards booted and 16 did not.
 - Not tested: a board that fails the check (none here), and the LED and serial signs of a failure, which come
   from the source.
+
+## 2026-11-22 — the CPU ceiling from pyra-settings 0.15's Performance page (R90)
+
+The r5 release card (`5.6.19-m4-kbdled`, pyra-hacks 0.38+pyra5), `dpkg -i` of pyra-settings 0.15 (local build,
+payload identical to the published `v0.15` asset), ondemand governor, idle, no ceiling file before or after.
+
+- **The parser.** Nineteen file texts (spaces and quotes around the value, a trailing comment, no final newline,
+  `\r\n`, a leading zero, five digits, `$(…)`, `==`, lower case, `export`, several lines) run through the fork's
+  own `pyraReadCeiling` under the card's dash and through the page's Python reader: the same MHz for all 19.
+- **End to end.** The installed app's window on the Pyra's screen, its Performance page's buttons pressed through
+  GTK (`clicked`, as a tap does), the helper run through `sudo -n` instead of pkexec (the polkit agent would ask
+  for a password at the screen; pkexec itself was checked with the other pages). cpu0's `scaling_max_freq` read
+  every 50 ms. Measured:
+
+  | click | helper done, after the click | `scaling_max_freq` | click → applied | written → applied |
+  | --- | --- | --- | --- | --- |
+  | 875 | 0.58 s | 875000 | 2.30 s | 1.72 s |
+  | 1400 | 0.81 s | 1400000 | 1.15 s | 0.34 s |
+  | 500 | 0.54 s | 500000 | 1.89 s | 1.35 s |
+  | No limit | 0.98 s | 1500000 | 0.76 s | before the helper exited |
+  | 1000 | 0.51 s | 1000000 | 1.36 s | 0.85 s |
+  | 625 | 0.65 s | 625000 | 2.25 s | 1.60 s |
+  | 1250 | 1.00 s | 1250000 | 0.81 s | before the helper exited |
+  | No limit | 0.62 s | 1500000 | 1.37 s | 0.75 s |
+
+  After the file is written the daemon's next pass (every 2 s) applies it: at most 1.72 s here. From the press it
+  took up to 2.30 s, the helper run (sudo and Python on the Pyra, 0.5-1.0 s from the click in this table) coming first. The page's
+  "Saved. Applies within 2 seconds." appears when the helper is done, so the claim holds from that line.
+  No limit deleted the file each time.
+- Not tested here: the pkexec password dialog on this page, and the page's look on the Pyra's own theme (the
+  layout was checked under Xvfb at 1280x720 on the PC).
