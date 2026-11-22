@@ -2742,3 +2742,7 @@ payload identical to the published `v0.15` asset), ondemand governor, idle, no c
   (`get_preferred_width`, measured on the card). The Xvfb check above ran at the PC's smaller font. 0.16 puts the
   buttons on their own line: row 845 px, window 1239 px, maximized at 1280x720; checked on the Pyra by the owner
   in Menta. Fix 26 pins `v0.16` (asset `8b826990…124f34`, payload identical to the local build).
+- **Through pkexec.** The owner picked 1250 on 0.16's Performance page and entered the password in mate-polkit's
+  dialog. Journal: `pkexec[1534]: ... COMMAND=/usr/libexec/pyra-settings/pyra-settings-helper set-cpu-max 1250`
+  (11:10:02); `/etc/default/pyra-thermal` 0644 root with the helper's header and `CPU_MAX_MHZ=1250`;
+  `scaling_max_freq` 1250000. Read back over ssh afterwards, not timed.
