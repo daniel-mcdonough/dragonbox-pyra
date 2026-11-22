@@ -483,12 +483,25 @@ else
     else
         f "fix6: differs from what the device script would produce"
     fi
-    # Link two: fix 6 -> fix 7.
-    if "$PAYLOADS/pyra-thermal-ladder.sh" --emit-patched "$AFTER_FIX6" 2>/dev/null | cmp -s - "$TH"; then
-        p "fix7: matches what pyra-thermal-ladder.sh produces, byte for byte"
+    # Link two: fix 6 -> fix 7. Fix 26 then replaces the file with the fork's,
+    # which from 0.38+pyra5 adds the user ceiling (pyraReadCeiling, its comment
+    # and its call) to exactly what fix 7 makes; that block is taken out before
+    # comparing, so the fork may add it and nothing else.
+    FIX7_OUT=$(mktemp)
+    "$PAYLOADS/pyra-thermal-ladder.sh" --emit-patched "$AFTER_FIX6" > "$FIX7_OUT" 2>/dev/null || :
+    TH_CMP=$(mktemp)
+    if grep -q '^pyraReadCeiling()' "$TH"; then
+        awk '/^# A ceiling the user sets/{skip=1} skip&&/^}$/{skip=2;next} skip==2&&/^$/{skip=0;next} skip{next} /^[[:space:]]*pyraReadCeiling$/{next} {print}' "$TH" > "$TH_CMP"
+        TH_WHAT="the fork's daemon, less its ceiling block,"
     else
-        f "fix7: differs from what the device script would produce"
+        cp "$TH" "$TH_CMP"; TH_WHAT="the final daemon"
     fi
+    if [[ -s $FIX7_OUT ]] && cmp -s "$FIX7_OUT" "$TH_CMP"; then
+        p "fix7: $TH_WHAT matches what pyra-thermal-ladder.sh produces, byte for byte"
+    else
+        f "fix7: $TH_WHAT differs from what the device script would produce"
+    fi
+    rm -f "$TH_CMP"
 
     # The point of fix 7, asserted directly rather than inferred from a diff.
     if grep -q 'gaugeHot1=' "$TH"; then
@@ -551,7 +564,8 @@ for spec in pyra-thermal-fix.sh:/usr/local/sbin:755 \
 done
 # Run the guard on a copy (it writes when it acts, and this test must not):
 # as prep leaves the card it has nothing to do, and after a reinstall of the
-# vendor file it must restore exactly what prep wrote.
+# vendor file it must restore exactly what fixes 6 and 7 wrote (the fork's
+# ceiling comes only with the fork, so it is not part of that).
 if [[ -f $TH ]]; then
     GT=$(mktemp -d)
     cp -p "$TH" "$TH".before-pyra-thermal-* "$GT/" 2>/dev/null
@@ -563,12 +577,12 @@ if [[ -f $TH ]]; then
     fi
     cp "$GT/pyra-thermal.sh.before-pyra-thermal-fix" "$GT/pyra-thermal.sh" 2>/dev/null
     "${GUARD[@]}" >/dev/null 2>&1
-    if cmp -s "$GT/pyra-thermal.sh" "$TH"; then
-        p "fix6/7: after a simulated pyra-hacks reinstall, the guard restores the prepared file byte for byte"
+    if [[ -s $FIX7_OUT ]] && cmp -s "$GT/pyra-thermal.sh" "$FIX7_OUT"; then
+        p "fix6/7: after a simulated pyra-hacks reinstall, the guard restores fixes 6 and 7 byte for byte"
     else
-        f "fix6/7: after a simulated pyra-hacks reinstall, the guard does not restore the prepared file"
+        f "fix6/7: after a simulated pyra-hacks reinstall, the guard does not restore fixes 6 and 7"
     fi
-    rm -rf "$GT"
+    rm -rf "$GT" "$FIX7_OUT"
 fi
 
 ########################################################################
