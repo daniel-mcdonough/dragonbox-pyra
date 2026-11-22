@@ -52,7 +52,8 @@ path you cannot watch, and wifi is a second way in that does not depend on it.
 **Still no boot after a proper long press.** Re-check that the card is in the
 *left* full-size slot, that you `dd`'d to the whole device (`/dev/sdX`) and not
 a partition (`/dev/sdX1`), and that `dd` finished with `conv=fsync` plus a
-`sync`.
+`sync`. If no LED lights at all, even while you hold the button, see "No LED at
+all, even with a long press: the bootloader's RAM check" below.
 
 **The LEDs come on but the screen stays dark, or it hangs early in the boot.**
 If prep installed the kernel (fix 19), go back to the stock one from a PC: see
@@ -96,6 +97,56 @@ it. Pull the card, mount it on the PC, read the logs there
 That is the working debug loop for this image.
 
 ---
+
+## No LED at all, even with a long press: the bootloader's RAM check
+
+Some Pyra CPU boards fail their DDR3 setup at power-on: never, now and then
+("one out of 50 boots", EvilDragon, https://pyra-handheld.com/boards/posts/1693139/),
+or every time. The bootloader's first stage (SPL, the `MLO` file) writes one
+test word to RAM, reads it back, and powers the unit off if it differs. The team
+reworked the RAM setup in 2023 (pimaster's DLL and leveling changes, commits
+`a8898441`, `17601d31`, `cccad406`, `f3697cdd` and `a4a4272e` in
+`packages/pyra-uboot`, 2023-03-31 and 2023-04-01; thread
+https://pyra-handheld.com/boards/threads/looking-for-help-u-boot-ram-timings.99797/).
+With it, 74 boards set aside as dead booted and 16 still did not (Askarus,
+https://pyra-handheld.com/boards/posts/1719423/). Those are the units the team
+says "need the new bootloader" (https://pyra-handheld.com/boards/posts/1720056/).
+
+**This card has that fix.** Booting from the card runs the card's own SPL, not
+the eMMC's (`building.md`, "There is no boot menu on this machine"). The card's
+is `u-boot-pyra` 0.1.5 (built 2024-09-11), which contains the 2023 rework. Its
+`MLO` and `u-boot.img` on the card are byte-identical to the vendor's 0.1.5
+package, and no published U-Boot is newer: upstream's last change is 0.1.4
+(2023-08-21), with the same RAM code. So a unit whose eMMC carries an older
+U-Boot gets the fixed RAM setup from the card. Checked 2026-11-22
+(`verification-log.md`). No failing board has been tried with the card; the
+signs below come from the source.
+
+**How to tell it from a short press.** The long-press check runs later, in
+U-Boot proper, after the RAM check has passed:
+
+| What you see | What it is |
+|---|---|
+| LEDs light for about a quarter-second, then go off | A tap, not a hold. U-Boot's power-button check turned the unit off (step 5) |
+| Side LEDs yellow, then green | Normal boot |
+| No LED at all, even holding the button for several seconds | The RAM check failed in SPL, before anything lights the LEDs. A flat battery looks the same, so charge first |
+
+The serial console tells you for certain (the micro-USB beside the USB3 port;
+0.1.5 runs at 1500000 baud). A failed check prints eight `READBACK xxxxxxxx`
+lines, then `Memory test failed, powering off`.
+
+**What to do:**
+
+1. Power it on again a few times. On many boards the failure is intermittent.
+2. If it never boots from the card, take the card out and boot the eMMC. If the
+   eMMC boots, its U-Boot may be a build the team flashed and never published.
+   Report it with the serial output and the eMMC's version line (`dd` the first
+   8192 sectors of `/dev/mmcblk0` through `strings`, as in `building.md`). Don't
+   copy the eMMC's bootloader onto the card or the card's onto the eMMC. Neither
+   build is known to suit this case, and a bad eMMC bootloader leaves the unit
+   bootable only from a card.
+3. If neither boots, it is one of the boards the new bootloader does not save.
+   That is a matter for the team (DragonBox support).
 
 ## The card does not boot after prep installed the kernel
 

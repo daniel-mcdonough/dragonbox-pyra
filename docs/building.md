@@ -380,12 +380,13 @@ The eMMC carries its own copy, which varies by unit: the one tested has a
 Search either image for `vidconsole` or `usb_kbd` and nothing comes back, while
 `sysboot`, `pxelinux.cfg` and `Enter choice:` are all there (both checked
 2026-11-21). So the extlinux menu is
-written to the serial console on `ttyO2` and never reaches the LCD. Which
-baud U-Boot uses has not been checked: the kernel runs the line at 1500000,
-but the vendor's buster kernel used `console=ttyO2,115200n8`, and a forum
-user reached U-Boot SPL 2016.11 at 115200
-(https://pyra-handheld.com/boards/posts/1696012/), so the menu is probably
-at 115200 and only the kernel switches to 1500000. There is no `usb_kbd` in it either, so even a visible menu could not be
+written to the serial console on `ttyO2` and never reaches the LCD. The card's
+0.1.5 runs that line at 1500000 baud, like the kernel: its source sets
+`CONFIG_BAUDRATE 1500000`, and its changelog says the default moved there in
+0.1.5 (read 2026-11-22; not yet watched on the wire). Older builds used 115200:
+a forum user reached U-Boot at that rate (https://pyra-handheld.com/boards/posts/1696012/),
+and the SPL banner they posted next is the same January 2021 build as the tested
+unit's eMMC (https://pyra-handheld.com/boards/posts/1696066/). There is no `usb_kbd` in it either, so even a visible menu could not be
 answered from the built-in keyboard.
 
 **And `timeout 30` is three seconds, not thirty.** extlinux timeouts are in

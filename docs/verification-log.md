@@ -2676,3 +2676,33 @@ read back from `/dev/vcsu1` (`fn-tty.sh`). The owner compared the keycap legends
     after the load ended (cpu 69.6°C, clock 375 MHz). Peaks: core 73.0°C, cpu 79.4°C, gauge 35.1°C.
 - Left: pyra5 stays installed (it changes nothing without the file). `/etc/default/pyra-thermal` deleted,
   `scaling_max_freq` 1500000, `ondemand`; `/tmp` files deleted.
+
+## 2026-11-22 — the card's SPL carries the team's 2023 RAM-init fix (R85, read-only)
+
+The question: units that fail the bootloader's RAM check need "the new bootloader". Does the card's one have it?
+Written up in `troubleshooting.md`, "No LED at all, even with a long press".
+
+- **Source.** The vendor's `u-boot-pyra` source packages 0.1 (files dated 2022-04-21), 0.1.2 (2023-05-20) and
+  0.1.5 (2024-09-11), from the apt archive. 0.1 → 0.1.2 adds the rework: `omap5_ddr3_init` with DLL on for
+  calibration, a full leveling trigger, `ref_ctrl_final`, the field-by-field DDR3 table in
+  `board/dragonbox/omap5_pyra/dram.c`, EMIF power saving off in `board_spl_board_init`, and
+  `memory_test_with_shutdown` (one word at `CONFIG_SYS_SDRAM_BASE + 0x1000`, eight `READBACK` lines, then
+  `Memory test failed, powering off` and a PMIC power-off). 0.1.2 → 0.1.5 leaves the RAM code alone (board
+  revision clean-up, armv7-a tuning, `CONFIG_BAUDRATE 1500000`).
+- **Upstream.** The GitLab API's commit list for `packages/pyra-uboot`, default branch, read from the PC: the
+  rework is `a8898441` and `17601d31` (2023-03-31) and `cccad406`, `f3697cdd` and `a4a4272e` (2023-04-01). The
+  last commit is 0.1.4's changelog (2023-08-21). No later RAM change; 0.1.5's baud change is not pushed there.
+  `kernel/pyra-uboot` ends at `0fecbc0a` (2020-09-01), the commit the tested unit's eMMC U-Boot proper is built from.
+- **Packages.** `strings` on the 0.1.5 `MLO` (trixie and bookworm debs) and the 0.1.2 one (bullseye) all carry
+  `Memory test failed, powering off` and `EMIF power ctrl changed to`. Trixie 0.1.5: `MLO` SHA-256
+  `ad125236…cd75ef73`, `u-boot.img` `148bab44…6caa901a50`.
+- **The r5 card** (`5.6.19-m4-kbdled`, left slot, `mmcblk1`): the raw `MLO` at 128 KiB (65788 bytes) and
+  `u-boot.img` at 384 KiB (336152 bytes) hash the same as the trixie 0.1.5 deb's files, and the installed
+  package is 0.1.5. The eMMC's SPL (`2016.11-g8e417ba870-dirty`, 2021-01-07) has `READBACK %08x` and
+  `Status before starting init:` but neither 0.1.2 string, so it is an earlier variant.
+- **Forum dating.** Bad boards fail the check at power-on (EvilDragon 2021-05-28 /1693139/, 2022-12-08
+  /1711841/). pimaster's build booted 20 of 20 set-aside boards (2023-02-23 /1713044/) and was pushed
+  2023-04-01 (/1713378/). Askarus (/1719423/, edit before 2024-09-27): their Debian 10 flashing card had "an older
+  less compatible uboot"; with the new one 74 dead boards booted and 16 did not.
+- Not tested: a board that fails the check (none here), and the LED and serial signs of a failure, which come
+  from the source.
