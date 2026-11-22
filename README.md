@@ -212,6 +212,7 @@ not instructions). The logs are listed separately at the end.
 | --- | --- |
 | [docs/procedure.md](docs/procedure.md) | Write the card, apply the fixes, boot, verify. **Start here.** |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | It booted wrong, or a service is unhappy. |
+| [docs/board-revision.md](docs/board-revision.md) | Which mainboard, CPU board and RAM size your Pyra has, from a running card or U-Boot's serial lines. |
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |

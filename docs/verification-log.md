@@ -2746,3 +2746,21 @@ payload identical to the published `v0.15` asset), ondemand governor, idle, no c
   dialog. Journal: `pkexec[1534]: ... COMMAND=/usr/libexec/pyra-settings/pyra-settings-helper set-cpu-max 1250`
   (11:10:02); `/etc/default/pyra-thermal` 0644 root with the helper's header and `CPU_MAX_MHZ=1250`;
   `scaling_max_freq` 1250000. Read back over ssh afterwards, not timed.
+
+## 2026-11-22 — reading the board revision and RAM size (R91)
+
+- Card: the r5 release image, kernel `5.6.19-m4-kbdled`, read over ssh, then one reboot with the serial console
+  attached (FTDI, 1500000 baud). Nothing written to the card.
+- Running system: `/proc/device-tree/model` `Pyra-Handheld-V5.3` (mainboard), first `compatible`
+  `goldelico,lc15-v5.3` (CPU board), `MemTotal: 4034760 kB`. `/proc/device-tree/memory@80000000/reg` holds two
+  banks, `0x80000000` + `0x7f000000` and `0x2_00000000` + `0x80000000`: exactly u-boot-pyra 0.1.5's fixed
+  `dram_init_banksize` for its `omap5_pyra_4gb_defconfig` build, so MemTotal reflects U-Boot's build, not the
+  fitted RAM. `/proc/cmdline` carries no revision (the `extlinux` `append` line only). `/sys/kernel/debug/gpio`:
+  `gpio-33` (the RAM-size resistor pin) is claimed as `encoder` by the running kernel.
+- Serial, from the reboot: `ram code 0x0`, `version code 0xa`, `Found Pyra V5.3 with 4GB RAM`,
+  `HW Revision: CPU: v5.3 Mainboard: v5.3`, `BOOTDEV: SD Left`, then
+  `Retrieving file: /dtb/linux-image-5.6.19-m4-kbdled/omap5-letux-cortex15-v5.3+pyra-v5.3.dtb`. The codes decode
+  per `board.c` (`version code 0xa`: both CPU-board pins floating = V5.3; `ram code 0x0`: pulled down = 4 GB).
+- From source, not seen on hardware: a missing `.dtb` makes `sysboot` print `Skipping <label> for failure
+  retrieving fdt` and try the next entry; an unknown resistor code names `v0.0`. No 2 GB unit tried.
+- Docs: new `board-revision.md`, indexed in README.

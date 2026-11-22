@@ -1185,7 +1185,8 @@ of two things:
           /pyra-game-buttons/left_shoulder_top gpio-key,wakeup
 
   That file is for a V5.3 mainboard. `/boot/dtb/linux-image-*/` holds one per
-  board revision, so edit the one your board boots. It takes effect at the
+  board revision, so edit the one your board boots (`board-revision.md` says
+  which). It takes effect at the
   next boot. A new kernel install replaces the blob,
   so the edit has to be made again. The `fdtput` form is not tested on
   hardware. The node and property names are the ones read back from
