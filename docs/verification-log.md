@@ -2880,3 +2880,28 @@ in `browsers.md`.
   first login on 2026-11-21 (`troubleshooting.md`, "Asked for a keyring password that is not yours").
 - Afterwards everything except `firefox-esr` (plus `libevent-2.1-7t64`) was purged. `dpkg -l` otherwise matches
   the list taken before the install. `x-www-browser` → `firefox-esr`.
+
+## 2026-11-23 — a release card's first-boot password and its login keyring (R99)
+
+**Cause, on the r5 card** (release image of 2026-11-20, first login 2026-11-21 04:46), from its own journal:
+`gkr-pam: unable to locate daemon control file` and `stashed password to try later in open session` at sign-in,
+`expired password for user pyra`, `pam_unix(lightdm:chauthtok): password changed`, `unable to locate daemon
+control file` again in the password step, then `gkr-pam: unlocked login keyring` as the session opened, which
+created the keyring with the stashed `pyra`. Read against gnome-keyring 48.0's `pam/gkr-pam-module.c` (`fixes.md`,
+fix 33).
+
+**Fix, on a fresh release card.** Image built with `pyra-image-build.sh -- --release --grow-on-boot --pyrainput
+<0.1.19+pyra1 .deb>` from `8c3a35d` (clean), kernel r3 by the pinned download. Written to a 119 GB card from the
+running r5 card with `dd`; SHA-256 of the card's first 6 GiB equal to the image's (`ffe059a9…3674`). Booted alone
+in the left slot.
+
+- `00:30:14` `pyra-first-boot.service` started; the window came up under `xinit` with no window manager and took
+  keyboard input. Password set at `00:30:48` (`chpasswd` logged `gkr-pam: couldn't update the login keyring
+  password: no old password was entered`, harmless: there is no keyring yet). Unit finished `00:30:49`, then lightdm.
+- Before the first login: no `~/.local/share/keyrings/login.keyring`.
+- First login at the greeter: `00:31:27` `stashed password to try later in open session`, `00:31:28` `unlocked
+  login keyring`. `login.keyring` 105 bytes, mtime `00:31:28`.
+- Which password opens it, checked on the card by a script that decrypts the file as gnome-keyring 48.0 does
+  (AES-128-CBC, key from iterated SHA-256, MD5 check; validated first on a keyring made with a known password,
+  which opened only with that one): `pyra` does not open it; the password set in the window does.
+- The two journal lines `Gdk.Screen.get_width/get_height is deprecated` are cosmetic.

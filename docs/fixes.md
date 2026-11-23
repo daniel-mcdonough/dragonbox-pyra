@@ -2268,7 +2268,11 @@ tool and unit installed and enabled, that a card with a password has nothing
 pending, the window's checks under the image's python3 and GTK 3, the release
 state (shadow `!`, the pending file 600 root, no expiry), and the first-boot
 step itself: the image's `chpasswd` writes a hash that the image's `crypt()`
-opens with `a:b c|d`, and the pending file goes. Hardware check: pending.
+opens with `a:b c|d`, and the pending file goes. On a Pyra, on a fresh release
+card built from `8c3a35d` (`verification-log.md`, R99): the window came up
+before the greeter and took the password, there was no keyring before the
+first login, and the first login created one that the new password opens and
+`pyra` does not.
 
 ## Fixes 6, 7 and 12 as a package
 
