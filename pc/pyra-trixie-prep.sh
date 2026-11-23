@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty-two known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-three known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -66,13 +66,19 @@
 # makes /dragonbox/packages and /dragonbox/appdata the user's, and links
 # ~/dragonbox to /dragonbox, so the Installer's default target registers.
 #
+# Fix 33 installs pyra-first-boot and its unit, which ask for the user's
+# password in an X window on the first boot, before the greeter, when
+# /var/lib/dragonbox-pyra/first-boot-password names the user. Only --release
+# writes that file, so on any other card the unit does nothing.
+#
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
 #
 # --release makes an image to share rather than a card of your own, and asks
-# nothing. The user 'pyra' gets the password 'pyra', which must be changed at
-# the first login. Fix 23 then removes the ssh host keys and the machine-id
+# nothing. The user 'pyra' has no password: it is locked, and fix 33 asks for
+# one on the first boot, before the greeter, so the first login (and the login
+# keyring it creates) uses the user's own. Fix 23 then removes the ssh host keys and the machine-id
 # whatever they are, not only the vendor's, and systemd's random seed and
 # credential secret go too, so no two cards share them. It refuses --set-password,
 # --ssh-key, another username, an authorised ssh key on the image or a
@@ -354,6 +360,16 @@ done
 # Fix 31's tool.
 INFO_SRC=$PAYLOADS/pyra-info
 [[ -r $INFO_SRC ]] || die "fix31: pyra-info not found (looked in $PAYLOADS)"
+# Fix 33's tool and unit. The tool runs under the image's xinit with GTK 3
+# (fix 30 checks the image has it) and sets the password with chpasswd.
+FIRSTBOOT_SRC=$PAYLOADS/pyra-first-boot
+FIRSTBOOT_UNIT_SRC=$PAYLOADS/pyra-first-boot.service
+FIRSTBOOT_PENDING=/var/lib/dragonbox-pyra/first-boot-password
+[[ -r $FIRSTBOOT_SRC ]] || die "fix33: pyra-first-boot not found (looked in $PAYLOADS)"
+[[ -r $FIRSTBOOT_UNIT_SRC ]] || die "fix33: pyra-first-boot.service not found (looked in $PAYLOADS)"
+for f in usr/bin/xinit usr/sbin/chpasswd usr/bin/passwd usr/bin/chvt usr/bin/python3; do
+    [[ -x $ROOT/$f ]] || die "fix33: the image has no /$f, which pyra-first-boot needs"
+done
 
 GOVTUNE_SRC=$PAYLOADS/pyra-governor-tune.sh
 GOVTUNE_UNIT_SRC=$PAYLOADS/pyra-governor-tune.service
@@ -1009,22 +1025,29 @@ ask_password() {
     printf '%s:%s\n' "$USERNAME" "$HASH" | chpasswd -e -R "$ROOT"
     unset HASH
 }
-# --release: the documented password 'pyra', expired, so the first login (the
-# greeter, a console or ssh) makes the user choose their own before going on.
-# A hash that already is 'pyra' and already expired is left alone, so a rerun
-# writes nothing.
+# --release: no password. A password that ships with the image is known to
+# everyone, and one that is expired is changed only inside the first login,
+# after pam_gnome_keyring has kept the old one for the login keyring (fix 33).
+# So the user's is locked ('!', which no password matches) and the pending
+# file names the user; pyra-first-boot asks for a password before the greeter.
+# A user already locked with the file in place is left alone.
 release_password() {
-    local hash salt
+    local hash pend=$ROOT$FIRSTBOOT_PENDING
     hash=$(awk -F: -v u="$USERNAME" '$1==u{print $2}' "$ROOT/etc/shadow")
-    salt=$(cut -d'$' -f3 <<<"$hash")
-    if [[ $hash == '$6$'* && $(openssl passwd -6 -salt "$salt" pyra) == "$hash" &&
-          $(awk -F: -v u="$USERNAME" '$1==u{print $3}' "$ROOT/etc/shadow") == 0 ]]; then
-        ok "release: '$USERNAME' already has the password 'pyra', to be changed at the first login"
+    if [[ $hash == '!' && -f $pend && ! -L $pend && $(<"$pend") == "$USERNAME" ]]; then
+        ok "release: '$USERNAME' already has no password, to be chosen on the first boot"
         return
     fi
-    printf '%s:%s\n' "$USERNAME" "$(openssl passwd -6 pyra)" | chpasswd -e -R "$ROOT"
-    chage -R "$ROOT" -d 0 "$USERNAME"
-    ok "release: '$USERNAME' has the password 'pyra', to be changed at the first login"
+    [[ -L $ROOT/var/lib/dragonbox-pyra || -L $pend ]] && die "release: $FIRSTBOOT_PENDING or its directory is a link in the image"
+    usermod -R "$ROOT" -p '!' "$USERNAME"
+    # chage -d 0 from an older release run would expire the password chosen at the first boot.
+    [[ $(awk -F: -v u="$USERNAME" '$1==u{print $3}' "$ROOT/etc/shadow") == 0 ]] && chage -R "$ROOT" -d -1 "$USERNAME"
+    install -d -m 0755 -o 0 -g 0 "$ROOT/var/lib/dragonbox-pyra"
+    rm -f -- "$pend"
+    printf '%s\n' "$USERNAME" >"$pend"
+    chmod 0600 "$pend"
+    chown 0:0 "$pend"
+    ok "release: '$USERNAME' has no password; pyra-first-boot asks for one on the first boot"
 }
 if grep -q "^${USERNAME}:" "$ROOT/etc/passwd"; then
     ok "fix2: user '$USERNAME' already exists"
@@ -2689,6 +2712,56 @@ else
     ln -s /dragonbox "$link"
     chown -h "$DUID:$DGID" "$link"
     ok "fix32: linked $DHOME/dragonbox to /dragonbox"
+fi
+
+# ---------------------------------------------------------------------- fix 33
+#
+# --release used to ship the password 'pyra', expired. The greeter then changes
+# it inside the first login, and pam_gnome_keyring loses the new one: its
+# password step runs before pam_systemd has made XDG_RUNTIME_DIR, so it cannot
+# find the keyring daemon and returns without starting one or stashing the new
+# password. The session step then creates the login keyring with the old one
+# it kept from the sign-in, so the keyring opened with 'pyra' (development log
+# §R99, the r5 card's journal of 2026-11-21). Setting the password before the
+# greeter avoids that path. pyra-first-boot does it in an X window, from the
+# unit, when the pending file names the user; --release writes the file. The
+# vendor's own wizard (fix 2) stays off: it makes a second user and powers off
+# when a dialog fails.
+
+dst=$ROOT/usr/local/sbin/pyra-first-boot
+if [[ -e $dst ]] && cmp -s "$FIRSTBOOT_SRC" "$dst"; then
+    ok "fix33: ${dst#$ROOT} already up to date"
+else
+    VERB=$([[ -e $dst ]] && echo updated || echo installed)
+    install -D -m 0755 -o 0 -g 0 "$FIRSTBOOT_SRC" "$dst"
+    ok "fix33: $VERB ${dst#$ROOT}"
+fi
+dst=$ROOT/etc/systemd/system/pyra-first-boot.service
+if [[ -e $dst ]] && cmp -s "$FIRSTBOOT_UNIT_SRC" "$dst"; then
+    ok "fix33: ${dst#$ROOT} already up to date"
+else
+    VERB=$([[ -e $dst ]] && echo updated || echo installed)
+    install -m 0644 -o 0 -g 0 "$FIRSTBOOT_UNIT_SRC" "$dst"
+    ok "fix33: $VERB ${dst#$ROOT}"
+fi
+GWANTS=$ROOT/etc/systemd/system/graphical.target.wants
+if [[ $(readlink "$GWANTS/pyra-first-boot.service" 2>/dev/null) == /etc/systemd/system/pyra-first-boot.service ]]; then
+    ok "fix33: pyra-first-boot.service already enabled in graphical.target"
+else
+    mkdir -p "$GWANTS"
+    ln -sfn /etc/systemd/system/pyra-first-boot.service "$GWANTS/pyra-first-boot.service"
+    ok "fix33: enabled pyra-first-boot.service in graphical.target"
+fi
+# A card prepared without --release from a release image, with --set-password:
+# the user has a password now, so the first boot must not ask again.
+if [[ $RELEASE != yes && -e $ROOT$FIRSTBOOT_PENDING ]] &&
+   [[ $(awk -F: -v u="$USERNAME" '$1==u{print $2}' "$ROOT/etc/shadow") == '$'* ]]; then
+    rm -f -- "$ROOT$FIRSTBOOT_PENDING"
+    ok "fix33: '$USERNAME' has a password; removed $FIRSTBOOT_PENDING"
+elif [[ -e $ROOT$FIRSTBOOT_PENDING ]]; then
+    ok "fix33: the first boot asks for $(<"$ROOT$FIRSTBOOT_PENDING")'s password"
+else
+    ok "fix33: nothing pending; the unit does nothing on this card"
 fi
 
 # ------------------------------------------------------------------- release

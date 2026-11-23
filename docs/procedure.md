@@ -40,15 +40,16 @@ fix 29 installs the input daemon's plugin rebuilt with three key and nub
 fixes and the systemd unit the vendor's trixie build lacks, fix 30
 makes "Calibrate Touchscreen" calibrate libinput and steadies the stylus, and
 fix 31 installs `pyra-info`, which prints what a bug report needs, and
-fix 32 makes the DBP Installer run and its downloads register.
+fix 32 makes the DBP Installer run and its downloads register, and
+fix 33 asks a release card's user for a password on the first boot, before the greeter.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all thirty-two fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all thirty-three fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fixes 14, 19, 20, 22, 24, 26, 27, 28, 29 and 32 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 32 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 8 and 13 to 33 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -260,12 +261,12 @@ has the details.
 
 **An image to share (`--release`).** `--release` prepares an image to give to
 other people rather than a card of your own, and asks nothing. The `pyra` user
-gets the password `pyra`, expired, so the first login (the greeter, a console or
-ssh) makes the user choose a new one before going on. The greeter asks for
-`pyra` twice: once to sign in, then again as the current password (PAM's
-password-change step checks it again on its own), and only then for the new one. The
-second prompt is not a failed login. A wrong current password or a rejected new
-one starts again from the login screen. Fix 23 removes the ssh
+has no password: it is locked, and on the first boot, before the greeter, a
+window asks for one (fix 33). Type it twice and press "Set password"; the
+greeter then starts and takes it. "Shut down" sets nothing, and the window
+comes back on the next boot. Until then nobody can log in, by the greeter, a
+console or ssh. If X cannot start, the same question comes up as text on the
+console. Fix 23 removes the ssh
 host keys and empties `/etc/machine-id` whatever they are, not only the
 vendor's, and release mode also deletes systemd's random seed and credential
 secret, so no two cards written from the image share them. It also deletes
@@ -279,10 +280,8 @@ vendor's own `/etc/sudoers.d/pyrainput` (`pyrainputctl` without a password, for
 the `sudo` group) stays. Asserted by
 `pc/pyra-prep-selftest.sh`, and booted on a Pyra on 2026-11-01. With
 `--grow-on-boot` on a 256 GB card, the greeter appeared about 11 minutes after
-power-on, because the grow runs first. The forced change works at the greeter
-and over ssh. A key login still has to change the password, so it needs
-`ssh -t`: without a terminal, sshd refuses with `Password change required but no
-TTY available`.
+power-on, because the grow runs first (measured 2026-11-01 with the expired
+`pyra` password that release images had before fix 33).
 
 **The vendor image's ssh host keys (fix 23).** The vendor image ships its ssh
 host keys and machine-id, the same on every card written from it, so anyone
@@ -714,7 +713,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the thirty-two fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
+and of the thirty-three fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

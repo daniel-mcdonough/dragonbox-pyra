@@ -1,0 +1,21 @@
+# Installed by pyra-trixie-prep.sh (fix 33). A release image has no password:
+# prep --release locks the user's and names the user in the file below. This
+# asks for one on the first boot, in an X window before the greeter, so the
+# first login (and the login keyring it creates) uses the user's own password.
+# If X fails, the second command asks on tty1 instead. Without the file, as on
+# a card prepared with a password, it does nothing.
+[Unit]
+Description=Ask for the user's password on the first boot
+ConditionPathExists=/var/lib/dragonbox-pyra/first-boot-password
+After=systemd-user-sessions.service plymouth-quit.service
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/xinit /usr/local/sbin/pyra-first-boot -- :0 vt7 -nolisten tcp
+ExecStart=/usr/local/sbin/pyra-first-boot --console
+ExecStartPost=/usr/bin/sync
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=graphical.target

@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 32 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 33 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -20,10 +20,11 @@
 # without touching it), fires fix 26's wheel guard with a downgrade to the
 # vendor's pyra-hacks and a return to the fork, fires fix 29's input guard the
 # same way with the vendor's funkeymonkey-pyrainput, and finally runs --release twice on the same
-# image: what it refuses (writing nothing), the release end state (password
-# 'pyra' expired, no host keys and an empty machine-id even where the card's
+# image: what it refuses (writing nothing), the release end state (no password,
+# the first boot asks for one, no host keys and an empty machine-id even where the card's
 # own were kept, no prompts, no NOPASSWD rule for all commands, systemd-firstboot
-# masked), idempotency, and the image's sshd -t before and after ssh-keygen -A.
+# masked), idempotency, the image's sshd -t before and after ssh-keygen -A, and
+# fix 33's password step with the image's chpasswd.
 #
 # Fix 19 installs the shipped kernel from a tarball. The image carries only the
 # stock kernel, so the test hands prep the cross-build's output
@@ -1409,6 +1410,34 @@ L=$MNT$PH/dragonbox
     && p "fix32: $PH/dragonbox is pyra's link to /dragonbox" || f "fix32: $PH/dragonbox is $(stat -c '%F -> %N %u:%g' -- "$L" 2>/dev/null || echo missing)"
 
 ########################################################################
+i "assert fix 33 — the first-boot password window, idle on a card with a password"
+########################################################################
+for spec in "pyra-first-boot:/usr/local/sbin/pyra-first-boot:755" "pyra-first-boot.service:/etc/systemd/system/pyra-first-boot.service:644"; do
+    IFS=: read -r src dst mode <<<"$spec"
+    cmp -s "$PAYLOADS/$src" "$MNT$dst" && p "fix33: $dst matches repo" || f "fix33: $dst missing or differs from repo"
+    [[ $(stat -c '%a %u:%g' "$MNT$dst" 2>/dev/null) == "$mode 0:0" ]] && p "fix33: $dst is $mode root:root" \
+        || f "fix33: $dst is $(stat -c '%a %u:%g' "$MNT$dst" 2>/dev/null), want $mode 0:0"
+done
+[[ $(readlink "$MNT/etc/systemd/system/graphical.target.wants/pyra-first-boot.service") == /etc/systemd/system/pyra-first-boot.service ]] \
+    && p "fix33: pyra-first-boot.service enabled in graphical.target" || f "fix33: pyra-first-boot.service not enabled in graphical.target"
+grep -qx 'Before=display-manager.service' "$MNT/etc/systemd/system/pyra-first-boot.service" \
+    && grep -qx 'ConditionPathExists=/var/lib/dragonbox-pyra/first-boot-password' "$MNT/etc/systemd/system/pyra-first-boot.service" \
+    && p "fix33: the unit runs before the greeter, only with the pending file" || f "fix33: the unit's ordering or condition changed"
+[[ ! -e $MNT/var/lib/dragonbox-pyra/first-boot-password ]] && grep -q 'fix33: nothing pending' "$OUT/prep-run1.log" \
+    && p "fix33: run 1 (with a password) left nothing pending" || f "fix33: run 1 left a pending file, or did not say nothing is pending"
+got=$(in_chroot /usr/local/sbin/pyra-first-boot --help 2>&1 | head -1 || true)
+[[ $got == "Ask for the user's password on a card's first boot, before the greeter." ]] \
+    && p "fix33: the image's python3 runs pyra-first-boot --help" || f "fix33: pyra-first-boot --help printed '$got'"
+# Without the pending file the tool exits at once, as root, touching nothing.
+in_chroot /usr/local/sbin/pyra-first-boot >/dev/null 2>&1 && p "fix33: with nothing pending the tool exits 0" || f "fix33: with nothing pending the tool failed"
+got=$(in_chroot python3 -B -c 'import importlib.machinery as m
+fb = m.SourceFileLoader("fb", "/usr/local/sbin/pyra-first-boot").load_module()
+print([fb.problem(*a) is None for a in (("", ""), ("ab", "ac"), ("pyra", "pyra"), ("a\nb", "a\nb"), ("a:b c|d", "a:b c|d"))])
+import gi; gi.require_version("Gtk", "3.0"); gi.require_version("Gdk", "3.0"); from gi.repository import Gtk, Gdk' 2>&1 || true)
+[[ $got == "[False, False, False, False, True]" ]] \
+    && p "fix33: the window refuses empty, unequal, 'pyra' and line breaks, takes 'a:b c|d'; GTK 3 imports" || f "fix33: the checks or GTK 3: $got"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1479,6 +1508,8 @@ grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
 [[ $(grep -cE 'fix31: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported pyra-info and the marker already up to date" || f "run 2 did not report pyra-info and the marker up to date"
 [[ $(grep -cE 'fix32: (the image already has|/dragonbox.* already there|.*already points at /dragonbox)' "$OUT/prep-run2.log") -eq 7 ]] \
     && p "run 2 found fix32's three packages, three directories and the link in place" || f "run 2 did not find all of fix32's packages, directories and link in place"
+[[ $(grep -cE 'fix33: .*already (up to date|enabled)' "$OUT/prep-run2.log") -eq 3 ]] \
+    && p "run 2 reported fix33's tool, unit and link already in place" || f "run 2 did not report fix33's tool, unit and link in place"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"
@@ -1942,11 +1973,13 @@ set -e; arm
 grep -qE 'Password for|\[Y/n\]' "$OUT/prep-run3.log" && f "release: run 3 prompted" || p "release: run 3 asked nothing"
 
 HASH=$(awk -F: '$1=="pyra"{print $2}' "$MNT/etc/shadow")
-SALT=$(cut -d'$' -f3 <<<"$HASH")
-[[ $HASH == '$6$'* && $(openssl passwd -6 -salt "$SALT" pyra) == "$HASH" ]] \
-    && p "release: pyra's password is 'pyra'" || f "release: pyra's shadow hash is not 'pyra'"
+[[ $HASH == '!' ]] && p "release: pyra has no password (shadow '!')" || f "release: pyra's shadow hash is '${HASH:0:3}...', not '!'"
 LASTCHG=$(awk -F: '$1=="pyra"{print $3}' "$MNT/etc/shadow")
-[[ $LASTCHG == 0 ]] && p "release: pyra must change it at the first login (last change 0)" || f "release: pyra's last change is '$LASTCHG', not 0"
+[[ $LASTCHG != 0 ]] && p "release: nothing expires the password chosen later (last change '$LASTCHG')" || f "release: pyra's last change is 0, which would expire the first-boot password"
+PEND=$MNT/var/lib/dragonbox-pyra/first-boot-password
+[[ -f $PEND && ! -L $PEND && $(<"$PEND") == pyra && $(stat -c '%a %u:%g' "$PEND") == "600 0:0" ]] \
+    && p "release: the pending file names pyra, 600 root:root" || f "release: the pending file is $(stat -c '%F %a %u:%g' "$PEND" 2>/dev/null || echo missing)"
+grep -q "fix33: the first boot asks for pyra's password" "$OUT/prep-run3.log" && p "release: fix 33 reports the first boot will ask" || f "release: fix 33 did not report the pending password"
 compgen -G "$MNT/etc/ssh/ssh_host_*" >/dev/null && f "release: ssh host keys left: $(cd "$MNT/etc/ssh" && ls ssh_host_* | tr '\n' ' ')" || p "release: no ssh host keys"
 grep -q 'fix23: removed 2 ssh host key files (--release)' "$OUT/prep-run3.log" && grep -q 'fix23: emptied /etc/machine-id (--release)' "$OUT/prep-run3.log" \
     && p "release: it removed the card's own host key and machine-id, which a plain run keeps" || f "release: run 3 did not report removing the card's own host key and machine-id"
@@ -1989,8 +2022,8 @@ else
     f "release: run 4 changed the filesystem:"
     { grep -E '^[+-][^+-]' "$OUT/rootfs-diff4.txt" || true; } | sed -n '1,20p' | sed 's/^/      /'
 fi
-grep -q "release: 'pyra' already has the password 'pyra'" "$OUT/prep-run4.log" \
-    && p "release: run 4 left the expired password alone" || f "release: run 4 did not report the password already set"
+grep -q "release: 'pyra' already has no password" "$OUT/prep-run4.log" \
+    && p "release: run 4 left the locked password and the pending file alone" || f "release: run 4 did not report the password already locked"
 grep -q 'release: no apt package lists in the image' "$OUT/prep-run4.log" \
     && p "release: run 4 found no apt package lists to remove" || f "release: run 4 did not report the apt package lists already gone"
 [[ $(grep -cE 'fix23: .*already (up to date|enabled|empty|masked)' "$OUT/prep-run4.log") -eq 4 ]] \
@@ -2018,6 +2051,35 @@ for d in dev sys proc; do umount "$MNT/$d"; done
 snapshot > "$OUT/rootfs-after-keygen.txt"
 cmp -s "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-keygen.txt" && p "release: the chroot check left the image as run 4 did" \
     || { f "release: the chroot check changed the image:"; { diff "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-keygen.txt" || true; } | sed -n '1,10p' | sed 's/^/      /'; }
+
+# The first boot's password step, as far as a chroot shows it: the window's
+# set_password with the image's chpasswd. Afterwards the hash opens with the
+# chosen password (colon, space and bar included), the pending file is gone, so
+# the unit's condition fails on the next boot. Shadow and file are put back.
+# chpasswd also rewrites shadow's backup and may leave a lock file.
+FB_SAVE=$OUT/.firstboot; rm -rf "$FB_SAVE"; mkdir -p "$FB_SAVE"
+for x in /etc/shadow /etc/shadow- /etc/.pwd.lock "${PEND#$MNT}"; do
+    [[ -e $MNT$x ]] && cp -a "$MNT$x" "$FB_SAVE/$(basename "$x")" || : > "$FB_SAVE/$(basename "$x").absent"
+done
+disarm; set +e
+got=$(in_chroot python3 -B -c 'import importlib.machinery as m
+fb = m.SourceFileLoader("fb", "/usr/local/sbin/pyra-first-boot").load_module()
+print(fb.pending_user(), fb.set_password("pyra", "a:b c|d"))' 2>&1)
+set -e; arm
+HASH=$(awk -F: '$1=="pyra"{print $2}' "$MNT/etc/shadow")
+[[ $got == "pyra None" ]] && p "release: the first-boot step ran the image's chpasswd for pyra" || f "release: pending_user, set_password printed '$got'"
+# The image's crypt() checks the hash, whatever method its login.defs picked.
+in_chroot perl -e 'exit(crypt($ARGV[0], $ARGV[1]) eq $ARGV[1] ? 0 : 1)' 'a:b c|d' "$HASH" \
+    && p "release: pyra's new hash (${HASH:0:3}) opens with 'a:b c|d', checked by the image's crypt()" || f "release: pyra's hash '${HASH:0:4}...' does not open with 'a:b c|d'"
+[[ ! -e $PEND ]] && p "release: the pending file is gone after the step" || f "release: the pending file is still there after the step"
+for x in /etc/shadow /etc/shadow- /etc/.pwd.lock "${PEND#$MNT}"; do
+    b=$FB_SAVE/$(basename "$x")
+    if [[ -e $b.absent ]]; then rm -f -- "$MNT$x"; else cp -a "$b" "$MNT$x"; fi
+done
+rm -rf "$FB_SAVE"
+snapshot > "$OUT/rootfs-after-firstboot.txt"
+cmp -s "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-firstboot.txt" && p "release: the first-boot check left the image as run 4 did" \
+    || { f "release: the first-boot check changed the image:"; { diff "$OUT/rootfs-after4.txt" "$OUT/rootfs-after-firstboot.txt" || true; } | sed -n '1,10p' | sed 's/^/      /'; }
 
 ########################################################################
 sync

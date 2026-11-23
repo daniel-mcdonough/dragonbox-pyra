@@ -92,6 +92,7 @@ and was not tried.
 On the r5 release card, Chromium's first start asked for the login keyring's
 password. The password that worked was `pyra`, the image's original one, not the
 one set at the first login (see `troubleshooting.md`, "Asked for a keyring password that is not yours").
+Release images from fix 33 on create the keyring with the user's own password.
 
 ## Security
 

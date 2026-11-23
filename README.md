@@ -49,12 +49,13 @@ reader.
    isn't: this image's U-Boot ignores anything but a long press.
 
 4. **Wait.** On its first boot the card grows its root filesystem to fill
-   the card before anything else starts. On a 256 GB card the login screen
-   appeared after about 11 minutes. Don't switch it off in that time.
+   the card before anything else starts. On a 256 GB card that took about
+   11 minutes. Don't switch it off in that time.
 
-5. Log in as `pyra` with the password `pyra`. You are asked for a new password
-   straight away, at the login screen, on a console or over ssh. Over ssh, use
-   `ssh -t` so there is a terminal to change it on.
+5. **Choose your password.** A window asks for the password of the user
+   `pyra`. Type it twice and press "Set password". The card ships with no
+   password, so until you do this nobody can log in, at the login screen, on
+   a console or over ssh. Then log in as `pyra` with it.
 
 Each card makes its own ssh host keys and machine-id on that first boot, so
 two cards written from the same image don't share them. Then carry on with
@@ -219,7 +220,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The thirty-two fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The thirty-three fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software; DBPs that need GLX; fullscreen crashes under gl4es. |
 | [docs/dbp.md](docs/dbp.md) | DBP packages from the forum: installing one, the false "missing dependencies" dialog, and which old libraries trixie renamed. |

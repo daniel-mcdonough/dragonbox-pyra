@@ -1789,10 +1789,14 @@ means the keyring file `~/.local/share/keyrings/login.keyring` is encrypted with
 the published default. Anyone who can copy the file can read what is stored in
 it.
 
-The likely cause is the expired first-login password. lightdm logs in with `pyra`,
-and `pam_gnome_keyring` keeps that password. The change to the new password runs
-before any keyring exists, so there is nothing to re-key. The session then creates
-the keyring with the kept `pyra`. This has not been confirmed on a fresh card.
+The cause is the expired first-login password, confirmed from that card's journal
+(`fixes.md`, fix 33). lightdm signs in with `pyra`, and `pam_gnome_keyring` keeps
+it. Its part of the password change cannot reach the keyring daemon yet, so it
+gives up without a word. The session then creates the keyring with the kept
+`pyra`. It affects cards made from a release image prepared before fix 33 (r5
+and earlier). From fix 33 on, the password is chosen before the first login and
+the keyring is created with it. A password changed later at the greeter (for
+example after `sudo chage -d 0`) misses the keyring the same way, on any card.
 
 To fix it, give the keyring your own password. Open Passwords and Keys
 (`seahorse`, if installed), right-click "Login", choose Change Password, enter

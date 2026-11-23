@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+"""Ask for the user's password on a card's first boot, before the greeter.
+
+A card made from a release image has no password: prep --release locks the
+user's and writes /var/lib/dragonbox-pyra/first-boot-password, which names the
+user. pyra-first-boot.service runs this under xinit before lightdm when that
+file exists. It shows one window: the password twice, and a button that sets
+it. Once it is set the file goes, the window closes, and lightdm starts. The
+first login then uses the user's own password, so the login keyring that
+pam_gnome_keyring creates there is encrypted with it.
+
+The password goes to chpasswd on stdin, never on a command line. Nothing is
+written until both entries match. "Shut down" powers the Pyra off with
+nothing set; the window comes back on the next boot.
+
+GTK 3 rather than zenity: trixie's zenity is GTK 4 and libadwaita, and this
+X server has no GLX. pyra-touch-calibrate already uses GTK 3 on the same X.
+
+    pyra-first-boot              the window (run by the unit, under xinit)
+    pyra-first-boot --console    the fallback the unit runs if X fails: passwd
+                                 on tty1 until it succeeds
+    pyra-first-boot --dry-run    the window, setting nothing (any user, any X)
+"""
+import os, pwd, subprocess, sys
+
+PENDING = "/var/lib/dragonbox-pyra/first-boot-password"
+OLD_DEFAULT = "pyra"   # what release images used to ship; not allowed back
+
+
+def pending_user():
+    """The user named in PENDING, or None when there is nothing to do."""
+    try:
+        with open(PENDING) as fh:
+            name = fh.read().strip()
+    except FileNotFoundError:
+        return None
+    try:
+        pwd.getpwnam(name)
+    except KeyError:
+        sys.exit("pyra-first-boot: %s names '%s', who does not exist" % (PENDING, name))
+    return name
+
+
+def problem(pw1, pw2):
+    """Why this pair can't be the password, or None when it can."""
+    if not pw1:
+        return "Type a password."
+    if pw1 != pw2:
+        return "The two passwords are not the same."
+    if "\n" in pw1 or "\r" in pw1:
+        return "A password cannot hold a line break."
+    if pw1 == OLD_DEFAULT:
+        return "'%s' is the published default. Choose your own." % OLD_DEFAULT
+    return None
+
+
+def set_password(user, password):
+    """chpasswd reads 'user:password'; everything after the first colon is the password."""
+    r = subprocess.run(["/usr/sbin/chpasswd"], input="%s:%s\n" % (user, password),
+                       text=True, capture_output=True)
+    if r.returncode != 0:
+        return (r.stderr or r.stdout).strip() or "chpasswd failed"
+    os.remove(PENDING)
+    return None
+
+
+def console(user):
+    """passwd on tty1 until it works. passwd run by root asks no current password."""
+    subprocess.run(["/usr/bin/chvt", "1"])
+    with open("/dev/tty1", "r+b", buffering=0) as tty:
+        tty.write(b"\n\nThe desktop could not start for the first-boot window.\n"
+                  b"Choose the password for '%s' here.\n\n" % user.encode())
+        while subprocess.run(["/usr/bin/passwd", user], stdin=tty, stdout=tty, stderr=tty).returncode:
+            tty.write(b"\nNot set. Try again.\n\n")
+    os.remove(PENDING)
+
+
+def window(user, dry_run):
+    import gi
+    gi.require_version("Gtk", "3.0")
+    gi.require_version("Gdk", "3.0")
+    from gi.repository import Gdk, GLib, Gtk
+
+    # No window manager runs here: size and place the window ourselves, and
+    # take the keyboard focus explicitly once it is mapped.
+    win = Gtk.Window(title="Welcome")
+    screen = Gdk.Screen.get_default()
+    win.set_default_size(screen.get_width(), screen.get_height())
+    win.move(0, 0)
+    win.set_decorated(False)
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+    box.set_halign(Gtk.Align.CENTER)
+    box.set_valign(Gtk.Align.CENTER)
+    win.add(box)
+
+    title = Gtk.Label()
+    title.set_markup("<span size='x-large' weight='bold'>Welcome to your Pyra</span>")
+    box.pack_start(title, False, False, 0)
+    intro = Gtk.Label(label="Choose the password for the user '%s'.\n"
+                            "You will log in with it, and sudo asks for it." % user)
+    intro.set_justify(Gtk.Justification.CENTER)
+    box.pack_start(intro, False, False, 0)
+
+    grid = Gtk.Grid(column_spacing=10, row_spacing=8)
+    entries = []
+    for row, text in enumerate(("Password", "Again")):
+        grid.attach(Gtk.Label(label=text, xalign=1), 0, row, 1, 1)
+        e = Gtk.Entry(visibility=False, width_chars=24)
+        grid.attach(e, 1, row, 1, 1)
+        entries.append(e)
+    box.pack_start(grid, False, False, 0)
+
+    show = Gtk.CheckButton(label="Show the password")
+    show.connect("toggled", lambda b: [e.set_visibility(b.get_active()) for e in entries])
+    box.pack_start(show, False, False, 0)
+
+    status = Gtk.Label()
+    box.pack_start(status, False, False, 0)
+
+    buttons = Gtk.Box(spacing=10, halign=Gtk.Align.CENTER)
+    off = Gtk.Button(label="Shut down")
+    ok = Gtk.Button(label="Set password")
+    buttons.pack_start(off, False, False, 0)
+    buttons.pack_start(ok, False, False, 0)
+    box.pack_start(buttons, False, False, 0)
+
+    def say(msg):
+        status.set_markup("<span foreground='#c01c28'>%s</span>" % GLib.markup_escape_text(msg))
+
+    def submit(*_):
+        pw1, pw2 = entries[0].get_text(), entries[1].get_text()
+        why = problem(pw1, pw2)
+        if why is None and not dry_run:
+            why = set_password(user, pw1)
+        if why:
+            say(why)
+            for e in entries:
+                e.set_text("")
+            entries[0].grab_focus()
+            return
+        if dry_run:
+            print("pyra-first-boot: would set the password for '%s'" % user)
+        Gtk.main_quit()
+
+    def power_off(*_):
+        if dry_run:
+            print("pyra-first-boot: would power off")
+            Gtk.main_quit()
+        else:
+            subprocess.run(["/usr/bin/systemctl", "poweroff"])
+
+    ok.connect("clicked", submit)
+    off.connect("clicked", power_off)
+    entries[0].connect("activate", lambda *_: entries[1].grab_focus())
+    entries[1].connect("activate", submit)
+    def focus(w, _event):
+        w.get_window().focus(Gdk.CURRENT_TIME)
+        entries[0].grab_focus()
+        return False
+
+    win.connect("map-event", focus)
+    win.show_all()
+    Gtk.main()
+
+
+def main(argv):
+    if "-h" in argv or "--help" in argv:
+        print(__doc__.strip())
+        return 0
+    dry_run = "--dry-run" in argv
+    if dry_run:
+        window(pwd.getpwuid(os.getuid()).pw_name, True)
+        return 0
+    user = pending_user()
+    if user is None:
+        return 0
+    if os.geteuid() != 0:
+        sys.exit("pyra-first-boot: run as root (the unit does)")
+    if "--console" in argv:
+        console(user)
+    else:
+        window(user, False)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

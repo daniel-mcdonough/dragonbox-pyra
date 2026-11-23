@@ -1,4 +1,4 @@
-# The thirty-two fixes, and what they actually do
+# The thirty-three fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -56,6 +56,7 @@ them out.
 | 30 | workaround | the image's menu offers `xinput_calibrator`, which knows only the evdev driver; libinput drops the DT's kernel fuzz on a touchscreen and does not filter in its place | the image ships a libinput calibrator, and libinput keeps or applies a touchscreen's fuzz | — (none drafted yet) |
 | 31 | project choice | — (a bug-report tool, and a record of how the card was prepared) | — | — |
 | 32 | restores | the image lacks `python3-apt`, which the DBP Installer needs on trixie (its bundled `apt_pkg` is built for Python 3.7); `~/dragonbox` → `/dragonbox` because `dbpd` searches only filesystem roots | the image ships `python3-apt`, and the Installer's RootFs target is a place `dbpd` searches | — |
+| 33 | workaround | `pam_gnome_keyring`'s password step finds no keyring daemon before `pam_systemd` has made `XDG_RUNTIME_DIR`, so a password changed at the greeter never reaches the login keyring (gnome-keyring 48.0) | never, for release images: a password chosen before the first login is the better design anyway | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2201,6 +2202,73 @@ a RootFs download registered in 4 s. The selftest asserts the three packages
 installed, that the image's python3 imports `apt` and `apt_pkg`, no staged
 `.deb` left behind, the three directories' owner and mode, the link, and that
 a second run finds them in place.
+
+## Fix 33 — a release card's login keyring opens with `pyra`
+
+**Symptom.** On the r5 release card, Chromium's first start asked to unlock
+`~/.local/share/keyrings/login.keyring`, and `pyra`, the published default,
+opened it. The password set at the first login did not (`browsers.md`;
+development log, R98).
+
+**Cause.** `--release` used to ship `pyra` expired (`chage -d 0`), so the
+greeter changed it inside the first login. The card's journal of that login
+(2026-11-21 04:46) shows each step, and gnome-keyring 48.0's
+`pam/gkr-pam-module.c` explains it:
+
+1. auth: `gkr-pam: unable to locate daemon control file`, then `stashed
+   password to try later in open session`. The module keeps `pyra` for the
+   session.
+2. account: `expired password for user pyra`; chauthtok: `password changed`.
+3. The module's password step: `unable to locate daemon control file` again.
+   `get_control_file` needs `XDG_RUNTIME_DIR`, which `pam_systemd` sets only
+   when the session opens, later. `change_keyring_password` then returns an
+   error without setting `need_daemon`, so the step starts no daemon and
+   stashes nothing. Had it reached the daemon, `change_or_create_login` would
+   have created the keyring with the new password.
+4. session: `unlocked login keyring`. The daemon has no login keyring, so the
+   unlock creates one, with the stashed `pyra`.
+
+So any password changed at the greeter misses the keyring, not only on a
+release card. Only a release card does it on its first login.
+
+**Fix.** The password is chosen before the greeter, so the first login uses
+it. `--release` locks the user's password (shadow `!`, which no password
+matches) instead of setting `pyra`, and writes
+`/var/lib/dragonbox-pyra/first-boot-password` (0600, root), which names the
+user. On the first boot `pyra-first-boot.service` (ordered before
+`display-manager.service`, conditioned on that file) runs
+`/usr/local/sbin/pyra-first-boot` under `xinit`. It is a GTK 3 window: the
+password twice, "Show the password", "Set password" and "Shut down". It
+refuses an empty password, two that differ, a line break, and `pyra`. The
+password goes to `chpasswd` on stdin. Once that succeeds the file is removed,
+the window closes, and lightdm starts. "Shut down" sets nothing, and the window
+comes back on the next boot. If X cannot start, the unit's second command runs
+`passwd` on tty1 until it succeeds. Without the file, as on any card prepared
+with a password, the unit is skipped. A non-release run with `--set-password`
+on a release image removes the file.
+
+GTK 3 and not zenity: trixie's zenity 4.1.90 is GTK 4 and libadwaita, and
+this X server has no GLX (fix 4). `pyra-touch-calibrate` (fix 30) already
+runs GTK 3 on it. No window manager runs, so the window sizes itself to the
+screen and takes the keyboard focus when it is mapped.
+
+The vendor's own wizard, `pyra-first-run` 0.24 (the same on the bookworm 7
+image and the trixie image), stays off (fix 2). It creates a second user
+with four groups, so it would miss everything prep sets up for `pyra`. It
+powers off when a dialog fails, and its password checks break on spaces.
+Its hostname, timezone and locale questions are not carried over.
+
+A release card no longer has a password anyone knows before its first boot,
+so ssh, a console and the greeter all refuse logins until then.
+
+**Checked** 2026-11-23. Source and journal as above. The window was driven
+under Xvfb with no window manager (`--dry-run`): it takes the keyboard focus,
+refuses unequal entries and `pyra`, and accepts `a:b c|d`. The selftest (468 passed, 2026-11-23) asserts the
+tool and unit installed and enabled, that a card with a password has nothing
+pending, the window's checks under the image's python3 and GTK 3, the release
+state (shadow `!`, the pending file 600 root, no expiry), and the first-boot
+step itself: the image's `chpasswd` writes a hash that the image's `crypt()`
+opens with `a:b c|d`, and the pending file goes. Hardware check: pending.
 
 ## Fixes 6, 7 and 12 as a package
 
