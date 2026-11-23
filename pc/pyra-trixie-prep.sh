@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty-one known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-two known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -60,6 +60,12 @@
 # /etc/dragonbox-pyra-prep, which records the prep's commit, the date and the
 # kernel, so pyra-info can say how the card was made.
 #
+# Fix 32 installs python3-apt, which the DBP Installer needs, with the image's
+# dpkg: it and the two packages it depends on that the image lacks are
+# downloaded from Debian and checked against the SHA-256s pinned below. It
+# makes /dragonbox/packages and /dragonbox/appdata the user's, and links
+# ~/dragonbox to /dragonbox, so the Installer's default target registers.
+#
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
 # grow is needed. Off by default. docs/grow-rootfs.md.
@@ -73,8 +79,8 @@
 # NOPASSWD sudo rule for all commands: start from the vendor image instead.
 # (The vendor's own rule for pyrainputctl alone stays.)
 #
-# Fixes 14, 19, 20, 22, 24, 26, 27, 28 and 29 run the image's own tools in a
-# chroot, so a PC that is not armhf needs qemu-user with binfmt registered.
+# Fixes 14, 19, 20, 22, 24, 26, 27, 28, 29 and 32 run the image's own tools in
+# a chroot, so a PC that is not armhf needs qemu-user with binfmt registered.
 #
 # Idempotent: safe to re-run. Verifies its assumptions against the image
 # instead of trusting them blindly.
@@ -481,6 +487,17 @@ PYRAINPUT_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/downlo
 PYRAINPUT_SHA256=de94357acbd87fc84856e4e591125c850161e4f22581ff9b2e2d1913cbda2638
 PYRAINPUT_TMP=
 STAGED_PYRAINPUT=$ROOT/var/tmp/pyra-prep-pyrainput.deb
+# Fix 32's three .debs: python3-apt and the two packages it depends on that the
+# vendor image lacks, Debian trixie's builds, pinned by the SHA-256 in trixie's
+# signed Packages index. The pool drops a version a point release replaces;
+# snapshot.debian.org keeps each by its SHA-1 for good.
+# "package pool-directory file sha256 snapshot-sha1"
+APT_DEBS="python3-apt p/python-apt python3-apt_3.0.0_armhf.deb 543f00059db5d573ce9a89571636d8a4caba4736e2eae8c1d03bfc78948498e9 4da6aa399f5df171e160cb5fff9d2d2a6e434035
+python-apt-common p/python-apt python-apt-common_3.0.0_all.deb 9aacb635fa04e01ab56a0af4869a034a94aadcd564d662a91048cd19fe7d6e0c d194b69b12867061610764d23f97b4017c624a75
+distro-info-data d/distro-info-data distro-info-data_0.66+deb13u2_all.deb 91bf35d6efa2a12e0d81abea1819e87fef2d292899f41c40a7ee1085e92cba60 b48e5743ff5e39c3a4b442773a6d28cc89babb09"
+APT_TMP=
+APT_PKGS=()
+APT_STAGED=()
 cleanup() {
     [[ $(type -t chroot_unmount) == function ]] && chroot_unmount
     [[ -n $KERNEL_TMP ]] && rm -rf -- "$KERNEL_TMP"
@@ -488,9 +505,11 @@ cleanup() {
     [[ -n $SETTINGS_TMP ]] && rm -rf -- "$SETTINGS_TMP"
     [[ -n $SOUND_TMP ]] && rm -rf -- "$SOUND_TMP"
     [[ -n $PYRAINPUT_TMP ]] && rm -rf -- "$PYRAINPUT_TMP"
+    [[ -n $APT_TMP ]] && rm -rf -- "$APT_TMP"
     rm -f -- "$STAGED_KERNEL" "$STAGED_BACKLIGHT" "$STAGED_SETTINGS" "$STAGED_SOUND" "$STAGED_PYRAINPUT" \
         ${STAGED_GIR:+"$STAGED_GIR"} \
-        ${STAGED_HACKS:+"$STAGED_HACKS"}
+        ${STAGED_HACKS:+"$STAGED_HACKS"} \
+        "${APT_STAGED[@]}"
 }
 trap cleanup EXIT
 
@@ -841,6 +860,39 @@ $PI_MISSING
        Nothing has been written."
     ok "fix29: funkeymonkey-pyrainput $PI_VER; the image has everything it depends on"
 fi
+
+# Fix 32, the same way as fix 22's gir package: each of APT_DEBS the image
+# lacks is downloaded, checked and staged now, and their dependencies looked up
+# in the image, so a failed download or a missing dependency stops prep before
+# fix 1. A package the image already has is skipped.
+while read -r -u 3 pkg pool file sha256 sha1; do
+    if [[ $(in_chroot dpkg-query -W -f='${db:Status-Abbrev}' "$pkg" 2>/dev/null) == ii* ]]; then
+        ok "fix32: the image already has $pkg"
+        continue
+    fi
+    command -v curl >/dev/null || die "fix32: the image lacks $pkg, and fetching it needs curl on this PC"
+    [[ -n $APT_TMP ]] || APT_TMP=$(mktemp -d)
+    for u in "https://deb.debian.org/debian/pool/main/$pool/$file" "https://snapshot.debian.org/file/$sha1"; do
+        info "fix32: the image lacks $pkg; downloading $u"
+        curl -fL --proto '=https' --tlsv1.2 -o "$APT_TMP/$file" "$u" && break
+        rm -f -- "$APT_TMP/$file"
+    done
+    [[ -s $APT_TMP/$file ]] || die "fix32: could not download $file; nothing has been written"
+    sum=$(sha256sum "$APT_TMP/$file" | cut -d' ' -f1)
+    [[ $sum == "$sha256" ]] || die "fix32: $file has SHA-256 $sum, not the pinned $sha256. Not installing it."
+    ok "fix32: $file matches the pinned SHA-256"
+    APT_STAGED+=("$ROOT/var/tmp/pyra-prep-$file")
+    install -m 0644 -o 0 -g 0 "$APT_TMP/$file" "${APT_STAGED[-1]}"
+    APT_PKGS+=("$pkg")
+done 3<<<"$APT_DEBS"
+for s in "${APT_STAGED[@]}"; do
+    APT_MISSING=$(in_chroot sh -c "$BACKLIGHT_DEPCHECK" sh "${s#$ROOT}" "${APT_PKGS[@]}") ||
+        die "fix32: could not read the dependencies of ${s##*/pyra-prep-}"
+    [[ -z $APT_MISSING ]] || die "fix32: the image lacks what ${s##*/pyra-prep-} depends on:
+$APT_MISSING
+       Nothing has been written."
+done
+[[ ${#APT_PKGS[@]} -eq 0 ]] || ok "fix32: ${APT_PKGS[*]}; the image has everything they depend on"
 
 
 echo
@@ -2574,6 +2626,69 @@ else
     chmod 0644 "$dst"
     chown 0:0 "$dst"
     ok "fix31: $VERB /etc/dragonbox-pyra-prep (prep $PREP_COMMIT, kernel $PREP_KERNEL, release $RELEASE)"
+fi
+
+# ---------------------------------------------------------------------- fix 32
+#
+# The DBP Installer (dbpInstaller_sebt3) bundles a Python 3.7 apt module whose
+# compiled apt_pkg trixie's Python 3.13 can't load, so it falls back to the
+# system's, from python3-apt. The image's dpkg installs it with the two
+# packages it depends on that the image lacks. The Installer's default target,
+# "RootFs", downloads into ~/dragonbox/packages, and dbpd looks for
+# dragonbox/packages only at the root of each mounted filesystem. So the
+# user's ~/dragonbox points at /dragonbox, which the user owns. A ~/dragonbox
+# that holds files, or points elsewhere, is left alone. Nothing here is per
+# machine, so --release keeps it.
+
+if [[ ${#APT_STAGED[@]} -gt 0 ]]; then
+    chroot_mount
+    info "fix32: installing ${APT_PKGS[*]} with the image's dpkg"
+    if ! out=$(in_chroot dpkg -i "${APT_STAGED[@]#$ROOT}" 2>&1); then
+        die "fix32: dpkg -i failed in the chroot:
+$out"
+    fi
+    chroot_unmount
+    ok "fix32: installed ${APT_PKGS[*]}"
+    rm -f -- "${APT_STAGED[@]}"
+fi
+in_chroot python3 -B -c 'import apt_pkg' 2>/dev/null ||
+    die "fix32: the image's python3 cannot import apt_pkg after the install"
+ok "fix32: the image's python3 imports apt_pkg"
+
+IFS=: read -r _ _ DUID DGID _ DHOME _ < <(grep "^${USERNAME}:" "$ROOT/etc/passwd")
+# realpath: a home that is an absolute link would resolve on this PC, not in the image.
+[[ -n $DHOME && -d $ROOT$DHOME && $(realpath "$ROOT$DHOME") == "$(realpath "$ROOT")"/* ]] ||
+    die "fix32: '$USERNAME' has no home directory inside the image"
+for d in /dragonbox /dragonbox/packages /dragonbox/appdata; do
+    [[ -L $ROOT$d ]] && die "fix32: $d is a link in the image; start from the vendor image"
+    if [[ -d $ROOT$d && $(stat -c '%u:%g %a' "$ROOT$d") == "$DUID:$DGID 755" ]]; then
+        ok "fix32: $d already there, $USERNAME's"
+    else
+        VERB=$([[ -d $ROOT$d ]] && echo "gave $USERNAME" || echo made)
+        mkdir -p -- "$ROOT$d"
+        chown "$DUID:$DGID" "$ROOT$d"
+        chmod 0755 "$ROOT$d"
+        ok "fix32: $VERB $d"
+    fi
+done
+link=$ROOT$DHOME/dragonbox
+if [[ -L $link ]]; then
+    if [[ $(readlink -- "$link") == /dragonbox ]]; then
+        ok "fix32: $DHOME/dragonbox already points at /dragonbox"
+    else
+        warn "fix32: $DHOME/dragonbox points at $(readlink -- "$link"), not /dragonbox; left alone (docs/dbp.md)"
+    fi
+elif [[ -d $link && -z $(find "$link" -mindepth 1 ! -type d -print -quit) ]]; then
+    find "$link" -depth -type d -delete
+    ln -s /dragonbox "$link"
+    chown -h "$DUID:$DGID" "$link"
+    ok "fix32: replaced the empty $DHOME/dragonbox with a link to /dragonbox"
+elif [[ -e $link ]]; then
+    warn "fix32: $DHOME/dragonbox holds files; left alone, so the DBP Installer's RootFs downloads won't register (docs/dbp.md)"
+else
+    ln -s /dragonbox "$link"
+    chown -h "$DUID:$DGID" "$link"
+    ok "fix32: linked $DHOME/dragonbox to /dragonbox"
 fi
 
 # ------------------------------------------------------------------- release

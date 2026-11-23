@@ -1,4 +1,4 @@
-# The thirty-one fixes, and what they actually do
+# The thirty-two fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -55,6 +55,7 @@ them out.
 | 28 | package fix | `pyra-config-xorg`: Fn+D and Fn+' are Alt as well as `_` and `:`, and Fn+R/Fn+T swap é and è; the patch is in `patches/userspace/pyra-config-xorg/`. The console half restores what Debian's keymap leaves out | `pyra-config-xorg` takes the patch (the console fragment stays) | — (none drafted yet) |
 | 30 | workaround | the image's menu offers `xinput_calibrator`, which knows only the evdev driver; libinput drops the DT's kernel fuzz on a touchscreen and does not filter in its place | the image ships a libinput calibrator, and libinput keeps or applies a touchscreen's fuzz | — (none drafted yet) |
 | 31 | project choice | — (a bug-report tool, and a record of how the card was prepared) | — | — |
+| 32 | restores | the image lacks `python3-apt`, which the DBP Installer needs on trixie (its bundled `apt_pkg` is built for Python 3.7); `~/dragonbox` → `/dragonbox` because `dbpd` searches only filesystem roots | the image ships `python3-apt`, and the Installer's RootFs target is a place `dbpd` searches | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2160,6 +2161,46 @@ file and mode, the marker's commit, kernel, date and release lines (and
 `release=yes` after `--release`), that the image's own bash and dpkg-query run
 the script and list the image's `u-boot-pyra` and fix 26's `pyra-settings`, and
 that a second run reports both files up to date.
+
+## Fix 32 — the DBP Installer won't start, and its downloads never register
+
+**Symptom.** `dbpInstaller_sebt3` 1.2.1 stops with `ModuleNotFoundError: No
+module named 'apt_pkg'`. It bundles a Python 3.7 copy of the `apt` module whose
+compiled `apt_pkg` can't load on trixie's Python 3.13, and falls back to the
+system's, which `python3-apt` provides and the vendor image lacks. With
+`python3-apt` installed by hand it runs, but its default target, "RootFs",
+downloads into `~/dragonbox/packages`, and `dbpd` looks for
+`dragonbox/packages` only at the root of each mounted filesystem: the download
+completes and nothing registers. Diagnosis: `dbp.md`, "The DBP Installer", and
+development log, R86.
+
+**Fix.** Prep installs `python3-apt` 3.0.0 with the image's dpkg, together
+with the two packages it depends on that the image lacks, `python-apt-common`
+3.0.0 and `distro-info-data` 0.66+deb13u2 (the set `apt install python3-apt`
+pulls in on the card). The three are Debian trixie's builds, downloaded from
+`deb.debian.org` and checked against the SHA-256s in trixie's signed Packages
+index; when a point release drops one from the pool, prep fetches it from
+`snapshot.debian.org` by its SHA-1. Before fix 1 writes anything prep checks
+that the image has everything they depend on. A package the image already has
+is not downloaded. As with fix 22, prep runs no apt: a release image has no
+package lists, and apt would fetch whatever is current.
+
+Then it makes `/dragonbox`, `/dragonbox/packages` and `/dragonbox/appdata`,
+mode 755 and owned by the card's user (fix 2's, `pyra` by default), and links
+`~/dragonbox` to `/dragonbox`. The Installer's RootFs downloads then land where
+`dbpd` searches the system card. A `~/dragonbox` that is an empty directory is
+replaced by the link; one that holds files, or a link pointing elsewhere, is
+left alone with a warning. Only the user prep sets up gets the link: another
+user's Installer downloads still go to their own `~/dragonbox`. Nothing here
+is per machine, so `--release` keeps it. A second run finds it all in place.
+
+**Checked** 2026-11-23 by hand on the r5 release card (`verification-log.md`,
+R86): with `python3-apt` installed by apt (the same three packages and
+versions) the Installer lists the repository and downloads, and with the link
+a RootFs download registered in 4 s. The selftest asserts the three packages
+installed, that the image's python3 imports `apt` and `apt_pkg`, no staged
+`.deb` left behind, the three directories' owner and mode, the link, and that
+a second run finds them in place.
 
 ## Fixes 6, 7 and 12 as a package
 

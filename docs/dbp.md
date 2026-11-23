@@ -195,8 +195,9 @@ f2fs.
 
 `dbpInstaller_sebt3` 1.2.1 (from the DBP repository; MD5
 `0177ded6197a2f9df0f4e3d1a76bcb80`, as the repository lists it) works on
-trixie once `python3-apt` is installed. Tested 2026-11-23 with python3-apt
-3.0.0 installed by hand (`sudo apt install python3-apt`). It bundles a
+trixie once `python3-apt` is installed. Prep installs it (fix 32); on a card
+prepared before that, `sudo apt install python3-apt`. Tested 2026-11-23 with
+python3-apt 3.0.0 installed by hand. It bundles a
 Python 3.7 copy of the `apt` module, whose compiled `apt_pkg` can't load on
 trixie's Python 3.13, so it uses the system's `apt_pkg`. Without
 `python3-apt`, it stops with `ModuleNotFoundError: No module named
@@ -212,9 +213,12 @@ leaves registering to `dbpd`. From a terminal:
 **Its "RootFs" choice downloads to `~/dragonbox/packages`, and `dbpd` never
 looks there.** `dbpd` searches `dragonbox/packages` at the root of each
 mounted filesystem, and your home folder isn't one. The download completes
-and nothing registers, even after a `dbpd` restart (tested 2026-11-23). Two
-ways round it: choose a second card (anything mounted under `/media`), or
-point `~/dragonbox` at the system card's folder once:
+and nothing registers, even after a `dbpd` restart (tested 2026-11-23). Prep
+(fix 32) points `~/dragonbox` at `/dragonbox`, the system card's folder, which
+it makes and gives to the user, so on a prepared card RootFs works. It leaves
+a `~/dragonbox` that already holds files alone, and only the user it sets up
+gets the link. Otherwise, choose a second card (anything mounted under
+`/media`), or make the link once:
 
     sudo mkdir -p /dragonbox/packages
     sudo chown -R "$USER": /dragonbox

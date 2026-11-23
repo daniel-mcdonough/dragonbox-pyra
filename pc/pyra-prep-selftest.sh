@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 8 and 13 to 31 (fix 2 with --set-password and
+# the end state of fixes 1 to 8 and 13 to 32 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1388,6 +1388,27 @@ fi
 [[ $(grep -c '^  ' <<<"$got") -eq 7 ]] && p "fix31: pyra-info lists all seven packages" || f "fix31: pyra-info lists $(grep -c '^  ' <<<"$got") packages, want 7"
 
 ########################################################################
+i "assert fix 32 — python3-apt and /dragonbox for the DBP Installer"
+########################################################################
+for pkg in python3-apt python-apt-common distro-info-data; do
+    st=$(in_chroot dpkg-query -W -f='${db:Status-Abbrev} ${Version}' "$pkg" 2>/dev/null || true)
+    [[ $st == ii* ]] && p "fix32: $pkg installed (${st##* })" || f "fix32: $pkg is '${st:-not installed}'"
+done
+# Not apt.Cache(): as root it writes /var/cache/apt, and run 2 must find nothing changed.
+in_chroot python3 -B -c 'import apt, apt_pkg; apt_pkg.init()' >/dev/null 2>&1 \
+    && p "fix32: the image's python3 imports apt and apt_pkg" || f "fix32: the image's python3 cannot use python3-apt"
+compgen -G "$MNT/var/tmp/pyra-prep-*.deb" >/dev/null && f "fix32: staged .debs left in /var/tmp" || p "fix32: no staged .debs left in /var/tmp"
+PU=$(awk -F: '$1=="pyra"{print $3":"$4}' "$MNT/etc/passwd")
+for d in /dragonbox /dragonbox/packages /dragonbox/appdata; do
+    [[ -d $MNT$d && ! -L $MNT$d && $(stat -c '%u:%g %a' "$MNT$d") == "$PU 755" ]] \
+        && p "fix32: $d is a directory, 755 pyra's ($PU)" || f "fix32: $d is $(stat -c '%F %u:%g %a' "$MNT$d" 2>/dev/null || echo missing)"
+done
+PH=$(awk -F: '$1=="pyra"{print $6}' "$MNT/etc/passwd")
+L=$MNT$PH/dragonbox
+[[ -L $L && $(readlink "$L") == /dragonbox && $(stat -c '%u:%g' -- "$L") == "$PU" ]] \
+    && p "fix32: $PH/dragonbox is pyra's link to /dragonbox" || f "fix32: $PH/dragonbox is $(stat -c '%F -> %N %u:%g' -- "$L" 2>/dev/null || echo missing)"
+
+########################################################################
 i "run 2 — idempotency"
 ########################################################################
 disarm; set +e
@@ -1456,6 +1477,8 @@ grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
 [[ $(grep -cE 'fix25: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported both of fix25's files already up to date" || f "run 2 did not report both of fix25's files up to date"
 [[ $(grep -cE 'fix30: .*already up to date' "$OUT/prep-run2.log") -eq 3 ]] && p "run 2 reported fix30's three files already up to date" || f "run 2 did not report fix30's three files up to date"
 [[ $(grep -cE 'fix31: .*already up to date' "$OUT/prep-run2.log") -eq 2 ]] && p "run 2 reported pyra-info and the marker already up to date" || f "run 2 did not report pyra-info and the marker up to date"
+[[ $(grep -cE 'fix32: (the image already has|/dragonbox.* already there|.*already points at /dragonbox)' "$OUT/prep-run2.log") -eq 7 ]] \
+    && p "run 2 found fix32's three packages, three directories and the link in place" || f "run 2 did not find all of fix32's packages, directories and link in place"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"
