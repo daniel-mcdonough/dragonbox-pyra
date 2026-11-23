@@ -1776,6 +1776,30 @@ release image. Only a change at first boot would fix that, and it would add a
 step at the point where a card is most likely to fail to boot. The case needs two
 image cards in at once, which nothing in normal use requires.
 
+## Asked for a keyring password that is not yours
+
+On a card made from the release image, a program that stores a secret
+(Chromium, for one) can open "Authentication required: the password you use to
+log in to your computer no longer matches that of your login keyring". Seen on
+the r5 release card on 2026-11-23, two days after its first-login password
+change.
+
+The password that unlocks it is `pyra`, the image's original password. That
+means the keyring file `~/.local/share/keyrings/login.keyring` is encrypted with
+the published default. Anyone who can copy the file can read what is stored in
+it.
+
+The likely cause is the expired first-login password. lightdm logs in with `pyra`,
+and `pam_gnome_keyring` keeps that password. The change to the new password runs
+before any keyring exists, so there is nothing to re-key. The session then creates
+the keyring with the kept `pyra`. This has not been confirmed on a fresh card.
+
+To fix it, give the keyring your own password. Open Passwords and Keys
+(`seahorse`, if installed), right-click "Login", choose Change Password, enter
+`pyra` as the old one and your login password as the new one. Or, with no secrets
+worth keeping, delete `~/.local/share/keyrings/login.keyring` and log in again,
+and it is recreated with your login password.
+
 ## Nubs, d-pad or game buttons dead after a game or DBP crashed
 
 Many launchers (DBPs, emulators) run `sudo pyrainputctl overload <file>`

@@ -2858,3 +2858,25 @@ running `systemctl --no-reload disable pyra-boot-revert.service` installed to `/
 - **Next boot:** `5.6.19-m4-kbdled`; `status` "next boot: l5", "one-shot revert: disarmed"; `is-enabled`
   `disabled`, `is-active` `inactive`, no link in `sysinit.target.wants/`.
 - Before the change (R79, 2026-11-22) the same round trip left the unit enabled and `status` saying "enabled".
+
+## 2026-11-23 — web browsers on the trixie card (R98)
+
+Release card (r5), `5.6.19-m4-kbdled`, ceiling 1.5 GHz, `ondemand`, MATE desktop, no browser installed before.
+`apt-get install --no-install-recommends firefox-esr chromium epiphany-browser netsurf-gtk dillo xdotool` (24
+packages). Test page: Wikipedia "OMAP", live and as a local `wget -p -k` copy. A `/proc` poller recorded the
+first window, the CPU settle time, PSS/RSS of the process tree, and an `xwd` screenshot. Results and method
+in `browsers.md`.
+
+- **firefox-esr 153.7.0esr:** renders both pages. Window 15.0 s cold, 4.6–5.1 s warm. PSS 437–447 MiB warm
+  (613 MiB first start), RSS about 1.0 GiB. 71% of one core while idle on the page (60–90 s after launch).
+- **netsurf-gtk 3.11:** renders both pages, simplified. Window 1.6 s cold, 0.6 s warm. PSS 43 MiB, RSS 69 MiB.
+- **dillo 3.0.5:** window in 1.0 s / 0.6 s, PSS 12 MiB, but the page area stays blank on both copies.
+- **epiphany-browser 48.5** (GTK4, WebKitGTK 6.0 2.54.3): aborts at start with `malloc(): invalid size
+  (unsorted)`. With `GSK_RENDERER=cairo` the web process crashes instead. No WebKit switch tried changes that.
+- **chromium 156.0.8078.108:** black window after 26–39 s. The GPU process exits (`GLX is not present`, signal 6)
+  and the renderer is terminated for a bad Mojo message. The same happens with `--disable-gpu`, swiftshader and
+  `--use-gl=egl`. The chromium packages all match at 156.
+- Chromium's first start asked for the login keyring's password. `pyra` unlocked it, not the password set at the
+  first login on 2026-11-21 (`troubleshooting.md`, "Asked for a keyring password that is not yours").
+- Afterwards everything except `firefox-esr` (plus `libevent-2.1-7t64`) was purged. `dpkg -l` otherwise matches
+  the list taken before the install. `x-www-browser` → `firefox-esr`.
