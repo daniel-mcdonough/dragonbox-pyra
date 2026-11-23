@@ -1724,6 +1724,44 @@ nearly every older DBP, because dbp doesn't know Debian's renamed (t64)
 packages. Press Launch. [dbp.md](dbp.md) covers both, plus the mount and
 input mapping a crashed DBP leaves behind.
 
+## A DBP launched from an exFAT card: kernel BUG, then nothing answers
+
+The window never opens, `dmesg` shows `kernel BUG at fs/buffer.c:3082!` with
+`exfat_write_begin` and `aufs_fill_super` in the trace, and `dbp-cmd list`
+hangs. The 5.6 kernel's staging exFAT driver can't hold AuFS's index file
+([dbp.md](dbp.md), "exFAT crashes the kernel"). Seen 2026-11-23. What
+worked:
+
+    kill <pid of the stuck dbp-run>
+    sudo systemctl restart dbpd            # dbp-cmd answers again
+    sudo umount -l /mnt/dbp/images/<id>    # "target is busy" without -l
+    sudo umount -l /media/$USER/<label>
+
+then take the card out and **reboot**. Nothing short of a reboot frees the
+image mount, its loop device or the card: the oops left a half-built AuFS
+superblock holding them. Don't run `sync` before the reboot: it segfaulted
+with a second oops. Reformat the card ext4 or f2fs before using it for DBPs
+again.
+
+## Two cards from the image in the Pyra: the wrong root
+
+Every card written from the trixie image, prepared or not, has the same disk
+id, so the same `root=PARTUUID=21a4c285-02`. With two such cards in, the
+bootloader and kernel come from the left slot, but the kernel mounts whichever
+card's `-02` partition it finds first as `/`, and `/etc/fstab` does the same
+for `/boot`. Seen 2026-11-23: the release card in the left slot, an older dev
+card in the right. The machine came up with the left card's kernel
+(`5.6.19-m4-kbdled`) on the right card's root and `/boot`. Its ssh host key
+was the right card's, which is the first sign. It booted only because that
+card had the same kernel's modules.
+
+Check with `findmnt / /boot`: on a normal boot both are `/dev/mmcblk1p*`, the
+left slot. Only one card from the image goes in at a time. A second card for
+DBPs or storage should be formatted fresh (ext4 or f2fs), not written from the
+image. If you need two image cards in at once, give one a new disk id from a
+PC first. That breaks its own boot until its `extlinux.conf`, `user.cfg` and
+`fstab` are changed to match, so it's for a card you won't boot from.
+
 ## Nubs, d-pad or game buttons dead after a game or DBP crashed
 
 Many launchers (DBPs, emulators) run `sudo pyrainputctl overload <file>`

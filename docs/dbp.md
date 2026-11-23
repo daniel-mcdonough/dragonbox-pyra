@@ -24,6 +24,25 @@ That can be a second SD card, or the system card itself:
     cp GBAemu-1.5.46.02.dbp /dragonbox/packages/
     dbp-cmd list
 
+On a second SD card, format it ext4 or f2fs, **never exFAT** (see "exFAT
+crashes the kernel" below). A new ext4 or f2fs filesystem's root belongs to
+root, so make the folder with `sudo` and hand it to yourself, the same way.
+The card mounts under `/media/$USER/<label>`:
+
+    M=/media/$USER/<label>
+    sudo mkdir -p $M/dragonbox/packages
+    sudo chown -R "$USER": $M/dragonbox
+    cp GBAemu-1.5.46.02.dbp $M/dragonbox/packages/
+
+then take the card out and put it back (or `sudo systemctl restart dbpd`),
+for the reason in the next paragraph. Tested 2026-11-23 with GBA.emu on a
+119 GB card, ext4, in the right slot: it registered when the card was
+mounted, ran, and kept its writable files in the card's
+`dragonbox/appdata/GBAemu/`. Unmounting the card unregistered it and removed
+its menu entry and launcher. Don't put a card written from the trixie image
+in the second slot as package storage: see troubleshooting.md, "Two cards
+from the image in the Pyra: the wrong root".
+
 `dbpd` registers a package as soon as its copy finishes, and unregisters it
 when the file is deleted. It does this with an inotify watch on each
 `dragonbox/packages/` folder. The watch is set only when the filesystem is
@@ -75,7 +94,8 @@ None of these is really missing:
   `libglib2.0-0t64` (see the t64 note below). dbp compares the names
   literally against `/var/lib/dpkg/status` and ignores `Provides:`, so any
   package Debian renamed reads as missing.
-- `libvorbisidec1` isn't in trixie. The binary doesn't link it anyway.
+- `libvorbisidec1` is in trixie (1.2.1+git20180316-8+b1) but not installed.
+  The binary doesn't link it, so it isn't needed.
 
 The dialog's **Install** button only says automatic installation isn't
 supported. **Launch** carries on. On any DBP built for buster or bullseye,
@@ -148,16 +168,73 @@ GLX", has the messages and the one game that needed more.
   mapping. Recovery: [troubleshooting.md](troubleshooting.md), "Nubs, d-pad or game buttons dead
   after a game or DBP crashed".
 
+## exFAT crashes the kernel
+
+Don't keep DBPs on an exFAT card. The 5.6 kernel has only the old staging
+exFAT driver (`CONFIG_STAGING_EXFAT_FS=m`). The card mounts, and copying a
+`.dbp` onto it works (checksum intact) and registers it. Launching it hits a
+kernel BUG. Reproduced 2026-11-23 with GBA.emu on `5.6.19-m4-kbdled`, mounted
+the way udisks mounts exFAT (`uid=1000,gid=1000`):
+
+    kernel BUG at fs/buffer.c:3082!
+    PC is at submit_bh_wbc+0x194/0x1b8
+     ... exfat_write_begin [exfat] ... do_xino_fwrite [aufs] ... aufs_fill_super [aufs]
+
+AuFS keeps an index file (`xino`) on its writable branch, here
+`dragonbox/appdata/<id>` on the exFAT card. Its first write goes through the
+staging driver's `exfat_write_begin`, which trips the BUG. The oops kills a
+`dbpd` thread in the middle of the mount. The window never opens, `dbp-run`
+waits forever, and `dbp-cmd` stops answering. Later, `sync` segfaulted with
+a second oops (in `rwsem_down_read_slowpath`) on the half-built AuFS mount.
+This matches what forum users reported on bookworm (AuFS segfaults, hangs
+from exFAT cards). Recovery: troubleshooting.md, "A DBP launched from an
+exFAT card: kernel BUG, then nothing answers". Reformat the card ext4 or
+f2fs.
+
+## The DBP Installer
+
+`dbpInstaller_sebt3` 1.2.1 (from the DBP repository; MD5
+`0177ded6197a2f9df0f4e3d1a76bcb80`, as the repository lists it) works on
+trixie once `python3-apt` is installed. Tested 2026-11-23 with python3-apt
+3.0.0 installed by hand (`sudo apt install python3-apt`). It bundles a
+Python 3.7 copy of the `apt` module, whose compiled `apt_pkg` can't load on
+trixie's Python 3.13, so it uses the system's `apt_pkg`. Without
+`python3-apt`, it stops with `ModuleNotFoundError: No module named
+'apt_pkg'` (seen on bookworm).
+
+Its window lists the repository's packages and their details. It downloads
+into `dragonbox/packages/` on the card you choose, checks the MD5, and
+leaves registering to `dbpd`. From a terminal:
+
+    dbp-run --chdir dbpInstaller_sebt3 dbpInstaller.sh cards
+    dbp-run --chdir dbpInstaller_sebt3 dbpInstaller.sh -d RootFs install icefieldfrenzy.farox
+
+**Its "RootFs" choice downloads to `~/dragonbox/packages`, and `dbpd` never
+looks there.** `dbpd` searches `dragonbox/packages` at the root of each
+mounted filesystem, and your home folder isn't one. The download completes
+and nothing registers, even after a `dbpd` restart (tested 2026-11-23). Two
+ways round it: choose a second card (anything mounted under `/media`), or
+point `~/dragonbox` at the system card's folder once:
+
+    sudo mkdir -p /dragonbox/packages
+    sudo chown -R "$USER": /dragonbox
+    rmdir ~/dragonbox/packages ~/dragonbox 2>/dev/null
+    ln -s /dragonbox ~/dragonbox
+
+With that link, an Installer download registered within 4 s.
+
+Before downloading, the Installer checks the package's
+`Dependency[deb]=` list against apt. It installs any that are missing with
+`pkexec apt-get -y install`, which goes through polkit (not run here). Old names that
+trixie renamed (`libasound2`, `libglib2.0-0`, `libpng16-16`) are only
+reported as "not found" and skipped. For GBA.emu it would install
+`libvorbisidec1`, which is harmless but not needed.
+
 ## Not tested on this card
 
-- **exFAT for the package card.** The 5.6 kernel has only the old staging exFAT
-  driver (`CONFIG_STAGING_EXFAT_FS=m`). On bookworm, forum users saw an AuFS
-  mount with an exFAT branch segfault, and DBPs hang the machine from exFAT
-  cards. Reformatting to ext4 or f2fs cured both. Use ext4 or f2fs.
-- **The DBP Installer package** (`dbpInstaller_sebt3`). It needs
-  `python3-apt`, which the image doesn't have (trixie's archive has 3.0.0,
-  checked 2026-11-21). On bookworm it fails with
-  `ModuleNotFoundError: No module named 'apt_pkg'` until that package is
-  installed.
-- **A package on a second SD card.** `dbpd` searches every mounted filesystem,
-  so it should work the same way, but only the system card's root was tried.
+- **The Installer's apt step and its DownLoad button.** Only the
+  command-line download was run (2026-11-23). What the Installer would
+  install was read from its own dependency check, not by letting it run
+  `pkexec apt-get`.
+- **A DBP from an f2fs second card.** ext4 was tried; f2fs is the system
+  card's own filesystem and should behave the same.

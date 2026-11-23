@@ -2807,3 +2807,39 @@ the revert disarmed by hand. Scripts: `experiments/white-noise/`.
   `aess.monitor`.
 - Agreed beforehand: a burst is audible hiss or static of about 0.2 s or more not in the source. Not
   reproduced on either path.
+
+## 2026-11-23 — DBPs from a second card (ext4, exFAT) and the DBP Installer (R86)
+
+The r5 release card in the left slot, `5.6.19-m4-kbdled`, `mmcblk1`. The second card: a 119 GB card that had
+held an older dev install, in the right slot (`mmcblk3`), repartitioned to one partition per test. Package:
+GBA.emu 1.5.46.02 (`GBAemu`), the same file as on 2026-11-21. The system card's copy was unregistered and moved
+aside first so the two didn't share an id.
+
+- **First boot, both cards from the image:** kernel `5.6.19-m4-kbdled` from the left card (the dev card's own
+  default was `5.6.19-m4-kbdled-sched`), but `/` and `/boot` on `mmcblk3p2`/`p1`, the right card. Both cards
+  carried PARTUUID `21a4c285-02` and rootfs UUID `93b4acaf-…`. With the card pulled, booted and reinserted, `/`
+  was `mmcblk1p2`. troubleshooting.md, "Two cards from the image in the Pyra".
+- **ext4** (`mkfs.ext4 -L dbpcard`, mounted with `sudo mount` at `/media/pyra/dbpcard`; udisks refuses an ssh
+  session): `dragonbox/packages` made after the mount got no watch, so the copy didn't register; after a
+  remount it registered at once (`dbp-cmd list`, menu entry, `/usr/local/games/GBAemu.sh`). `dbp-run
+  --log-output --chdir GBAemu GBAemu.sh` with `DISPLAY=:0`: window "GBA.emu" 1280x720, squashfs on
+  `/dev/loop7`, AuFS union, `dragonbox/appdata/GBAemu/` created on the card. SIGTERM to `gbaemu`: both mounts
+  gone, `pyrainput` active. Unmounting the card: package unregistered, menu entry and launcher removed.
+- **exFAT** (exfatprogs 1.2.9 `mkfs.exfat`, partition type 7; staging `exfat.ko`, "exFAT: Version 1.3.0";
+  mounted `uid=1000,gid=1000,dmask=0022,fmask=0133`): copy SHA-256 intact, registered after a remount. Launch:
+  `kernel BUG at fs/buffer.c:3082!`, `PC is at submit_bh_wbc`, trace `exfat_write_begin` ←
+  `cont_write_begin` ← `do_xino_fwrite [aufs]` ← `au_xino_set` ← `aufs_fill_super`, process `dbpd`. No window;
+  the image mounted, the union not; `dbp-run` stuck in poll; `dbp-cmd list` timed out after 10 s. `systemctl
+  restart dbpd` brought `dbp-cmd` back; the image umount stayed "busy", as did the card. Lazy unmounts, then
+  `sync` segfaulted with a second oops (`Unable to handle kernel paging request at virtual address ff000010`,
+  `PC is at rwsem_down_read_slowpath`). Card pulled, reboot clean.
+- **DBP Installer** 1.2.1 (`dbpInstaller_sebt3`, MD5 `0177ded6…bcb80` matched the repository), after
+  `apt-get install python3-apt` (3.0.0; pulled `python-apt-common`, `distro-info-data`): the window opened
+  ("dbp installer", 853x578) and listed the repository with package details (screenshot by `xwd`). `cards`:
+  only `RootFs`. `-d RootFs install icefieldfrenzy.farox`: downloaded to `~/dragonbox/packages`, MD5
+  `69aecdd5…` matched, not registered, not even after a `dbpd` restart. With `~/dragonbox` → `/dragonbox`: the
+  same download registered within 4 s. `installed` answered over D-Bus (three packages). Its dependency check
+  (`parse_packages`, run in the mounted package): fmtg_synth_m-ht → nothing to install (`libasound2` "not
+  found"); GBAemu → `libvorbisidec1` (in trixie, 1.2.1+git20180316-8+b1; the other two "not found").
+  `pkexec apt-get` and the GUI's DownLoad button not run.
+- Left on the card: python3-apt, the Installer and GBA.emu in `/dragonbox/packages`, the `~/dragonbox` link.
