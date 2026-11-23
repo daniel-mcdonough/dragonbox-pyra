@@ -545,6 +545,37 @@ These all look like faults and are not. Each has been chased at least once.
   is harmless.** There is no UCM profile for this card; it falls back to
   `asound.state`, and fix 9's udev rule runs after it.
 
+## White-noise bursts: not reproduced on this unit
+
+Seven forum users hear bursts of white noise from the built-in codec, on the
+speakers or the jack, never over Bluetooth or USB audio, typically in FBNeo's
+"Bad Apple". EvilDragon blamed the microphone link opening at each playback
+start and a tolerance-dependent hardware fault meant to be fixed in a later
+CPU board revision (https://pyra-handheld.com/boards/posts/1688403/);
+daveshah suggested a kernel patch to keep the uplink off
+(https://pyra-handheld.com/boards/posts/1689207/).
+
+**Tried 2026-11-22 on CPU board V5.3, on both paths, and not reproduced.**
+Twenty forced sink reopens and two minutes of playback each on AESS
+(`5.6.19-m4-kbdled`) and the direct link (`5.6.19-pyradef`), the headphone
+output recorded through a PC line-in, the speakers judged by ear. No
+broadband event lasted longer than 40 ms; a burst would be 200 ms or more.
+What is there on both paths is a thump at each sink open and close: a DC step
+of the headset output, below 100 Hz, not noise. Method, scripts and numbers:
+`experiments/white-noise/`.
+
+**The uplink does start with every playback, on both paths.** In
+`sound/soc/ti/omap-mcpdm.c`, `omap_mcpdm_hw_params()` sets the capture
+direction's link mask to `0x3` when playback opens and no capture is running
+("assume a stereo stream to come"), and `omap_mcpdm_start()` enables both
+masks, so the McPDM uplink runs in hardware whenever anything plays. The
+codec side does not follow: during playback DAPM powers only the headset or
+handsfree DAC chain and McPDM DL1, no ADC, no mic bias, and PulseAudio opens
+no capture source on AESS. That is the mechanism EvilDragon described; on this
+board it makes no audible noise. If a unit that does burst turns up, the
+first test is that link mask left at 0 for playback-only streams (daveshah's
+idea), on a test kernel.
+
 ## Open, and untested
 
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%

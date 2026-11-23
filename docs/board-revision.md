@@ -128,3 +128,5 @@ and nobody has published a list. The same thread shows the `model` check
   start was to be fixed "for a later revision of CPU boards" (EvilDragon,
   2021, https://pyra-handheld.com/boards/posts/1688403/). No post
   says which revision has the fix or that one shipped.
+  A V5.3 CPU board did not burst on either audio path (2026-11-22,
+  `audio.md` "White-noise bursts").

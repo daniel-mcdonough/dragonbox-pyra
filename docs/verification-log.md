@@ -2785,3 +2785,25 @@ The r5 release card (`5.6.19-m4-kbdled`, boot entry `l5`), `device/pyra-info` in
   (RAM, kernel, Prepared) wrap; the package list lines up.
 - Not run here: prep's fix 31 and the selftest (need root on the PC; handed to the owner), and the page's Copy
   pasted into another app by hand.
+
+## 2026-11-22 — white-noise bursts, both audio paths (R79)
+
+CPU board V5.3, mainboard V5.3. The r5 release card on `5.6.19-m4-kbdled` (AESS, entry `l5`), then one boot of
+`5.6.19-pyradef` (direct link, entry `l0`) through `pyra-boot-kernel.sh debug l0 --once`, then back to `l5` and
+the revert disarmed by hand. Scripts: `experiments/white-noise/`.
+
+- **Recording:** headphone output into the PC's analog line-in, `parecord` 48 kHz S16, PC input at 10 %. Sink
+  volume 100 % on AESS. `reproduce.sh 20 1`: twenty cycles of `pactl suspend-sink` 1 s, 3 s silence, a 0.5 s
+  -20 dBFS beep, then 120 s of -26 dBFS beeps (4 s on, 2 s off).
+- **AESS, headphones:** 118 events over +10 dB in 3-16 kHz, 110 of 20 ms and 8 of 40 ms, none longer.
+  Two transients per cycle: -0.73 to full scale at sink open, +0.63 to +0.78 at close, 55-75 ms, all energy
+  under 100 Hz (DC steps). 1-16 kHz level in silence -55 dBFS.
+- **Direct link, headphones** (`PULSE_SINK=headphones`): 59 events, all 20 ms; the same 42 transients
+  (+0.63 / -0.73 mean); silence -53 dBFS.
+- **Speakers, by ear (owner), `reproduce.sh 10 1`:** AESS: pops between beeps early on, no clear hiss ("if I
+  did, it was very faint"). Direct: pops only, softer than AESS.
+- **DAPM during AESS playback** (debugfs, widgets On while playing vs idle): McPDM DL1 Playback, MMLP
+  Playback, the HSDAC and HS driver chain. No uplink, ADC or mic bias widget. PulseAudio lists no source but
+  `aess.monitor`.
+- Agreed beforehand: a burst is audible hiss or static of about 0.2 s or more not in the source. Not
+  reproduced on either path.
