@@ -1756,11 +1756,25 @@ was the right card's, which is the first sign. It booted only because that
 card had the same kernel's modules.
 
 Check with `findmnt / /boot`: on a normal boot both are `/dev/mmcblk1p*`, the
-left slot. Only one card from the image goes in at a time. A second card for
-DBPs or storage should be formatted fresh (ext4 or f2fs), not written from the
-image. If you need two image cards in at once, give one a new disk id from a
-PC first. That breaks its own boot until its `extlinux.conf`, `user.cfg` and
-`fstab` are changed to match, so it's for a card you won't boot from.
+left slot. To recover, power off, take the right card out and boot again;
+nothing was written to the left card's root.
+
+Only one card from the image goes in at a time. A second card for DBPs or
+storage should be formatted fresh (ext4 or f2fs), not written from the image.
+**Fresh means a new partition table.** Running `mkfs` on an old image card's
+second partition keeps the MBR, so the disk id and `PARTUUID=21a4c285-02` stay,
+and the kernel can still take that card's new, empty filesystem as `/`. Wipe
+the table first (on a PC, `sudo wipefs -a /dev/sdX`, then make one partition),
+or use a card that never held the image. If you need two image cards in at
+once, give one a new disk id from a PC first. That breaks its own boot until
+its `extlinux.conf`, `user.cfg` and `fstab` are changed to match, so it's for
+a card you won't boot from.
+
+Prep doesn't give each card its own disk id (owner's decision, 2026-11-23).
+A fresh id at prep time would still be shared by every card written from one
+release image. Only a change at first boot would fix that, and it would add a
+step at the point where a card is most likely to fail to boot. The case needs two
+image cards in at once, which nothing in normal use requires.
 
 ## Nubs, d-pad or game buttons dead after a game or DBP crashed
 

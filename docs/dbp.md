@@ -25,7 +25,10 @@ That can be a second SD card, or the system card itself:
     dbp-cmd list
 
 On a second SD card, format it ext4 or f2fs, **never exFAT** (see "exFAT
-crashes the kernel" below). A new ext4 or f2fs filesystem's root belongs to
+crashes the kernel" below). If the card ever held the trixie image, give it a
+new partition table first, not just a new filesystem. The old table's disk
+id can make the Pyra mount this card as `/` (troubleshooting.md, "Two cards
+from the image in the Pyra"). A new ext4 or f2fs filesystem's root belongs to
 root, so make the folder with `sudo` and hand it to yourself, the same way.
 The card mounts under `/media/$USER/<label>`:
 
