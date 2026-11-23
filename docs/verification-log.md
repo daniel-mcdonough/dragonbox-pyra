@@ -2843,3 +2843,18 @@ aside first so the two didn't share an id.
   found"); GBAemu → `libvorbisidec1` (in trixie, 1.2.1+git20180316-8+b1; the other two "not found").
   `pkexec apt-get` and the GUI's DownLoad button not run.
 - Left on the card: python3-apt, the Installer and GBA.emu in `/dragonbox/packages`, the `~/dragonbox` link.
+
+## 2026-11-23 — the one-shot revert disarms itself (R97)
+
+Release card (r5), base and default `l5` (`5.6.19-m4-kbdled`), `device/pyra-boot-kernel.sh` with `stock` always
+running `systemctl --no-reload disable pyra-boot-revert.service` installed to `/usr/local/sbin`.
+
+- **No reboot:** `debug l0 --once --quiet` → `is-enabled` `enabled`; `/usr/local/sbin/pyra-boot-kernel.sh stock
+  --quiet` (the unit's own command) → `disabled`, `status` "next boot l5 … one-shot revert: disarmed".
+- **Test boot:** `debug l0 --once`, reboot → `uname -r` `5.6.19-pyradef`; `status` "next boot: l5", "one-shot
+  revert: disarmed"; `is-enabled` `disabled`; the unit `active (exited)`, ExecStart status 0. `systemctl status`
+  warns that the unit "changed on disk" and asks for a daemon-reload: a cosmetic effect of `--no-reload`, gone
+  on the next boot.
+- **Next boot:** `5.6.19-m4-kbdled`; `status` "next boot: l5", "one-shot revert: disarmed"; `is-enabled`
+  `disabled`, `is-active` `inactive`, no link in `sysinit.target.wants/`.
+- Before the change (R79, 2026-11-22) the same round trip left the unit enabled and `status` saying "enabled".

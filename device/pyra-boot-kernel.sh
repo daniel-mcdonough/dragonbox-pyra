@@ -164,7 +164,7 @@ status() {
         cur=$(current_label)
         # Three things can come back here and only one of them is an exit
         # status of 0. "enabled" means armed. "disabled" is what the unit
-        # reports after it has fired and turned itself off, and "not-found"
+        # reports after it has fired (its `stock` disables it), and "not-found"
         # is a machine that never armed it; both exit 1, and under
         # `set -e` with pipefail that used to kill this function before it
         # printed anything at all.
@@ -217,12 +217,13 @@ Only $(distro_label) from linux.cfg can be a test boot; see WHICH ENTRIES in $0.
         ;;
 stock)
         set_default "$STOCK_LABEL"
-        # When the revert service itself is the caller, early in boot, leave the
-        # unit alone. It is idempotent: on a stock boot it sets l0 to l0. Only a
-        # person running this by hand disarms it.
-        if [ "$QUIET" = 0 ]; then
-                systemctl disable pyra-boot-revert.service >/dev/null 2>&1 || true
-        fi
+        # Disarm the revert, whoever the caller is. The revert service runs
+        # this too, early in the test boot, so a one-shot turns itself off once
+        # it has fired and `status` says so; it used to stay enabled until
+        # someone ran `stock` by hand. --no-reload because that caller is a
+        # unit PID 1 is still starting: removing the symlink is all a disable
+        # needs, and is-enabled reads the symlinks, not PID 1's memory.
+        systemctl --no-reload disable pyra-boot-revert.service >/dev/null 2>&1 || true
         say "set: booting $(describe "$STOCK_LABEL")"
         ;;
 base)

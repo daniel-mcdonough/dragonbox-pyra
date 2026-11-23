@@ -416,6 +416,14 @@ puts `default` back to the base kernel (`l0` until `base` names another; see
 gets exactly one boot; forgetting to change it back is not a way to end up
 stranded on a debug kernel.
 
+The unit disarms itself when it fires: it runs `pyra-boot-kernel.sh stock`,
+and `stock` always disables it, whoever runs it. So on the test boot, and on
+every boot after, `status` says "next boot: <base>" and "one-shot revert:
+disarmed". Before 2026-11-23 the unit stayed enabled after firing, set the
+base to itself on every boot, and `status` kept saying "enabled" until
+someone ran `stock` by hand; installing the current script is enough to fix
+a card in that state, because the unit runs the installed script.
+
 What `--once` cannot cover is a kernel that never reaches userspace, because
 nothing running on the device can. Recover that by putting the card in a PC,
 mounting partition 1, and changing one word in `extlinux.conf`. Editing that
