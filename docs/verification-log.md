@@ -2999,3 +2999,37 @@ path only, not a margin-driven reduction. `device/pyra-charge-guard.sh` added; s
   and restore. The card was at 89%/`Full` the whole session; triggering fast charging again needs either the
   pack to self-discharge below the ~100 mV recharge threshold (hours, unforced) or a physical unplug/replug,
   neither of which fit here. Left as a NEXT step.
+
+## 2026-11-24 — four ssh-only booted checks from R15, on the R99 test card
+
+CPU board V5.3, mainboard V5.3, the R99 release card (`<ssh-alias>`), kernel r4 in `l5` since R107.
+
+- **Root lock (R101): cannot be checked on this card — it predates the fix.** `sudo passwd -S root` prints
+  `root P 2026-02-01 0 99999 7 -1` (`P`, not `L`); `su` asks for a password and refuses; `getent shadow root`
+  shows a bare yescrypt hash with no `!` prefix, last changed day 20485 (2026-02-01), the same vendor hash
+  `fixes.md` documents. Neither `emergency.service.d/` nor `rescue.service.d/` drop-in exists. This isn't a
+  regression: the R99 image was built from `8c3a35d` (2026-11-23 17:14), and the root-lock change (`d4dd8c2`,
+  R101) landed about three hours later the same day (20:32) — `git merge-base --is-ancestor d4dd8c2 8c3a35d`
+  fails. The R99 card is "older" with respect to this specific fix, the same bucket as r5 in `PROMPT.md` Part
+  A. This check needs a release card built from a commit at or after `d4dd8c2`, then booted for real; R99
+  doesn't qualify. Left in NEXT R15 for a future card (see NEXT.md note added this session).
+- **Fix 31, `pyra-info` (R93): pass.** `Prepared : commit 8c3a35dc6048, 2026-11-23, kernel-5.6.19-r3, release
+  image`; `Boot entry : l5; default l5`. Matches the commit this card was built from and its pinned kernel at
+  prep time (the Prepared line is a static record from `/etc/dragonbox-pyra-prep`, not the currently running
+  kernel — `uname -r` reports `5.6.19-m4-kbdled` #10, r4, installed later by R107).
+- **Fix 32, DBP Installer (R94): partial — the two state-of-the-image facts pass; the Installer app itself
+  isn't on this card to launch.** `python3 -c 'import apt, apt_pkg; print(apt_pkg.VERSION)'` → `3.0.3`, no
+  error. `ls -l ~/dragonbox` is a symlink to `/dragonbox`, owned `pyra:pyra`. `dbpd` is active
+  (`dbp-cmd ping` exits 0); `dbp-cmd list` prints nothing (exit 1, nothing registered). Neither
+  `dbpInstaller_sebt3` nor any `.desktop`/package entry for a DBP Installer exists anywhere on the card
+  (`dpkg -l`, `find / -iname '*dbpinstaller*'` both empty) — per `docs/dbp.md` it's obtained from the DBP
+  repository, not shipped by prep; fix 32 only makes the image ready for it (`apt_pkg` import, the
+  `~/dragonbox` link). `curl` isn't installed either, so reachability to the DBP repository wasn't checked.
+  Launching the Installer and watching a RootFs register in `dbp-cmd list` needs the Installer's `.dbp` file
+  fetched onto the card first, which is new device state beyond this session's plain ssh checks. Left in NEXT
+  R15 for a session that fetches it (see NEXT.md note added this session).
+- **pyra-hacks 0.38+pyra5 CPU ceiling (R82): pass.** `dpkg-query -W pyra-hacks` → `0.38+pyra5`.
+  `scaling_max_freq` read `1500000` before. `echo CPU_MAX_MHZ=1000 | sudo tee /etc/default/pyra-thermal` then
+  `sudo systemctl restart pyra-thermal`: within 3 s, `scaling_max_freq` read `1000000` on cpu0. Restored with
+  `sudo rm /etc/default/pyra-thermal`; within 3 s the ceiling returned to `1500000`, matching `fixes.md`'s "no
+  file, no ceiling" default and the selftest's assumption.
