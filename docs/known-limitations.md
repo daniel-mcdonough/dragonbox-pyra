@@ -286,8 +286,9 @@ Stated so they are not mistaken for settled.
 - **No recording from the built-in audio.** On `5.6.19-m4-kbdled` no capture
   device opens: the AESS uplink was never built (NEXT R105). On the stock kernel,
   capture opens but the built-in mic gives no signal, even with its bias on
-  (measured 2026-11-23). Whether a mic is fitted and connected is open (NEXT
-  R104). Use a USB or Bluetooth headset. `audio.md`, "Recording: the microphones".
+  (measured 2026-11-23). The schematic shows a MEMS mic on the mainboard, fed
+  from the codec's mic bias; whether it is fitted and powered on this unit is
+  open (NEXT R104). Use a USB or Bluetooth headset. `audio.md`, "Recording: the microphones".
 - **No external HDMI picture above 640x480.** Measured 2026-11-11 with X
   stopped. From 1024x768 up, the TMDS signal is too marginal for a monitor to
   show a picture, on two monitors and two cables. The cause is below X, and

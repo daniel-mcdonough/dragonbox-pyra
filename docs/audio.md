@@ -623,13 +623,79 @@ commented out. To record by hand:
 * **It is not the codec's setup.** Read during a capture (root, debugfs):
   `AMICBCTL` `0x11` (main and headset mic bias both on), `MICLCTL` `0x0d` (Main
   Mic, mic amp and ADC on), `MICGAIN` `0x09`. DAPM shows `Main Mic Bias`,
-  `Main Handset Mic`, `MAINMIC`, `MicAmpL` and `ADC Left` all on. Whether a mic
-  is fitted and wired to `MAINMIC`, and whether the bias reaches it, is a
-  question for the schematic and a meter.
+  `Main Handset Mic`, `MAINMIC`, `MicAmpL` and `ADC Left` all on. The
+  schematic shows a mic fitted and wired to `MAINMIC` (next section); whether
+  the bias reaches it needs a meter.
 * **The headset mic route with the jack empty** is an open input: a floor
   near -93 dBFS while nothing plays, and about -35 dBFS of 50-60 Hz while
   anything plays, with a near-full-scale DC offset at +30 dB. That says nothing
   about a real headset.
+
+### What the schematic shows for the built-in mic
+
+Read 2026-11-24 from the project's schematics, revision 5.1.3
+(`Pyra-Schematics.Rev5.1.3.zip`, posted on the forum 2016-11-20, CC-BY-NC-SA,
+not copied here): the CPU board's sheet 34 "CPU: Audio" and the mainboard's
+sheet 18 "Audio Headset". The unit measured is a V5.3, newer than the
+schematic, so the parts on the board may differ.
+
+**A mic is on the board.** It is M1701, a Knowles SPU0410HR5H, an analogue
+MEMS mic soldered to the mainboard, not on a connector or a flex. No fit/no-fit
+mark is on it or on the parts around it. The parts that *are* marked not
+fitted on that sheet (C1712, C1713, the alternate amplifier option; R1709) are
+crossed out; M1701, L1703 and C1705 are not.
+
+The chain, from the codec out:
+
+| where | part | connection |
+| --- | --- | --- |
+| CPU board | U3301 (TWL6040) `MBIAS`, ball K3 | R3301 220 Ω, then C3301 220 nF to ground: the `MICBIAS-CPU` net to the board connector |
+| CPU board | R3302 2.2 kΩ | from `MICBIAS-CPU` to `MIC-CPU+`: an electret-style bias resistor |
+| CPU board | U3301 `MAINMICP` K1, `MAINMICN` J2 | through C3302 and C3303, 10 nF each, to `MIC-CPU+` and `MIC-CPU-` |
+| connector | pins 26, 27, 28 | `MIC-BIAS`, `MIC+`, `MIC-` on the mainboard |
+| mainboard | L1703, a ferrite bead | `MIC-BIAS` to M1701 pin 1 (VDD), with C1705 100 nF to ground there |
+| mainboard | M1701 pin 4 (OUTPUT) | `MIC+`, with C1706 47 pF and D1701 (ESD) to `MIC-` |
+| mainboard | M1701 pins 2, 3 (ground) | `MIC-`, which goes to ground through L1704 |
+
+The symbol's pin numbers match the datasheet (Knowles SPU0410HR5H-PB rev H:
+1 VDD, 2 and 3 ground, 4 output), so the drawing has no pin swap. Whether the
+footprint matches can't be read from a schematic.
+
+**The two boards expect different mics.** The CPU board's input is built for
+a two-wire electret capsule: bias fed through 2.2 kΩ into the signal line, and
+the audio picked off it through a coupling capacitor. The mainboard fits a
+three-terminal MEMS mic with its own supply pin. So M1701's output stage is
+pulled up by R3302 to the bias rail, as well as feeding the codec. The
+datasheet sets no limit for that load. It quotes THD for loads above 3 kΩ and
+an output impedance of up to 400 Ω. It gives a DC output of 0.73 V at
+VDD 1.5 V, an input current limit of ±5 mA per pin, and a supply of 1.5-3.6 V
+at 120 µA typical. Assuming a bias near 2 V (the TWL6040's level was not
+looked up), R3302 would push roughly 0.5 mA into the output (estimated, not
+measured). That is inside
+the absolute limit. Whether the output still swings with that load is not
+stated.
+
+**One wire on sheet 18 is ambiguous.** The wire from the jack's tip switch
+contact (`1S`, the `DET_TRIGGER` net) runs to the unfitted C1713 and turns a
+corner underneath the `MIC-BIAS` label. The wire to L1703 starts at the
+label's tip. Read the usual way, the label belongs to the L1703 wire and the
+two nets are separate. If they were one net, the bias would rest on the
+headphone left output through the tip spring whenever no plug is in, and
+couldn't hold its voltage. A continuity check between C1705 and the jack's
+tip-switch pin settles it.
+
+**What this means for the silent mic.** The schematic does not explain the
+result on its own. A mic is drawn, it gets the codec's main mic bias as its
+supply, and its output reaches `MAINMIC`. At -42 dBV/Pa (typical), speech at
+30 cm should stand well clear of a -82 dBFS floor. That is an estimate, not
+checked against the TWL6040's input full scale. What's left are three things
+only the board can answer: M1701 not fitted on the V5.3, or fitted but
+damaged; no supply at its VDD pin, from a broken path or the `MIC-BIAS` and
+`DET_TRIGGER` question above; or its output held at a rail by R3302. One
+meter session on stock with `arecord` running tells them apart. Measure the
+DC at C1705 (VDD should be the bias, 1.5 V or more) and at M1701 pin 4
+(should sit between the rails, not at either one), and check whether a part
+is soldered at M1701.
 
 ## White-noise bursts: not reproduced on this unit
 
