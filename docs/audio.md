@@ -5,7 +5,7 @@
 Updated 2026-09-24 on the running unit, kernel `5.6.19-m4`, Debian 13
 (trixie); the speakers, the ports and the OPP section on 2026-10-20 on
 `5.6.19-m4-kbdled`. The direct-link sections were verified 2026-09-20 on
-`5.6.19-freq`.
+`5.6.19-freq`. Capture (the microphones) on 2026-11-23 on both paths.
 
 This is the map. The repair instructions for the faults that make the machine
 silent are fix 9 and fix 10 in `fixes.md`; the performance survey and its
@@ -544,6 +544,92 @@ These all look like faults and are not. Each has been chased at least once.
 * **`alsa-restore` logging `failed to import hw:N use case configuration -2`
   is harmless.** There is no UCM profile for this card; it falls back to
   `asound.state`, and fix 9's udev rule runs after it.
+
+## Recording: the microphones
+
+**In short: you cannot record from the Pyra's own audio hardware on the
+shipped kernel. On the stock kernel recording works, but the built-in mic
+picks up nothing usable.** For a voice call or a recording, use a USB or
+Bluetooth headset. Measured 2026-11-23 on CPU board V5.3, mainboard V5.3, on
+a release card (prep `8c3a35d`); method, numbers and scripts are in
+`experiments/microphone/`.
+
+What the board has, from the device tree and the pin mux:
+
+| input | codec pin | in the DT routing | result |
+| --- | --- | --- | --- |
+| built-in mic | `MAINMIC` (`Main Handset Mic`, `Main Mic Bias`) | yes | no signal (below) |
+| headset mic, 4-pole plug | `HSMIC` (`Headset Mic`, `Headset Mic Bias`) | yes | untested: no 4-pole headset to hand |
+| `SUBMIC`, `AFML/AFMR` line in | | no / named but no pins (`unknown pin AFML`) | nothing connected |
+| digital mics | | no: the `abedmic_*` pins are muxed to McBSP3 (modem) | none |
+
+### On `5.6.19-m4-kbdled` (AESS): no capture at all
+
+Every capture front end refuses to open:
+
+    $ arecord -D hw:CARD=L15,DEV=0 -f S16_LE -r 48000 -c 2 -d 2 x.wav
+    arecord: main:850: audio open error: Invalid argument
+
+The same goes for `DEV=1` (MultiMedia2) and `DEV=2` (Voice). PulseAudio has no
+source except `aess.monitor`, because the AESS profile set
+(`pyra-aess.conf`) maps only an output. Neither is a setting you can change. Two
+things are missing in the kernel:
+
+* **The DSP's uplink half.** The AESS DAPM graph this kernel adds
+  (`omap-aess-fw.c`, recovered from the firmware's topology blocks) leaves out
+  the ten uplink routers `MUX_UL00`-`05`, `MUX_UL10/11`, `MUX_VX0/1` and the 156
+  routes that feed them, on purpose: none of them was on the way to a
+  speaker. Without them `MM_UL1` and `MM_UL2` have no path from any back end,
+  DPCM finds nothing, and the open returns `-EINVAL`. This is the same failure
+  playback had before the graph existed.
+* **The codec end.** `omap5-letux-cortex15-common.dtsi` replaces the board's
+  routing and adds back `PDM_DL1`/`PDM_DL2`, but not `"PDM_UL1", "Analog
+  Capture"`, so the AESS uplink port is not joined to the TWL6040's ADCs.
+
+Adding both, then a PulseAudio input mapping, would make AESS capture
+possible. Given the built-in mic's result below, it would only serve the
+headset mic.
+
+### On `5.6.19-pyradef` (stock, direct link): capture works, the mic doesn't
+
+One capture device, `hw:CARD=L15,DEV=0` (`TWL6040 twl6040-legacy-0`), with
+the same constraints as playback: `S32_LE`, stereo. PulseAudio has no source
+here either: the packaged `pyra.pa` keeps its `module-alsa-source` line
+commented out. To record by hand:
+
+    amixer -c L15 cset name='Analog Left Capture Route' 'Main Mic'     # built-in
+    amixer -c L15 cset name='Analog Right Capture Route' 'Headset Mic' # jack
+    amixer -c L15 cset name='Capture Volume' 4,4                       # +30 dB; 1 = +12 dB
+    arecord -D hw:CARD=L15,DEV=0 -f S32_LE -r 88200 -c 2 -d 10 clip.wav
+    amixer -c L15 cset name='Analog Left Capture Route' Off            # and Right: Off at boot
+
+* **Record at 88200, not 96000.** The codec runs in Low-Power mode (`TWL6040
+  Power Mode` 0), so the link clocks at 88.2 kHz. `arecord` still accepts 96000
+  and labels the file with it, so a recording at 96000 plays back 8.8% fast:
+  a 1 kHz tone came out at 1088 Hz. Recorded at 88200, it came out at 1000 Hz.
+* **Each stream start has a full-scale click** lasting under 100 ms. Discard
+  the first 0.1 s.
+* **The built-in mic gives no signal.** Speech at 30 cm (+12 dB), then
+  loud speech, claps and fingernail scratches around the case at 10 cm
+  (+30 dB), moved the speech bands by under 1 dB against a silent room. The
+  floor is -82 dBFS RMS at +12 dB and -68 dBFS at +30 dB, so it is input noise
+  scaled by the gain. Most of it sits above 20 kHz, with hum lines between 60
+  and 300 Hz, and soft clicks about 20 dB above it every second or two. That
+  matches a 2021 forum report of the built-in mic recording only "rhythmic
+  soft popping" (https://pyra-handheld.com/boards/posts/1689224/). A 1 kHz
+  tone from the Pyra's own speakers reached the mic channel at -84 dBFS, at
+  +30 dB. It didn't get there through the headphone path, and it may be
+  electrical crosstalk from the speaker amplifier rather than sound.
+* **It is not the codec's setup.** Read during a capture (root, debugfs):
+  `AMICBCTL` `0x11` (main and headset mic bias both on), `MICLCTL` `0x0d` (Main
+  Mic, mic amp and ADC on), `MICGAIN` `0x09`. DAPM shows `Main Mic Bias`,
+  `Main Handset Mic`, `MAINMIC`, `MicAmpL` and `ADC Left` all on. Whether a mic
+  is fitted and wired to `MAINMIC`, and whether the bias reaches it, is a
+  question for the schematic and a meter.
+* **The headset mic route with the jack empty** is an open input: a floor
+  near -93 dBFS while nothing plays, and about -35 dBFS of 50-60 Hz while
+  anything plays, with a near-full-scale DC offset at +30 dB. That says nothing
+  about a real headset.
 
 ## White-noise bursts: not reproduced on this unit
 

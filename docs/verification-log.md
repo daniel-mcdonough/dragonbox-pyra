@@ -2905,3 +2905,21 @@ in the left slot.
   (AES-128-CBC, key from iterated SHA-256, MD5 check; validated first on a keyring made with a known password,
   which opened only with that one): `pyra` does not open it; the password set in the window does.
 - The two journal lines `Gdk.Screen.get_width/get_height is deprecated` are cosmetic.
+
+## 2026-11-23 — microphones and capture, both audio paths (R103)
+
+CPU board V5.3, mainboard V5.3, the R99 release card (prep `8c3a35d`, kernel r3). No 4-pole headset to hand, so
+the headset mic is untested. Details and the full table in `experiments/microphone/`.
+
+- `5.6.19-m4-kbdled` (`l5`): `arecord -l` lists L15 capture devices 0 (MultiMedia1), 1 (MultiMedia2), 2 (Voice),
+  4 (MODEM). `arecord -D hw:CARD=L15,DEV=0|1|2 -f S16_LE -r 48000 -c 2` all fail with `audio open error: Invalid
+  argument`. `pactl list short sources`: only `aess.monitor`. Cause from source: no AESS uplink routers in the DAPM
+  graph and no `PDM_UL1` route in the DT (`audio.md`, "Recording: the microphones").
+- `5.6.19-pyradef` (`l0`, one boot via `pyra-boot-kernel.sh debug l0 --once`): one capture device,
+  `hw:CARD=L15,DEV=0`. Built-in mic (`Main Mic`): speech at 30 cm (+12 dB) and loud speech, claps and scratches
+  at 10 cm (+30 dB) within 1 dB of a quiet room; floor -82 dBFS RMS at +12 dB, -68 at +30 dB. Every capture
+  starts with a click of up to 0 dBFS lasting under 100 ms. A tone recorded at 96000 came out at 1088 Hz, and at
+  1000 Hz when recorded at 88200.
+- Codec during a capture (debugfs, root): `AMICBCTL 0x11`, `MICLCTL 0x0d`, `MICGAIN 0x09`; `Main Mic Bias`,
+  `MAINMIC`, `MicAmpL`, `ADC Left` On. The codec side is set up correctly; the input sees no sound.
+- Back on `l5` after the next boot: `pyra-boot-kernel.sh status` showed `5.6.19-m4-kbdled`, revert disarmed.
