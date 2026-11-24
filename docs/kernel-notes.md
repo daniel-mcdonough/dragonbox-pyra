@@ -361,8 +361,8 @@ The forum review found two config gaps that users had reported, and one more req
 thread. Each was decided against the shipped config (`kernel-5.6.19-r3`) and tested on a V5.3 unit
 on 2026-11-24 as `5.6.19-m4-kbdled-test`, booted once (`verification-log.md`, 2026-11-24). The
 options are in `M4_KBDLED_ASKED` in `pc/pyra-crossbuild.sh`, which `kernel-m4-kbdled` and
-`kernel-m4-kbdled-test` both build. No release carries them yet: r3 lacks all of them, and they ship
-from the next kernel release.
+`kernel-m4-kbdled-test` both build. r3 lacks all of them; they ship from `kernel-5.6.19-r4`, which fix 19
+pins.
 
 | Option | Decision | Reason |
 | --- | --- | --- |

@@ -119,7 +119,7 @@ confirm each part works. The prebuilt image is this same procedure with
 
 The prep script installs the shipped kernel, `5.6.19-m4-kbdled`, and the card
 boots it (fix 19). It downloads the kernel from the project's release and checks
-it against a pinned hash (release `kernel-5.6.19-r3`), or takes a tarball you
+it against a pinned hash (release `kernel-5.6.19-r4`), or takes a tarball you
 name with `--kernel FILE`. It always installs one of the two: there is no
 stock-only card. The stock `5.6.19-pyradef` stays in boot slot `l0` as the
 fallback.

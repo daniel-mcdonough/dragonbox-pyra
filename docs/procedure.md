@@ -310,7 +310,7 @@ already have, downloaded or built with `./pc/pyra-crossbuild.sh kernel-m4-kbdled
 
     sudo ./pc/pyra-trixie-prep.sh --kernel m4-kbdled-kernel.tar.gz /mnt/pyra yourusername
 
-The pinned release is `kernel-5.6.19-r3`. Prep always installs a kernel:
+The pinned release is `kernel-5.6.19-r4`. Prep always installs a kernel:
 answering `n` at its download prompt stops it before it writes anything. The card
 boots the shipped kernel from `l5` and keeps the stock one as `l0`. If it does
 not come up on the new kernel, `troubleshooting.md`, "The card does not boot

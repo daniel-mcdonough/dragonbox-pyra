@@ -38,7 +38,7 @@
 #               telling the driver, so this mode also clears latches the
 #               driver has not seen yet; a fault it takes never reaches the
 #               kernel log. --ts does not read `registers` for that reason.
-#               A kernel with patches/0054 (not the shipped r3) prints the
+#               A kernel with patches/0054 (release r4 on) prints the
 #               driver's own copy for reg 09 instead, which is safe to read.
 #   gauge_mC    bq27421-0, which is the fuel gauge's own die on the mainboard,
 #               not the cell. It is not a battery temperature. See

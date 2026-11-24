@@ -2942,3 +2942,26 @@ results are in `kernel-notes.md` §8.
   (`troubleshooting.md`, "One more thing the display does on every boot"), which r3's previous boot also logged.
 - The next boot came back to `l5` (`pyra-boot-kernel.sh status`: running `5.6.19-m4-kbdled`, revert disarmed).
   The test kernel stays installed in `l1`.
+
+## 2026-11-24 — the `kernel-5.6.19-r4` release asset, now the one prep pins (R107)
+
+CPU board V5.3, mainboard V5.3, the R99 release card. The asset is `m4-kbdled-kernel.tar.gz` from the release
+(Kernel release run 45350444408), downloaded on the PC.
+
+- **Download:** SHA-256 `a09fabbc96a77fc25bfd3b585187e5d85916af1bf0085759995d786c45105ea0`, the same as the
+  release's `SHA256SUMS`. `gh attestation verify` (gh 2.104.0) with `--repo` and `--signer-workflow` exited 0;
+  a copy with one byte changed exited 1 (`building.md`, "Checking a download").
+- **Install:** booted `l1` (`5.6.19-m4-kbdled-test`) once with `pyra-boot-kernel.sh debug l1 --once`, since the
+  installer will not replace the running release. Then `pyra-install-debug-kernel.sh --slot l5` put r4 in place
+  of r3. The installed `vmlinuz` hashes `646e033b…a459fdd`, the same as the `vmlinuz` in the tarball. `l5` stays the
+  base. Fallbacks: `l0` stock and `l1`.
+- **Boot:** `5.6.19-m4-kbdled #10 SMP PREEMPT Tue Nov 24 07:46:23 UTC 2026` came up on `l5` to the greeter.
+  `systemctl is-system-running` returned `running`, and `systemctl --failed` was empty. The AESS card
+  (`Letux Cortex 15`) is present, with eleven CPU steps up to 1.5 GHz. The only kernel warning was the
+  documented L3 error during panel power-on.
+- **The r4 additions:** `cryptsetup benchmark -c aes-xts -s 256` gave 60.4/58.6 MiB/s on `xts(ecb(aes-generic))`;
+  r3 refuses it. One process wrote 8 MiB with an fsync, and its `/proc/self/io` `write_bytes` read 8413184.
+  The `registers` file reads reg 09 as `00` before the first charger interrupt, as 0054 describes. No webcam
+  this time: `CONFIG_USB_VIDEO_CLASS=m` is in the config (the C920 capture is in the entry above).
+- **Selftest:** `pc/pyra-prep-selftest.sh` with this asset as `PYRA_KERNEL_TARBALL`: 476 passed, 0 failed,
+  0 skipped. Prep reported the tarball as "the published release kernel-5.6.19-r4".

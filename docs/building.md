@@ -998,7 +998,7 @@ script checks the archive and the image inside it, as it does on a PC. The
 kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
 workflow's one input is that run's ID: not a tag or release name, which the
 artifact download cannot find. Give the run that built the release prep pins
-(`kernel-5.6.19-r3`, run 44223360396; r2 was run 43135826496, r1 run 42940820801), so prep reports the tarball as that
+(`kernel-5.6.19-r4`, run 45350444408; r3 was run 44223360396, r2 run 43135826496, r1 run 42940820801), so prep reports the tarball as that
 release rather than "a local build". Taking the pinned release's asset instead
 of a run ID is not done yet.
 
@@ -1073,9 +1073,15 @@ carries attestations (the `gh` CLI's own armv6 tarball, signed by
 `cli/cli/.github/workflows/deployment.yml`): the genuine file exited 0. A copy
 with one byte changed at offset 1000 exited 1 with `no attestations found`.
 The genuine file checked against `--repo daniel-mcdonough/dragonbox-pyra` exited
-1 with a 404. The first attested runs of these two workflows have not happened
-yet. Releases built before the change (kernel-5.6.19-r1 to r3, every image
+1 with a 404. Releases built before the change (kernel-5.6.19-r1 to r3, every image
 so far) carry no attestation, and `gh attestation verify` fails on them.
+
+**The first attested release**, `kernel-5.6.19-r4` (run 45350444408), checked
+2026-11-24 on a PC with `gh` 2.104.0: the downloaded `m4-kbdled-kernel.tar.gz`
+(SHA-256 `a09fabbc…5ea0`, the same as the release's `SHA256SUMS`) exited 0 with
+the command above, `--signer-workflow` included; the certificate names
+`kernel-release.yml@refs/tags/kernel-5.6.19-r4` and that run. A copy with one
+byte changed at offset 1000 exited 1 with a 404.
 
 **First run on GitHub** (artifact built 2026-11-11 02:01 UTC from `ef8b2dc`):
 it produced the artifact. Both `.sha256` files verified after download, and

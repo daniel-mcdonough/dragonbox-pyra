@@ -1314,7 +1314,7 @@ kernel fix 19 installs carries it; the stock `5.6.19-pyradef` does not, so the
 rescue is for a card booted on `l0`. It is also
 for the shipped kernel after a resume: a key let go of while the machine sleeps
 leaves the same stuck line. `patches/0050` fixes that, from
-`kernel-5.6.19-r2` on (the pinned release is r3); `kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
+`kernel-5.6.19-r2` on (the pinned release is r4); `kernel-5.6.19-r1` predates it (`troubleshooting.md`, "Dead after a resume").
 
 Prep installs `device/pyra-keypad-rescue` as `/usr/local/sbin/pyra-keypad-rescue`.
 It reads the queued events out over i2c and clears the interrupt status, which
@@ -1359,9 +1359,11 @@ fallback whatever prep does. All of this happens before
 fix 1 writes anything, so a failed download or a wrong tarball leaves the card
 untouched.
 
-The pinned release is `kernel-5.6.19-r3` (built by the Kernel release
-workflow from that tag, run 44223360396, 2026-11-18; it adds `patches/0053` to r2,
-and r1 before that lacked `patches/0050`). A new release changes the tag, URL and
+The pinned release is `kernel-5.6.19-r4` (built by the Kernel release
+workflow from that tag, run 45350444408, 2026-11-24; it adds `patches/0054` and the
+`M4_KBDLED_ASKED` options, `kernel-notes.md` §8, to r3, which added `patches/0053`
+to r2; r1 lacked `patches/0050`). r4 is the first kernel release with an
+attestation (`building.md`, "Checking a download"). A new release changes the tag, URL and
 hash in prep together.
 
 **How it installs.** The two device scripts do the work, run in the chroot the
@@ -1856,7 +1858,7 @@ package's postinst enables, applies the saved choices at boot from
 `/etc/pyra-settings/pyra-settings.conf`. The wake-button page needs
 `patches/0053` in the kernel (`wakeup_keys`); the helper looks for the file,
 not the kernel version, and on a kernel without it the page says so.
-`kernel-5.6.19-r3`, which fix 19 pins, carries it; r2 and earlier do not.
+It is in `kernel-5.6.19-r3` and later (fix 19 pins r4); r2 and earlier lack it.
 
 It recommends `pyra-hacks (>= 0.38+pyra3)`, the fork (*Fixes 6, 7 and 12 as a
 package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4)`

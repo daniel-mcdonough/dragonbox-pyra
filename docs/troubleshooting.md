@@ -1197,7 +1197,7 @@ of two things:
 - **A driver change**, `patches/0053`. It gives every `gpio-keys` device
   writable `wakeup_keys` and `wakeup_switches` files, in the keycode-list
   format `disabled_keys` uses. The device tree supplies the starting set.
-  In `kernel-5.6.19-r3`, which prep installs, and not in r2 or earlier; see `kernel-changes.md`.
+  In `kernel-5.6.19-r3` and later (prep installs r4), not in r2 or earlier; see `kernel-changes.md`.
 
 **With `patches/0053`, per button at runtime.** The Pyra's game-button codes:
 
