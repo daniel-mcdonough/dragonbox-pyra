@@ -540,9 +540,15 @@ build_kernel_m4_uprobe_kprobe() { build_kernel_variant m4-uprobe-kprobe \
 M4_KBDLED_PATCHES="$M4_PATCHES $SELF_DIR/../experiments/gpu-power/0034-pvrsgx-let-the-sgx-power-domain-go-off-at-idle.patch \
 	 $SELF_DIR/../experiments/kbd-led $SELF_DIR/../experiments/jack-detect"
 M4_KBDLED_CONFIG="$M4_CONFIG UPROBE_EVENTS UPROBES PM_DEBUG PM_ADVANCED_DEBUG"
+# What users asked for in the forum review, from kernel-5.6.19-r4 on
+# (docs/kernel-notes.md section 8): the AF_ALG sockets cryptsetup benchmark
+# needs, UVC webcams, and per-task I/O counters for iotop. All modules except
+# MEDIA_USB_SUPPORT (a menu) and the three taskstats symbols, which are bool.
+M4_KBDLED_ASKED="CRYPTO_USER_API_HASH=m CRYPTO_USER_API_SKCIPHER=m \
+	MEDIA_USB_SUPPORT USB_VIDEO_CLASS=m TASKSTATS TASK_XACCT TASK_IO_ACCOUNTING"
 build_kernel_m4_kbdled() { build_kernel_variant m4-kbdled \
 	"$M4_KBDLED_PATCHES" src-m4-kbdled \
-	"$M4_KBDLED_CONFIG -FW_LOADER_USER_HELPER_FALLBACK"; }
+	"$M4_KBDLED_CONFIG $M4_KBDLED_ASKED -FW_LOADER_USER_HELPER_FALLBACK"; }
 
 # The kernel the trixie card runs (5.6.19-m4-kbdled #10, built 2026-10-29,
 # before FW_LOADER_USER_HELPER_FALLBACK went off) plus scheduler statistics,
@@ -566,7 +572,7 @@ build_kernel_m4_kbdled_sched() { build_kernel_variant m4-kbdled-sched \
 # shipped build's tree.
 build_kernel_m4_kbdled_test() { build_kernel_variant m4-kbdled-test \
 	"$M4_KBDLED_PATCHES" src-m4-kbdled-test \
-	"$M4_KBDLED_CONFIG -FW_LOADER_USER_HELPER_FALLBACK"; }
+	"$M4_KBDLED_CONFIG $M4_KBDLED_ASKED -FW_LOADER_USER_HELPER_FALLBACK"; }
 
 case "${1:-}" in
 	ddx)          shift; build_ddx ;;

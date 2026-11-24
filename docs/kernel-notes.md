@@ -354,3 +354,45 @@ worth about 0.27 W, roughly 21 minutes of the 21.3 Wh battery.
 The same published table carries five steps *above* the part's rating. Those are
 a separate patch and a separate build, deliberately, and
 `known-limitations.md` §2.4 is why they should stay that way on a stock unit.
+
+## 8. Options users asked for (forum review, from `kernel-5.6.19-r4`)
+
+The forum review found two config gaps that users had reported, and one more requested in the same
+thread. Each was decided against the shipped config (`kernel-5.6.19-r3`) and tested on a V5.3 unit
+on 2026-11-24 as `5.6.19-m4-kbdled-test`, booted once (`verification-log.md`, 2026-11-24). The
+options are in `M4_KBDLED_ASKED` in `pc/pyra-crossbuild.sh`, which `kernel-m4-kbdled` and
+`kernel-m4-kbdled-test` both build. No release carries them yet: r3 lacks all of them, and they ship
+from the next kernel release.
+
+| Option | Decision | Reason |
+| --- | --- | --- |
+| `CRYPTO_USER_API_SKCIPHER=m` | **on** | `cryptsetup benchmark` stops at "Required kernel crypto interface not available. Ensure you have algif_skcipher kernel module loaded." and runs no cipher test. cryptsetup also uses it to decrypt a LUKS keyslot without a dm-crypt mapping. Without it, `luksFormat` and `--test-passphrase` need root, because they fall back to a temporary dm-crypt device. |
+| `CRYPTO_USER_API_HASH=m` | **on** | The hash half of the same interface (`algif_hash`), which cryptsetup loads beside it. Both pull in `CRYPTO_USER_API` (`af_alg`). |
+| `CRYPTO_USER_API_RNG`, `_AEAD` | off | Neither cryptsetup's benchmark nor LUKS uses them. AEAD is for authenticated dm-crypt modes, which also need `DM_INTEGRITY`, and that is off. |
+| `MEDIA_USB_SUPPORT=y` | **on** | The menu that every USB video driver sits under. `MEDIA_SUPPORT`, `VIDEO_DEV` and `VIDEO_V4L2` were already modules. |
+| `USB_VIDEO_CLASS=m` | **on** | UVC (`uvcvideo`), which covers practically every webcam made in the last fifteen years. Selects `VIDEOBUF2_VMALLOC` and `FRAME_VECTOR`. |
+| `USB_GSPCA` | default (`m`, core only) | Kconfig turns the gspca core on with the menu. No gspca sub-driver is built, so the module is unused. The older webcams gspca covers aren't worth about 50 sub-drivers. |
+| `TASKSTATS`, `TASK_XACCT`, `TASK_IO_ACCOUNTING=y` | **on** | Requested in the webcam thread. They fill `read_bytes`/`write_bytes` in `/proc/<pid>/io`, which `iotop` and `pidstat -d` read. The cost is a counter update per I/O. |
+| `TASK_DELAY_ACCT` | off | `iotop`'s IO% column needs it, and it adds timestamping to every scheduler block/wake. Not asked for. |
+
+**Cost** (measured from the build output, 2026-11-24, against the same tree without the options): the
+zImage grows by 7,816 bytes (7,256,464 to 7,264,280), the staged modules by about 310 KB, and the
+tarball by about 130 KB. Every new driver is a module that loads only when it is used. No boot-time
+difference was measured. The test boot reached ssh like any other.
+
+**What the test showed:**
+- `cryptsetup benchmark` (cryptsetup 2.7, trixie) ran every test. aes-xts 256b gave 61.0/60.9 MiB/s
+  encrypt/decrypt in memory. That is a ceiling on LUKS throughput, not a measured disk rate: no LUKS SD card's speed was measured. All AES came from
+  `aes-generic`: `omap-aes` (`CRYPTO_DEV_OMAP_AES=m`, the SoC's crypto engine) was not loaded, so the hardware engine
+  plays no part in these numbers.
+- A 32 MB LUKS2 file (aes-xts-plain64, 512-bit key, argon2id) formatted as the `pyra` user, and
+  `--test-passphrase` accepted the right passphrase and refused a wrong one (rc 2). Opened with sudo,
+  given ext4, written, closed, reopened: the file read back.
+- A Logitech C920 (046d:08e5), which on r3 enumerates with no `/dev/video*`, came up as `/dev/video0`
+  and `/dev/video1` and captured 150 frames at 29.9 fps in YUYV 640x480 and at 30.1 fps in MJPG
+  1280x720 (`v4l2-ctl --stream-mmap`, two buffers dropped in the MJPG run). The driver logs
+  "Entity type for entity ... was not initialized!" once per UVC entity at plug-in. That is a 5.6
+  `uvcvideo` warning with the media controller on, and it is harmless.
+- A process that wrote and fsynced 8 MiB to ext4 read `write_bytes: 8421376` from its own
+  `/proc/self/io`. On tmpfs, which is `/tmp` on the card, the same write shows 0, because no
+  block I/O takes place.

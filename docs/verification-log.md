@@ -2923,3 +2923,22 @@ the headset mic is untested. Details and the full table in `experiments/micropho
 - Codec during a capture (debugfs, root): `AMICBCTL 0x11`, `MICLCTL 0x0d`, `MICGAIN 0x09`; `Main Mic Bias`,
   `MAINMIC`, `MicAmpL`, `ADC Left` On. The codec side is set up correctly; the input sees no sound.
 - Back on `l5` after the next boot: `pyra-boot-kernel.sh status` showed `5.6.19-m4-kbdled`, revert disarmed.
+
+## 2026-11-24 — kernel config: AF_ALG, UVC webcams, task I/O accounting (R106)
+
+CPU board V5.3, mainboard V5.3, the R99 release card (kernel r3 in `l5`). Decisions and the full
+results are in `kernel-notes.md` §8.
+
+- `5.6.19-m4-kbdled` (r3): `cryptsetup benchmark` printed "Required kernel crypto interface not
+  available. Ensure you have algif_skcipher kernel module loaded." and only the PBKDF2/argon2 lines.
+  A Logitech C920 enumerated (`lsusb` 046d:08e5), but no `/dev/video*` appeared.
+- `5.6.19-m4-kbdled-test` (built from `pc/pyra-crossbuild.sh kernel-m4-kbdled-test` with
+  `M4_KBDLED_ASKED`, tarball SHA-256 `16478cec08934a51e411971f35df9a3bd6c353c83b85480bf67fad1b99cf8304`, installed into
+  `l1`, one boot via `pyra-boot-kernel.sh debug l1 --once`): `cryptsetup benchmark` ran every test (aes-xts
+  256b 61.0/60.9 MiB/s, all on `aes-generic`). A LUKS2 file was formatted and passphrase-checked as the user,
+  then opened, given ext4, written and read back with sudo. The C920 captured at 29.9 fps (YUYV 640x480) and
+  30.1 fps (MJPG 1280x720). `write_bytes` in `/proc/self/io` counted an 8 MiB fsynced ext4 write.
+  `systemctl --failed` was empty. The boot's only kernel trace was the documented L3 error during panel power-on
+  (`troubleshooting.md`, "One more thing the display does on every boot"), which r3's previous boot also logged.
+- The next boot came back to `l5` (`pyra-boot-kernel.sh status`: running `5.6.19-m4-kbdled`, revert disarmed).
+  The test kernel stays installed in `l1`.
