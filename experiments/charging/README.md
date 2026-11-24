@@ -657,3 +657,76 @@ CHGTERM). It is gentler on the cell while the TS pin is the only cell
 protection. The 4.19 V test charge was not run. The draft patch stays in
 `patches/proposed/` for anyone who wants the extra capacity and will log
 that charge first.
+
+## The guard (2026-11-24, E9 step c)
+
+`device/pyra-charge-guard.sh` leans on the charge current before the TS pin's
+hard stop, instead of only after it. The TS pin alone (above) is enough
+protection on its own, so this does not replace it; it just means the hard
+stop — full current one moment, `HOT` and no charging the next, no warning —
+happens less often, by giving something up well before the real trip.
+
+**Why REG02 and not the sysfs file fix 8 uses.** `max_current`, the knob
+`pyra-charge-current.sh` and `pyra-chgwatch.sh` already touch, is the bq2429x
+driver's own attribute for the *input* current limit (REG00). The *charge*
+current (REG02, ICHG) has no sysfs attribute at all — only `max_current` and
+`otg` are writable on this driver — so the guard reads and writes REG02
+directly over i2c, with `i2cget`/`i2cset -f` (force, since the kernel driver
+has already claimed the address and a plain open would get `-EBUSY`). Checked
+against TI's SLUSBP6D (rev D, April 2023) Table 9-9: REG02 bits 7:2 are
+ICHG[5:0], offset 512 mA, 64 mA/step, 512-3008 mA; bits 1:0 are BCOLD and
+FORCE_20PCT. The measured `0x60` is ICHG `011000` = 2048 mA with both low
+bits 0 — the same `chg_current = 2048000` the driver logs from the device
+tree at probe (`docs/fixes.md` "Fix 8"), so nothing between probe and now
+ever touches it, which is what makes a forced userspace write to this one
+register safe: there is no driver write to race against, and a read of the
+force-written register agrees with the driver's own `registers` file
+(verified 2026-11-24, `verification-log.md`). The guard only ever writes
+ICHG; bits 1:0 are read once at the start and carried through unchanged on
+every update, never interpreted.
+
+**The state machine is a thermostat, not a ladder:** full current (whatever
+the device tree asserts, 2048 mA by default) until the margin — the same
+`in0_mV - vtco_mV` `pyra-chgwatch.sh --ts` logs — falls to 60 mV, then the
+chip's 512 mA floor until the margin climbs back to 90 mV. The 30 mV gap is
+not a free choice: it is VTCO to VHTF, the same hysteresis the charger's own
+TS comparator uses, so the guard lets go again only once the real trip would
+have too. 60 mV sits comfortably above the ~15 mV this README already treats
+as "already at the trip" (the 5 µA source's offset uncertainty, above). Unlike
+the thermal daemon's old charge ladder (the "What a replug does" and
+"2026-10-22" sections above), this reads a signal that actually tracks the
+pack and has hysteresis, so it cannot be the thing that flapped the limit
+every few seconds.
+
+**Why reduce rather than just warn.** Nothing here can act on the TS pin
+itself; REG02 is the one write that lowers the heat a charge puts into the
+pack without touching REG00 (fix 8's) or the voltage (REG04, kept at 4.048 V
+by owner decision). It is explicitly not a ladder with multiple steps:
+one reduction, one restore, which is enough to buy time near the trip without
+the complexity (and the oscillation risk) of more rungs.
+
+**Fails toward the safe side.** Nothing else ever writes REG02 after probe,
+so a kill mid-reduction leaves the charger at the lower current rather than
+silently snapping back to full under a hot pack — the script does not restore
+on exit, only on the margin actually recovering, or the charger going offline.
+To stop a stuck reduction from outliving a crashed run the other way, every
+start re-asserts the full value first, whatever REG02 currently reads.
+
+**Verified 2026-11-24** on the R99 test card (`docs/verification-log.md`):
+the i2c write/readback round trip (both directions, against the driver's own
+`registers` file too) and the script's own run (asserted 2048 mA, logged to
+the journal). The margin arithmetic and the hysteresis band were checked
+separately against synthetic IN0 values, since the card was at 89 %/`Full`
+(CHGTERM) the whole session and IN10 (VBUS) reads stale/zero outside an
+active charge, so no real margin was available to drive it. **Not done:** a
+real charge with the guard attached, through an actual reduction and restore
+(NEXT, same ID, step (c) continued) — needs either the pack to fall below the
+recharge threshold on its own or a physical unplug/replug.
+
+Not yet a prep fix: the owner decided E9 is not needed for the release, and
+this step only had to produce the guard, not land it. If it goes in later, it
+needs a systemd unit (started on the charger's plug event, like fix 8's
+udev rule, or run continuously), a config file for `FULL_MA`/`REDUCED_MA`/
+the margin thresholds (currently env-var overrides only, `PYRA_CHARGE_GUARD_*`),
+and the "not yet calibrated to °C" caveats above still apply to the margin the
+same as they do to `pyra-chgwatch.sh --ts`.

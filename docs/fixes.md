@@ -638,6 +638,13 @@ divider (measured 2026-11-19; the °C conversion is not calibrated yet;
 trips on this board has not been measured; the ~38°C figure is from another
 board.
 
+A guard exists now (`device/pyra-charge-guard.sh`, 2026-11-24,
+`experiments/charging/README.md` "The guard"): it reads the margin to the
+charger's own hot cut-off and lowers REG02 before that cut-off trips, with
+hysteresis. It is not a prep fix — the release decision above stands — and it
+has not yet gone through a real charge with a reduction and restore on
+hardware (NEXT E9).
+
 **What it assumes, which you should know before raising the number.** It
 asserts a current; it detects nothing, because nothing here can. Proper BC1.2
 detection means driving `FORCE_DPDM` in the bq24297's REG07, and that belongs

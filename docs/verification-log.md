@@ -2965,3 +2965,37 @@ CPU board V5.3, mainboard V5.3, the R99 release card. The asset is `m4-kbdled-ke
   this time: `CONFIG_USB_VIDEO_CLASS=m` is in the config (the C920 capture is in the entry above).
 - **Selftest:** `pc/pyra-prep-selftest.sh` with this asset as `PYRA_KERNEL_TARBALL`: 476 passed, 0 failed,
   0 skipped. Prep reported the tarball as "the published release kernel-5.6.19-r4".
+
+## 2026-11-24 — charge guard: the register path, on the R99 test card (E9 step c)
+
+CPU board V5.3, mainboard V5.3, the R99 release card (kernel r4 in `l5` since R107), charger at `Full`
+(CHGTERM, 89%, `current_now` 0) throughout — no active fast charge this session, so this is the register
+path only, not a margin-driven reduction. `device/pyra-charge-guard.sh` added; see `experiments/charging/README.md`
+"The guard" for what it does and why.
+
+- **REG02 is read-only from sysfs.** The bq2429x_charger client exposes only `max_current` (REG00) and `otg`
+  as writable attributes; `registers` is read-only. There is no sysfs knob for the charge current, unlike the
+  input limit, so the guard goes straight to the i2c bus: `i2cget -f -y 1 0x6b 0x02` reads `0x60` without
+  disturbing the bound driver (`-f` bypasses the `I2C_SLAVE` busy check the kernel driver's claim on the
+  address would otherwise trip). Confirmed against TI SLUSBP6D (rev D, April 2023) Table 9-9: REG02 bits 7:2
+  are ICHG[5:0], offset 512 mA, 64 mA/step, range 512-3008 mA (`000000`-`100111`); `0x60` decodes to ICHG
+  `011000` = 2048 mA, bits 1:0 (BCOLD, FORCE_20PCT) both 0 — exactly the `chg_current = 2048000` the driver
+  logs from the device tree at probe, so nothing between probe and now has touched it.
+- **A real write/readback round trip, by hand:** `i2cset -f -y 1 0x6b 0x02 0x00 b` (512 mA, the floor), then
+  `i2cget` and the driver's own `registers` file both read back `0x00`/`00` — no cache divergence between the
+  forced userspace write and the driver's view. Restored with `i2cset -f -y 1 0x6b 0x02 0x60 b`, confirmed
+  `0x60` both ways. `online` stayed 1 and `status` stayed `Full` throughout; nothing else observed to change.
+- **The script itself**, live (not `--dry-run`), 20 s at a 5 s step: asserted 2048 mA on start (logged to the
+  journal as `pyra-charge-guard`), then four samples with `in0_mV` 732-758 (consistent with a charger in) but
+  `in10_mV` reading 0 the whole time — channel 10 (VBUS) only updates during an active charge; at CHGTERM it
+  reads stale/zero, so `vtco_mV`/`margin_mV` were `NA` throughout and the guard correctly took no action. This
+  matches the script's own NA handling (`in10 < 4000` mV), not a bug: the two logged charges in NEXT E9 (steps
+  2a/2b, `ts-margin-charge-20261120.tsv`) were both taken during active fast charging, where IN10 reads ~4900 mV.
+- **The margin/hysteresis arithmetic**, checked separately against synthetic IN0 at a fixed VBUS (4900 mV)
+  since no real margin was available this session: a run from 800 down to 678 mV and back to 800 correctly
+  dropped into `REDUCED` at margin 55 mV (`<=` 60), stayed there through the 13 mV trough without chattering,
+  and only returned to `FULL` at margin 95 mV (`>=` 90) — the 30 mV gap holding as designed.
+- **Not done this session:** a real charge with the guard attached, through an actual margin-driven reduction
+  and restore. The card was at 89%/`Full` the whole session; triggering fast charging again needs either the
+  pack to self-discharge below the ~100 mV recharge threshold (hours, unforced) or a physical unplug/replug,
+  neither of which fit here. Left as a NEXT step.
