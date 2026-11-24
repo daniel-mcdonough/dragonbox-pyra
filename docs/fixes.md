@@ -135,6 +135,24 @@ anything is written. The selftest sets a test password on the image's `pyra`
 with `--set-password` and checks the shadow hash. It also checks a test key's
 file, modes and owner, and that its comment didn't land.
 
+**Root is locked.** The vendor image's root password is `root`, the same on
+every card (yescrypt hash, last changed 2026-02-01; checked 2026-11-23 against
+the pristine image with libxcrypt's `crypt()`, trying only `pyra`, `root`,
+`toor` and empty). The wizard's `passwd -l root` hid it, so turning the wizard
+off left root open on every prepared card until this change. sshd keeps
+Debian's `prohibit-password` for root, so the password never worked over ssh.
+It did work at a console login, and `su` with it gave any program running as
+the user root without the user's password. Prep now locks root in every mode
+(`usermod -L`, which puts `!` before the hash); the user gets root through
+`sudo`. A locked root makes `sulogin` refuse the emergency and rescue shells
+("the root account is locked"), so prep also installs
+`emergency.service.d/` and `rescue.service.d/pyra-sulogin-force.conf`, which
+set `SYSTEMD_SULOGIN_FORCE=1`. A boot that fails into one of them gets a root
+shell on the console with no password. That gives nothing that holding the
+card doesn't already give. Recovery: `troubleshooting.md`, "Root is locked".
+The selftest (476 passed, 2026-11-23) asserts root locked after a plain run and after `--release`, the
+two drop-ins installed, and that a second run reports root already locked.
+
 Caveat from the original report: the wizard was never retested *after* X was
 properly fixed, so it may well behave now. Skipping it is the path known to
 work.

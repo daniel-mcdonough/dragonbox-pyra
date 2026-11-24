@@ -1804,6 +1804,35 @@ To fix it, give the keyring your own password. Open Passwords and Keys
 worth keeping, delete `~/.local/share/keyrings/login.keyring` and log in again,
 and it is recreated with your login password.
 
+## Root is locked: no root password, and a forgotten user password
+
+Prep locks root (fix 2): the vendor image's root password is `root`, on every
+card, and a locked root accepts no password at all. So `su` and a console login
+as root refuse. Use `sudo -i` from your own account, which is in the `sudo`
+group.
+
+**A boot that stops in emergency or rescue mode** ("You are in emergency
+mode") opens a root shell on the console without asking for a password. Prep's
+drop-ins set `SYSTEMD_SULOGIN_FORCE=1` for both units; without them, `sulogin`
+says the root account is locked and the boot goes no further. Fix what failed,
+often a line in `/etc/fstab`, then `systemctl default` or reboot.
+
+**A card prepared before root was locked** still has root's password `root`.
+Lock it and add the drop-ins with the fix 2 row of `procedure.md` section 9.
+Check with `sudo passwd -S root`, which should print `L` after the name.
+
+**A forgotten password for your own account.** Set a new one from a Linux PC
+with the card in a reader. `openssl passwd -6` asks for it twice and prints its
+hash. `chpasswd -e -R` (shadow-utils) writes that hash into the card's shadow
+file:
+
+    sudo mount /dev/sdX2 /mnt/pyra                       # p2, the f2fs rootfs
+    printf '%s:%s\n' yourusername "$(openssl passwd -6)" | sudo chpasswd -e -R /mnt/pyra
+    sudo umount /mnt/pyra && sync
+
+The login keyring keeps the old password. Change it or delete it as in "Asked
+for a keyring password that is not yours", above.
+
 ## Nubs, d-pad or game buttons dead after a game or DBP crashed
 
 Many launchers (DBPs, emulators) run `sudo pyrainputctl overload <file>`

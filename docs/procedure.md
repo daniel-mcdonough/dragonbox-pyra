@@ -245,6 +245,11 @@ re-running it is safe and just reports what is already in place. Fix 14
 rebuilds each initrd under qemu the first time, which took under a minute on
 an x86 PC for the stock image's one kernel.
 
+**Root (fix 2).** The vendor image's root password is `root`, on every card.
+Prep locks root in every mode, and the user gets root through `sudo`. The
+emergency and rescue shells still open, without a password, on the console
+(`troubleshooting.md`, "Root is locked").
+
 **The user.** Pick a name the image doesn't have. The image already has a
 `pyra` account, and its password isn't documented. If you name `pyra`, or any
 other existing user, prep leaves that password alone unless you add
@@ -724,6 +729,7 @@ from `device/`, with `--check` first if you want to see the state:
 
 | Fix | Changed file | Re-run with | Re-running it |
 |---|---|---|---|
+| 2 | `etc/systemd/system/{emergency,rescue}.service.d/pyra-sulogin-force.conf` | from `device/`: `for u in emergency rescue; do sudo install -D -m 0644 etc/systemd/system/$u.service.d/pyra-sulogin-force.conf /etc/systemd/system/$u.service.d/pyra-sulogin-force.conf; done && sudo systemctl daemon-reload`, then `sudo passwd -l root` | a card prepared before root was locked has the vendor's root password, `root` (`troubleshooting.md`, "Root is locked") |
 | 5 | `pyra-usb3503-rescue` | step 2 | updated by step 2 |
 | 5 | `pyra-usb3503-rescue.service` | `sudo install -m 0644 pyra-usb3503-rescue.service /etc/systemd/system/ && sudo systemctl daemon-reload` | nothing else installs the unit on a running card |
 | 6 | `pyra-thermal-fix.sh` | `sudo ./pyra-thermal-fix.sh` | does nothing once applied; see below |

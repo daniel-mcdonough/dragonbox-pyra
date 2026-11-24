@@ -385,6 +385,18 @@ else
     rm -f "$OUT/.g"
 fi
 
+# fix 2 — root locked (the vendor's root password is 'root'), and sulogin let
+# through to the emergency and rescue shells
+RHASH=$(awk -F: '$1=="root"{print $2}' "$MNT/etc/shadow")
+[[ $RHASH == '!'* ]] && p "fix2: root is locked (shadow '!...')" || f "fix2: root is not locked (shadow '${RHASH:0:3}...')"
+grep -q 'fix2: locked root' "$OUT/prep-run1.log" && p "fix2: run 1 locked the vendor image's root" || f "fix2: run 1 did not report locking root"
+for u in emergency rescue; do
+    D=$MNT/etc/systemd/system/$u.service.d/pyra-sulogin-force.conf
+    cmp -s "$PAYLOADS/etc/systemd/system/$u.service.d/pyra-sulogin-force.conf" "$D" && [[ $(stat -c '%a %u:%g' "$D") == "644 0:0" ]] \
+        && p "fix2: $u.service.d/pyra-sulogin-force.conf matches repo, 0644 root:root" || f "fix2: $u.service.d/pyra-sulogin-force.conf missing, different or wrong mode"
+    grep -qx 'Environment=SYSTEMD_SULOGIN_FORCE=1' "$D" 2>/dev/null && p "fix2: $u.service gets SYSTEMD_SULOGIN_FORCE=1" || f "fix2: $u.service's drop-in does not set SYSTEMD_SULOGIN_FORCE=1"
+done
+
 # fix 3 — config, unit, enabled
 [[ -e $MNT/etc/pyrainput.cfg ]] && p "fix3: /etc/pyrainput.cfg present ($(stat -c %s "$MNT/etc/pyrainput.cfg") bytes)" || f "fix3: cfg missing"
 PYRAUNIT=""
@@ -1458,6 +1470,7 @@ fi
 # and it must say so, rather than silently rewriting
 grep -qE "fix2: the key is already authorised" "$OUT/prep-run2.log" && p "run 2 reported the ssh key already authorised" || f "run 2 did not report the ssh key already authorised"
 grep -qE "fix2: its password is unchanged" "$OUT/prep-run2.log" && p "run 2, without --set-password, left the password alone" || f "run 2 did not say it left the password alone"
+grep -q 'fix2: root is already locked' "$OUT/prep-run2.log" && p "run 2 reported root already locked" || f "run 2 did not report root already locked"
 grep -qE 'fix5: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported fix5 already up to date" || f "run 2 did not report fix5 up to date"
 grep -qE 'fix5: already enabled' "$OUT/prep-run2.log" && p "run 2 reported fix5 already enabled" || f "run 2 did not report fix5 already enabled"
 grep -qE 'fix6: .*already applies' "$OUT/prep-run2.log" && p "run 2 reported fix6 already applied" || f "run 2 did not report fix6 already applied"
@@ -1998,6 +2011,7 @@ i "release: NOPASSWD rules left (the vendor's, one command each): $(grep -shE '^
 [[ $(readlink "$MNT/etc/systemd/system/systemd-firstboot.service") == /dev/null ]] \
     && p "release: systemd-firstboot.service masked" || f "release: systemd-firstboot.service not masked"
 [[ ! -e $AK && ! -e $MNT/root/.ssh/authorized_keys ]] && p "release: no authorized_keys for pyra or root" || f "release: an authorized_keys file is there"
+[[ $(awk -F: '$1=="root"{print $2}' "$MNT/etc/shadow") == '!'* ]] && p "release: root is locked" || f "release: root is not locked"
 grep -qE 'fix21: .*already patched' "$OUT/prep-run3.log" && [[ $(sha256sum < "$WL" | cut -d' ' -f1) == "$SHA_FIXED" ]] \
     && p "release: the image carries the patched libpvrDRI3WSEGL.so" || f "release: the library is not the fixed build after run 3"
 APTLEFT=$(find "$MNT/var/lib/apt/lists" "$MNT/var/cache/apt" -maxdepth 2 -type f \( -path '*/lists/*' ! -name lock -o -name '*pkgcache.bin' \) 2>/dev/null | wc -l)

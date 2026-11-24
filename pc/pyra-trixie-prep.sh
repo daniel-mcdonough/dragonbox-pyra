@@ -15,6 +15,7 @@
 # has keeps its password unless --set-password is given: the vendor image ships
 # a 'pyra' account whose password is not documented. --ssh-key authorises that
 # public key for the user. Both are off unless asked for.
+# It also locks root, whose password in the vendor image is 'root'.
 #
 # Fix 19 installs the shipped kernel, 5.6.19-m4-kbdled, and makes it what the
 # card boots. With no option it offers to download the published release asset
@@ -341,6 +342,12 @@ stock|fixed) ;;
 *) die "fix21: $WSEGL_STATE
        Fix 21 patches only the known stock build of dri3wsegl-pyra 0.4; start from the vendor image" ;;
 esac
+# Fix 2 locks root; these drop-ins keep the emergency and rescue shells working.
+SULOGIN_UNITS="emergency rescue"
+for u in $SULOGIN_UNITS; do
+    [[ -r $PAYLOADS/etc/systemd/system/$u.service.d/pyra-sulogin-force.conf ]] \
+        || die "fix2: $u.service.d/pyra-sulogin-force.conf not found (looked in $PAYLOADS)"
+done
 # Fix 23's unit makes the host keys on the first boot, with the image's ssh-keygen.
 HOSTKEYS_UNIT_SRC=$PAYLOADS/pyra-ssh-hostkeys.service
 [[ -r $HOSTKEYS_UNIT_SRC ]] || die "fix23: pyra-ssh-hostkeys.service not found (looked in $PAYLOADS)"
@@ -1110,6 +1117,30 @@ done
 [[ ${#ADDED[@]}   -gt 0 ]] && ok   "fix2: added to groups: ${ADDED[*]}"
 [[ ${#SKIPPED[@]} -gt 0 ]] && info "fix2: groups absent from image, skipped: ${SKIPPED[*]}"
 info "fix2: $USERNAME now in: $(grep -E "^[^:]+:[^:]*:[^:]*:.*\b${USERNAME}\b" "$ROOT/etc/group" | cut -d: -f1 | tr '\n' ' ')"
+
+# --- root: locked, as the vendor's wizard left it ---------------------------
+# The image's root password is 'root', on every card; the wizard's
+# 'passwd -l root' is what hid it, and the wizard is off. The user gets root
+# through sudo. A locked root makes sulogin refuse the emergency and rescue
+# shells, so the drop-ins let it open them without a password.
+if [[ $(awk -F: '$1=="root"{print $2}' "$ROOT/etc/shadow") == '!'* ]]; then
+    ok "fix2: root is already locked"
+else
+    usermod -R "$ROOT" -L root
+    ok "fix2: locked root (the image's root password is known)"
+fi
+for u in $SULOGIN_UNITS; do
+    src=$PAYLOADS/etc/systemd/system/$u.service.d/pyra-sulogin-force.conf
+    dst=$ROOT/etc/systemd/system/$u.service.d/pyra-sulogin-force.conf
+    if [[ -e $dst ]] && cmp -s "$src" "$dst"; then
+        ok "fix2: $u.service.d/pyra-sulogin-force.conf already up to date"
+    else
+        VERB=$([[ -e $dst ]] && echo updated || echo installed)
+        install -d -m 0755 -o 0 -g 0 "$(dirname "$dst")"
+        install -m 0644 -o 0 -g 0 "$src" "$dst"
+        ok "fix2: $VERB $u.service.d/pyra-sulogin-force.conf (a root shell on a failed boot)"
+    fi
+done
 
 ########################################################################
 # Fix 3 — funkeymonkey-pyrainput 0.1.19 (trixie) ships no systemd unit
