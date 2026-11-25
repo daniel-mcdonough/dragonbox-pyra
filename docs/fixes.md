@@ -2135,6 +2135,14 @@ the unit again.
 to rest, and Fn+brightness steps the keyboard light from the config with fix
 15's drop-in moved aside.
 
+**Checked again** 2026-11-25 on the R99 test card, this time through the
+packaged install prep itself puts down (not a manual `dpkg -i`) and after a
+real boot, not a reload (`verification-log.md`): version, the service running
+from the package's own unit file (`dpkg -S` confirms it, `dpkg -V` flags
+nothing but the expected conffile), and Fn+Esc — three presses each opened
+MATE's screenshot tool, the desktop-session face of the same `KEY_SYSRQ` this
+section calls "SysRq (PrtScrn)".
+
 ## Fix 30 — touchscreen calibration does nothing, and the pointer jitters
 
 **Symptom.** The menu's "Calibrate Touchscreen" runs `xinput_calibrator` 0.8.0.

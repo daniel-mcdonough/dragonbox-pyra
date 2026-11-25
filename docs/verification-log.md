@@ -3145,3 +3145,27 @@ flagging the USB3503 hub risk from the prior session's second reboot; the hub su
   state holds immediately after the script runs, rather than only checking whether the script's own calls
   succeeded, is what found the real culprit here — the script was always right; something arriving later undid
   it.
+
+## 2026-11-25 — fix 29, funkeymonkey-pyrainput from the packaged unit, on the R99 test card
+
+R99 (`<ssh-alias>`), kernel r4 in `l5`. NEXT R15's fix-29 sub-item: the only prior check (R87) was a
+`dpkg -i` of the `.deb` on the r5 card, not the packaged install path through prep, and the SysRq press was
+never attempted. R99 has the package from prep itself, and was already sitting on a real boot from the same
+session that closed R109 (booted 04:27:14 CET, no reboot forced for this check):
+
+- `dpkg-query -W funkeymonkey-pyrainput` → `0.1.19+pyra1`.
+- `systemctl status pyrainput.service` → active (running) since 04:27:40, 26 s after boot — started by the
+  unit at boot, not a manual start. `dpkg -S /usr/lib/systemd/system/pyrainput.service` confirms the package
+  owns that file (not a leftover fix-3 write); `dpkg -V funkeymonkey-pyrainput` flags only the expected
+  conffile (`/etc/sudoers.d/pyrainput`), nothing else altered.
+- Fn+Esc: watched `sudo journalctl -k -f` over ssh while the owner pressed it three times on the device. All
+  three presses opened MATE's screenshot tool (its default binding for the `Print` keysym, which is what
+  `KEY_SYSRQ` maps to in a desktop session) and nothing was added to the kernel log — expected, since the
+  kernel's magic-SysRq console handler isn't what a desktop session exercises; this is the same "SysRq
+  (PrtScrn)" key patch 0003's commit message refers to. Confirms the patched keycode reaches the running
+  session correctly; the first watch attempt (plain `journalctl -k -f`, no sudo) showed nothing at all because
+  this ssh user isn't in `adm`/`systemd-journal` and can't read kernel-facility journal entries without sudo —
+  worth knowing for any future over-ssh kernel-log check on this card.
+
+All three of fix 29's R15 checks pass on the packaged path, from a real boot. NEXT R15's fix-29 bullet marked
+done.
