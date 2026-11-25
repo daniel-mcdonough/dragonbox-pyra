@@ -83,6 +83,14 @@ and `dmesg` shows `aufs opt_add:...: lookup failed .../dragonbox/appdata/<id> (-
 Rebooting doesn't help. Fix the ownership (the `chown` above). Reproduced
 2026-11-21 by calling `dbp-cmd mount` directly, which skips that step.
 
+**The appdata directory name is the `.desktop`'s `Appdata=` key, not the
+package id**, and they aren't always the same string. Calling `dbp-cmd mount`
+directly (skipping `dbp-run`'s own directory creation, as above) needs
+`mkdir -p dragonbox/appdata/<Appdata>` — using `<id>` instead gives the same
+`lookup failed .../dragonbox/appdata/<Appdata> (-2)` even though a same-named
+`dragonbox/appdata/<id>/` already exists. Seen 2026-11-25 with
+`casio_sw-10_m-ht` (`Id=casio_sw-10_m-ht`, `Appdata=casio_sw-10`).
+
 To undo an install:
 
     dbp-cmd unregister /dragonbox/packages/GBAemu-1.5.46.02.dbp
