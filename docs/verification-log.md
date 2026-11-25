@@ -3434,3 +3434,56 @@ actually hold on trixie?
   this session (that card wasn't in — see above).
 - Left on the card: `/dragonbox/packages/ScummVM-Pyra-2026.4.0.dbp` (registered, won't launch); harmless to
   leave in place as evidence, matches how other dead-end DBPs in that folder are already kept.
+
+## 2026-11-25 — Streets of Rage Remake (bennugd): does it start, and do saves survive ALT+ENTER? (R115)
+
+Neither of the two SD cards answered over ssh (host-key mismatch on both). The R99 test
+card answered, kernel `5.6.19-m4-kbdled` (r4 in `l5`). From the forum review's compatibility list: the
+forum says the bennugd port failed on bookworm with missing libraries, and that with sdl12-compat plus
+gl4es "after every play the savegame seems corrupt". That is the question whether fix 21's double `close()`
+writes log records into a save.
+
+- **In the DBP repository: yes.** The release thread (2021-01-01) links `https://pyra-handheld.com/repo/apps/2`
+  ("Streets of Rage Remake", TrashyMG). Its embedded JSON lists 5.1 (newest, download id 38,
+  `https://pyra-handheld.com/repo/packages/SoRR_Trashy/38/download`, MD5 `a583bc081638eac004678f0b06f5ee13`,
+  868117 bytes) and 5.0 (id 3). Downloaded on the PC, MD5 matched. It is a 2021 squashfs that holds the
+  bennugd engine only. The thread says the game data (`SorR.dat` and friends) is not shipped: "you will need to
+  source the data files yourself". Metadata: `Id=SoRR_Trashy`, `Exec=SoRR`,
+  `Dependency[deb]=libsdl-mixer1.2;`.
+- **Install: pass.** scp'd to `/dragonbox/packages/` (MD5 re-checked on the card). The watched folder
+  registered it in about 4 s: `dbp-cmd list` shows `SoRR_Trashy`. It got
+  `/usr/share/applications/__dbp__SoRR_Trashy_default.desktop` and `/usr/local/games/SoRR`. Its one declared
+  dependency is installed (`libsdl-mixer1.2` 1.2.12-19+b1, an exact name in `/var/lib/dpkg/status`), so
+  `dbp-run`'s missing-dependencies dialog has nothing to list.
+- **Libraries: one is really missing, `libcrypto.so.1.1`.** Mounted read-only (`dbp-cmd mount SoRR_Trashy`). The
+  package is `bin/bgdi` (the bennugd interpreter, armhf PIE), `bin/bgdc`, `bin/moddesc` and 49 bennugd modules
+  in `lib/`, launched by `LD_LIBRARY_PATH=.../lib ./bin/bgdi ./SorR.dat`. With that `LD_LIBRARY_PATH`, `ldd`
+  across all 52 ELF files gives only one `not found`: `libcrypto.so.1.1`, which every file links (`readelf -d`:
+  52 of 52, `bgdi` included). The other external sonames resolve: `libSDL-1.2.so.0` (29 files) loads
+  `libsdl1.2pyra` 1.2.15, the vendor's SDL 1.2, not sdl12-compat; `libSDL_mixer-1.2.so.0` (which brings in
+  `libfluidsynth.so.3` and SDL2); `libz`, `libpng16`, `libX11`.
+  I checked the missing one with apt before trusting `ldd`. `find / -xdev -name 'libcrypto.so*'` finds only
+  `libcrypto.so.3`. `apt-cache policy libssl1.1` is empty. `apt-cache search --names-only '^libssl'` lists
+  `libssl3t64` as the only runtime. trixie ships no OpenSSL 1.1 and the DBP bundles none. Bookworm also
+  ships only OpenSSL 3, so this most likely explains the bookworm report ("missing libraries ... higher
+  versions than the one required", 2025-09-29). That part is an inference: the forum post doesn't name the
+  libraries.
+- **Starts: no (from `ldd`, not run).** `bgdi` needs `libcrypto.so.1.1` directly, so the dynamic linker
+  stops it before any engine code runs. Tool permissions block running a freshly fetched binary in this
+  session, as in R94, R110 and R113. To see the loader message on the card:
+  `dbp-run --log-output --chdir SoRR_Trashy SoRR`, then
+  `cat /tmp/dbpout/dbprun-SoRR_Trashy-stderr.log`. Expected: `./bin/bgdi: error while loading shared libraries:
+  libcrypto.so.1.1: cannot open shared object file`. Even with the library present, the game also needs data
+  files you supply yourself in its appdata folder.
+- **Save corruption after ALT+ENTER: not reachable.** The game doesn't start, and there is no game data.
+  Neither fix 21's signature (text or log lines inside the save) nor the forum's own explanation (TrashyMG,
+  2025-07-09: the config file rewritten on exit corrupts something) could be checked. One forum detail cuts against a
+  fix-21-only story: #42 (2025-08-18) says the start-up failure "shows the same problem at the start even
+  without" gl4es. Without gl4es the game doesn't render through the SGX WSEGL, so fix 21's double close
+  shouldn't apply.
+- Unmounted after (`dbp-cmd umount`; a few seconds later `mount | grep -i sorr` was empty). Left on the card:
+  `/dragonbox/packages/SoRR_Trashy-5.1.dbp`, registered, plus an empty `/dragonbox/appdata/SoRR_Trashy/`.
+  Same as the other dead-end DBPs there.
+- To get further: a rebuild of bennugd against trixie's OpenSSL 3, or a DBP that bundles `libcrypto.so.1.1`
+  in its own `lib/` (`docs/dbp.md`, "Library names"). Then supply the data files and repeat the save check.
+  No prep fix applies.

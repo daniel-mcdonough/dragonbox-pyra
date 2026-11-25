@@ -159,7 +159,11 @@ library whose ABI passes a `time_t` was rebuilt with a 64-bit one, and its
   2026.4.0 hits this one directly: its dependency dialog claims `libflac12`
   missing (true this time, not a t64 rename) and the binary dies at the
   dynamic linker before any window opens (`verification-log.md`, R113); the
-  DBP bundles no libraries of its own to fall back on.
+  DBP bundles no libraries of its own to fall back on. Streets of Rage Remake
+  5.1 (bennugd, 2021) hits the OpenSSL one with no dialog at all: its only
+  declared dependency is installed, but all 52 of its binaries link
+  `libcrypto.so.1.1` (`verification-log.md`, R115). A clean dialog is no more
+  proof than a noisy one; run `ldd`.
 
 A missing soname needs a DBP rebuilt against trixie, or a DBP that bundles its
 libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
