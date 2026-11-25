@@ -16,6 +16,12 @@ nothing goes through apt. Most forum releases ship this way.
 
 ## Install one
 
+A repository app page like `https://pyra-handheld.com/repo/apps/161` is HTML, not the package — fetching that
+URL gets back a web page, not a `.dbp` (check with `file` before trusting a download). The actual file is at
+`https://pyra-handheld.com/repo/packages/<name>/download`, a link the page carries in an embedded JSON blob
+rather than a plain `<a href>`. Tested 2026-11-24 with `dbpInstaller_sebt3`: the `/download` URL matched the
+repository's listed MD5.
+
 Put the `.dbp` in `dragonbox/packages/` at the root of any mounted filesystem.
 That can be a second SD card, or the system card itself:
 

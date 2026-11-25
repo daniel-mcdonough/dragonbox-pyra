@@ -3033,3 +3033,24 @@ CPU board V5.3, mainboard V5.3, the R99 release card (`<ssh-alias>`), kernel r4 
   `sudo systemctl restart pyra-thermal`: within 3 s, `scaling_max_freq` read `1000000` on cpu0. Restored with
   `sudo rm /etc/default/pyra-thermal`; within 3 s the ceiling returned to `1500000`, matching `fixes.md`'s "no
   file, no ceiling" default and the selftest's assumption.
+
+## 2026-11-24 — fix 32, DBP Installer launch+download, on the R99 test card
+
+R99 (`<ssh-alias>`), same card as above. Finishes the partial check from earlier the same day: the Installer
+app itself, not shipped by prep, fetched onto the card and launched.
+
+- **Fetched `dbpInstaller_sebt3` 1.2.1.** The app page `https://pyra-handheld.com/repo/apps/161` is HTML, not
+  the package; its embedded JSON gives the real link,
+  `https://pyra-handheld.com/repo/packages/dbpInstaller_sebt3/download`. Fetched on the PC with `curl` (no
+  `curl`/package-manager changes made on the card): MD5 `0177ded6197a2f9df0f4e3d1a76bcb80`, matching the
+  repository listing and `docs/dbp.md`. scp'd to `~pyra` on the card, MD5 re-checked there (same hash).
+- **Install (R94): pass.** Copied the `.dbp` into `/dragonbox/packages/`; `dbpd`'s inotify watch on that folder
+  was already live (fix 32's link predates this session), so `dbp-cmd list` showed `dbpInstaller_sebt3`
+  registered within 3 s, no manual `dbp-cmd register` needed.
+  `dbp-run --chdir dbpInstaller_sebt3 dbpInstaller.sh cards` updated its package cache from the DBP repository
+  and printed `RootFs` — no `ModuleNotFoundError: No module named 'apt_pkg'`.
+  `dbp-run --chdir dbpInstaller_sebt3 dbpInstaller.sh -d RootFs install icefieldfrenzy.farox` downloaded to
+  100% and exited 0. `~/dragonbox/packages/icefieldfrenzy.farox.dbp` appeared immediately after, and
+  `dbp-cmd list` showed it registered (`'/dragonbox/packages/icefieldfrenzy.farox.dbp' 'icefieldfrenzy.farox'
+  nodesktop`) right away — the `~/dragonbox` → `/dragonbox` link (fix 32) is what let `dbpd`'s existing watch
+  pick it up. NEXT R15's fix-32 sub-item is done on this card.
