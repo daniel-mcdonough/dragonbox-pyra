@@ -718,10 +718,16 @@ the i2c write/readback round trip (both directions, against the driver's own
 the journal). The margin arithmetic and the hysteresis band were checked
 separately against synthetic IN0 values, since the card was at 89 %/`Full`
 (CHGTERM) the whole session and IN10 (VBUS) reads stale/zero outside an
-active charge, so no real margin was available to drive it. **Not done:** a
-real charge with the guard attached, through an actual reduction and restore
-(NEXT, same ID, step (c) continued) — needs either the pack to fall below the
-recharge threshold on its own or a physical unplug/replug.
+active charge, so no real margin was available to drive it.
+
+**Verified through a real charge, 2026-11-25** (`docs/verification-log.md`):
+the pack had discharged to 15 % / 3.675 V, below the ~3.95 V recharge
+threshold, so a normal charger plug-in drove the margin down on its own —
+no forced unplug/replug needed. Three full thermostat cycles over ~35
+minutes of active charging (reduce at 60/59/56 mV, restore at 91/96/90 mV),
+`reg02` tracking `FULL`/`REDUCED` exactly on every sample, no `FORCE_20PCT`
+warning, no `HOT` fault in `dmesg`. Log: `experiments/charging/charge-guard-real-charge-20261125.tsv`.
+This was E9's last open item.
 
 Not yet a prep fix: the owner decided E9 is not needed for the release, and
 this step only had to produce the guard, not land it. If it goes in later, it

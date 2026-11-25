@@ -3229,3 +3229,31 @@ and triggered udev on an already-running X server, not through prep or a real co
 
 All three of fix 30's NEXT-R15 checks pass on a real boot through prep's own install path. NEXT R15's fix-30
 bullet marked done.
+
+## 2026-11-25 — charge guard: a real margin-driven reduction and restore (BACKLOG E9, done)
+
+On the R99 test card, kernel r4 in `l5`. Pack at 15% / 3.675 V, discharging, no charger — below the ~3.95 V
+recharge threshold the owner had been waiting for (BACKLOG E9's deliberate wait). `device/pyra-charge-guard.sh`
+and `pyra-chgwatch.sh` had never been copied to this card; deployed to `~pyra` and started under its NOPASSWD
+sudo (`~/pyra-charge-guard.sh ~/pyra-charge-guard-20261125-181011.tsv 14400 10`, nohup'd and disowned so it
+survives the ssh session) before the charger went in, logging every 10 s.
+
+- Start: asserted `FULL` (2048 mA, `reg02` `0x60`); margin read `NA` on battery, as expected (IN10 stale
+  without a charger).
+- Charger plugged in at t=51s: `chg_status` flipped to `Charging`, `bat_ua` went positive (~1.4 A in), margin
+  started at 101 mV and fell as the gauge warmed.
+- Three full thermostat cycles over ~35 minutes of active charging, cap 15% → 23%:
+  - 18:19:36 reduced 2048 → 512 mA, margin 60 mV (cap 18%)
+  - 18:25:30 restored 512 → 2048 mA, margin 91 mV (cap 19%)
+  - 18:27:11 reduced, margin 59 mV (cap 20%)
+  - 18:34:14 restored, margin 96 mV (cap 21%)
+  - 18:35:25 reduced, margin 56 mV (cap 21%)
+  - 18:45:31 restored, margin 90 mV (cap 23%)
+- `reg02` tracked `ichg_mA` exactly on every sample (`0x00` in `REDUCED`, `0x60` in `FULL`) — no divergence, no
+  `FORCE_20PCT` warning. `dmesg` showed only the normal `bq2429x_usb_detect` line at plug-in, no `HOT`/fault.
+- Left running (nohup, default 4 h duration) on the card past the end of this session; it keeps logging to the
+  same file and auto-restores on charger-offline, so a later unplug needs no manual follow-up.
+
+Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (215+ lines as copied; the on-device
+file may have grown further). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
+"The guard".
