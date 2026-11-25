@@ -3054,3 +3054,45 @@ app itself, not shipped by prep, fetched onto the card and launched.
   `dbp-cmd list` showed it registered (`'/dragonbox/packages/icefieldfrenzy.farox.dbp' 'icefieldfrenzy.farox'
   nodesktop`) right away — the `~/dragonbox` → `/dragonbox` link (fix 32) is what let `dbpd`'s existing watch
   pick it up. NEXT R15's fix-32 sub-item is done on this card.
+
+## 2026-11-24 — fixes 9 and 10 across real reboots, on the R99 test card
+
+R99 (`<ssh-alias>`), kernel r4 in `l5`. NEXT R15's fix-9/fix-10 sub-item: both audio fixes were only ever
+confirmed by a manual trigger before (fix 9: `udevadm trigger`; fix 10: `systemctl start user@105.service` by
+hand). Three real boots this session, two `sudo reboot` over ssh and one owner-initiated power cycle between
+them (the USB3503 hub died on the second `sudo reboot` — see below). Checked right after each boot, before any
+login at the console could tear down the greeter's manager.
+
+- **Fix 10 (greeter PulseAudio): pass, both times it could be checked (boot 1 and boot 3).** Within seconds of
+  each boot, `user@105.service` (the lightdm greeter's manager) was `active (running)` with nobody yet logged
+  in at the console, and
+  `sudo -u lightdm XDG_RUNTIME_DIR=/run/user/105 systemctl --user show pulseaudio.service -p ConditionResult`
+  (and the same for `.socket`) read `ConditionResult=no` on both — no manual start needed, confirming the
+  drop-ins from `device/pyra-greeter-audio.sh` skip the greeter's PulseAudio on a real boot, not just when
+  started by hand. The journal shows it directly too: `pulseaudio.socket - Sound System was skipped because of
+  an unmet condition check (ConditionUser=!lightdm)`, same for the service, both within a second of
+  `pyra-audio-select.service` finishing. Boot 2 (the power-cycle) couldn't be checked for this: by the time ssh
+  came back the owner had already logged in at the console and the greeter's manager had already exited.
+- **Fix 9 (audio routing): a real, reproducible boot-time bug, not caught before.** All three boots: `Handsfree
+  Left/Right Playback` came up `HF DAC` (speakers routed) every time, but `Headset Left/Right Playback` came up
+  `Off` every time — headphones silent, speakers fine, same rule, same boot. Confirmed this isn't transient: on
+  boot 3 it was still `Off` 20+ s after boot. `amixer -c L15 cget` showed `values=1,1,0,0` for the four controls
+  in enum order (`Off`=0 for both pairs) — not the literal string "On" either way, since neither control's enum
+  has an item by that name; "routed" (`HF DAC`/`HS DAC`) vs `Off` is what matters.
+  `sudo udevadm trigger --subsystem-match=sound --action=add` fixed it instantly, every time it was tried, which
+  rules out the rule or `pyra-audio-route-apply` itself being broken — it's specifically a boot-time race. The
+  script has no error logging for the four-route loop (only the AESS-DSP block below it does), so nothing in the
+  journal records the miss; `journalctl -b` just shows `omap-abe-twl6040 sound: twl6040-dl2 <-> mcpdm-abe-dl2
+  mapping ok` and the headset jack input device registering a good second or so after the card's `controlC*`
+  node appears (card number wasn't stable across boots either, 3 then 4), which is around when the rule's
+  `RUN+=` would fire. Left as a new NEXT item (fixes.md Fix 9 section updated with this finding) rather than
+  fixed in this session.
+- **The USB3503 hub died on the second `sudo reboot`.** R99 was unreachable on both the USB-ethernet
+  (`<usb-address>`) and WLAN (`<wlan-address>`) addresses for about nine minutes — boot 1 had come back in under
+  20 s — matching Fix 5's documented failure mode (`docs/fixes.md`, `docs/troubleshooting.md` "USB is dead after
+  a warm reboot"): the rescue unit normally recovers the hub within seconds, but this time it didn't, and the
+  stated way back in without console access is a physical power cycle. The owner power-cycled the card by hand;
+  it came back and fix 9's headset bug reproduced identically on that boot too (see above), but fix 10 couldn't
+  be checked on it (see above). No further diagnosis attempted — this is Fix 5's known class of fault, not a new
+  one, and the session had no console access to investigate further.
+- NEXT R15's fix-9/fix-10 sub-item: fix 10 is done; fix 9 is not — moved to a new NEXT item for the boot race.

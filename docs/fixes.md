@@ -818,8 +818,21 @@ and leaves it untouched.
 
 **Verified:** all four routes and the headset volume were knocked back to
 `Off`/`0,0` and an `add` event fired with `udevadm trigger --subsystem-match=
-sound`; all five came back. Sound confirmed by ear on both outputs. A full
-reboot has **not** been tested — that needs the machine free.
+sound`; all five came back. Sound confirmed by ear on both outputs.
+
+**A real reboot exposed a second race, distinct from this one: the headset
+routes lose it.** Checked on three real boots (`verification-log.md`,
+2026-11-24), the speaker routes (`Handsfree Left/Right Playback`) come up `HF DAC` every time,
+but the headset routes (`Headset Left/Right Playback`) came up `Off` all
+three times — headphones silent, speakers fine, on the same boot, from the
+same rule. `udevadm trigger --subsystem-match=sound` immediately fixes it
+once the system is up, which is what every prior check of this fix used, so
+the rule and the script are not themselves broken — something during the
+codec's own probe sequence wins a race against the `RUN+=` and leaves (or
+puts back) the headset path at `Off` after the script has already set it, or
+the headset's two controls aren't live yet when `RUN+=` fires and those
+`cset` calls silently no-op (the four-route loop has no error logging, unlike
+the AESS block below it). Left as NEXT R109 rather than fixed here.
 
 ### What this fix is not
 
