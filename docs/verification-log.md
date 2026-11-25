@@ -3258,6 +3258,11 @@ Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (215+ lin
 file may have grown further). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
 "The guard".
 
+This same real charge also answers R15's "charging on `5.6.19-m4-kbdled`" line: charger detected
+(`bq2429x_usb_detect`, `chg_status` → `Charging`), `bq2429x` status in `dmesg`/sysfs sane (`reg02` tracking
+exactly, no divergence), no `HOT` fault, and capacity rising (15% → 23%) — all on kernel r4, which is
+`5.6.19-m4-kbdled`. No separate charge was needed for that line.
+
 ## 2026-11-25 — U-Boot's own banner on the serial line at power-on (R85)
 
 FTDI adapter (`ttyUSB1`, 1500000 baud, `stty raw` + `cat`) opened and capturing on the PC before the Pyra
