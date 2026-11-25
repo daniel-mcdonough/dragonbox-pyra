@@ -418,7 +418,9 @@ The tables under *The AESS path* say what each needs to be.
 `device/pyra-audio-route.sh --check` prints both sets, from a checkout. For either, `sudo /usr/local/sbin/pyra-audio-route-apply` sets
 them; if that file does not exist fix 9 is not installed. Then restart
 PulseAudio, because a sink that failed to load at login does not come back by
-itself.
+itself — but restarting PulseAudio is itself what resets the headset pair
+back to `Off` on this card (R109, `fixes.md` Fix 9), so run the helper again
+*after* the restart, not only before it.
 
 **3. Is the PCM actually moving?**
 

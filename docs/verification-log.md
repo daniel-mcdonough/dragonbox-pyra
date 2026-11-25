@@ -3096,3 +3096,52 @@ login at the console could tear down the greeter's manager.
   be checked on it (see above). No further diagnosis attempted — this is Fix 5's known class of fault, not a new
   one, and the session had no console access to investigate further.
 - NEXT R15's fix-9/fix-10 sub-item: fix 10 is done; fix 9 is not — moved to a new NEXT item for the boot race.
+
+## 2026-11-25 — R109: fix 9's headset-route boot race, diagnosed and fixed
+
+R99 (`<ssh-alias>`), kernel r4 in `l5`. Owner approved rebooting R99 for this session (Part B rule 5), after
+flagging the USB3503 hub risk from the prior session's second reboot; the hub survived every reboot this time
+(back up in 21-24 s each time, no power cycle needed).
+
+- **The two working guesses in `fixes.md` were both wrong.** Installed the unmodified `pyra-audio-route-apply`
+  with `logger` calls added on failure (no retry) and rebooted: the four-route loop never logged a failure on
+  any boot, and an instrumented copy that logged every `cset` attempt plus the resulting value at +0 s, +2 s
+  and +5 s showed the headset pair set correctly on the very first attempt, still correct 5 s later, every
+  time. So the udev rule's own run of the helper was never losing a race against the codec or against the
+  controls not existing yet — it always worked. The routes were still `Off` by the time a check ran minutes
+  later, which meant something *after* the rule finished was undoing it.
+- **Confirmed the actual cause directly, without needing a boot:** on an already-up card with both headset
+  routes sitting at `HS DAC`, running `systemctl --user restart pulseaudio.service` alone — nothing else
+  touched — put both back to `Off` every time it was tried. `module-alsa-sink`'s own open of `hw:CARD=L15`
+  (from `pyra.pa`) is what resets the headset pair; the handsfree pair is never touched by it. On a real boot
+  this PulseAudio start happens a second or so after the udev rule's `RUN+=` already ran, which is why the rule
+  always looked correct right up until the point it didn't.
+- **The fix:** `/etc/systemd/user/pulseaudio.service.d/20-pyra-audio-route.conf` (now installed by
+  `device/pyra-audio-route.sh`) adds `ExecStartPost=/usr/local/sbin/pyra-audio-route-apply` to
+  `pulseaudio.service`. That unit is `Type=notify`, so `ExecStartPost` only runs once PulseAudio has signalled
+  ready — after it has already opened the card and reset the mixer — making the reassertion ordered correctly
+  by construction rather than by guessing a window. Confirmed by hand first (force both controls to `Off`,
+  `systemctl --user restart pulseaudio.service`, both read `HS DAC` again within about a second, repeatable
+  across three consecutive restarts) before deploying it as the real fix.
+- **Two real boots, both clean.** Boot 1: `Handsfree Left/Right Playback` and `Headset Left/Right Playback` all
+  read `1` (`HF DAC`/`HS DAC`) a few seconds after the card came up, nothing touched by hand. Boot 2: caught
+  mid-startup once (`Headset Left/Right Playback` briefly `0`, in the few-second window between PulseAudio's
+  `Starting` and `Started` — i.e. before `ExecStartPost` had run yet), then settled to `1`/`1` and held there,
+  confirmed stable for 20+ s of continuous polling inside one ssh session. (A naive series of separate `ssh`
+  invocations polling the same boot looked unstable — pulseaudio flapped between a torn-down and a fresh
+  `user@1000.service` because login lingering isn't enabled for `pyra`, which starts and stops
+  `pulseaudio.service` on its own with every session open/close. That instability is a side effect of checking
+  it that way over ssh, not something a real console session does; polling from inside one persistent
+  connection was stable throughout.) No `pyra-audio-route` logger entries on either boot — the four-route loop's
+  `cset` calls never failed.
+- `device/pyra-audio-route.sh`'s four-route loop also gained `logger -t pyra-audio-route` calls on failure,
+  previously entirely absent (only the AESS block had them) — why this shipped two months unnoticed: every
+  earlier check of fix 9 used a manual `udevadm trigger` retrigger, which always worked, so a cold boot was
+  never actually watched end to end before R15's reboot pass.
+- `docs/fixes.md` Fix 9 updated with this finding and the fix; `docs/audio.md`'s troubleshooting step 2 notes
+  that restarting PulseAudio is itself what resets the headset pair. NEXT R109 deleted.
+- Learned: when a "fixed once triggered by hand, broken on a cold boot" bug doesn't reproduce with instrumented
+  logging *inside* the suspected script, stop assuming the race is inside that script. Checking whether the
+  state holds immediately after the script runs, rather than only checking whether the script's own calls
+  succeeded, is what found the real culprit here — the script was always right; something arriving later undid
+  it.

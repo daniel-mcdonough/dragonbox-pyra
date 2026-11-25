@@ -4,15 +4,19 @@
 #
 #   sudo ./pyra-audio-route.sh --check   say what the state is, change nothing
 #   sudo ./pyra-audio-route.sh           apply it and verify
-#   sudo ./pyra-audio-route.sh --undo    remove the rule and the helper
+#   sudo ./pyra-audio-route.sh --undo    remove the rule, the helper and the drop-in
 #
 #        ./pyra-audio-route.sh --emit-into ROOT
 #
-# writes the two files below under ROOT instead of under /, touches nothing
+# writes the three files below under ROOT instead of under /, touches nothing
 # else, and does not care whether it is running on a Pyra. That mode is the
 # door `pc/pyra-trixie-prep.sh` goes through to put this on a card offline, so
 # a freshly prepared card has sound from its first boot. There is one
-# implementation of the two files and every mode calls it.
+# implementation of the three files and every mode calls it: the udev rule and
+# helper (RUN+= on the card appearing) plus a pulseaudio.service.d drop-in
+# (ExecStartPost, R109 -- see the comment above emit_dropin) that reruns the
+# same helper once PulseAudio itself has opened the card and possibly undone
+# the headset half of what the rule already set.
 #
 # WHAT IS WRONG
 #
@@ -68,6 +72,7 @@ set -eu
 
 RULE_PATH=/etc/udev/rules.d/95-pyra-audio-route.rules
 HELPER_PATH=/usr/local/sbin/pyra-audio-route-apply
+DROPIN_PATH=/etc/systemd/user/pulseaudio.service.d/20-pyra-audio-route.conf
 CARD=L15
 
 # The helper below lifts the headphone output to 13,13 when it finds it at
@@ -91,14 +96,18 @@ CARD=L15
 get() { $AMIXER -c "$CARD" cget name="$1" 2>/dev/null | sed -n 's/^[[:space:]]*: values=//p'; }
 
 # The four routes. Nothing else on the system manages these, so they are set
-# unconditionally on every boot.
+# unconditionally on every boot. (R109: this RUN+= itself was never the
+# problem -- see the ExecStartPost hook this script also installs, on
+# pulseaudio.service.d, for the actual race and why it needed a second
+# assertion point rather than a retry here.)
 for pair in \
 	'Handsfree Left Playback=HF DAC' \
 	'Handsfree Right Playback=HF DAC' \
 	'Headset Left Playback=HS DAC' \
 	'Headset Right Playback=HS DAC'
 do
-	$AMIXER -c "$CARD" -q cset name="${pair%%=*}" "${pair#*=}" 2>/dev/null
+	$AMIXER -c "$CARD" -q cset name="${pair%%=*}" "${pair#*=}" 2>/dev/null ||
+		logger -t pyra-audio-route "could not set ${pair%%=*}"
 done
 
 # The AESS graph, on kernels that have the audio DSP. These are not
@@ -156,18 +165,48 @@ ACTION=="add", SUBSYSTEM=="sound", KERNEL=="controlC*", ATTRS{id}=="L15", RUN+="
 EOF
 }
 
+# R109: the udev rule above was never the bug. On a real boot the session's
+# own PulseAudio starts a second or so after the rule fires, and loading
+# module-alsa-sink against hw:CARD=L15 resets the headset pair back to `Off`
+# -- confirmed by restarting pulseaudio.service by hand and watching the
+# routes flip. The handsfree pair is untouched by this; only the headset pair
+# is affected. There is no race to win inside the udev rule's own run, so a
+# retry there cannot help -- the control that moves it is PulseAudio's own
+# startup, after the rule has already finished. `pulseaudio.service` is
+# Type=notify, so an ExecStartPost in this drop-in only runs once PulseAudio
+# has signalled ready, i.e. after it has already opened the card and done
+# whatever it is going to do to the mixer: rerunning the helper there is
+# ordered correctly by construction, not by a sleep or a guess at the window.
+# Idempotent and harmless on every other pulseaudio.service start too.
+emit_dropin() {
+	cat <<EOF
+# fix 9 (R109) — reassert the headset routes after PulseAudio opens the card.
+#
+# pulseaudio.service is Type=notify, so ExecStartPost only runs once
+# PulseAudio has signalled ready -- after module-alsa-sink has already opened
+# hw:CARD=$CARD and done whatever it does to the mixer, which on this card
+# resets \`Headset Left/Right Playback\` back to Off. Rerunning the idempotent
+# helper here is ordered after that by construction.
+[Service]
+ExecStartPost=$HELPER_PATH
+EOF
+}
+
 install_files() {
 	root="$1"
-	install -d -m 0755 "$root/usr/local/sbin" "$root/etc/udev/rules.d"
+	install -d -m 0755 "$root/usr/local/sbin" "$root/etc/udev/rules.d" \
+		"$root$(dirname "$DROPIN_PATH")"
 	emit_helper > "$root$HELPER_PATH"
 	chmod 0755 "$root$HELPER_PATH"
 	emit_rule > "$root$RULE_PATH"
 	chmod 0644 "$root$RULE_PATH"
+	emit_dropin > "$root$DROPIN_PATH"
+	chmod 0644 "$root$DROPIN_PATH"
 }
 
 say_state() {
 	echo "files:"
-	for f in "$HELPER_PATH" "$RULE_PATH"; do
+	for f in "$HELPER_PATH" "$RULE_PATH" "$DROPIN_PATH"; do
 		if [ -e "$f" ]; then echo "  present  $f"; else echo "  ABSENT   $f"; fi
 	done
 	command -v amixer >/dev/null 2>&1 || { echo "amixer: not installed"; return 0; }
@@ -199,14 +238,15 @@ case "${1:---apply}" in
 	install_files "$root"
 	# bare paths, one per line: this is the contract pc/pyra-trixie-prep.sh
 	# consumes, same as pyra-charge-current.sh.
-	printf '%s\n%s\n' "$root$HELPER_PATH" "$root$RULE_PATH"
+	printf '%s\n%s\n%s\n' "$root$HELPER_PATH" "$root$RULE_PATH" "$root$DROPIN_PATH"
 	;;
 --check)
 	say_state
 	;;
 --undo)
 	[ "$(id -u)" = 0 ] || { echo "needs root" >&2; exit 1; }
-	rm -f "$RULE_PATH" "$HELPER_PATH"
+	rm -f "$RULE_PATH" "$HELPER_PATH" "$DROPIN_PATH"
+	rmdir "$(dirname "$DROPIN_PATH")" 2>/dev/null || true
 	udevadm control --reload 2>/dev/null || true
 	echo "removed. the codec keeps its current routing until the next boot,"
 	echo "when /var/lib/alsa/asound.state decides again."
@@ -215,6 +255,7 @@ case "${1:---apply}" in
 	[ "$(id -u)" = 0 ] || { echo "needs root" >&2; exit 1; }
 	install_files ""
 	udevadm control --reload 2>/dev/null || true
+	systemctl daemon-reload 2>/dev/null || true
 	"$HELPER_PATH"
 	# belt and braces: also put the good routing in the state file, so a boot
 	# that somehow misses the udev rule still comes up with sound.

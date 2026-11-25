@@ -792,17 +792,18 @@ Two things follow, and both matter before anyone touches these volumes:
 
 ### The fix
 
-`device/pyra-audio-route.sh` installs two files and verifies the result:
+`device/pyra-audio-route.sh` installs three files and verifies the result:
 
-    /usr/local/sbin/pyra-audio-route-apply     idempotent, sets the four routes
+    /usr/local/sbin/pyra-audio-route-apply                     idempotent, sets the four routes
     /etc/udev/rules.d/95-pyra-audio-route.rules
+    /etc/systemd/user/pulseaudio.service.d/20-pyra-audio-route.conf
 
-`95-` so it runs *after* `/lib/udev/rules.d/90-alsa-restore.rules`, which
+`95-` so the rule runs *after* `/lib/udev/rules.d/90-alsa-restore.rules`, which
 replays `asound.state`. The rule has the last word regardless of what is in
 that file, which is the point: the fix does not depend on a state blob that
 anything on the system can overwrite. The helper also runs `alsactl store`
 once at apply time, so a boot that somehow misses the rule still comes up with
-sound.
+sound. The third file is R109's fix, below.
 
 The helper sets the four routes unconditionally — nothing else on the system
 manages them — but lifts `Headset Playback Volume` **only when it finds it at
@@ -821,18 +822,54 @@ and leaves it untouched.
 sound`; all five came back. Sound confirmed by ear on both outputs.
 
 **A real reboot exposed a second race, distinct from this one: the headset
-routes lose it.** Checked on three real boots (`verification-log.md`,
-2026-11-24), the speaker routes (`Handsfree Left/Right Playback`) come up `HF DAC` every time,
-but the headset routes (`Headset Left/Right Playback`) came up `Off` all
-three times — headphones silent, speakers fine, on the same boot, from the
-same rule. `udevadm trigger --subsystem-match=sound` immediately fixes it
-once the system is up, which is what every prior check of this fix used, so
-the rule and the script are not themselves broken — something during the
-codec's own probe sequence wins a race against the `RUN+=` and leaves (or
-puts back) the headset path at `Off` after the script has already set it, or
-the headset's two controls aren't live yet when `RUN+=` fires and those
-`cset` calls silently no-op (the four-route loop has no error logging, unlike
-the AESS block below it). Left as NEXT R109 rather than fixed here.
+routes lose it (R109, fixed 2026-11-25).** Checked on three real boots
+(`verification-log.md`, 2026-11-24), the speaker routes (`Handsfree
+Left/Right Playback`) come up `HF DAC` every time, but the headset routes
+(`Headset Left/Right Playback`) came up `Off` all three times — headphones
+silent, speakers fine, on the same boot, from the same rule. `udevadm
+trigger --subsystem-match=sound` immediately fixed it once the system was
+up, which is what every prior check of this fix used, so the rule and the
+script were never themselves broken.
+
+It is not the two guesses that looked most likely going in — not a race
+inside the codec's own probe sequence, and not the headset controls being
+absent when `RUN+=` fired (the udev rule's own run of the helper always sets
+both headset controls correctly; nothing there ever failed or needed a
+retry). The actual cause: **the session's own PulseAudio resets the headset
+pair back to `Off` when it opens the card**, roughly a second after the udev
+rule has already set them correctly. Confirmed directly: with the routes
+sitting at `HS DAC` on an already-booted card, `systemctl --user restart
+pulseaudio.service` alone put them back to `Off` every time, with nothing
+else touched — `module-alsa-sink`'s own open of `hw:CARD=L15` is what does
+it, not a kernel-side DAPM race and not a timing gap in the rule. The
+handsfree pair is never touched by this.
+
+Because the bug is PulseAudio's own startup, not a short window inside the
+udev rule, a `udevadm settle` or a retry loop around the two headset `cset`
+calls — the fix this looked like it wanted — cannot catch it: PulseAudio
+starts and reopens the card *after* the rule's `RUN+=` has already finished
+and exited. The fix instead reasserts the two routes from a second point,
+ordered after PulseAudio's own open rather than racing it:
+`/etc/systemd/user/pulseaudio.service.d/20-pyra-audio-route.conf` adds
+`ExecStartPost=/usr/local/sbin/pyra-audio-route-apply` to
+`pulseaudio.service`. That unit is `Type=notify`, so systemd only runs
+`ExecStartPost` once PulseAudio itself has signalled ready — which is after
+it has already opened the card and done whatever it does to the mixer. Re-
+running the same idempotent helper at that point is ordered correctly by
+construction, not by guessing how long the window is. It is a no-op on every
+other PulseAudio start (manual restarts, fix 10 not applying because this is
+the real session, etc.) since the helper only ever asserts the routes it
+always asserts. The greeter's PulseAudio (fix 10) never runs this helper
+either, because `pulseaudio.service` doesn't start at all under lightdm's
+user manager.
+
+Verified on the R99 test card: two real boots after installing the drop-in,
+`Headset Left/Right Playback` read `HS DAC` immediately with nobody touching
+anything (`verification-log.md`, 2026-11-25). The four-route loop in the
+helper also gained `logger` calls on failure, previously missing — it is why
+this shipped unnoticed for two months: every earlier check of fix 9 used a
+manual `udevadm trigger` retrigger, which always worked, so a cold boot was
+never actually watched end to end until R15's reboot pass found it.
 
 ### What this fix is not
 
