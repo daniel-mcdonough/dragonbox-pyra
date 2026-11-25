@@ -3310,3 +3310,39 @@ BOOTDEV: SD Left
   prompt, then a real ssh login to `<ssh-alias>` confirmed it came up clean (`uname -r` = `5.6.19-m4-kbdled`,
   `uptime` 2 minutes). Nothing was changed on the card; this was read-only serial capture plus a power cycle.
 - R15's U-Boot-on-serial bullet is done; closes R85 for NEXT.
+
+## 2026-11-25 — charger replug on a laptop port (R15, fix 8)
+
+The R99 test card answered ssh this session — neither of the two SD cards (trixie, bookworm) is in the Pyra
+right now. Kernel r4 (`5.6.19-m4-kbdled`), `max_current` at the 2 A default and nothing plugged in beforehand.
+`device/pyra-chgwatch.sh` copied to `/tmp` and started in the background (240 s, 1 s resolution,
+`experiments/charging/chgwatch-laptop-port-replug-20261125.tsv`), then the owner plugged the Pyra's charge
+cable into a laptop's USB port, waited, unplugged it, and replugged it once.
+
+`dmesg`:
+
+```
+bq2429x_charger 1-006b: bq2429x_usb_detect: r8=04 PWRGOOD r9=10 UNPLUG
+bq2429x_charger 1-006b: bq2429x: VBUS became available
+bq2429x_charger 1-006b: bq2429x_usb_detect: r8=64 HOST FCHG PWRGOOD r9=00
+bq2429x_charger 1-006b: bq2429x_usb_detect: r8=40 HOST r9=10 UNPLUG
+bq2429x_charger 1-006b: bq2429x: VBUS became unavailable
+bq2429x_charger 1-006b: bq2429x_usb_detect: r8=04 PWRGOOD r9=00
+bq2429x_charger 1-006b: bq2429x: VBUS became available
+bq2429x_charger 1-006b: bq2429x_usb_detect: r8=64 HOST FCHG PWRGOOD r9=00
+```
+
+- The chip classifies the laptop port `HOST` every time (SDP, no charger type), never `ADAP` — the same class
+  the normal micro port got in the R74 trace, not the USB3 port's charger-class result.
+- `pyra-chgwatch.sh`'s 1 s samples read `reg00` `0x36` (`max_current` `2000000`, 2 A) on every row across both
+  plug events, including the rows right after each VBUS-available line; no sample caught the chip's own
+  100 mA/500 mA floor. That is coarser than R74's kprobe trace (which caught the floor and a sub-0.3 s
+  correction on the other two ports), not evidence the floor didn't happen here — the task asked only for
+  `max_current`/`online`/`status` at this resolution, which is what fix 8's re-check is meant to guarantee.
+- No `HOT`/`r9` fault lines; `bat_status` and `chg_status` tracked the plug state normally in between.
+- Answer: the chip detects SDP on this port (not a charger-class negotiation), fix 8's re-check still holds a
+  sane 2 A limit after the replug at the resolution asked for, and yes — 2 A is asserted on a port whose SDP
+  class is rated for 500 mA, same "2 A on any supply" policy already in place for the normal micro port's
+  floor case (owner decision, 2026-11-21), not a bug.
+- Closes R15's charger-replug bullet; the laptop-port clause was its last open part (`docs/fixes.md` fix 8
+  updated).

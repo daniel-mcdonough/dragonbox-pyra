@@ -718,7 +718,15 @@ installed (2026-11-21, `verification-log.md`): the USB3 port went 100000 →
 3000000 (the chip) → **2000000** 0.21 s after detection, the normal micro port
 100000 → 500000 (the chip) → **2000000** 0.10 s after. Without the re-check
 (2026-11-20 and 2026-11-21) the USB3 port stayed at 3000000. A laptop port
-after a replug is untested.
+after a replug (2026-11-25, R99 test card, kernel r4, `verification-log.md`):
+the chip detects `HOST` (SDP, no charger type) each time, never `ADAP`, and
+`pyra-chgwatch.sh` at 1 s resolution read `reg00` `0x36` (**2000000**) on
+every sample across two plug/unplug cycles — too coarse to catch the chip's
+floor the way the kprobe trace did on the other two ports, but consistent
+with the same sub-0.5 s re-check applying here too. So this fix holds 2 A on
+a port whose own SDP class is rated 500 mA: out of spec for that port, by the
+same "2 A on any supply" policy already applied to the normal micro port's
+floor case, not a bug to fix.
 
 ## Fix 9 — the machine has never had sound
 
