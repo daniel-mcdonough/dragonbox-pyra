@@ -3194,3 +3194,38 @@ read the result back over ssh.
 
 Both halves of fix 28 confirmed on a real boot with physical key presses. NEXT R15's fix-28 bullet marked
 done.
+
+## 2026-11-25 — fix 30, touchscreen calibration and fuzz, on the R99 test card
+
+R99 (`<ssh-alias>`), kernel r4 in `l5`, booted 17:31:50 CET this session (`uptime -s`; no reboot forced).
+NEXT R15's fix-30 sub-item: R89's original check (`fixes.md`) copied the three files onto the r5 card by hand
+and triggered udev on an already-running X server, not through prep or a real cold boot — the same gap fixes
+28 and 29 had before this session and last session.
+
+- All three of fix 30's files are present from prep's own install, not copied in: `/usr/local/bin/pyra-touch-calibrate`,
+  `/etc/udev/rules.d/91-pyra-touch-fuzz.rules`, `/usr/local/share/applications/xinput_calibrator.desktop`.
+  (libinput's own `90-libinput-fuzz-override.rules` is package-shipped under `/usr/lib/udev/rules.d/`, not one
+  of fix 30's files.)
+- `/proc/bus/input/devices` confirms `/dev/input/event4` is the TSC2007 Touchscreen. `sudo evtest /dev/input/event4`
+  showed Fuzz 5 on both `ABS_X` (0-719) and `ABS_Y` (0-1279).
+- `/var/log/Xorg.0.log` for this boot's cold X start carried four `libinput bug: kernel fuzz of 5 ...` lines (two
+  pairs, `LIBINPUT_FUZZ_00`/`_01` each), not the two R89's check and `fixes.md` describe. Checked whether this was
+  a regression: every input device in the same boot's log (`palmas_pwron`, `tca8418`, `pyra-game-buttons`, the
+  headset jack, `user-buttons`, `pyraInput keyboard`/`Mouse`) shows the same "config/udev: Adding ... " /
+  "device removed" pair during this stage of startup — the touchscreen gets hotplug-added once, immediately
+  removed, then re-added a second time once `99-pyra-touchscreen.conf`'s static `CalibrationMatrix` option is
+  applied, and each add produces its own correct fuzz-5 pair. Nothing else appears for `event4` besides the
+  expected tag/fuzz/touch-device lines — no third add, no other errors. R89's check never saw this because it
+  reused an already-running X server and only triggered one add via `udevadm trigger`. `docs/fixes.md` Fix 30
+  updated: two lines per device add, not per X open overall.
+- Menu check (physical, owner): MATE's "Calibrate Touchscreen" was confirmed via `ps -ef` to launch
+  `mate-terminal -x /bin/sh -c /usr/local/bin/pyra-touch-calibrate` → `python3 /usr/local/bin/pyra-touch-calibrate`,
+  not `xinput_calibrator` — the two `.desktop` files share a display name but `XDG_DATA_DIRS` resolves to the
+  pyra one first, as `fixes.md` says. In the course of this check the owner went through the five-point
+  calibration by accident. `/etc/X11/xorg.conf.d/99-zz-pyra-touch-calibration.conf` now holds a freshly saved
+  matrix (`1.006570 0.005049 0.005519 0.005165 1.056097 -0.031142 0.000000 0.000000 1.000000`) in place of the
+  vendor default from `99-pyra-touchscreen.conf` (`0.998032 -0.004569 0.016723 -0.006564 1.083056 -0.031356
+  0.000000 0.000000 1.000000`). Owner's call: keep the new calibration rather than reset it.
+
+All three of fix 30's NEXT-R15 checks pass on a real boot through prep's own install path. NEXT R15's fix-30
+bullet marked done.

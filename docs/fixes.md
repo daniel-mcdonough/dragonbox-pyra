@@ -2212,6 +2212,20 @@ saved, and found dragging and writing fine. The selftest asserts the files, that
 the image's python3 and ctypes have everything the tool calls, that the menu
 resolves to the new entry, and that the image's `udevadm verify` passes the rule.
 
+**Checked again** 2026-11-25 on the R99 test card, through prep's own install
+(not files copied by hand) after a real boot (`verification-log.md`). `evtest`
+again showed Fuzz 5 on both axes, and the menu's "Calibrate Touchscreen" was
+confirmed by its running processes to launch `pyra-touch-calibrate`, not
+`xinput_calibrator`. The Xorg log carried four `kernel fuzz of 5` lines (two
+pairs), not R89's two: on a real cold boot, X hotplug-adds the touchscreen like
+every other input device, immediately removes it, then re-adds it a second
+time once `99-pyra-touchscreen.conf`'s static `CalibrationMatrix` option is
+applied — every device in the log shows the same add/remove pair at this stage,
+not just the touchscreen. R89's check reused an already-running X server and
+only triggered one add via `udevadm trigger`, so it never saw this. Each pair is
+still exactly the expected one-per-axis line, with nothing else logged for the
+device. Two lines per add, not per boot, is the more precise statement.
+
 ## Fix 31 — a bug report can't say which Pyra, card or packages it is about
 
 **Symptom.** Nothing on the card says how it was made. The r5 release image has
