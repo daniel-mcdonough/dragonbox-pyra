@@ -662,9 +662,11 @@ that charge first.
 
 `device/pyra-charge-guard.sh` leans on the charge current before the TS pin's
 hard stop, instead of only after it. The TS pin alone (above) is enough
-protection on its own, so this does not replace it; it just means the hard
+protection on its own, so this does not replace it; the aim is for the hard
 stop — full current one moment, `HOT` and no charging the next, no warning —
-happens less often, by giving something up well before the real trip.
+to happen less often, by giving something up well before the real trip. That
+is the design intent, not a measured result: no charge has been compared with
+and without the guard (2026-11-25 audit).
 
 **Why REG02 and not the sysfs file fix 8 uses.** `max_current`, the knob
 `pyra-charge-current.sh` and `pyra-chgwatch.sh` already touch, is the bq2429x
@@ -733,6 +735,8 @@ Not yet a prep fix: the owner decided E9 is not needed for the release, and
 this step only had to produce the guard, not land it. If it goes in later, it
 needs a systemd unit (started on the charger's plug event, like fix 8's
 udev rule, or run continuously), a config file for `FULL_MA`/`REDUCED_MA`/
-the margin thresholds (currently env-var overrides only, `PYRA_CHARGE_GUARD_*`),
+the margin thresholds (currently env-var overrides only, `PYRA_CHARGE_GUARD_*`;
+since the 2026-11-25 audit the script refuses `FULL_MA` above 2048 or
+`REDUCED_MA` below 512),
 and the "not yet calibrated to °C" caveats above still apply to the margin the
 same as they do to `pyra-chgwatch.sh --ts`.

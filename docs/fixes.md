@@ -641,9 +641,10 @@ board.
 A guard exists now (`device/pyra-charge-guard.sh`, 2026-11-24,
 `experiments/charging/README.md` "The guard"): it reads the margin to the
 charger's own hot cut-off and lowers REG02 before that cut-off trips, with
-hysteresis. It is not a prep fix — the release decision above stands — and it
-has not yet gone through a real charge with a reduction and restore on
-hardware (NEXT E9).
+hysteresis. It is not a prep fix — the release decision above stands. A real
+charge on 2026-11-25 drove it through three reduce/restore cycles on hardware
+(`verification-log.md`); whether it makes the TS pin's hard stop rarer has not
+been measured.
 
 **What it assumes, which you should know before raising the number.** It
 asserts a current; it detects nothing, because nothing here can. Proper BC1.2
@@ -721,7 +722,7 @@ installed (2026-11-21, `verification-log.md`): the USB3 port went 100000 →
 after a replug (2026-11-25, R99 test card, kernel r4, `verification-log.md`):
 the chip detects `HOST` (SDP, no charger type) each time, never `ADAP`, and
 `pyra-chgwatch.sh` at 1 s resolution read `reg00` `0x36` (**2000000**) on
-every sample across two plug/unplug cycles — too coarse to catch the chip's
+every sample across the one unplug and replug its log holds — too coarse to catch the chip's
 floor the way the kprobe trace did on the other two ports, but consistent
 with the same sub-0.5 s re-check applying here too. So this fix holds 2 A on
 a port whose own SDP class is rated 500 mA: out of spec for that port, by the
@@ -864,16 +865,19 @@ ordered after PulseAudio's own open rather than racing it:
 `ExecStartPost` once PulseAudio itself has signalled ready — which is after
 it has already opened the card and done whatever it does to the mixer. Re-
 running the same idempotent helper at that point is ordered correctly by
-construction, not by guessing how long the window is. It is a no-op on every
-other PulseAudio start (manual restarts, fix 10 not applying because this is
-the real session, etc.) since the helper only ever asserts the routes it
-always asserts. The greeter's PulseAudio (fix 10) never runs this helper
+construction, not by guessing how long the window is. It runs again on every
+other PulseAudio start too (manual restarts, socket activation, a
+`Restart=on-failure` respawn), each of which resets the pair the same way, so
+the same idempotent assertion puts it back each time. The greeter's PulseAudio (fix 10) never runs this helper
 either, because `pulseaudio.service` doesn't start at all under lightdm's
 user manager.
 
 Verified on the R99 test card: two real boots after installing the drop-in,
-`Headset Left/Right Playback` read `HS DAC` immediately with nobody touching
-anything (`verification-log.md`, 2026-11-25). The four-route loop in the
+`Headset Left/Right Playback` read `HS DAC` once PulseAudio had finished
+starting, with nobody touching anything (`verification-log.md`, 2026-11-25). Not yet
+checked: whether PulseAudio resets the pair again after startup — when an idle
+sink resumes for playback, on a headphone-jack switch, or after a system
+resume — which this drop-in would not cover (NEXT R117). The four-route loop in the
 helper also gained `logger` calls on failure, previously missing — it is why
 this shipped unnoticed for two months: every earlier check of fix 9 used a
 manual `udevadm trigger` retrigger, which always worked, so a cold boot was

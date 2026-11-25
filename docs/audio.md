@@ -734,8 +734,8 @@ idea), on a test kernel.
 
 Tested 2026-11-25 on the R99 test card, kernel `5.6.19-m4-kbdled` (AESS).
 `CONFIG_SND_SEQUENCER=m`, `SND_RAWMIDI=m` and `SND_USB_AUDIO=m` are in the
-kernel but nothing had exercised them before (forum review,
-`forum-archive/review/software-releases.md` B). M-HT's CASIO SW-10 Daemon
+kernel but nothing had exercised them before (the forum
+review's compatibility list). M-HT's CASIO SW-10 Daemon
 (`sw10_alsadrv`, ALSA-sequencer software synth, DBP `casio_sw-10_m-ht`
 1.03.0.3) installed as a normal DBP (`dbp.md`) and run by hand (`-r
 ROMSXGM.BIN -f 2 -p 3 -e 0`, foreground):

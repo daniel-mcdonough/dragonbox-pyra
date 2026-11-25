@@ -157,6 +157,16 @@ I2CADDR=$(printf '0x%02x' "0x${BUSADDR#*-}")
 read_reg() { i2cget -f -y "$I2CBUS" "$I2CADDR" "$1" 2>&1; }
 write_reg() { i2cset -f -y "$I2CBUS" "$I2CADDR" "$1" "$2" b 2>&1; }
 
+for _v in FULL_MA REDUCED_MA LOW_MV HIGH_MV; do
+	case ${!_v} in ''|*[!0-9]*) die "$_v must be a whole number, got '${!_v}'" ;; esac
+done
+unset _v
+# The overrides may only lower the current: FULL_MA above the device tree's
+# 2048 mA would make every start and every restore raise the charge current
+# past what fix 8 and the charging README settle on.
+[ "$FULL_MA" -le 2048 ] || die "FULL_MA ($FULL_MA) is above the device tree's 2048 mA; this guard only ever lowers the charge current"
+[ "$REDUCED_MA" -ge 512 ] && [ "$REDUCED_MA" -lt "$FULL_MA" ] \
+	|| die "REDUCED_MA ($REDUCED_MA) must be at least 512 and below FULL_MA ($FULL_MA)"
 [ "$LOW_MV" -lt "$HIGH_MV" ] || die "LOW_MV ($LOW_MV) must be below HIGH_MV ($HIGH_MV)"
 
 reg02=$(read_reg 0x02) || die "could not read REG02: $reg02"
@@ -199,11 +209,11 @@ printf "time\tt\tin0_mV\tin10_mV\tvtco_mV\tmargin_mV\tstate\tichg_mA\treg02\tgau
 
 state=FULL
 ichg_mA=$(code_to_ma "$FULL_CODE")
-note="start: asserting ${ichg_mA} mA"
-if set_code "$FULL_CODE" "start: asserting ${ichg_mA} mA (was reg02=$reg02)"; then
-	:
-else
-	note="start: FAILED to assert ${ichg_mA} mA, leaving reg02=$reg02"
+# Carried into the first sample's note column, which the loop otherwise
+# overwrites, so a failed start shows up in the TSV and not only on stderr.
+start_note="start: asserting ${ichg_mA} mA"
+if ! set_code "$FULL_CODE" "start: asserting ${ichg_mA} mA (was reg02=$reg02)"; then
+	start_note="start: FAILED to assert ${ichg_mA} mA, leaving reg02=$reg02"
 fi
 
 t0=$(date +%s)
@@ -253,6 +263,10 @@ while [ $(( $(date +%s) - t0 )) -lt "$dur" ]; do
 		fi
 	fi
 
+	if [ -n "$start_note" ]; then
+		[ "$note" = - ] && note=$start_note || note="$start_note; $note"
+		start_note=
+	fi
 	reg02=$(read_reg 0x02)
 	printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
 		"$(date +%H:%M:%S)" "$(( $(date +%s) - t0 ))" "$in0" "$in10" "$vtco" "$margin" \

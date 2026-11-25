@@ -3002,7 +3002,7 @@ path only, not a margin-driven reduction. `device/pyra-charge-guard.sh` added; s
 
 ## 2026-11-24 — four ssh-only booted checks from R15, on the R99 test card
 
-CPU board V5.3, mainboard V5.3, the R99 release card (`<ssh-alias>`), kernel r4 in `l5` since R107.
+CPU board V5.3, mainboard V5.3, the R99 release card, kernel r4 in `l5` since R107.
 
 - **Root lock (R101): cannot be checked on this card — it predates the fix.** `sudo passwd -S root` prints
   `root P 2026-02-01 0 99999 7 -1` (`P`, not `L`); `su` asks for a password and refuses; `getent shadow root`
@@ -3036,7 +3036,7 @@ CPU board V5.3, mainboard V5.3, the R99 release card (`<ssh-alias>`), kernel r4 
 
 ## 2026-11-24 — fix 32, DBP Installer launch+download, on the R99 test card
 
-R99 (`<ssh-alias>`), same card as above. Finishes the partial check from earlier the same day: the Installer
+R99, same card as above. Finishes the partial check from earlier the same day: the Installer
 app itself, not shipped by prep, fetched onto the card and launched.
 
 - **Fetched `dbpInstaller_sebt3` 1.2.1.** The app page `https://pyra-handheld.com/repo/apps/161` is HTML, not
@@ -3057,7 +3057,7 @@ app itself, not shipped by prep, fetched onto the card and launched.
 
 ## 2026-11-24 — fixes 9 and 10 across real reboots, on the R99 test card
 
-R99 (`<ssh-alias>`), kernel r4 in `l5`. NEXT R15's fix-9/fix-10 sub-item: both audio fixes were only ever
+R99, kernel r4 in `l5`. NEXT R15's fix-9/fix-10 sub-item: both audio fixes were only ever
 confirmed by a manual trigger before (fix 9: `udevadm trigger`; fix 10: `systemctl start user@105.service` by
 hand). Three real boots this session, two `sudo reboot` over ssh and one owner-initiated power cycle between
 them (the USB3503 hub died on the second `sudo reboot` — see below). Checked right after each boot, before any
@@ -3087,8 +3087,8 @@ login at the console could tear down the greeter's manager.
   node appears (card number wasn't stable across boots either, 3 then 4), which is around when the rule's
   `RUN+=` would fire. Left as a new NEXT item (fixes.md Fix 9 section updated with this finding) rather than
   fixed in this session.
-- **The USB3503 hub died on the second `sudo reboot`.** R99 was unreachable on both the USB-ethernet
-  (`<usb-address>`) and WLAN (`<wlan-address>`) addresses for about nine minutes — boot 1 had come back in under
+- **The USB3503 hub died on the second `sudo reboot`.** R99 was unreachable on both its USB-ethernet
+  and WLAN addresses for about nine minutes — boot 1 had come back in under
   20 s — matching Fix 5's documented failure mode (`docs/fixes.md`, `docs/troubleshooting.md` "USB is dead after
   a warm reboot"): the rescue unit normally recovers the hub within seconds, but this time it didn't, and the
   stated way back in without console access is a physical power cycle. The owner power-cycled the card by hand;
@@ -3099,7 +3099,7 @@ login at the console could tear down the greeter's manager.
 
 ## 2026-11-25 — R109: fix 9's headset-route boot race, diagnosed and fixed
 
-R99 (`<ssh-alias>`), kernel r4 in `l5`. Owner approved rebooting R99 for this session (Part B rule 5), after
+R99, kernel r4 in `l5`. Owner approved rebooting R99 for this session (Part B rule 5), after
 flagging the USB3503 hub risk from the prior session's second reboot; the hub survived every reboot this time
 (back up in 21-24 s each time, no power cycle needed).
 
@@ -3148,7 +3148,7 @@ flagging the USB3503 hub risk from the prior session's second reboot; the hub su
 
 ## 2026-11-25 — fix 29, funkeymonkey-pyrainput from the packaged unit, on the R99 test card
 
-R99 (`<ssh-alias>`), kernel r4 in `l5`. NEXT R15's fix-29 sub-item: the only prior check (R87) was a
+R99, kernel r4 in `l5`. NEXT R15's fix-29 sub-item: the only prior check (R87) was a
 `dpkg -i` of the `.deb` on the r5 card, not the packaged install path through prep, and the SysRq press was
 never attempted. R99 has the package from prep itself, and was already sitting on a real boot from the same
 session that closed R109 (booted 04:27:14 CET, no reboot forced for this check):
@@ -3172,7 +3172,7 @@ done.
 
 ## 2026-11-25 — fix 28, Fn symbols on a real boot, on the R99 test card
 
-R99 (`<ssh-alias>`), kernel r4 in `l5`, the same real boot as the fix-29 and fix-10/9 work above (`uptime -s`
+R99, kernel r4 in `l5`, the same real boot as the fix-29 and fix-10/9 work above (`uptime -s`
 04:27:14 CET, no reboot forced). NEXT R15's fix-28 sub-item: the selftest had only proved the patched X file,
 the diversion and the rebuilt console cache were in the image, not that a real boot's daemon and keymap
 produce the right character from an actual key press (R78's check used uinput injection, not fingers). All
@@ -3197,7 +3197,7 @@ done.
 
 ## 2026-11-25 — fix 30, touchscreen calibration and fuzz, on the R99 test card
 
-R99 (`<ssh-alias>`), kernel r4 in `l5`, booted 17:31:50 CET this session (`uptime -s`; no reboot forced).
+R99, kernel r4 in `l5`, booted 17:31:50 CET this session (`uptime -s`; no reboot forced).
 NEXT R15's fix-30 sub-item: R89's original check (`fixes.md`) copied the three files onto the r5 card by hand
 and triggered udev on an already-running X server, not through prep or a real cold boot — the same gap fixes
 28 and 29 had before this session and last session.
@@ -3252,7 +3252,9 @@ survives the ssh session) before the charger went in, logging every 10 s.
 - `reg02` tracked `ichg_mA` exactly on every sample (`0x00` in `REDUCED`, `0x60` in `FULL`) — no divergence, no
   `FORCE_20PCT` warning. `dmesg` showed only the normal `bq2429x_usb_detect` line at plug-in, no `HOT`/fault.
 - Left running (nohup, default 4 h duration) on the card past the end of this session; it keeps logging to the
-  same file and auto-restores on charger-offline, so a later unplug needs no manual follow-up.
+  same file and auto-restores on charger-offline while it runs. (Audit, same day: that holds only for an
+  unplug inside the four hours. If the run ends while `REDUCED`, REG02 stays at 512 mA, since the script
+  doesn't restore on exit, until something rewrites it; NEXT R117 reads it back.)
 
 Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (215+ lines as copied; the on-device
 file may have grown further). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
@@ -3307,7 +3309,7 @@ BOOTDEV: SD Left
   2026-11-22). The SPL and U-Boot banners' build timestamp (`Sep 11 2024 - 22:42:22`) matches the installed
   `u-boot-pyra` 0.1.5 confirmed read-only in the R75 entry above.
 - After the banner: the extlinux menu (five entries, matching R99's `user.cfg`), kernel boot, and a login
-  prompt, then a real ssh login to `<ssh-alias>` confirmed it came up clean (`uname -r` = `5.6.19-m4-kbdled`,
+  prompt, then a real ssh login to the card confirmed it came up clean (`uname -r` = `5.6.19-m4-kbdled`,
   `uptime` 2 minutes). Nothing was changed on the card; this was read-only serial capture plus a power cycle.
 - R15's U-Boot-on-serial bullet is done; closes R85 for NEXT.
 
@@ -3334,12 +3336,19 @@ bq2429x_charger 1-006b: bq2429x_usb_detect: r8=64 HOST FCHG PWRGOOD r9=00
 
 - The chip classifies the laptop port `HOST` every time (SDP, no charger type), never `ADAP` — the same class
   the normal micro port got in the R74 trace, not the USB3 port's charger-class result.
-- `pyra-chgwatch.sh`'s 1 s samples read `reg00` `0x36` (`max_current` `2000000`, 2 A) on every row across both
-  plug events, including the rows right after each VBUS-available line; no sample caught the chip's own
+- `pyra-chgwatch.sh`'s 1 s samples read `reg00` `0x36` (`max_current` `2000000`, 2 A) on every row, including
+  the rows right after the replug's VBUS-available line; no sample caught the chip's own
   100 mA/500 mA floor. That is coarser than R74's kprobe trace (which caught the floor and a sub-0.3 s
   correction on the other two ports), not evidence the floor didn't happen here — the task asked only for
   `max_current`/`online`/`status` at this resolution, which is what fix 8's re-check is meant to guarantee.
 - No `HOT`/`r9` fault lines; `bat_status` and `chg_status` tracked the plug state normally in between.
+- Correction (2026-11-25 audit, development log R116): the committed TSV covers t=0-97 s, not 240 s, and
+  its first row already shows the cable in (`chg_status` `Charging`, `reg08` `0x6c`). So it holds one unplug
+  (t=7-11 s) and one replug (t=12 s); the first plug happened before the log starts. All 88 sample rows read
+  `reg00` `0x36`. While charging, `reg08` `0x6c` has DPM_STAT (bit 3) set, which `dmesg`'s detect-time `r8=64`
+  doesn't: the charger sat in input dynamic power management on this port, so the laptop port was not
+  delivering what the 2 A limit allows and the chip held back to keep VBUS up (decoded from the TSV against
+  SLUSBP6D's REG08 layout; not measured further).
 - Answer: the chip detects SDP on this port (not a charger-class negotiation), fix 8's re-check still holds a
   sane 2 A limit after the replug at the resolution asked for, and yes — 2 A is asserted on a port whose SDP
   class is rated for 500 mA, same "2 A on any supply" policy already in place for the normal micro port's
@@ -3349,8 +3358,8 @@ bq2429x_charger 1-006b: bq2429x_usb_detect: r8=64 HOST FCHG PWRGOOD r9=00
 
 ## 2026-11-25 — does rumble/vibra work? (R111)
 
-Neither `<ssh-alias>` nor `<ssh-alias>` answered ("REMOTE HOST IDENTIFICATION HAS CHANGED" on both); `<ssh-alias>`
-answered — the R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). Not tried on the stock `5.6.19-pyradef`
+Neither of the two SD cards answered over ssh (host key mismatch on both); the R99 test card
+answered, kernel `5.6.19-m4-kbdled` (r4 in `l5`). Not tried on the stock `5.6.19-pyradef`
 card this session. The owner gave permission first (Part B rule 5) and watched the Pyra while the motor was
 triggered.
 
@@ -3373,23 +3382,23 @@ triggered.
   `fftest`, and `sudo dmesg` has no `twl6040`/`vibra` lines at all around that time — the i2c writes went
   through without the driver complaining.
 - **The motor did not move.** The owner was watching/holding the unit and felt and saw nothing.
-- Answer: the kernel module, the evdev/FF layer and the ALSA routing all work end to end on this board and
-  kernel — upload and play succeed with no error anywhere in the stack — but the physical motor does not
-  respond. The failure is past every software layer this session can see from an ssh shell, at the motor
-  itself or its power delivery; see `forum-archive/bug-tracker/99430-improve-volume-wheel-daemon-bounty.md`
-  ("some CPU boards where vibration only sometimes work ... sounds like the motor doesn't get enough power ...
-  the whole power setup of the Palmas/TWL seems to be a bit borked") and
-  `forum-archive/news/99284-should-i-have-received-my-final-order-email-already.md` (assembly-time reports of
-  "vibro motor not working" traced to flux/corrosion on some boards) — both describe board-to-board hardware
-  variance, not a software gap. No `regulator_summary` entry names a vibra rail, so the supply isn't modelled
-  as a Linux regulator either; checking it needs a multimeter on the board, not another kernel boot.
+- Answer: on this card and kernel, the kernel module, the evdev/FF layer and the ALSA routing accept and play
+  the effect with no error, but the physical motor does not respond (one unit, one session). That puts the
+  failure below the FF API; it does not yet rule out software. Not checked: the stock `5.6.19-pyradef` kernel
+  and its device tree; whether the TWL6040's vibra control registers actually change while an effect plays
+  (not read back); and the vibra supply — no `regulator_summary` entry names a vibra rail, so the driver may
+  hold a dummy regulator while the real rail stays off, which is a device-tree question as much as a meter
+  one. Forum reports describe board-to-board hardware variance (the volume-wheel-daemon bounty thread: "some
+  CPU boards where vibration only sometimes work ... sounds like the motor doesn't get enough power"; the
+  final-order-email news thread: assembly-time "vibro motor not working" traced to flux/corrosion), which fits
+  but isn't shown for this unit. (Verdict narrowed by the 2026-11-25 audit, development log R116.)
 - Left on the card: `joystick`/`inputattach` installed (harmless, no daemon).
 
 ## 2026-11-25 — ScummVM-Pyra 2026.4.0: "properly working fullscreen" claim (R113)
 
-Neither `<ssh-alias>` nor `<ssh-alias>` answered ("REMOTE HOST IDENTIFICATION HAS CHANGED" on both); `<ssh-alias>`
-answered — the R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). From the forum review's compatibility
-list (`forum-archive/review/software-releases.md` B): does the forum post's "new properly working fullscreen"
+Neither of the two SD cards answered over ssh (host key mismatch on both); the R99 test card
+answered, kernel `5.6.19-m4-kbdled` (r4 in `l5`). From the forum review's compatibility
+list (section B of the forum review): does the forum post's "new properly working fullscreen"
 actually hold on trixie?
 
 - **Fetched.** `https://pyra-handheld.com/boards/posts/1726994/` is a thread post, not the repo app page: it
@@ -3421,7 +3430,7 @@ actually hold on trixie?
   starts; it fails at the dynamic linker before any window opens, so fullscreen (or anything else about the
   2026.4.0 release) is untestable on this card as shipped. The failure is an ABI gap between this forum build
   (linked against bookworm-era `libFLAC.so.12`) and trixie's `libflac14`, not anything prep's thirty-three
-  fixes touch. A bookworm card (`<ssh-alias>`) would need the same test to see if 2026.4.0 starts there; not tried
-  this session (neither alias answered — see above).
+  fixes touch. A bookworm card would need the same test to see if 2026.4.0 starts there; not tried
+  this session (that card wasn't in — see above).
 - Left on the card: `/dragonbox/packages/ScummVM-Pyra-2026.4.0.dbp` (registered, won't launch); harmless to
   leave in place as evidence, matches how other dead-end DBPs in that folder are already kept.
