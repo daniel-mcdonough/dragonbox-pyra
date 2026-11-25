@@ -3257,3 +3257,51 @@ survives the ssh session) before the charger went in, logging every 10 s.
 Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (215+ lines as copied; the on-device
 file may have grown further). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
 "The guard".
+
+## 2026-11-25 — U-Boot's own banner on the serial line at power-on (R85)
+
+FTDI adapter (`ttyUSB1`, 1500000 baud, `stty raw` + `cat`) opened and capturing on the PC before the Pyra
+was powered on, then the owner powered it off and back on (the R99 test card, left slot, was already in and
+running; the same power cycle). R75's earlier capture only ever showed kernel lines because the port was
+opened after power-on; this time the capture caught the bootloader's own output from the first line:
+
+```
+U-Boot SPL 2016.11 (Sep 11 2024 - 22:42:22)
+OMAP5432-GP ES2.0
+cold reset
+rsttime1 has not yet been configured
+>>spl:board_init_r()
+spl_init()
+EMIF power ctrl changed to 00000000, 00000000
+Trying to boot from MMC1
+SPL: Please implement spl_start_uboot() for your board
+SPL: Direct Linux boot not active!
+spl: payload image: U-Boot 2016.11 for omap5_pyra bo load addr: 0x807fffc0 size: 336152
+Jumping to U-Boot
+loaded - jumping to U-Boot...
+
+U-Boot 2016.11 (Sep 11 2024 - 22:42:22 +0000)
+
+LPAE build running in hypervisor mode!
+CPU  : ARM Cortex-A15 r2p2
+SoC  : OMAP5432-GP ES2.0
+Board: OMAP5432 Pyra
+I2C:   ready
+DRAM:  4 GiB
+MMC:   OMAP SD/MMC: 0, OMAP SD/MMC: 1, OMAP SD/MMC: 2
+*** Warning - bad CRC, using default environment
+
+ram code 0x0
+version code 0xa
+Found Pyra V5.3 with 4GB RAM
+HW Revision: CPU: v5.3 Mainboard: v5.3
+BOOTDEV: SD Left
+```
+
+- No `READBACK` or `Memory test failed` lines: the RAM check passed, as expected for this card's SPL (R85,
+  2026-11-22). The SPL and U-Boot banners' build timestamp (`Sep 11 2024 - 22:42:22`) matches the installed
+  `u-boot-pyra` 0.1.5 confirmed read-only in the R75 entry above.
+- After the banner: the extlinux menu (five entries, matching R99's `user.cfg`), kernel boot, and a login
+  prompt, then a real ssh login to `<ssh-alias>` confirmed it came up clean (`uname -r` = `5.6.19-m4-kbdled`,
+  `uptime` 2 minutes). Nothing was changed on the card; this was read-only serial capture plus a power cycle.
+- R15's U-Boot-on-serial bullet is done; closes R85 for NEXT.
