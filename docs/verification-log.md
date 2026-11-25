@@ -3346,3 +3346,41 @@ bq2429x_charger 1-006b: bq2429x_usb_detect: r8=64 HOST FCHG PWRGOOD r9=00
   floor case (owner decision, 2026-11-21), not a bug.
 - Closes R15's charger-replug bullet; the laptop-port clause was its last open part (`docs/fixes.md` fix 8
   updated).
+
+## 2026-11-25 — does rumble/vibra work? (R111)
+
+Neither `<ssh-alias>` nor `<ssh-alias>` answered ("REMOTE HOST IDENTIFICATION HAS CHANGED" on both); `<ssh-alias>`
+answered — the R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). Not tried on the stock `5.6.19-pyradef`
+card this session. The owner gave permission first (Part B rule 5) and watched the Pyra while the motor was
+triggered.
+
+- `lsmod`: `twl6040_vibra` is loaded. `/proc/bus/input/devices` shows `twl6040:vibrator` at `event8`
+  (`EV=200001`, `FF=1 7030000 0 0`) — an FF-capable evdev device exists. `pyraInput Gamepad` (`event11`,
+  funkeymonkey-pyrainput) exposes the same FF bitmap, so a game using pyrainput's force feedback (the forum's
+  DuckStation report) has somewhere to forward it.
+- `evtest /dev/input/event8` lists `FF_RUMBLE`, `FF_PERIODIC`, `FF_SQUARE`, `FF_TRIANGLE`, `FF_SINE`,
+  `FF_GAIN` as supported — a rumble-type motor, not a force-feedback wheel.
+- ALSA (card 3, `L15`) has `Vibra Left Playback` and `Vibra Right Playback`, each an enum of `Input FF` /
+  `Audio PDM`. Both are already set to `Input FF` — the data path an `FF_RUMBLE`/`FF_PERIODIC` upload uses, not
+  the `Audio PDM` path the forum's old alsamixer trick (sliding "Vibra Right" to bleed audio into the motor)
+  needed. Mixer routing is not the blocker.
+- `fftest` isn't packaged under that name; it's in `joystick` (not installed before this session — installed
+  with `sudo apt-get install -y joystick`, clean, pulled in `inputattach`).
+- `fftest /dev/input/event8`: uploaded `Periodic sinusoidal` and both rumble effects (`Strong rumble, with
+  heavy motor`, `Weak rumble, with light motor`) OK; `Constant`/`Spring`/`Damper` failed with `Invalid
+  argument` as expected (this device has no constant-force axis). Master gain set to 75% OK.
+- Played the strong-rumble effect twice, about a second apart (`printf '1\n1\n-1\n' | fftest`): no error from
+  `fftest`, and `sudo dmesg` has no `twl6040`/`vibra` lines at all around that time — the i2c writes went
+  through without the driver complaining.
+- **The motor did not move.** The owner was watching/holding the unit and felt and saw nothing.
+- Answer: the kernel module, the evdev/FF layer and the ALSA routing all work end to end on this board and
+  kernel — upload and play succeed with no error anywhere in the stack — but the physical motor does not
+  respond. The failure is past every software layer this session can see from an ssh shell, at the motor
+  itself or its power delivery; see `forum-archive/bug-tracker/99430-improve-volume-wheel-daemon-bounty.md`
+  ("some CPU boards where vibration only sometimes work ... sounds like the motor doesn't get enough power ...
+  the whole power setup of the Palmas/TWL seems to be a bit borked") and
+  `forum-archive/news/99284-should-i-have-received-my-final-order-email-already.md` (assembly-time reports of
+  "vibro motor not working" traced to flux/corrosion on some boards) — both describe board-to-board hardware
+  variance, not a software gap. No `regulator_summary` entry names a vibra rail, so the supply isn't modelled
+  as a Linux regulator either; checking it needs a multimeter on the board, not another kernel boot.
+- Left on the card: `joystick`/`inputattach` installed (harmless, no daemon).
