@@ -730,6 +730,49 @@ board it makes no audible noise. If a unit that does burst turns up, the
 first test is that link mask left at 0 for playback-only streams (daveshah's
 idea), on a test kernel.
 
+## MIDI: works end to end on the AESS path
+
+Tested 2026-11-25 on the R99 test card, kernel `5.6.19-m4-kbdled` (AESS).
+`CONFIG_SND_SEQUENCER=m`, `SND_RAWMIDI=m` and `SND_USB_AUDIO=m` are in the
+kernel but nothing had exercised them before (forum review,
+`forum-archive/review/software-releases.md` B). M-HT's CASIO SW-10 Daemon
+(`sw10_alsadrv`, ALSA-sequencer software synth, DBP `casio_sw-10_m-ht`
+1.03.0.3) installed as a normal DBP (`dbp.md`) and run by hand (`-r
+ROMSXGM.BIN -f 2 -p 3 -e 0`, foreground):
+
+* **`snd_seq` autoloads.** It was not in `lsmod` beforehand; opening
+  `/dev/snd/seq` (`aconnect -l`) pulled in `snd_seq` and `snd_seq_device` on
+  demand, no manual `modprobe`.
+* **The route is real, not just a static port.** `aconnect -l` showed the
+  daemon as client 128 (`CASIO SW-10`, port 0). Connecting a client to it
+  (`aplaymidi -p 128:0 file.mid`) produced matching log lines from the daemon
+  itself: `Client subscribed: aplaymidi` / `PCM playback paused` →
+  `unpaused` / `Client unsubscribed`.
+* **PCM output reaches a sink through PulseAudio.** `fuser -v
+  /dev/snd/pcmC3D5p` (card 3 = L15, device 5, `MultiMedia1 LP`, the AESS
+  front end) showed only `pulseaudio` holding the device throughout — the
+  daemon goes through the `pulse` ALSA plugin rather than opening the AESS
+  hw device itself, and `pactl list short sinks` kept showing `aess`
+  `IDLE`/healthy, never suspended or in an error state. A short test MIDI
+  file (`aplaymidi -p 128:0`) was audible on the speakers.
+* `Buffer underrun` / `Error writing audio data` printed repeatedly for a
+  few seconds right at startup (ROM load/warm-up), then stopped on its own
+  and did not recur once a client connected and sent notes — not a fault,
+  just the daemon's own PCM thread finding its feet before anything is
+  subscribed.
+* The ROM (`ROMSXGM.BIN`) is not shipped with the daemon; the packaged
+  `sw10_config.py` has Download/Unpack buttons for it (GTK, needs a
+  display), fetching `LanaSw10.exe` from a 2001 archive.org snapshot of
+  Casio's own site and unpacking it with the bundled `lha` and
+  `zextractfile`. Done here from the command line instead, matching what
+  those buttons do: `lha -xif LanaSw10.exe lanainst/lana3.z` (`-i` flattens
+  the stored path, which `sw10_config.py`'s own extraction code relies on),
+  then `zextractfile lana3.z ROMSXGM.BIN`.
+* Not tried: a direct-link kernel (`5.6.19-pyradef`); whether the daemon
+  survives a PulseAudio restart or a sink-port switch mid-stream; any of
+  M-HT's other five synth daemons from the same forum thread
+  (https://pyra-handheld.com/boards/posts/1720086/).
+
 ## Open, and untested
 
 * **What `speex-float-1` costs for 44.1 kHz music on the AESS path.** The 9%
