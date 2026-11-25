@@ -2081,6 +2081,14 @@ is per machine, so `--release` keeps it.
 the marked block from `remap.inc`, then `sudo touch /etc/default/keyboard &&
 sudo setupcon --save-only`.
 
+**Checked** 2026-11-25 on the R99 test card, with physical key presses rather
+than R78's uinput injection, after a real boot (`verification-log.md`): under
+X, Fn+D/Shift+Fn+D typed `_`, Fn+'/Shift+Fn+' typed `:`, neither acted as Alt
+(a fast plain letter struck right after either chord never jumped the cursor
+back a word), and Fn+R/Fn+T typed é/è, keycap-correct; on tty1 (a fresh
+`login:` prompt, read back from `/dev/vcsu1`) Fn+E..P, A..L, ', M typed all
+eighteen keycap symbols in order.
+
 ## Fix 29 — Usr1, Fn+Esc and d-pad right send nothing, and the nubs stick off-centre
 
 **Symptom.** In `funkeymonkey-pyrainput` 0.1.19, Usr1 and Fn+Usr1 send nothing,

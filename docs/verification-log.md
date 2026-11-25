@@ -3169,3 +3169,28 @@ session that closed R109 (booted 04:27:14 CET, no reboot forced for this check):
 
 All three of fix 29's R15 checks pass on the packaged path, from a real boot. NEXT R15's fix-29 bullet marked
 done.
+
+## 2026-11-25 — fix 28, Fn symbols on a real boot, on the R99 test card
+
+R99 (`<ssh-alias>`), kernel r4 in `l5`, the same real boot as the fix-29 and fix-10/9 work above (`uptime -s`
+04:27:14 CET, no reboot forced). NEXT R15's fix-28 sub-item: the selftest had only proved the patched X file,
+the diversion and the rebuilt console cache were in the image, not that a real boot's daemon and keymap
+produce the right character from an actual key press (R78's check used uinput injection, not fingers). All
+presses below were physical, done by the owner on the Pyra's own keyboard; this session only switched VTs and
+read the result back over ssh.
+
+- **X** (mate-terminal, desktop already up at `:0` since 04:36): Fn+D and Shift+Fn+D both typed `_`; Fn+' and
+  Shift+Fn+' both typed `:` (both combos used to type nothing with Shift). Checked for the Alt regression by
+  typing `foo bar`, then the chord, then a fast plain `b`: in every case `_b`/`:b` landed in place with the
+  cursor right after it, never jumping back over "bar" the way Alt+b would. Fn+R typed é, Fn+T è — keycap-correct,
+  not swapped.
+- **Console** (tty1): `sudo systemctl restart getty@tty1 && sudo chvt 1` gave a clean `login:` prompt; the
+  owner pressed Fn+E, R, T, Y, U, I, O, P, A, S, D, F, G, H, J, K, L, ', M in that order, no Enter. Read back
+  the same way `experiments/fn-keys/fn-tty.sh` reads its injected runs, applied here to real presses:
+  `sudo python3 -c '... open("/dev/vcsu1","rb").read().decode("utf-32-le") ...rsplit("login: ")...'` →
+  `€éèàç¨üß?+_{}|~öä:´` — all eighteen keycap symbols, in order, none missing and none showing as `ESC [ M` or
+  Delete. `sudo chvt 7 && sudo systemctl restart getty@tty1` returned the screen to the desktop and left tty1
+  with a fresh prompt.
+
+Both halves of fix 28 confirmed on a real boot with physical key presses. NEXT R15's fix-28 bullet marked
+done.
