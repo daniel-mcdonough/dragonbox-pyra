@@ -153,9 +153,13 @@ library whose ABI passes a `time_t` was rebuilt with a 64-bit one, and its
   doesn't prove every DBP will.
 - **New soname** (from the image's package lists: `libtinyxml2-6a` →
   `libtinyxml2-11`, `libglew2.1` → `libglew2.2`, `libunistring2` →
-  `libunistring5`, Boost 1.62/1.67 → 1.83, `libbullet` → `libbullet3.24t64`):
-  `ldd` says `not found` and the program doesn't start. `libcrypto1.1` is gone
-  (trixie has only OpenSSL 3).
+  `libunistring5`, Boost 1.62/1.67 → 1.83, `libbullet` → `libbullet3.24t64`,
+  `libflac12` → `libflac14`): `ldd` says `not found` and the program doesn't
+  start. `libcrypto1.1` is gone (trixie has only OpenSSL 3). ScummVM-Pyra
+  2026.4.0 hits this one directly: its dependency dialog claims `libflac12`
+  missing (true this time, not a t64 rename) and the binary dies at the
+  dynamic linker before any window opens (`verification-log.md`, R113); the
+  DBP bundles no libraries of its own to fall back on.
 
 A missing soname needs a DBP rebuilt against trixie, or a DBP that bundles its
 libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on

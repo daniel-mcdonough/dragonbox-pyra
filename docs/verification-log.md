@@ -3384,3 +3384,44 @@ triggered.
   variance, not a software gap. No `regulator_summary` entry names a vibra rail, so the supply isn't modelled
   as a Linux regulator either; checking it needs a multimeter on the board, not another kernel boot.
 - Left on the card: `joystick`/`inputattach` installed (harmless, no daemon).
+
+## 2026-11-25 — ScummVM-Pyra 2026.4.0: "properly working fullscreen" claim (R113)
+
+Neither `<ssh-alias>` nor `<ssh-alias>` answered ("REMOTE HOST IDENTIFICATION HAS CHANGED" on both); `<ssh-alias>`
+answered — the R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). From the forum review's compatibility
+list (`forum-archive/review/software-releases.md` B): does the forum post's "new properly working fullscreen"
+actually hold on trixie?
+
+- **Fetched.** `https://pyra-handheld.com/boards/posts/1726994/` is a thread post, not the repo app page: it
+  embeds a `contentRow` unfurl linking `https://pyra-handheld.com/repo/apps/274` ("App ScummVM-Pyra - DBP
+  repository"). That app page's own embedded JSON (not a plain `<a href>`, same pattern as R94/R110) lists the
+  2026.4.0 release as download id 397: `https://pyra-handheld.com/repo/packages/ScummVM/397/download`, MD5
+  `d36ea3207c5a420d0b0bc3a8b36cd813`, 173288132 bytes. Its own changelog entry (fetched on the PC with `curl`,
+  no package-manager changes) reads: "R1 or CTRL+F5 displays the Global Main Menu of ScummVM ... (Alt + Enter
+  for fullscreen mode) Fullscreen mode is now working properly!" — the claim under test, in the author's own
+  words.
+- **Install: pass.** Downloaded on the PC, MD5 matched before transfer. scp'd to `/dragonbox/packages/` on the
+  card (MD5 re-checked there, same hash); that folder already existed and was already watched (fix 32's link
+  predates this session, same as R94), so `dbp-cmd list` showed `ScummVM` registered immediately, no manual
+  `dbp-cmd register` needed. `/usr/share/applications/__dbp__ScummVM_default.desktop` appeared with
+  `Exec=run-scummvm-pyra.sh`.
+- **Launch: fails, doesn't start.** Running the freshly-fetched binary itself needed the owner (same tool
+  refusal as R94/R110). `dbp-run --chdir ScummVM run-scummvm-pyra.sh` printed a dependency dialog (`libunity9,
+  libflac12, libmpeg2-4, libvpx7, liba52-0.7.4, libspeechd2`), then: `./scummvm-pyra: error while loading shared
+  libraries: libFLAC.so.12: cannot open shared object file: No such file or directory`. Unlike the GBAemu case
+  in `docs/dbp.md` (where the same dialog's claimed-missing deps turn out to be present), this one is real:
+  `dpkg -l` and `find / -iname "libFLAC.so*"` on the card show only `libflac14` (`libFLAC.so.14`); trixie's repo
+  has no `libflac12` package at all (`apt-cache policy libflac12` empty, `apt-cache search libflac` lists
+  `libflac14` as the only runtime). Mounted the package read-only (`dbp-cmd mount ScummVM`, union at
+  `/mnt/dbp/union/ScummVM`) to check for a bundled copy: the DBP ships only its own data files and the
+  `scummvm-pyra` binary, no bundled `.so`s — it depends entirely on the system's `libFLAC.so.12`, a soname
+  trixie dropped when it moved to `libflac14`. Cleanly unmounted after (`dbp-cmd umount`; `mount | grep -i
+  scummvm` confirmed nothing left behind).
+- Answer: **no** — the "properly working fullscreen" claim can't be reached on trixie at all. The app never
+  starts; it fails at the dynamic linker before any window opens, so fullscreen (or anything else about the
+  2026.4.0 release) is untestable on this card as shipped. The failure is an ABI gap between this forum build
+  (linked against bookworm-era `libFLAC.so.12`) and trixie's `libflac14`, not anything prep's thirty-three
+  fixes touch. A bookworm card (`<ssh-alias>`) would need the same test to see if 2026.4.0 starts there; not tried
+  this session (neither alias answered — see above).
+- Left on the card: `/dragonbox/packages/ScummVM-Pyra-2026.4.0.dbp` (registered, won't launch); harmless to
+  leave in place as evidence, matches how other dead-end DBPs in that folder are already kept.
