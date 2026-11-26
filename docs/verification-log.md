@@ -3614,3 +3614,54 @@ the Pyra only (https://pyra-handheld.com/boards/posts/1714479/).
 - Left on the card: `/dragonbox/packages/hota_redux_m-ht-1.2.4.4.dbp`, registered, plus
   `/dragonbox/appdata/hota/` (only AuFS's whiteout directory in it). Fake ISO and core deleted. No prep fix
   applies.
+
+## 2026-11-26 — Pyrafox: does it start, draw and load a page, and which GL path does it take? (R120)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`, installed `vmlinuz` `646e033b…a459fdd`), `ondemand`, 1.5 GHz
+ceiling, no swap. From the forum review's compatibility list: jedi23's Firefox build for the Pyra, built with PGO and ThinLTO
+(https://pyra-handheld.com/boards/posts/1726809/). The questions were whether it starts without GLX (fix 4), which GL
+path WebRender takes, and whether fix 21 matters.
+
+- **In the DBP repository:** `https://pyra-handheld.com/repo/apps/372` lists four builds. The newest is 160.0.1-pyra,
+  uploaded 2026-11-23, `https://pyra-handheld.com/repo/packages/Pyrafox/415/download`, MD5
+  `2660872c417f57dd6dd57b1f0bc7c50a`, 116723397 bytes. Downloaded on the PC, MD5 matched there and again on the card. Metadata:
+  `Id=Pyrafox`, `Exec=pyrafox.sh`, `Categories=Network;WebBrowser;`, empty `Dependency[deb]`.
+- **Install: pass.** Copied to `/dragonbox/packages/`, and the watched folder registered it (`dbp-cmd list`).
+  It got `/usr/share/applications/__dbp__Pyrafox_default.desktop` and `/usr/local/games/pyrafox.sh`.
+- **Libraries: all resolve.** A Firefox 160.0.1 tree (`application.ini`: `CodeName=Nightly`, BuildID
+  20261123133322) with its own NSS, NSPR and SQLite. Plain `ldd libxul.so` reports trixie's `libnss3.so` lacking
+  `NSS_3.113`/`3.126`/`3.131`, but the launcher puts its own directory first. With `LD_LIBRARY_PATH` set to the
+  package directory, nothing is `not found`, and the bundled `libnss3.so` is the one picked. `libxul.so` contains the names `libEGL.so.1`,
+  `libGLESv2.so.2`, `libGL.so.1`, `libgbm.so.1`, `libva.so.2` and `libdrm.so.2` (for dlopen; `strings`).
+- **GL probe:** `gfxtest glx -f 1` (Firefox's probe binary) printed `libpci missing`, `libEGL missing methods`,
+  `GLX extension missing`. Under `LD_DEBUG=libs` it opened no EGL or GL library at all.
+- **Starts, draws and loads a page: pass.** `./firefox --no-remote --profile ./profile https://en.wikipedia.org/wiki/OMAP`
+  over the USB ethernet link. The window was `"OMAP - Wikipedia — Nightly"`, 1280x651+0+36. `xwd -id` of it showed the
+  article header, Wikipedia's donation banner, and the toolbar and tabs, all drawn correctly. (`xwd -root` failed with
+  `BadDrawable`, apparently a window that disappeared during the grab.) The menu path also works: `/usr/local/games/pyrafox.sh` gave a "Nightly" window,
+  the profile went to `/dragonbox/appdata/Pyrafox/profile`, and the union unmounted when it exited. No crashes in seven starts.
+- **GL path: software WebRender, with no SGX libraries mapped.** `/proc/<pid>/maps` of the parent held glvnd's
+  `libGL.so.1.7.0`, `libGLX`, `libGLdispatch` and `libepoxy`. No `libEGL`, no `/opt/omap5-sgx-ddk-um-linux`
+  library and no `libpvrDRI3WSEGL.so` were mapped, and the content, socket and forkserver children mapped no GL library at all. `nsIGfxInfo`
+  over Marionette gave the compositor as `WebRender (Software)`, and `webrender`, `wrCompositor` and
+  `WEBRENDER_PARTIAL` as `blocklisted:FEATURE_FAILURE_GLXTEST_FAILED`. `HW_COMPOSITING` was
+  `blocked` ("Acceleration blocked by platform"), `openglCompositing` was `FEATURE_FAILURE_OPENGL_NEED_HWCOMP`, and
+  `windowProtocol` was `x11`. The SGX's `libEGL.so.1` (DDK 1.14) exports only the 34 EGL 1.4 core functions; extensions would come through `eglGetProcAddress`, and they were not queried.
+  **Fix 21 doesn't apply:** the SGX window system is never loaded.
+- **Frame rate: 60 Hz.** `requestAnimationFrame` on the page: 181 frames in 3002 ms, twice. `about:support`'s
+  `Display0: 1280x720@3Hz` is a wrong label (`xrandr`: 720x1280 rotated, 60.00 Hz). Pages see `screen` 1045x588 at
+  `devicePixelRatio` 1.22.
+- **Numbers (one run each, R98's method, shell polling):**
+  - Warm (same profile, started with the page URL): window 3065 ms, PSS 473 MiB, RSS 1047 MiB over 11 processes at 90 s,
+    and the tree used 56% of one core between 60 and 90 s.
+  - Cold (caches dropped, empty profile): window 15204 ms. At 90 s, PSS 619 MiB and RSS 1302 MiB over 12 processes.
+    It used 141% of one core between 60 and 90 s; that run also opens the privacy-notice tab and syncs its settings.
+  - An earlier first start, measured at about 100 s: PSS 691 MiB, and 28% of one core over 30 s.
+  - Firefox ESR in R98, measured on the r5 card with the same CPU settings: 15.0 s cold and 4.6–5.1 s warm, 437–447 MiB PSS warm, 71% of one core
+    between 60 and 90 s.
+- **Marionette on Firefox 160:** chrome-scope scripts need `MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1` in the environment
+  (`RemoteAgent.sys.mjs`). With only the `-remote-allow-system-access` flag, `ExecuteScript` failed ("does not support
+  browsing contexts in privileged scope"), and so did navigating to `about:support`.
+- Left on the card: `/dragonbox/packages/Pyrafox-160.0.1-pyra.dbp`, registered, plus
+  `/dragonbox/appdata/Pyrafox/` from the menu start. The test profiles were deleted. No prep fix applies. `docs/browsers.md`
+  "Pyrafox" has the user-facing result.

@@ -13,6 +13,10 @@ and then fail. Dillo runs but shows a blank page on a modern site.
 A prepared card ships no browser and no `x-www-browser` alternative. Installing
 `firefox-esr` sets both.
 
+**Pyrafox** (a Firefox build for the Pyra, from the DBP repository) also works:
+it is a little quicker than Firefox ESR and uses about the same memory, but
+security updates come only when its author rebuilds it. See "Pyrafox" below.
+
 ## Results
 
 The test page was the English Wikipedia article "OMAP": once live over WiFi and
@@ -31,6 +35,7 @@ started with the page URL on the command line, on the MATE desktop.
 | Browser (trixie armhf) | Result | Window, cold / warm | Settled, warm | PSS, warm | RSS, warm |
 | --- | --- | --- | --- | --- | --- |
 | `firefox-esr` 153.7.0esr | **Renders both pages correctly** | 15.0 s / 4.6–5.1 s | never (see below) | 437–447 MiB | ~1.0 GiB |
+| Pyrafox 160.0.1-pyra (DBP, not Debian) | **Renders the live page correctly** | 15.2 s / 3.1 s | not measured | 473 MiB | ~1.0 GiB |
 | `netsurf-gtk` 3.11 | Renders both; simplified layout, little JS | 1.6 s / 0.6 s | 4.4 s | 43 MiB | 69 MiB |
 | `dillo` 3.0.5 | **Fails:** window opens, page area stays blank on both copies | 1.0 s / 0.6 s | 0.7–0.8 s | 12 MiB | 19 MiB |
 | `epiphany-browser` 48.5 | **Fails:** aborts at start, no window | — | — | — | — |
@@ -58,6 +63,46 @@ It works, but it is not light:
 
 The forum's reports of Firefox ESR crashing (2023–2025) were on the older
 images, and none of these runs crashed.
+
+### Pyrafox
+
+Measured 2026-11-26 on the R99 test card (kernel r4, the same CPU settings as
+above). Development log R120.
+
+jedi23's Firefox build for the Pyra, built with PGO and ThinLTO: the DBP is at
+`https://pyra-handheld.com/repo/apps/372`. Version 160.0.1-pyra (uploaded 2026-11-23,
+`repo/packages/Pyrafox/415/download`, MD5 `2660872c417f57dd6dd57b1f0bc7c50a`) installs like
+any DBP (`dbp.md`). It declares no Debian dependencies. It bundles its own NSS, NSPR and
+SQLite, and every library it needs resolves on trixie. Start it from the menu
+(Internet, "Pyrafox"). Its profile is kept in `dragonbox/appdata/Pyrafox/profile`.
+
+- **It renders.** The live Wikipedia page drew completely: text, images,
+  Wikipedia's donation banner, and the toolbar. The local copy was not tried.
+  There were no crashes in seven starts.
+- **Rendering is in software (confirmed).** `about:support`'s data (read through
+  Marionette) gives the compositor as `WebRender (Software)`. WebRender, the
+  WebRender compositor and partial present are all `blocklisted:FEATURE_FAILURE_GLXTEST_FAILED`,
+  and hardware compositing is "blocked by platform". Firefox's GPU probe (`gfxtest glx`) prints
+  `libEGL missing methods` and `GLX extension missing`. So it never tries the SGX's EGL.
+  The only GL library it maps is glvnd's `libGL.so.1`, and it maps no SGX library at all. That also means fix 21 (the SGX
+  window system's double close) doesn't apply to it. The SGX's `libEGL.so.1` exports only
+  the EGL 1.4 core functions. It has no `eglGetPlatformDisplay` export, and its extensions were not queried.
+  Whether Firefox would use it if the probe were bypassed was not tried.
+- **Animation runs at 60 fps.** `requestAnimationFrame` gave 181 frames in 3.0 s, twice.
+  `about:support` lists the display as `1280x720@3Hz`, but that label is wrong (xrandr says
+  60.00 Hz), and it doesn't slow anything down. Pages see a 1045x588 screen at a device
+  pixel ratio of 1.22.
+- **Compared with Firefox ESR:** the window opens faster warm (3.1 s against
+  4.6–5.1 s), and the cold start is the same, 15.2 s against 15.0 s. Memory is
+  about the same, 473 MiB PSS warm and 619 MiB on the first start. It still
+  keeps a core busy: the tree used 56% of one core between 60 and 90 s after
+  a warm start (Firefox ESR: 71%), and 141% on the first start, which also
+  opens the privacy-notice tab and syncs its settings. Each figure is one run, so the
+  speed difference from Firefox ESR is small and not established.
+- **Updates are manual.** It is Firefox 160 built as Nightly. Security fixes
+  come only with a new DBP from its author, and nothing installs it for you:
+  you download the new `.dbp` yourself. Four builds were published between
+  2026-09-10 and 2026-11-23.
 
 ### NetSurf
 
@@ -100,6 +145,8 @@ A browser runs code from strangers, which is the case that makes Spectre v2 a
 live risk on this machine. `kernel-notes.md` §5 (the Spectre v2
 workaround) covers why the kernel keeps that mitigation and what it costs. The
 browser is Debian's package, so `apt upgrade` brings its security updates.
+Pyrafox doesn't get them that way. You replace the `.dbp` when its author
+publishes a new build.
 
 ## How it was measured
 
@@ -110,3 +157,10 @@ process tree, found by parent PID plus any new process whose name matched the
 browser. Then it saved an `xwd` screenshot, which was used to judge whether the
 page rendered. The browsers and `xdotool` were removed afterwards, except
 `firefox-esr`.
+
+Pyrafox (R120) was measured the same way, but by shell polling: `xwininfo -root
+-tree` every 0.25 s for the window, `utime + stime` over the tree from 60 to 90 s,
+and `smaps_rollup` at 90 s. The cold run had dropped caches and an empty profile.
+`gfxInfo` and the frame rate were read over Marionette (`--marionette` with
+`MOZ_REMOTE_ALLOW_SYSTEM_ACCESS=1`; the
+`-remote-allow-system-access` flag alone did not allow chrome scripts here). The screenshot was `xwd -id` of the window.
