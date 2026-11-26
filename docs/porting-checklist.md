@@ -94,7 +94,12 @@ complete is meaningless.
       ran sdl12-compat with gl4es instead, `LD_PRELOAD`ed or ahead on
       `LD_LIBRARY_PATH` (https://pyra-handheld.com/boards/posts/1714445/), and
       saw segfaults and audio bugs in some titles
-      (https://pyra-handheld.com/boards/posts/1716793/). Not tested here.
+      (https://pyra-handheld.com/boards/posts/1716793/). Checked on
+      trixie with two DBPs (`dbp.md`, "SDL 1.2 games"): `libsdl1.2pyra`
+      centres a small mode unscaled; a bundled sdl12-compat scales it up,
+      aspect kept; one game segfaulted on sdl12-compat. If the game reads
+      the joystick, don't also map its hat to keys: the D-pad already
+      sends arrow keys, so menus get every press twice.
 - [ ] **Print `GL_RENDERER` at startup and assert on it.** Check it is non-NULL
       *and* contains `PowerVR`. The failure mode where a context is created and
       every entry point resolves to NULL looks exactly like success.

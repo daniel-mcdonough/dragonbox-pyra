@@ -3665,3 +3665,60 @@ path WebRender takes, and whether fix 21 matters.
 - Left on the card: `/dragonbox/packages/Pyrafox-160.0.1-pyra.dbp`, registered, plus
   `/dragonbox/appdata/Pyrafox/` from the menu start. The test profiles were deleted. No prep fix applies. `docs/browsers.md`
   "Pyrafox" has the user-facing result.
+
+## 2026-11-26 — OpenTyrian and Hostile Takeover (SDL 1.2): start, fullscreen, scaling, one D-pad press (R121)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`, `vmlinuz` `646e033b…`), funkeymonkey-pyrainput 0.1.19+pyra1,
+`libsdl1.2pyra` 1.2.15+dfsg2-9, sdl12-compat (`libsdl1.2debian`) not installed. From the forum review's compatibility
+list: SDL 1.2 fullscreen position and scaling, and the D-pad double events
+(https://pyra-handheld.com/boards/posts/1691314/, https://pyra-handheld.com/boards/posts/1691414/). Both games are
+freeware and ship their data.
+
+- **In the DBP repository: both are there.** OpenTyrian, `repo/apps/218`: one build, 1.0 by TrashyMG (2023-03-25),
+  `/repo/packages/OpenTyrian_C4ALL/223/download`, MD5 `102c21c98623120e4434a22d9c46dc10`. Hostile Takeover,
+  `repo/apps/4`: newest of three builds is 1.6.0.03 by ptitSeb (2021-07-19, "Using fixed SDL1 for correct fullscreen"),
+  `/repo/packages/ptitSeb_ht/69/download`, MD5 `5c07f1251591192000c20d6cc5adad3e`. Both MD5s matched. Copied to
+  `/dragonbox/packages/`; both registered. HT declares `Dependency[deb]=libsdl1.2pyra;` (installed, so no dialog);
+  OpenTyrian declares none.
+- **Libraries.** OpenTyrian's `ot` needs `libSDL-1.2.so.0` and `libSDL_net-1.2.so.0` (trixie's `libsdl-net1.2`
+  1.2.8, installed). It bundles sdl12-compat 1.2.61 in `sdl12comp/` (built against SDL2 at run time). Its launcher
+  `opentyrian` is `sudo pyrainputctl disable gamepad`, then
+  `LD_LIBRARY_PATH=<union>/sdl12comp/ gl4es ./ot`, then `sudo pyrainputctl enable gamepad`. HT's `ht` needs only
+  `libSDL-1.2.so.0` plus libstdc++, and its launcher sets `HOME` to the union dir. Nothing `not found` in either.
+- **OpenTyrian: starts, pass.** Maps: the bundled `libSDL-1.2.so.1.2.61`, SDL2 2.32.4, gl4es `libGL.so.1`
+  (`libgl-gl4es-pyra`), the SGX `libEGL`/`libGLESv2`/`libsrv_um` and `libpvrDRI3WSEGL.so`. So sdl12-compat draws
+  through SDL2's GL renderer on the SGX. First start: a 640x400 window (`"OpenTyrian"`, decorated, at 1,36), because
+  its default is windowed. It keeps its settings in `~/.opentyrian/opentyrian.conf` (JSON; source `config.c`), not
+  in appdata. With `{"video": {"fullscreen": true, "scaler": "Scale2x"}}`: window 1280x720+0+0. `xwd -id` of it
+  (it works on this window) showed the menu, aspect kept: the 640x400 picture stretched to 1152x720 (x 1.8) at
+  x = 64, black bars of 64 px left and right, none top or bottom.
+- **OpenTyrian on `libsdl1.2pyra` instead** (`./ot` from the union dir without the launcher's `LD_LIBRARY_PATH`):
+  starts too, maps only the system `libSDL-1.2.so.0.11.4`, no GL. Fullscreen window 1280x720+0+0, but the 640x400
+  picture is not scaled: centred at 320,160 with a black border all round (`xwd -root`).
+- **Hostile Takeover: starts, pass.** Maps the system `libSDL-1.2.so.0.11.4` (`libsdl1.2pyra`), no GL, no SGX.
+  SDL 1.2's fullscreen pair: an override-redirect window 1280x720+0+0 with its 1280x720 child; neither has a name.
+  The menu is drawn at the native 1280x720, 1:1, nothing scaled or offset (`xwd -root`). PulseAudio sink-input
+  `ht`, `u8 1ch 8000Hz`, uncorked. 9 % of a core at the menu (`top`, one sample).
+- **Hostile Takeover on sdl12-compat: crashes.** With OpenTyrian's bundled 1.2.61, and with Debian's 1.2.68
+  (`apt-get download libsdl1.2debian`, unpacked to `/tmp`, never installed), `ht` segfaults within a second. Under
+  `LD_DEBUG=bindings` the last symbols it bound were `SDL_LockSurface`, `SDL_UnlockSurface`, `SDL_UpdateRect`,
+  `SDL_SetColors`, so it dies on its first palette draw. sdl12-compat 1.2.68 logged only its version banner. Not
+  investigated further: HT needs `libsdl1.2pyra`, which the card has.
+- **One D-pad press (the owner pressed, at the Pyra).** Logged with an `LD_PRELOAD` shim on `SDL_PollEvent` /
+  `SDL_PeepEvents` / `SDL_JoystickOpen` / `SDL_JoystickGetHat` (built on the card with its gcc), plus `evtest` on
+  `pyraInput keyboard` and `pyraInput Gamepad`.
+  - HT, export on (the default): down once and right once each gave one `KEYDOWN`/`KEYUP` in SDL (sym 274, 275).
+    HT never opens a joystick (it imports no `SDL_Joystick*`). The kernel side had both `KEY_DOWN` on the keyboard
+    and `ABS_HAT0Y` on the gamepad, as always. **Arrives once.**
+  - OpenTyrian through its launcher (gamepad export off while it runs): one `KEYDOWN`/`KEYUP`; nothing on the
+    gamepad device; the menu highlight moved one item (owner). **Arrives once.**
+  - OpenTyrian with gamepad export on (`./ot` started directly, the forum's case): SDL saw the hat go to
+    `SDL_HAT_DOWN` and two `KEYDOWN`/`KEYUP` pairs within 100 ms; the highlight moved two items (owner). The second
+    press is OpenTyrian's own: `push_joysticks_as_keyboard()` (`src/joystick.c`) turns a polled hat into
+    `SDL_PushEvent` key presses in menus, and pyrainput exports the D-pad on both devices. The launcher's
+    `pyrainputctl disable gamepad` is the fix, and needs the vendor's passwordless `pyrainputctl` sudo rule.
+    It joystick-opens `pyraInput Gamepad` even when export is off; the device stays, it just sends nothing.
+- **Exit.** SIGTERM to `ot` segfaulted it on the way out (its config was not saved); the launcher still ran
+  `pyrainputctl enable gamepad`. SIGTERM ended `ht` normally.
+- Left on the card: both `.dbp`s in `/dragonbox/packages/`, registered, and their `/dragonbox/appdata/` folders.
+  Removed: `~/.opentyrian`, the shim, the unpacked sdl12-compat. `gamepad.export = 1` checked afterwards.

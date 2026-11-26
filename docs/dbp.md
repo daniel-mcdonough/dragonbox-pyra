@@ -195,6 +195,45 @@ start-up can be checked. For Heart of the Alien that means libraries, SDL
 video and audio init and the mixer opening, then
 `panic: can't read GAME2.BIN file` (R119).
 
+## SDL 1.2 games: which SDL, fullscreen, and the D-pad
+
+An SDL 1.2 DBP gets one of two libraries. The card has ouzle's
+`libsdl1.2pyra` as the system `libSDL-1.2.so.0`. Some packages bundle
+sdl12-compat (SDL 1.2 on top of SDL2) and put it first on
+`LD_LIBRARY_PATH`. `/proc/<pid>/maps` says which one a running game took.
+Tested 2026-11-26 on kernel r4 (`verification-log.md`, R121):
+
+| DBP (repo version) | SDL 1.2 it loads | Fullscreen window | Picture |
+|---|---|---|---|
+| OpenTyrian 1.0 (`OpenTyrian_C4ALL`) | its bundled sdl12-compat 1.2.61, under `gl4es`, drawn on the SGX | 1280x720+0+0 | 640x400 stretched to 1152x720, aspect kept, 64 px black bars left and right |
+| Hostile Takeover 1.6.0.03 (`ptitSeb_ht`) | `libsdl1.2pyra` (declares it) | 1280x720+0+0 | native 1280x720, 1:1 |
+
+Both start and run. What differs is scaling. `libsdl1.2pyra` puts a small
+mode in the middle of the screen unscaled: OpenTyrian forced onto it showed
+its 640x400 picture at 320,160 with a black border. sdl12-compat scales it up.
+Hostile Takeover asks for the full 1280x720, so nothing needs scaling, and it
+segfaults on sdl12-compat (both 1.2.61 and Debian's 1.2.68) at its first draw.
+Keep it on `libsdl1.2pyra`.
+
+**OpenTyrian starts windowed.** Its default is a 640x400 window. Turn on
+fullscreen in its own menu (OpenTyrian → Toggle Fullscreen), or put
+`{"video": {"fullscreen": true, "scaler": "Scale2x"}}` in
+`~/.opentyrian/opentyrian.conf`. It keeps its settings there, in your home
+folder, not in the package's appdata.
+
+**The D-pad sends every press twice to a game that reads both the keyboard
+and the joystick.** The input daemon reports a D-pad press on `pyraInput
+keyboard` (an arrow key) and on `pyraInput Gamepad` (the hat) at once. In
+OpenTyrian's menus, one press moved the highlight two items when started
+without its launcher. That is OpenTyrian's own code: it turns the joystick
+hat into key presses on top of the real key. Its launcher prevents it by
+running `sudo pyrainputctl disable gamepad` before the game and `enable`
+after (one press, one step, checked). Start it from the menu or
+`/usr/local/games/opentyrian`, not by running `ot` directly. While it runs,
+nothing arrives on the gamepad device. Hostile Takeover opens no joystick,
+so each press arrives once with the gamepad left on. If OpenTyrian crashes,
+the gamepad stays off: see "Input can stay remapped" below.
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
