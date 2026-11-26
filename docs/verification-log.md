@@ -4040,3 +4040,22 @@ With SoH's own rumble strength set to 20 %, an effect lands at about code 37.
   overcurrent. Module object and disassembly identical (`arm-linux-gnueabihf-objdump -dr -s`, 1076 lines)
   built against `src-m4-kbdled` and `src-m4-kbdled-test`. An earlier "identical" check that used the host's
   `objcopy` compared empty output; the disassembly comparison done then was valid.
+
+## 2026-11-26 — pyra-settings 0.18 Rumble page against 0055
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4) with the revised 0055 module from the entry above. pyra-settings
+0.18 built in its docker trixie container and installed with apt. Motor drive read from VIBCTLR/VIBDATR (`0x1a`/
+`0x1b` in `/sys/kernel/debug/regmap/0-004b/registers`) 0.4 s into each one-second test rumble, not by feel.
+
+- Helper `set-rumble`: `strength=50` → `max_code` 50, `/etc/modprobe.d/pyra-settings-rumble.conf` reads
+  `options twl6040_vibra enable=Y max_code=50` (0644). `strength=64` refused (exit 2), `max_code` unchanged.
+  `enable=off` → `enable` N, file `enable=N max_code=50`.
+- Test rumble (the GUI's `play_rumble`, as user `pyra`, on `event8`): `ff_effect` 44 bytes, `input_event` 16,
+  `EVIOCSFF` `0x402c4580`, no kernel messages. VIBCTLR `01` while it plays, `00` after; VIBDATR `0x2c` at Light,
+  `0x38` at Strong, `0x3c` at Max; with `enable=N` VIBCTLR stayed `00`. VIBCTLL `00` throughout.
+- Reboot with the file at `enable=N max_code=50`: the parameters came up `N`, `50` (`min_code` 32), so the file
+  applies when the module loads.
+- Through GTK, on the greeter's display (no logged-in session, so no Menta theme), the helper via `sudo -n`: the
+  page showed the boot state (off, Medium, Test greyed out); a tap on the switch set `enable` Y, a tap on Strong
+  set `max_code` 56 and the file, and Play gave VIBCTLR `01`, VIBDATR `0x38`. With the parameter path pointed at
+  a missing directory the page shows its no-0055 note.

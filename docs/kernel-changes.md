@@ -316,8 +316,10 @@ every time, while 62 never did with the battery at 3.84 V. The drive rises with 
 voltage, so 56 leaves room for a full battery. `max_code=0` gives back the stock cap, now
 computed in 64 bits (the left channel's overflowed `int`). `min_code=0` gives back the stock
 linear mapping. `enable=N` stops playing effects (it takes effect at the next effect change),
-so a settings page can switch rumble off. The settings page itself isn't written yet.
-Measurements: `verification-log.md`, "rumble in Ship of Harkinian" and "patches/0055";
+so a settings page can switch rumble off. pyra-settings 0.18's Rumble page sets `enable` and
+`max_code` (Light 44, Medium 50, Strong 56, Max 60) through `/etc/modprobe.d/pyra-settings-rumble.conf`; the
+image doesn't pin 0.18 yet. Measurements: `verification-log.md`, "rumble in Ship of Harkinian", "patches/0055"
+and "pyra-settings 0.18 Rumble page";
 limits: `known-limitations.md` 2.10.
 
 **`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
