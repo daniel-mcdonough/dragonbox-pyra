@@ -305,6 +305,11 @@ wheel on `palmas-gpadc` and sets a volume; it never sets a route. The TWL6040
 controls are the same on both kernels, so none of this changes on the AESS
 path.
 
+**Leave the output volume in MATE's Sound Preferences (PulseAudio's sink
+volume) at 100 %.** The wheel is the volume control. A lower sink volume only
+adds software attenuation in front of it, so the top of the wheel no longer
+reaches full level.
+
 **The wheel drives the headphones as well as the speakers, with the
 replacement daemon below.** The packaged one writes **`Handsfree Playback
 Volume` only**, so under it the wheel controls the speakers and nothing else,
