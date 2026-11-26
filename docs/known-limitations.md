@@ -235,7 +235,11 @@ the driver's scaling or the device tree's motor/driver resistances. That is
 untried. Only the strong (low-frequency) magnitude drives it. The weak magnitude goes to
 the left channel, which has no motor, so a game's high-frequency or small-motor rumble does
 nothing at any strength. Games reach the motor fine: `pyraInput Gamepad` forwards effects, and
-SDL2 reports rumble on it. `verification-log.md`, R117 c and "rumble from a game's side".
+SDL2 reports rumble on it. While rumble plays, the speakers (not headphones) click
+softly each time the driver switches on or off. That comes from the driver also enabling
+the motorless left channel. Games that pulse the motor, like Ship of Harkinian (32 ms on, 65 ms
+off), click about 10 times a second and barely spin it up. `verification-log.md`, R117 c,
+"rumble from a game's side" and "rumble in Ship of Harkinian".
 
 ---
 

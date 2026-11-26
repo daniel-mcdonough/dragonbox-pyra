@@ -3979,3 +3979,31 @@ R99 test card, kernel `5.6.19-m4-kbdled` (r4). Effects checked by reading VIBCTL
   "Unexpected controller element crc", which isn't from this call.
 - Answer: an SDL2 or evdev game can find the rumble and drive the motor with no setup. What it feels is
   limited by `known-limitations.md` 2.10. Not run: RetroArch, DuckStation, or any other real emulator.
+
+## 2026-11-26 — rumble in Ship of Harkinian: weak at 100 %, and the speakers click while it plays
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4), `soh-pyra` running with game audio on the speakers. The owner
+listened and held the Pyra. Register writes were traced with the `regmap:regmap_reg_write` tracepoint, filtered to
+`0x18`-`0x1b`.
+
+- SoH's rumble Test button at 100 %, pressed twice, doesn't hold the motor on. It pulses: VIBCTLL/R `0x01` with
+  VIBDATR `0x33` for 32 ms, then both `0x00` for 65 ms, about 10 Hz, for the whole test (138 writes). A steady
+  `SDL_GameControllerRumble(0xffff, 0, 0)` every 1/60 s from a separate SDL2 program gives one enable and one
+  disable, so SDL doesn't make the pulses. The likely source is SoH: the test calls `StartRumble` every UI
+  frame while the game's `osMotorStop` path (`libultraship/libultra/os.cpp`) keeps stopping it. In-game rumble
+  is pulsed by design, and 32 ms bursts just above the motor's start level barely spin it up.
+- pyrainput (`joystick.cpp`, `UI_FF_UPLOAD`) handles an update to a known effect by `EVIOCRMFF` on the
+  vibrator, then a fresh `EVIOCSFF`. The erase stops the effect, so each strength change also turns the driver
+  off and on.
+- Owner reported static in the speakers, pulsing, during Test. Not in headphones.
+- A/B 1, writes over i2c straight to the chip with only the right channel enabled (VIBDATR `0x33`): steady for 3 s,
+  and pulsed for 3 s. Neither gave SoH's static. The only noise heard was the speakers clipping on game audio.
+- A/B 2, all pulsed: A right channel only, B left and right (what the driver does), C left channel only (no
+  motor moves). **B and C gave the static** ("isn't loud but it's noticeable"), A didn't. `twl6040_vibra_enable`
+  sets VIBENA on both channels, and the left has no motor (`ti,viblmotor-res` 999999). Switching the left driver
+  on and off is what clicks in the speakers.
+- Also: the left code's `vddvib * motor_res * TWL6040_VIBRA_MOD` is 3300 × 999999 × 85, which overflows `int`, so
+  VIBDATL comes out as 0. That's harmless here, but it's why the weak magnitude never shows up on the left.
+- Answer: the clicks come from the motorless left channel being enabled. Software can fix that by never
+  enabling a channel with no motor. The weak feel comes from the 51-code cap (`TWL6040_VIBDAT_MAX` is 100) and
+  from the 32 ms pulses.
