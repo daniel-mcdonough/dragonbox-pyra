@@ -222,6 +222,18 @@ input is driven by a FET from the same contact. Fixing it would take a board
 change, such as using the jack's switch without sharing the tip.
 `experiments/jack-detect/README.md`, step 3.
 
+### 2.10 Weak rumble doesn't move the vibration motor
+
+The TWL6040 drives the motor on its right vibra channel (the left has none in
+the device tree), and the driver scales an effect's magnitude to a duty code
+whose full scale is 51 at the 3.3 V it sees on `vsys`. The motor on the one
+unit measured only starts between codes 25 and 32, roughly 50-63 % of full
+magnitude (by feel, 2026-11-26). Below that the registers are written and the
+motor stays still, so a game's light rumble does nothing, and `fftest`'s
+"strong rumble" (code 19) feels broken. Raising the floor would mean changing
+the driver's scaling or the device tree's motor/driver resistances. That is
+untried. `verification-log.md`, R117 c.
+
 ---
 
 ## 3. Tried, measured, does not work

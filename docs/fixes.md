@@ -642,8 +642,8 @@ A guard exists now (`device/pyra-charge-guard.sh`, 2026-11-24,
 `experiments/charging/README.md` "The guard"): it reads the margin to the
 charger's own hot cut-off and lowers REG02 before that cut-off trips, with
 hysteresis. It is not a prep fix — the release decision above stands. A real
-charge on 2026-11-25 drove it through three reduce/restore cycles on hardware
-(`verification-log.md`); whether it makes the TS pin's hard stop rarer has not
+charge on 2026-11-25 drove it through five reduce/restore cycles on hardware
+(`verification-log.md`; a replug it missed then is fixed in the script); whether it makes the TS pin's hard stop rarer has not
 been measured.
 
 **What it assumes, which you should know before raising the number.** It
@@ -874,10 +874,12 @@ user manager.
 
 Verified on the R99 test card: two real boots after installing the drop-in,
 `Headset Left/Right Playback` read `HS DAC` once PulseAudio had finished
-starting, with nobody touching anything (`verification-log.md`, 2026-11-25). Not yet
-checked: whether PulseAudio resets the pair again after startup — when an idle
-sink resumes for playback, on a headphone-jack switch, or after a system
-resume — which this drop-in would not cover (NEXT R117). The four-route loop in the
+starting, with nobody touching anything (`verification-log.md`, 2026-11-25). After
+startup nothing resets it (R117, 2026-11-26). It stayed `HS DAC` through an idle
+sink resuming for playback and a system suspend/resume. Over two headphone
+unplug/replug cycles it followed the port: `Off` on `pyra-speaker` (by design, that
+path selects `Off`) and `HS DAC` on `pyra-headphones`. The drop-in covers startup,
+which is the only place the pair is lost. The four-route loop in the
 helper also gained `logger` calls on failure, previously missing — it is why
 this shipped unnoticed for two months: every earlier check of fix 9 used a
 manual `udevadm trigger` retrigger, which always worked, so a cold boot was

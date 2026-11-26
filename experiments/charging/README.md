@@ -707,12 +707,16 @@ by owner decision). It is explicitly not a ladder with multiple steps:
 one reduction, one restore, which is enough to buy time near the trip without
 the complexity (and the oscillation risk) of more rungs.
 
-**Fails toward the safe side.** Nothing else ever writes REG02 after probe,
-so a kill mid-reduction leaves the charger at the lower current rather than
+**Fails toward the safe side.** Nothing else writes REG02 while the charger
+stays plugged in, so a kill mid-reduction leaves the charger at the lower current rather than
 silently snapping back to full under a hot pack — the script does not restore
 on exit, only on the margin actually recovering, or the charger going offline.
 To stop a stuck reduction from outliving a crashed run the other way, every
 start re-asserts the full value first, whatever REG02 currently reads.
+A replug does reset REG02 to `0x60`, even a 0.4 s VBUS drop that no 10 s sample
+sees as offline (2026-11-25, `verification-log.md` R117 a). So every sample
+while `REDUCED` compares the live register and writes the reduction again if it
+has moved.
 
 **Verified 2026-11-24** on the R99 test card (`docs/verification-log.md`):
 the i2c write/readback round trip (both directions, against the driver's own
@@ -729,6 +733,8 @@ no forced unplug/replug needed. Three full thermostat cycles over ~35
 minutes of active charging (reduce at 60/59/56 mV, restore at 91/96/90 mV),
 `reg02` tracking `FULL`/`REDUCED` exactly on every sample, no `FORCE_20PCT`
 warning, no `HOT` fault in `dmesg`. Log: `experiments/charging/charge-guard-real-charge-20261125.tsv`.
+The complete file (read back 2026-11-26) has five cycles, plus one replug the
+guard missed in its last minute, now fixed (see above).
 This was E9's last open item.
 
 Not yet a prep fix: the owner decided E9 is not needed for the release, and

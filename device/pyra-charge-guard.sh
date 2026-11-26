@@ -49,9 +49,12 @@
 #
 # WHAT IT DOES ON START, AND WHY
 #
-# Nothing else ever writes REG02 after probe (checked: it stays at the
-# device tree's chg_current, 2048 mA / register 0x60, across boots and
-# charges). So if this script is killed mid-reduction — the charger stays
+# Nothing else writes REG02 while the charger stays plugged in (checked: it
+# stays at the device tree's chg_current, 2048 mA / register 0x60, across
+# boots and charges). A replug does reset it to 0x60, even one shorter than a
+# sample (seen 2026-11-25: a 0.4 s VBUS drop mid-reduction), so every sample
+# while REDUCED compares the live register and writes the reduction again if
+# it has moved. If this script is killed mid-reduction — the charger stays
 # exactly where it was left, which is the safe direction, not a crash that
 # silently restores full current under a hot pack — a later run would
 # otherwise mistake that leftover reduced value for the configured FULL_MA.
@@ -79,8 +82,10 @@
 #   ichg_mA    the fast-charge current limit this script believes is set,
 #              from the register it last wrote (or read, at start).
 #   reg02      the live register byte, re-read every sample, so a divergence
-#              between it and ichg_mA is visible (it should never happen: see
-#              "what it assumes" above).
+#              between it and ichg_mA is visible. While REDUCED, a divergence
+#              is written back the next sample ("reg02 was 0x60 while reduced,
+#              re-applied 512 mA"); while FULL it is only logged, since a
+#              lower value set by someone else is the safe direction.
 #   note       "-", or what changed this sample ("start: asserting 2048 mA",
 #              "reduced 2048 -> 512 mA, margin 54 mV", "restored 512 -> 2048
 #              mA, margin 93 mV", "charger offline, restored 512 -> 2048 mA").
@@ -229,6 +234,20 @@ while [ $(( $(date +%s) - t0 )) -lt "$dur" ]; do
 			m = (a ~ /^[0-9]+$/) ? sprintf("%.0f", a - c) : "NA"
 			printf "%.0f %s\n", c, m }')"
 
+		# A charger replug puts REG02 back to 0x60 behind this script (see
+		# "what it does on start"), so a reduction has to be re-checked
+		# against the live register, not only remembered.
+		live=$(read_reg 0x02)
+		reapplied=
+		if [ "$state" = REDUCED ] && [ "$DRYRUN" = 0 ] \
+			&& [ "$live" != "$(printf '0x%02x' "$(( (REDUCED_CODE << 2) | LOW2 ))")" ]; then
+			if set_code "$REDUCED_CODE" "reg02 was $live while reduced, re-applied ${REDUCED_MA} mA"; then
+				reapplied="reg02 was $live while reduced, re-applied ${REDUCED_MA} mA"
+			else
+				reapplied="reg02 was $live while reduced, FAILED to re-apply"
+			fi
+		fi
+
 		if [ "$margin" != NA ]; then
 			if [ "$state" = FULL ] && [ "$margin" -le "$LOW_MV" ]; then
 				if set_code "$REDUCED_CODE" "reduced ${FULL_MA} -> ${REDUCED_MA} mA, margin ${margin} mV"; then
@@ -249,6 +268,9 @@ while [ $(( $(date +%s) - t0 )) -lt "$dur" ]; do
 			fi
 		else
 			note=-
+		fi
+		if [ -n "$reapplied" ]; then
+			[ "$note" = - ] && note=$reapplied || note="$reapplied; $note"
 		fi
 	else
 		if [ "$state" = REDUCED ]; then

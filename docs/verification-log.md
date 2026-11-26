@@ -3255,9 +3255,11 @@ survives the ssh session) before the charger went in, logging every 10 s.
   same file and auto-restores on charger-offline while it runs. (Audit, same day: that holds only for an
   unplug inside the four hours. If the run ends while `REDUCED`, REG02 stays at 512 mA, since the script
   doesn't restore on exit, until something rewrites it; NEXT R117 reads it back.)
+- (R117, 2026-11-26: REG02 read `0x60`. The run ended at 19:07:53, when the Pyra was powered off, after
+  five cycles, not three. At 19:06:52 a 0.4 s VBUS drop reset REG02 to `0x60` while the guard stayed `REDUCED`,
+  so `reg02` did diverge for the last 7 samples. The guard now re-applies the reduction. See the R117 a section.)
 
-Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (215+ lines as copied; the on-device
-file may have grown further). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
+Full log: `experiments/charging/charge-guard-real-charge-20261125.tsv` (the complete 345-line file since R117). Resolves BACKLOG E9's last open item — see `experiments/charging/README.md`
 "The guard".
 
 This same real charge also answers R15's "charging on `5.6.19-m4-kbdled`" line: charger detected
@@ -3393,6 +3395,9 @@ triggered.
   final-order-email news thread: assembly-time "vibro motor not working" traced to flux/corrosion), which fits
   but isn't shown for this unit. (Verdict narrowed by the 2026-11-25 audit, development log R116.)
 - Left on the card: `joystick`/`inputattach` installed (harmless, no daemon).
+- **Superseded 2026-11-26 (R117 c, below):** the motor works. The vibra registers do change and the
+  supplies are real (`vsys`), but fftest's strong rumble drives it at code 19, below its start level of
+  about 25-32. Driven at 51 it rumbles.
 
 ## 2026-11-25 — ScummVM-Pyra 2026.4.0: "properly working fullscreen" claim (R113)
 
@@ -3487,3 +3492,74 @@ writes log records into a save.
 - To get further: a rebuild of bennugd against trixie's OpenSSL 3, or a DBP that bundles `libcrypto.so.1.1`
   in its own `lib/` (`docs/dbp.md`, "Library names"). Then supply the data files and repeat the save check.
   No prep fix applies.
+
+## 2026-11-25 — charge guard: how the real-charge run ended, and a replug it missed (R117 a)
+
+On the R99 test card, kernel r4 in `l5`, read back the next night (device clock 2026-11-26 00:41 CET).
+
+- REG02 now: `sudo i2cget -f -y 1 0x6b 0x02` → `0x60` (2048 mA). Not left at 512 mA.
+- The run didn't last the planned 4 h. It stopped at 19:07:53 (t=3462 s) because the Pyra was powered off
+  from the desktop session at 19:07:54 (`systemd-logind: The system will power off now!`, a clean shutdown
+  that killed `pyra-charge-guard` with SIGTERM). The next boot started at 19:08:29.
+- The full file has 344 samples and **five** reduce/restore cycles, not the three in the first copy: the
+  three already recorded, then 18:46:41 reduced (margin 60 mV), 18:50:23 restored (91 mV), 18:51:44 reduced
+  (59 mV). The committed TSV is now the complete file (it was a 215-line prefix).
+- **The guard missed a replug.** At 19:06:52.05 `bq2429x_usb_detect` logged `r8=00 ... UNPLUG`, then VBUS
+  back as `ADAP` 0.42 s later (cause not recorded). After that, REG02 read `0x60`, but the guard stayed
+  `REDUCED`: its last 7 samples (19:06:53-19:07:53) log `REDUCED 512 0x60`. The margin went from 78 mV to
+  7-13 mV within one sample and `bat_ua` swung, which is consistent with full current going back in. No `HOT` fault in
+  the journal before the poweroff. The guard only acts on an unplug when a 10 s sample happens to see the
+  charger offline. A 0.4 s drop falls between samples, and the replug puts REG02 back to 0x60 behind it. The
+  header's "nothing else ever writes REG02 after probe" was wrong for replugs.
+- Fixed in `device/pyra-charge-guard.sh`: every sample while `REDUCED` compares the live REG02 with the
+  reduced byte and writes it again if it moved (note `reg02 was 0x60 while reduced, re-applied 512 mA`).
+  While `FULL`, a divergence is only logged. Tested on the card, 00:42 CET, charger in, pack full:
+  `sudo env PYRA_CHARGE_GUARD_LOW_MV=2000 PYRA_CHARGE_GUARD_HIGH_MV=3000 bash /tmp/pcg.sh /tmp/pcg-test.tsv 60 5`
+  reduced at the first sample (forced by the thresholds), then `sudo i2cset -f -y 1 0x6b 0x02 0x60 b` by hand.
+  The next sample logged the re-apply and REG02 read `0x00` again. Afterwards the guard was killed and REG02
+  set back to `0x60` (read back).
+
+## 2026-11-26 — fix 9's headset pair after startup: idle, playback, suspend, replug (R117 b)
+
+On the R99 test card, kernel r4 in `l5`, PulseAudio up since the 19:08 boot (5.5 h). Read with `amixer -c L15
+cget name='Headset Left Playback'` (and Right), `pactl list short sinks`, and the jack control `numid=37`
+(`Headset Stereophone Jack`).
+
+- At rest, sink `SUSPENDED`, no headphones: pair `1/1` (`HS DAC`).
+- Playback after idle (`paplay`, sink volume at 0 %): `1/1` while `RUNNING`, then `IDLE`. This card's
+  `module-suspend-on-idle` has `timeout=300`, so the sink stays `IDLE` for 5 min, not 5 s.
+- Suspend/resume: `systemctl suspend` at 00:44:04, woken at 00:44:17 by a key press (the owner touched the nub;
+  an RTC alarm had been set for +30 s, so RTC wake is still untested). Pair `1/1` after resume, and again after a
+  `paplay`. The resume carried the known `Unbalanced enable for IRQ 144` (SGX, `troubleshooting.md`).
+- Replug, logged once a second (owner, headphones): out `0/0` on port `pyra-speaker`, in `1/1` on
+  `pyra-headphones`, out `0/0`, in `1/1`. Each switch showed up within a second. The `0/0` on the speaker port
+  is by design (`pyra-speaker.conf` selects `Headset ... Playback: Off`). A first attempt at
+  00:48-00:49 logged no transitions at all. The sink was still `IDLE` from the 00:44:57 `paplay` (300 s
+  timeout), so the headset amplifier was on and unplugs weren't detected: `known-limitations.md` 2.9, not new.
+  The repeat at 00:51 came after the sink had suspended.
+- Answer: none of the three cases resets the pair. After startup, PulseAudio sets it only through the port
+  paths, and those set it correctly. Fix 9's `ExecStartPost` drop-in is enough.
+
+## 2026-11-26 — rumble/vibra: the motor works, fftest's strong rumble is below its start level (R117 c)
+
+On the R99 test card, kernel `5.6.19-m4-kbdled` (r4). Owner holding the Pyra. Overturns the R111 verdict
+above.
+
+- Supplies: `vddvibl` and `vddvibr` of `0-004b` are both consumers of the fixed `vsys` regulator (3300 mV in
+  `regulator_summary`), not dummies. `dmesg` has no vibra supply warning.
+- Registers while `fftest /dev/input/event8` plays effect 4 (strong rumble), read both from
+  `/sys/kernel/debug/regmap/0-004b/registers` and raw with `i2cget -f -y 0 0x4b`: VIBCTLL `0x01`, VIBDATL
+  `0x00`, VIBCTLR `0x01`, VIBDATR `0x13`. Afterwards VIBCTLL/R go back to `0x00`. The driver does enable the
+  channels and write a duty. Owner felt nothing (00:52:55).
+- Device tree (`twl@4b/vibra`): left `ti,vibldrv-res` 8, `ti,viblmotor-res` 999999 (no motor), right
+  `ti,vibrdrv-res` 3, `ti,vibrmotor-res` 32. With `TWL6040_VIBRA_MOD` 85 and 50 mV per code, the driver's code
+  at full magnitude is 3300 × 32 × 85 / (100 × 35) / 50 = 51. Only the right ("strong") channel drives a motor.
+- Direct drive of the right channel (`i2cset ... 0x1b <code>`, then `0x1a 0x01`, 2-3 s, then `0x1a 0x00`):
+  - `0x33` (51): owner felt a clear rumble.
+  - A sweep, 2 s each: `0x13`, `0x19` nothing; `0x20`, `0x28`, `0x33` felt.
+  - Start threshold on this unit: between code 25 and 32 (about 1.25-1.6 V peak, about 50-63 % of full
+    magnitude). Measured by feel, one unit.
+- Answer: the motor, its wiring and the TWL6040 output work. Effects weaker than about 60 % magnitude don't
+  start it, and fftest's strong rumble lands at code 19. The R111 "motor doesn't respond" result was a
+  drive-level result. Not explained: why that effect gives 19 rather than the 25 that half of 0xFFFF would.
+  fftest's magnitude wasn't checked. Not run: the stock card (no longer needed to locate the fault).
