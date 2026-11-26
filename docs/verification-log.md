@@ -3722,3 +3722,59 @@ freeware and ship their data.
   `pyrainputctl enable gamepad`. SIGTERM ended `ht` normally.
 - Left on the card: both `.dbp`s in `/dragonbox/packages/`, registered, and their `/dragonbox/appdata/` folders.
   Removed: `~/.opentyrian`, the shim, the unpacked sdl12-compat. `gamepad.export = 1` checked afterwards.
+
+## 2026-11-26 — Fasttracker 2 clone and Farox's demos: start, fullscreen, GL path, sound (R122)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`, `vmlinuz` `646e033b…`), `libgl-gl4es-pyra` 1.1.7.1,
+`libsdl1.2pyra` 1.2.15+dfsg2-9, SDL2 2.32.4, PulseAudio 17.0, AESS sink at 100 %. From the forum review's
+compatibility list: gl4es fullscreen, and audio noise or a crash (https://pyra-handheld.com/boards/posts/1704299/,
+https://pyra-handheld.com/boards/posts/1715481/). The owner sat at the Pyra, speakers only, wheel near the bottom,
+and listened to each one.
+
+- **In the DBP repository: all four.** ft2-clone `repo/apps/393`: 2.26 by jedi23 (2026-10-16),
+  `/repo/packages/ft2-clone/400/download`, MD5 `8ad801d904d5a57c9c61d33b80682fbf`. Fiat Homo `repo/apps/236`,
+  Ante Dominum `repo/apps/237`, Fit for Autopsy `repo/apps/246`: 1.0.0.2 by Farox (2023-12-04), ids 270, 268, 269,
+  MD5 `3f20b1460232b31f71a2c1e9d833687c`, `b7939b722e36a4a92b8dfbaf6e3bb5b5`, `59972895db395659246480d051fc020d`.
+  All four MD5s matched. Copied to `/dragonbox/packages/`, all registered.
+- **Libraries.** ft2-clone needs `libSDL2-2.0.so.0`, `libGLESv2.so.1` (RUNPATH the SGX lib dir), `libasound.so.2`.
+  It bundles a `libpvrDRI3WSEGL.so` (RUNPATH from someone's SGX rebuild tree). Its `run-ft2.sh` puts that first on
+  `LD_LIBRARY_PATH` and sets `SDL_VIDEO_X11_FORCE_EGL=1` plus the SGX `libEGL`/`libGLESv2` as SDL's drivers. Fiat
+  Homo and Ante Dominum need `libGL.so.1`, `libGLU.so.1`, `libSDL-1.2.so.0` and their bundled `libfmod.so.13` /
+  `libfmod.so.10` (found through the launcher's `LD_LIBRARY_PATH=./`; plain `ldd` says `not found`). Their
+  launchers run `gl4es ./<binary>`. Fit for Autopsy's menu and demos need `libSDL-1.2.so.0` and `libGL.so.1`, and
+  the launcher runs `gl4es ./autopsy`. Nothing else missing.
+- **Hand mounts failed at first** with `Error: Unable to set up AuFS union`; dmesg had
+  `aufs opt_add: lookup failed /dragonbox/appdata/fiathomo (-2)`. The demos' `Appdata=` (`fiathomo`,
+  `antedominum`, `autopsy`) differs from their ids. Making those folders fixed it (`dbp.md`, "Check a DBP's libraries").
+- **ft2-clone: starts, pass.** Prints `GL_RENDERER: PowerVR SGX 544MP`, `GL_VERSION: OpenGL ES 2.0 build
+  1.14@3699939`, `DRI3 1.0`, `present 1.2`. Maps the bundled WSEGL, the SGX `libEGL`/`libGLESv2`/`libsrv_um`, SDL2;
+  no gl4es. Opens `/dev/dri/card0` and `renderD130`. First start: a decorated 632x400 window; `xwd -id` showed the
+  main screen drawn correctly. Alt+Enter (its own help text names it) and F11 changed nothing, with the window
+  focused and keys reaching it (Escape opened its quit box; keys and clicks sent with a small XTest program built
+  on the card). Config → Miscellaneous → Fullscreen: "This setting is not applied until you close and reopen the
+  program". Saved to `~/.config/FT2 clone/FT2.CFG`. After a restart: window 1280x720+0+0 with
+  `_NET_WM_STATE_FULLSCREEN`, and `xwd -root` showed the 632x400 picture stretched over the whole screen ("Stretched"
+  off). Sink-input `ft2-clone`, `s16le 2ch 48000Hz`, uncorked from start. Its config page: default device, 48 kHz,
+  16-bit, 8-point sinc. Started with Fiat Homo's `music.xm` as argument, Right Ctrl played it. Owner: **clean
+  music**. 46 % of a core while playing (`top`, one sample).
+- **Fiat Homo: starts, pass.** Maps gl4es `libGL.so.1`, the SGX `libEGL`/`libGLESv2`, `/usr/lib/libpvrDRI3WSEGL.so`,
+  `libsdl1.2pyra`'s `libSDL-1.2.so.0.11.4`, the bundled `libfmod.so.13`. gl4es logged v1.1.7, GLES 2.0 backend.
+  X reports a 1280x720 client at 1,36 inside a 1282x757 marco frame, `_NET_WM_STATE` only FOCUSED, and `xwd -id` of
+  the frame shows a title bar. But `xwd -root` shows the demo over all 1280x720, title bar area included, and the
+  owner saw it fill the screen with no title bar. Sink-input `FMOD Audio`, `s16le 2ch 48000Hz`. Owner: **clean
+  music**. Escape quit it.
+- **Ante Dominum: starts, pass.** Same libraries with `libfmod.so.10`, same window report, same `FMOD Audio`
+  `s16le 2ch 48000Hz` stream. Owner: **clean music, fills the screen**. Escape quit it.
+- **Fit for Autopsy: starts, pass.** Menu: a 300x480 window at 35,92 (decorated), the picture exactly inside the
+  client area (pixel edges 35..334, 92..571), no audio stream. A click on a logo runs that demo
+  (`sh -c "cd boy;./boy"`). Boy (2008): window reported 1280x720 at 1,36 as above; on screen a 4:3 picture with
+  black bars left and right, full height. Sink-input `boy`, `s16le 2ch 44100Hz`, through SDL 1.2's PulseAudio
+  backend. Owner: **clean music**. Escape returned to the menu. Division by Zero (1993): fills the screen,
+  sink-input `dbzero`, `s16le 1ch 44100Hz`. Owner: **clean, and no noise burst all session**. The other eight
+  demos were not run. The menu ignores Escape. SIGTERM ended it, and its union and image (twice) stayed
+  mounted until unmounted by hand (`dbp.md`, "When a program is killed or crashes").
+- **Kernel log:** nothing from the audio drivers (no `abe`, `aess`, `mcpdm`, xrun lines) between 02:45 and the end of
+  the run (`dmesg -T`).
+- Left on the card: the four `.dbp`s in `/dragonbox/packages/`, registered, and their appdata folders
+  (`ft2-clone`, `fiathomo`, `antedominum`, `autopsy`). Removed: `~/.config/FT2 clone`, the XTest program and the
+  copied modules in `/tmp`.

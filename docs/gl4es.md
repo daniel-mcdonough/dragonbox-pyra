@@ -119,8 +119,11 @@ screen on the SGX (checked 2026-11-21, through its DBP launcher).
 program (not tried). To find what a program asks for, log its
 `SDL_GL_SetAttribute` calls the same way.
 
-ft2-clone was not tried: the forum attachment is the only build. Its audio
-trouble under gl4es predates the AESS fixes and may not be a GL matter at all.
+The forum's ft2-clone test build was not tried. The repository now has
+ft2-clone 2.26 (2026), which draws with GLES2 on the SGX directly and needs
+neither gl4es nor GLX. It plays clean on kernel r4, and so do Farox's
+gl4es demos that warned of audio noise ([dbp.md](dbp.md), "Sound-heavy DBPs").
+The old trouble predates the AESS fixes.
 
 What does not help:
 

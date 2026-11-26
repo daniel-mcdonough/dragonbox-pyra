@@ -124,7 +124,8 @@ libraries resolve, and the dialog doesn't check that.
 Mount it by hand, run `ldd` on the binary, and unmount:
 
     id=GBAemu
-    mkdir -p /dragonbox/appdata/$id       # what dbp-run would do
+    ad=$(unzip -p /dragonbox/packages/GBAemu-1.5.46.02.dbp meta/default.desktop | sed -n 's/^Appdata=//p' | tail -1)
+    mkdir -p "/dragonbox/appdata/${ad:-$id}"   # what dbp-run would do
     tok=$(dbp-cmd mount $id)
     ls /mnt/dbp/union/$id/
     ldd /mnt/dbp/union/$id/gbaemu | grep 'not found'
@@ -132,6 +133,21 @@ Mount it by hand, run `ldd` on the binary, and unmount:
 
 For GBA.emu nothing was `not found` (2026-11-21). `libEGL` and `libGLESv2`
 resolve to the SGX driver in `/opt/omap5-sgx-ddk-um-linux/lib`.
+
+The appdata folder must carry the package's `Appdata=` name, which can differ
+from its id: Fiat Homo is `fiathomo_farox` with `Appdata=fiathomo`. Without
+that folder, `dbp-cmd mount` fails with `Error: Unable to set up AuFS union`
+and the kernel log has `aufs opt_add: lookup failed /dragonbox/appdata/fiathomo
+(-2)`. The message suggests a reboot, but the folder is what's missing.
+`dbp-run` makes it itself. The snippet above reads the name from the
+package. `unzip` can't read the metadata of every package: on ft2-clone 2.26
+it reported a zip with extra bytes and printed nothing, so check that `ad` came
+out non-empty.
+
+A library the launcher bundles shows as `not found` here, because `ldd`
+doesn't get the launcher's `LD_LIBRARY_PATH`. Read the launcher script before
+treating it as missing. Farox's demos ship their own `libfmod.so.10`/`.so.13`
+next to the binary and set `LD_LIBRARY_PATH=./`.
 
 `dbp-run --log-output --chdir <id> <executable>` runs a package from a
 terminal. Its output goes to `/tmp/dbpout/dbprun-<id>-stdout.log` and
@@ -234,13 +250,62 @@ nothing arrives on the gamepad device. Hostile Takeover opens no joystick,
 so each press arrives once with the gamepad left on. If OpenTyrian crashes,
 the gamepad stays off: see "Input can stay remapped" below.
 
+## Sound-heavy DBPs: Fasttracker 2 clone and Farox's demos
+
+On bookworm the forum warned that these could crash the audio into loud noise
+(https://pyra-handheld.com/boards/posts/1704299/,
+https://pyra-handheld.com/boards/posts/1715481/). On the trixie card with
+kernel r4 all four start and play clean through the speakers. The owner
+listened at a low wheel setting through five runs of roughly two minutes each
+(estimated from the session's timestamps) and heard no burst (2026-11-26;
+`verification-log.md`, R122). Headphones were not tried.
+
+| DBP (repo version) | GL path | Window and picture | Sound (PulseAudio stream) |
+|---|---|---|---|
+| ft2-clone 2.26 (`ft2-clone`, jedi23 2026) | GLES2 straight on the SGX: SDL2 over EGL, with its own `libpvrDRI3WSEGL.so`; no gl4es | 632x400 window by default; fullscreen 1280x720, picture stretched to fill the screen | `ft2-clone`, s16le 2ch 48 kHz; clean playing a module |
+| Fiat Homo 1.0.0.2 (`fiathomo_farox`) | `gl4es` → SGX, SDL 1.2 (`libsdl1.2pyra`), bundled `libfmod.so.13` | fills the screen, no title bar (see below) | `FMOD Audio`, s16le 2ch 48 kHz; clean |
+| Ante Dominum 1.0.0.2 (`antedominum_farox`) | as Fiat Homo, bundled `libfmod.so.10` | fills the screen | `FMOD Audio`, s16le 2ch 48 kHz; clean |
+| Fit for Autopsy 1.0.0.2 (`autopsy_farox`) | `gl4es` → SGX, SDL 1.2 (`libsdl1.2pyra`), no fmod | menu: 300x480 decorated window; Boy: 4:3 picture, black bars left and right; Division by Zero fills the screen | each demo opens its own stream: Boy s16le 2ch 44.1 kHz, Division by Zero s16le mono 44.1 kHz; clean. The menu has none |
+
+Fiat Homo and Ante Dominum are the two intros of the forum thread "Some Scene
+Intro/demo by Traction". Of Fit for Autopsy's ten demos, only Boy and Division
+by Zero were run.
+
+**ft2-clone needs a restart to go fullscreen.** Alt+Enter, its documented
+toggle, does nothing in this build. Tick Config → Miscellaneous → Fullscreen,
+and it answers "This setting is not applied until you close and reopen the
+program". It saves this in `~/.config/FT2 clone/FT2.CFG`, not in appdata. The
+next start opens fullscreen. The picture then fills all of 1280x720 although
+"Stretched" is off, so the pixels are not square (x 2.03, y 1.8). Windowed,
+"Auto fit" stays at 1x: 2x would be 1264x800, taller than the screen. A module
+given on the command line is loaded at start
+(`/usr/local/games/run-ft2.sh song.xm`); Right Ctrl plays it. It used 46 % of
+a core playing, with its default 8-point sinc interpolation (`top`, one
+sample).
+
+**The demos' X window and their picture disagree.** X reports Fiat Homo,
+Ante Dominum and Fit for Autopsy's demos as a decorated 1280x720 window at
+1,36 under a marco title bar, which would push the bottom 36 rows off the
+screen. On the display the picture covers the whole screen with no title bar
+(the owner looked; `xwd -root` agrees). Why was not looked into. The Autopsy
+menu, a smaller window, is drawn exactly inside its client area.
+
+**Quitting.** Escape quits ft2-clone (after a yes/no box), Fiat Homo, Ante
+Dominum, and each Autopsy demo back to the menu. The Autopsy menu itself
+ignores Escape. It was ended with SIGTERM here, which left its union mounted
+(see the next section).
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
   normally. If `dbp-run` itself is killed, the union and the image stay mounted
-  (seen 2026-11-21 after a `timeout`). Check with `findmnt -t aufs,squashfs`.
+  (seen 2026-11-21 after a `timeout`). Killing only the program can do it too:
+  after SIGTERM to Fit for Autopsy's menu, `dbp-run` exited and left the union
+  and its image mounted, the image twice (2026-11-26; one of the two may come
+  from hand mounts earlier in that session). Check with `findmnt -t aufs,squashfs`.
   Remove them with
-  `sudo umount /mnt/dbp/union/<id> /mnt/dbp/images/<id>`. The two empty
+  `sudo umount /mnt/dbp/union/<id> /mnt/dbp/images/<id>`, repeating the image
+  path until `findmnt` no longer lists it. The two empty
   mount points stay, and if the `.dbp` was deleted meanwhile, so does its loop
   device (`sudo losetup -l` shows it `(deleted)`; `sudo losetup -d` frees it).
 - **Input can stay remapped.** Many launchers (GBA.emu's included) remap
