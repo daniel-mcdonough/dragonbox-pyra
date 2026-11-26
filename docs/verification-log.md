@@ -3872,3 +3872,39 @@ was lowered from 101 % to 30 % for the run and set back afterwards. No ROM was l
 - Left on the card: the four `.dbp`s, registered, with the two libraries in each `appdata/<id>/lib/`; `/tmp/p-shim`,
   `/tmp/xsend`, `/tmp/menurun.sh`, `/tmp/pyra-ptitseb-libs.sh`. Also still mounted from before this session:
   `casio_sw-10_m-ht`'s image and union with no process using them (not touched).
+
+## 2026-11-26 — DevilutionX: libraries, start from the menu, GL path, shareware play (R126)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). Nobody was at the Pyra; input went in through `xsend`
+(`experiments/dbp-compat/`). The sink was lowered from 101 % to 30 % for the run and set back afterwards.
+
+- **Package.** Repository `apps/250`, current version 1.5.2 (2024-02-08), from
+  `repo/packages/DevilutionX/289/download`: squashfs, 12 333 214 bytes, MD5 `e4e2c6ef0771d130a5bd50a939f9578b`, both
+  as listed. Copied to `/dragonbox/packages/`, it registered within 4 s: menu entry
+  `__dbp__DevilutionX_default.desktop`, launcher `/usr/local/games/devilutionx.sh`. No `Appdata=` key. The
+  `Dependency[deb]=` line is commented out.
+- **Libraries: pass.** `devilutionx.sh` is `gl4es ./devilutionx`, and there is no `lib/` in the image. The binary's
+  `NEEDED` entries are libm, libpthread, libc, libz, libbz2, `libSDL2_image-2.0.so.0`, `libsodium.so.23` and
+  `libSDL2-2.0.so.0`. `ldd` inside `dbp-cmd mount DevilutionX` resolved everything from trixie (SDL2 2.32.4, SDL2_image
+  2.8.8, libsodium23 1.0.18).
+- **From the MATE menu, no data: pass.** Applications → Games → Adventure and RPG → DevilutionX. No dependency dialog.
+  The process ran with
+  `LD_LIBRARY_PATH=/mnt/dbp/images/DevilutionX/lib::/usr/lib/arm-linux-gnueabihf/gl4es/`, and `/proc/<pid>/maps` held
+  gl4es `libGL.so.1`, the SGX `libEGL`/`libGLESv2` 1.14.3699939 and `libpvrDRI3WSEGL.so`. The window was `DevilutionX`,
+  1280x720+0+0, `_NET_WM_STATE_FULLSCREEN, _NET_WM_STATE_FOCUSED`. `xwd -root` showed the "Data File Error ...
+  (diabdat.mpq or spawn.mpq)" box drawn. Return exited it.
+- **With shareware data: pass.** `spawn.mpq` (25 448 219 bytes, MD5 `9d9a48413a8e38c0e0ee41d08c9451dd`, from
+  `github.com/diasurgical/devilutionx-assets` release v2) went in `/dragonbox/appdata/DevilutionX/`, and the game
+  was started from the menu again. At 12 s the Blizzard intro video was on screen, with a PulseAudio sink input
+  `s16le 2ch 22050Hz` open. Escape and Return led into a Normal game in Tristram. A click on the ground walked the
+  hero, and the view scrolled. `top` in town, three samples 3 s apart: 64 %, 69 %, 67 % CPU, 41.7 MB RSS. In the game
+  menu, Escape → Quit Game exited it, and the union was unmounted. The save (`spawn_0.sv`) and `diablo.ini` were
+  written to `~/.local/share/diasurgical/devilution/`, not to appdata.
+- **Black screen at start (forum): not reproduced.** The pyrainput mouse was left on (default). Five starts through
+  `/usr/local/games/devilutionx.sh` (`setsid`, stopped by PID with SIGTERM, each one exited within 10 s), plus
+  the two menu starts: each showed the intro. A run with screenshots at 10 s and 20 s showed the Blizzard logo, then
+  the Diablo title.
+- Not tested: the nubs (how fast the right nub moves the cursor, and the deadzone) and the pyraInput gamepad,
+  because both need hands on the device; and Hellfire, which needs the owner's files.
+- Left on the card: `devilx-1.5.2.dbp`, registered; `spawn.mpq` in its appdata; the shareware save in
+  `~/.local/share/diasurgical/`; `/tmp/dvx-rep.sh`.

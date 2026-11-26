@@ -407,6 +407,33 @@ help: `libtinyxml2-6a` isn't in trixie, and `libfuse2t64` is the library that br
 skip the dialog. Tested 2026-11-26 on `5.6.19-m4-kbdled`: all four started from the menu to their game list with
 buster's two libraries mapped from `<union>/lib` (`verification-log.md`, R124).
 
+## DevilutionX (Diablo)
+
+**It works on trixie as shipped.** The repository's current build is DevilutionX 1.5.2 (jedi23, 2024-02-08,
+`repo/apps/250`, file `devilx.dbp`). Its binary links only SDL2, SDL2_image, libsodium23, zlib and bzip2, and trixie
+has all of them, so `ldd` finds nothing missing. The launcher is one line, `gl4es ./devilutionx`: SDL2 desktop GL
+through gl4es on the SGX. The `.desktop` has no `Appdata=` key, so the appdata folder is `dragonbox/appdata/DevilutionX/`.
+Its `Dependency[deb]` line is commented out, so `dbp-run` shows no dependency dialog either.
+
+**The game data** goes in that appdata folder: `DIABDAT.MPQ` from the original game, and for Hellfire also
+`hellfire.mpq`, `hfmonk.mpq`, `hfmusic.mpq` and `hfvoice.mpq`. The shareware `spawn.mpq` (25 448 219 bytes, from
+the DevilutionX project's `devilutionx-assets` release) works too, and lets you check a card without the game.
+With no data, the game opens fullscreen and shows "Data File Error: Unable to open main data archive (diabdat.mpq or
+spawn.mpq)". Press OK and it exits. **Saves and `diablo.ini` aren't kept in appdata.** They go to
+`~/.local/share/diasurgical/devilution/` on the system card, so removing the package leaves them behind.
+
+Tested 2026-11-26 on `5.6.19-m4-kbdled` (`verification-log.md`, R126). From Applications → Games → Adventure and RPG,
+it opened a 1280x720+0+0 window (`_NET_WM_STATE_FULLSCREEN`) with gl4es `libGL.so.1`, the SGX `libGLESv2` and
+`libpvrDRI3WSEGL.so` mapped. The intro played with a 22 050 Hz PulseAudio stream open. The shareware game reached
+Tristram, where a click walked the hero, and Quit Game exited cleanly and unmounted the union. In town it used about
+65 % of one core (`top`).
+
+**The forum's black screen at start didn't show up** in seven starts with the pyrainput mouse on, which is the default.
+The poster got past it with an external mouse and a restart, and suggested the launcher should run
+`sudo pyrainputctl disable mouse` before the game and `enable mouse` after, so the nubs act only as analog sticks.
+The 1.5.2 launcher does neither. Not tested: the nubs (how fast the right nub moves the cursor, and the
+deadzone), and the gamepad, because nobody was at the device.
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
