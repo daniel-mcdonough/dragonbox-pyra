@@ -302,6 +302,19 @@ through a charger unplug and replug, `registers` reg 09 equalled the driver's la
 all 118 one-second samples, `10` (UNPLUG) included (`verification-log.md`). It ships
 from `kernel-5.6.19-r4` (run 45350444408) on, which fix 19 pins; r3 and earlier lack it.
 
+**0055 — Input: twl6040-vibra: drive only the motor the board has, from its start level.**
+The Pyra has one vibration motor, on the TWL6040's right channel. The device tree gives the
+left channel a motor resistance of 999999, meaning none. The stock driver enabled both channels,
+and switching the motorless left driver on and off clicks in the speakers. It sent the weak
+magnitude only to the left, so weak-only rumble moved nothing. It also scaled magnitude onto
+codes 0-51, while this motor starts only at 25-32. 0055 treats a motor resistance of 100000 or
+more as no motor, never enables that channel, and plays max(strong, weak) on the right. It maps
+any nonzero magnitude onto `min_code`..`max_code`. These are module parameters, writable in
+`/sys/module/twl6040_vibra/parameters/`, defaulting to 32 and 60 (60 is 3.0 V peak at 50 mV a
+code; the chip takes up to 100). `max_code=0` gives back the stock cap, now computed in 64 bits
+(the left channel's overflowed `int`). `min_code=0` gives back the stock linear mapping.
+Measurements: `verification-log.md`, "rumble in Ship of Harkinian"; limits: `known-limitations.md` 2.10.
+
 **`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
 vsys `regulator-max-microvolt` from 4200000 to 4350000 in `pyra-mainboard-common.dtsi`. The
 driver then sets VREG to 4.192 V instead of 4.048 V (capped by the battery's 4.2 V). Every

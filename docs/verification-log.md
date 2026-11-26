@@ -4007,3 +4007,18 @@ listened and held the Pyra. Register writes were traced with the `regmap:regmap_
 - Answer: the clicks come from the motorless left channel being enabled. Software can fix that by never
   enabling a channel with no motor. The weak feel comes from the 51-code cap (`TWL6040_VIBDAT_MAX` is 100) and
   from the 32 ms pulses.
+
+## 2026-11-26 — patches/0055 on the vibra driver: register check
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4, the CI build). 0055's `twl6040-vibra.c` built as an external module
+against `src-m4-kbdled` with the r4 compiler (Debian 12.2.0-14). `.text`, `.data`, `.rodata`, `.bss` and `__param`
+came out identical when built against `src-m4-kbdled-test`, whose config matches the device's
+`/boot/config-5.6.19-m4-kbdled` apart from the release name. Installed in `updates/` (unsigned, so the kernel is
+tainted `OE`), then `modprobe -r` / `modprobe`, then `systemctl restart pyrainput`.
+
+- Before the swap, the owner played SoH with the stock driver (hitting things, bombs) and heard no static in
+  game. The clicks were plain only on SoH's Test button.
+- `FF_RUMBLE` on `pyraInput Gamepad`, strong/weak → VIBCTLL, VIBCTLR, VIBDATR: `0x0001/0` → `00 01 0x20`,
+  `0x4000/0` → `0x26`, `0x8000/0` → `0x2e`, `0xffff/0` → `0x3c`, `0/0x4000` → `0x26`, `0/0xffff` → `0x3c`,
+  `0x2000/0xc000` → `0x35`. VIBCTLL stayed `00` throughout. The floor (32), the cap (60) and weak-to-right all
+  behave as designed.

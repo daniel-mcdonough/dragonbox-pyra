@@ -1,0 +1,191 @@
+Input: twl6040-vibra: drive only the motor the board has, from its start level
+
+The Pyra has one vibration motor, on the right ("strong") channel. Its
+device tree gives the left channel a motor resistance of 999999, meaning
+none.  Three things follow from the stock driver:
+
+- It sets VIBENA on both channels.  Switching the motorless left driver
+  on and off clicks in the speakers (not the headphones).  Games that
+  pulse rumble (Ship of Harkinian: 32 ms on, 65 ms off) click about ten
+  times a second.
+- The weak magnitude goes to the left channel only, so weak-only rumble
+  moves nothing.  The left code also overflows int (3300 * 999999 * 85),
+  which happens to come out as 0.
+- The magnitude is scaled linearly onto 0..51, the cap the 3.3 V vsys
+  model gives.  This motor doesn't start below code 25-32, so effects
+  under about 60 % do nothing and 100 % is weak.
+
+Treat a motor resistance of 100000 or more as no motor: never enable
+that channel, and play max(strong, weak) on the one that has a motor.
+Map a nonzero magnitude onto min_code..max_code (module parameters,
+writable at run time, defaults 32 and 60; 60 is 3.0 V peak at 50 mV per
+code).  max_code=0 gives the stock supply/resistance cap, computed in
+64 bits.  min_code=0 gives the stock linear mapping.
+---
+--- a/drivers/input/misc/twl6040-vibra.c
++++ b/drivers/input/misc/twl6040-vibra.c
+@@ -28,6 +28,24 @@
+ 
+ #define TWL6040_NUM_SUPPLIES 2
+ 
++/*
++ * A motor resistance this high means the board has no motor on that
++ * channel (the Pyra's device tree gives its left channel 999999).
++ */
++#define TWL6040_VIBRA_NO_MOTOR_RES	100000
++
++/*
++ * The Pyra's motor doesn't start below code 25-32, and the 3.3 V vsys
++ * model caps it at 51.  0 for either restores the stock mapping.
++ */
++static unsigned int min_code = 32;
++module_param(min_code, uint, 0644);
++MODULE_PARM_DESC(min_code, "VIBDAT code for the weakest nonzero effect (0: no floor)");
++
++static unsigned int max_code = 60;
++module_param(max_code, uint, 0644);
++MODULE_PARM_DESC(max_code, "VIBDAT code for a full-magnitude effect, at most 100 (0: from the supply and resistances)");
++
+ struct vibra_info {
+ 	struct device *dev;
+ 	struct input_dev *input_dev;
+@@ -44,6 +62,8 @@
+ 	unsigned int vibrdrv_res;
+ 	unsigned int viblmotor_res;
+ 	unsigned int vibrmotor_res;
++	bool left_motor;
++	bool right_motor;
+ 
+ 	struct regulator_bulk_data supplies[TWL6040_NUM_SUPPLIES];
+ 
+@@ -89,17 +109,25 @@
+ 		 * 3ms when enabling vibrator drivers to avoid false
+ 		 * overcurrent detection
+ 		 */
+-		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLL,
+-				  TWL6040_VIBENA | TWL6040_VIBCTRL);
+-		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLR,
+-				  TWL6040_VIBENA | TWL6040_VIBCTRL);
++		if (info->left_motor)
++			twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLL,
++					  TWL6040_VIBENA | TWL6040_VIBCTRL);
++		if (info->right_motor)
++			twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLR,
++					  TWL6040_VIBENA | TWL6040_VIBCTRL);
+ 		usleep_range(3000, 3500);
+ 	}
+ 
+-	twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLL,
+-			  TWL6040_VIBENA);
+-	twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLR,
+-			  TWL6040_VIBENA);
++	/*
++	 * Switching a driver with no motor on and off clicks in the
++	 * speakers, so leave it off.
++	 */
++	if (info->left_motor)
++		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLL,
++				  TWL6040_VIBENA);
++	if (info->right_motor)
++		twl6040_reg_write(twl6040, TWL6040_REG_VIBCTLR,
++				  TWL6040_VIBENA);
+ 
+ 	info->enabled = true;
+ }
+@@ -120,20 +148,30 @@
+ static u8 twl6040_vibra_code(int vddvib, int vibdrv_res, int motor_res,
+ 			     int speed, int direction)
+ {
+-	int vpk, max_code;
++	unsigned int lo = min_code, hi = max_code;
++	int vpk;
+ 	u8 vibdat;
+ 
+-	/* output swing */
+-	vpk = (vddvib * motor_res * TWL6040_VIBRA_MOD) /
+-		(100 * (vibdrv_res + motor_res));
+-
+-	/* 50mV per VIBDAT code step */
+-	max_code = vpk / 50;
+-	if (max_code > TWL6040_VIBDAT_MAX)
+-		max_code = TWL6040_VIBDAT_MAX;
++	if (!hi) {
++		/* output swing; 64 bits, a no-motor resistance overflows int */
++		vpk = div_u64((u64)vddvib * motor_res * TWL6040_VIBRA_MOD,
++			      100 * (vibdrv_res + motor_res));
+ 
+-	/* scale speed to max allowed code */
+-	vibdat = (u8)((speed * max_code) / USHRT_MAX);
++		/* 50mV per VIBDAT code step */
++		hi = vpk / 50;
++	}
++	if (hi > TWL6040_VIBDAT_MAX)
++		hi = TWL6040_VIBDAT_MAX;
++	if (lo > hi)
++		lo = hi;
++
++	/* scale speed onto lo..hi, so the weakest effect still starts it */
++	if (!speed)
++		vibdat = 0;
++	else if (!lo)
++		vibdat = (u8)((speed * hi) / USHRT_MAX);
++	else
++		vibdat = (u8)(lo + ((speed - 1) * (hi - lo)) / (USHRT_MAX - 1));
+ 
+ 	/* 2's complement for direction > 180 degrees */
+ 	vibdat *= direction;
+@@ -144,20 +182,31 @@
+ static void twl6040_vibra_set_effect(struct vibra_info *info)
+ {
+ 	struct twl6040 *twl6040 = info->twl6040;
+-	u8 vibdatl, vibdatr;
++	u8 vibdatl = 0, vibdatr = 0;
++	int weak = info->weak_speed, strong = info->strong_speed;
+ 	int volt;
+ 
++	/* one motor plays both halves of a rumble effect */
++	if (!info->left_motor)
++		strong = max(strong, weak);
++	else if (!info->right_motor)
++		weak = max(strong, weak);
++
+ 	/* weak motor */
+-	volt = regulator_get_voltage(info->supplies[0].consumer) / 1000;
+-	vibdatl = twl6040_vibra_code(volt, info->vibldrv_res,
+-				     info->viblmotor_res,
+-				     info->weak_speed, info->direction);
++	if (info->left_motor) {
++		volt = regulator_get_voltage(info->supplies[0].consumer) / 1000;
++		vibdatl = twl6040_vibra_code(volt, info->vibldrv_res,
++					     info->viblmotor_res,
++					     weak, info->direction);
++	}
+ 
+ 	/* strong motor */
+-	volt = regulator_get_voltage(info->supplies[1].consumer) / 1000;
+-	vibdatr = twl6040_vibra_code(volt, info->vibrdrv_res,
+-				     info->vibrmotor_res,
+-				     info->strong_speed, info->direction);
++	if (info->right_motor) {
++		volt = regulator_get_voltage(info->supplies[1].consumer) / 1000;
++		vibdatr = twl6040_vibra_code(volt, info->vibrdrv_res,
++					     info->vibrmotor_res,
++					     strong, info->direction);
++	}
+ 
+ 	twl6040_reg_write(twl6040, TWL6040_REG_VIBDATL, vibdatl);
+ 	twl6040_reg_write(twl6040, TWL6040_REG_VIBDATR, vibdatr);
+@@ -271,6 +320,13 @@
+ 		return -EINVAL;
+ 	}
+ 
++	info->left_motor = info->viblmotor_res < TWL6040_VIBRA_NO_MOTOR_RES;
++	info->right_motor = info->vibrmotor_res < TWL6040_VIBRA_NO_MOTOR_RES;
++	if (!info->left_motor && !info->right_motor) {
++		dev_err(info->dev, "no vibra motor on either channel\n");
++		return -EINVAL;
++	}
++
+ 	info->irq = platform_get_irq(pdev, 0);
+ 	if (info->irq < 0)
+ 		return -EINVAL;
