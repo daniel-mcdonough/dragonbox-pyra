@@ -3563,3 +3563,54 @@ above.
   start it, and fftest's strong rumble lands at code 19. The R111 "motor doesn't respond" result was a
   drive-level result. Not explained: why that effect gives 19 rather than the 25 that half of 0xFFFF would.
   fftest's magnitude wasn't checked. Not run: the stock card (no longer needed to locate the fault).
+
+## 2026-11-26 — Heart of the Alien Redux (SDL2): does it start, draw, play sound, take input? (R119)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). From the forum review's compatibility list: in 2023
+jedi23 reported that M-HT's SDL2 build drew "very small" in fullscreen with the rest of the screen black, on
+the Pyra only (https://pyra-handheld.com/boards/posts/1714479/).
+
+- **In the DBP repository: yes, a newer build.** jedi23's 2023 SDL 1.2 package (`repo/apps/230`) is gone:
+  the page redirects. M-HT's 2024 release thread links `https://pyra-handheld.com/repo/apps/306`: 1.2.4.4,
+  2024-04-29, `https://pyra-handheld.com/repo/packages/hota_redux_m-ht/311/download`, MD5
+  `0c8ce326f768d66ea5c2cdea01b7d17c`, 795418 bytes. Downloaded on the PC, MD5 matched. Metadata:
+  `Id=hota_redux_m-ht`, `Appdata=hota`, `Exec=hota.sh`,
+  `Dependency[deb]=libc6;libx11-6;libsdl2-2.0-0;libsdl2-mixer-2.0-0;`. All four are installed under those
+  exact names, so `dbp-run` has no dependencies to list. The game data isn't shipped: you supply the Sega CD
+  ISO (and optionally the audio tracks as OGG/MP3) in `dragonbox/appdata/hota/`.
+- **Install: pass.** scp'd to `/dragonbox/packages/` (MD5 re-checked on the card). The watched folder
+  registered it (`dbp-cmd list` shows `hota_redux_m-ht`). It got
+  `/usr/share/applications/__dbp__hota_redux_m-ht_default.desktop` and `/usr/local/games/hota.sh`.
+- **Libraries: all resolve.** The package is `alien` (armhf PIE, not stripped) and `lib/libGL.so.1`, a
+  bundled gl4es. `alien` needs `libSDL2-2.0.so.0` (trixie's 2.32.4), `libSDL2_mixer-2.0.so.0` (2.8.1) and
+  `libc.so.6`; `ldd` gives no `not found` for either ELF file. `hota.sh` puts the bundled `lib/` on
+  `LD_LIBRARY_PATH`, then runs `./alien --scale=3 --fullscreen --iso --iso-prefix <name>`.
+- **Starts: yes, as far as the data check.** Run by hand from the appdata folder with no ISO, it prints
+  `panic: can't read GAME2.BIN file` and exits. That is the point where it reads the ISO (source: `initialize()`
+  in `src/main.c`, M-HT/hota `e3e443c`). By then SDL has initialised video and audio and opened the mixer.
+  `hota.sh` turns this case into a zenity error naming the folder, then shows the README (`zenity` 4.1.90 is on
+  the card; the dialogs themselves weren't opened).
+- **Window and sound, with fake data.** The window is created only after the data loads. To get that far, I
+  pointed it at a 9.6 MB zero-filled file named as the ISO (`truncate -s 0x925000`, the end of the last file in
+  the engine's ISO table). This is a synthetic run, not play:
+  - Fullscreen: `xwininfo` showed the window at 912x576, then 1280x720+0+0. `/proc/<pid>/maps` held the bundled
+    `libGL.so.1` (gl4es) and the SGX `libEGL`, `libGLESv2` and `libpvrDRI3WSEGL.so`. So it renders on the SGX
+    through its own gl4es, with no GLX from the X server needed (fix 4). It died with SIGSEGV after 1.3 s. The
+    core's PC is `unlzss+384`, the game's own decompressor, running over the zeros. That's an effect of the
+    fake data, not a trixie problem.
+  - Windowed (no `--fullscreen`): ran for over 2 minutes at about 70 % CPU, window 912x576. SIGTERM (`pkill`)
+    didn't stop it (likely because SDL turns it into a quit event, and the game didn't act on it in this state; not checked); SIGKILL did.
+  - Sound: `pactl list short sink-inputs` showed its stream on PulseAudio, `s16le 2ch 44100Hz`. Nothing was
+    audible to check, because there was no data.
+- **Fullscreen size: should be fixed in this build (from the source; not seen on screen).** With `-DPYRA`
+  (`Makefile-Pyra`), `render.c` skips `SDL_RenderSetLogicalSize` and copies the 912x576 texture to the whole
+  window (`SDL_RenderCopy(..., NULL, NULL)`). The commit that added this, "add support for DragonBox Pyra", is
+  dated 2024-04-29, the same day as the DBP and ten months after the 2023 report. On the 16:9 screen the picture
+  is stretched from 1.58:1 rather than letterboxed. That's inferred from the code.
+- **Not tested: what it draws, what sound it plays, and input.** All three need the game's ISO, which is
+  proprietary and not on the card or the PC. The package stays registered on the card. To finish the check, put
+  the ISO in `/dragonbox/appdata/hota/` and start "Heart of The Alien Redux" from Games. Check that the picture
+  fills the screen, that the music plays, and that the d-pad, X (shoot), B (whip) and A (jump) work.
+- Left on the card: `/dragonbox/packages/hota_redux_m-ht-1.2.4.4.dbp`, registered, plus
+  `/dragonbox/appdata/hota/` (only AuFS's whiteout directory in it). Fake ISO and core deleted. No prep fix
+  applies.

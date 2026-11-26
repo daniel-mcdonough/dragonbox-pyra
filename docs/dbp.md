@@ -179,6 +179,22 @@ doesn't start at all (on bookworm it ran slowly). Start its launcher as
 2026-11-21 with Ice Field Frenzy). [gl4es.md](gl4es.md), "Programs that need
 GLX", has the messages and the one game that needed more.
 
+A DBP that bundles gl4es's `libGL.so.1` in its own `lib/` doesn't need the
+wrapper. Heart of the Alien Redux 1.2.4.4 does this: its SDL2 window rendered
+on the SGX through the bundled gl4es, `libEGL` and `libGLESv2`, with GLX off
+(2026-11-26, `/proc/<pid>/maps`; `verification-log.md`, R119).
+
+## DBPs that need your own game data
+
+Many engine ports ship without the game: Heart of the Alien Redux wants the
+Sega CD ISO, Streets of Rage Remake its `SorR.dat`. The data goes in the
+package's appdata folder, `dragonbox/appdata/<Appdata>/` (the `.desktop`'s
+`Appdata=` key, see above), which is the program's working directory when it
+runs. Without the data, these get as far as loading it and stop, so only the
+start-up can be checked. For Heart of the Alien that means libraries, SDL
+video and audio init and the mixer opening, then
+`panic: can't read GAME2.BIN file` (R119).
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
