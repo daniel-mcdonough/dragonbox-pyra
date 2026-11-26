@@ -119,6 +119,17 @@ supported. **Launch** carries on. On any DBP built for buster or bullseye,
 expect this dialog. What decides whether the program runs is whether its
 libraries resolve, and the dialog doesn't check that.
 
+## zenity crashes: a launcher's message never shows
+
+Many DBP launchers report problems with `zenity` ("game files not found", "copy your data to ..."). On the trixie
+card zenity 4.1.90 (GTK 4.18.6) aborts before it draws anything. Each run ends in a different heap error, for example
+`malloc(): invalid size (unsorted)`, `free(): invalid pointer` or `Fatal glibc error: malloc.c:4434 (_int_malloc):
+assertion failed`. Measured 2026-11-26 on `5.6.19-m4-kbdled`: 6 of 6 plain runs aborted, whatever `HOME` was, and
+so did 3 of 3 with `GSK_RENDERER=ngl` (GTK's default GL renderer). With `GSK_RENDERER=cairo`, 3 of 3 drew and closed
+on their timeout. So from the menu the launcher seems to do nothing, and the message is only in
+`/tmp/dbpout/dbprun-<id>-stderr.log`. Until the card sets the cairo renderer itself, run a launcher's message by hand
+with `GSK_RENDERER=cairo zenity ...`, or read the log. Epiphany fails in the same renderer (`browsers.md`).
+
 ## Check a DBP's libraries before running it
 
 Mount it by hand, run `ldd` on the binary, and unmount:
@@ -358,7 +369,8 @@ Each launcher (`psnes.sh`, `pnes.sh`, ...) puts `<union>/lib` first on `LD_LIBRA
 read-only image with `dragonbox/appdata/<id>/` as its writable branch. A file in `dragonbox/appdata/<id>/lib/`
 therefore shows up in `<union>/lib` next to the image's own GLEW and OpenSSL, and only that emulator loads it.
 `/etc/dbp/run_script`'s own `LD_LIBRARY_PATH` entry is the image's `lib/`, not the union's, so a package whose
-launcher doesn't add `<union>/lib` itself won't see such files. None of the four sets `Appdata=`, so the folder is
+launcher doesn't add `<union>/lib` itself won't see such files. For such a package, put a `package.user_prerun` in
+the appdata folder that exports the path: `run_script` sources it first (see "CorsixTH"). None of the four sets `Appdata=`, so the folder is
 the id: `psnes`, `pnes`, `pgen`, `pfbneo`.
 
 `device/pyra-ptitseb-libs.sh` does all of this. Run it as the desktop user, not root, once the `.dbp` files are in
@@ -435,6 +447,70 @@ The 1.5.2 launcher does neither. Tried on the device the same day: the game is p
 controls don't fit the Pyra's buttons and need remapping. DevilutionX keeps its bindings in the `[Keymapping]` and
 `[Padmapping]` sections of `diablo.ini` (in `~/.local/share/diasurgical/devilution/`). No Pyra mapping has been
 written yet.
+
+## CorsixTH (Theme Hospital)
+
+**It doesn't start as shipped, on trixie or anywhere but its builder's machine.** The repository's current build is
+CorsixTH 0.68.0-r1 (Maquis196, 2025-03-04, compiled on bookworm, `repo/apps/325`, package `CorsixTH_maquis196`). It
+holds only the binary, its launcher and a default `config.txt` and `hotkeys.txt`. Three things stop it:
+
+- **No Lua scripts.** CorsixTH is mostly Lua: `CorsixTH.lua` and the `Lua/`, `Bitmap/`, `Levels/`, `Campaigns/` and
+  `Graphics/` trees. The package carries none of them. The binary was built without `SEARCH_LOCAL_DATADIRS`, so the
+  only places it looks are an `--interpreter=FILE` argument and the path compiled in, which is in the builder's home
+  directory. Without them it prints `CorsixTH cannot find CorsixTH.lua` and exits.
+- **Libraries trixie doesn't have.** It links bookworm's FFmpeg 5 (`libavformat.so.59`, `libavcodec.so.59`,
+  `libavutil.so.57`, `libswscale.so.6`, `libswresample.so.4`; trixie has FFmpeg 7) and `libcurl-nss.so.4`, which
+  trixie dropped. `liblua5.3.so.0` is in trixie but not installed. Its `Dependency[deb]` line is commented out, so
+  no dependency dialog warns about any of this.
+- **Its launcher's messages don't show.** `CorsixTH.launch` checks for `HOSPITAL.EXE` in the union and reports a
+  missing one through zenity, which crashes (see "zenity crashes" above).
+
+From Applications → Games → Simulation and Strategy, nothing appears, with or without game data. Without data,
+zenity aborts. With data, the log says `liblua5.3.so.0: cannot open shared object file`. The launcher also creates
+`/dragonbox/appdata/CorsixTH/CorsixTH/` itself on its first run, with that path written out in full. That works when
+the package is on the system card. On a second card the game's own appdata folder is elsewhere, so the config ends
+up in the wrong place.
+
+**Making it start, from appdata files alone.** `/etc/dbp/run_script` sources `package.user_prerun` from the union
+root before it runs the launcher, in its own shell. A file in `dragonbox/appdata/CorsixTH/` (the `Appdata=` name)
+therefore shows up there. It can set the library path and also append the `--interpreter` argument, which the menu
+entry can't pass:
+
+    # dragonbox/appdata/CorsixTH/package.user_prerun
+    export LD_LIBRARY_PATH="$DBP_UNION_DIR/lib:$LD_LIBRARY_PATH"
+    export LUA_CPATH="$DBP_UNION_DIR/lua/5.3/?.so;;"
+    set -- "$@" "--interpreter=$DBP_UNION_DIR/corsixth-0.68.0/CorsixTH.lua"
+
+Next to it, in the same folder:
+
+- `corsixth-0.68.0/`: the `CorsixTH/` directory of the upstream `v0.68.0` source tag (`CorsixTH.lua`, `Lua`,
+  `Bitmap`, `Levels`, `Campaigns`, `Graphics`). The package's changelog says it matches that tag, and the game reports
+  v0.68.0.
+- `lua/5.3/lpeg.so` and `lua/5.3/lfs.so`: from trixie's `lua-lpeg` 1.1.0-2 and `lua-filesystem` 1.8.0-3+b2.
+- `lib/`: 19 libraries, 39 MB. From trixie: `liblua5.3-0` 5.3.6-2+b4 and `libhwy1t64` 1.2.0-2+b2. From bookworm:
+  `libavformat59`, `libavcodec59`, `libavutil57`, `libswscale6` and `libswresample4` (all 7:5.1.9-0+deb12u1), plus
+  what they pull in that trixie lacks or renamed: `libvpx7`, `libdav1d6`, `libcodec2-1.0`, `libjxl0.7`, `librav1e0`,
+  `libsvtav1enc1`, `libx265-199` and `libssh-gcrypt-4`. Then `libcurl3-nss` with `libldap-2.5-0`. Each library is
+  copied under its soname, and nothing is installed into the system.
+- The game data at the top of the folder (`HOSPITAL.EXE`, `DATA/`, `SOUND/` ...). The free demo from CorsixTH's
+  README, `th.corsix.org/Demo.zip` (12 878 920 bytes), works: unpack its `HOSP/` folder there. Never commit game data.
+
+These bookworm libraries call into trixie's t64 libraries (gnutls, gcrypt, nss, ...). That held for the runs below,
+but a mixed set like this is a test arrangement, not something to ship. The update check goes through bookworm's
+libcurl, so set `check_for_updates = false` in `CorsixTH/config.txt`. A script that fetches and checks these files,
+as `pyra-ptitseb-libs.sh` does for the P* emulators, isn't written yet.
+
+**Fullscreen with sound: stable on trixie, at least without anyone listening.** Tested 2026-11-26 on
+`5.6.19-m4-kbdled` through AESS (`verification-log.md`, R127). With the appdata files in place, the menu entry started
+it: gl4es `libGL.so.1` → SGX `libGLESv2` with `libpvrDRI3WSEGL.so`, one PulseAudio stream `s16le 2ch 22050Hz`.
+The XMI music plays through SDL_mixer's FluidSynth with the card's GM soundfont. In the demo hospital it ran for
+2 minutes windowed (800x600), then 5 minutes fullscreen after Alt+Enter (`_NET_WM_STATE_FULLSCREEN`, 1280x720,
+the picture scaled to 960x720 with side bars), and then 5 minutes started fullscreen at a native 1280x720 from
+`config.txt`. Each run kept going at 20–60 % of one core with the game clock advancing. Nothing went into the kernel
+log or the PulseAudio journal. In each capture of the sink monitor, the only exact silence of 10 ms or more came after
+the music faded out: a gap of 93–186 ms between tracks. The forum's "unstable due to audio bug" (2021, buster) didn't
+show. What wasn't covered: the speakers weren't listened to, so crackle after the mixer isn't ruled out. The demo
+hospital had no patients, so sound effects were few. Gamepad and nubs weren't tried.
 
 ## When a program is killed or crashes
 

@@ -210,8 +210,10 @@ documented one and leaves the module alone.
 
 **What this costs.** No GLX on the X server at all. Bookworm has software GLX
 here, so this is a real regression against bookworm, and `glxinfo` and anything
-that insists on desktop GL will not work. GTK4 applications fall back to the
-cairo renderer.
+that insists on desktop GL will not work. GTK4 applications don't fall back
+to cairo on their own: zenity 4.1.90 (GTK 4.18.6) aborts with a heap error in
+GTK's default GL renderer every time, and runs with `GSK_RENDERER=cairo`
+(measured 2026-11-26, `dbp.md` "zenity crashes").
 
 **What this does not cost.** `DRI3` and `Present` are untouched, and those are
 what `libpvrDRI3WSEGL` uses, so the hardware path — GLES2 through the SGX blob

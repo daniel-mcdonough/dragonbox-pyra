@@ -1724,6 +1724,15 @@ nearly every older DBP, because dbp doesn't know Debian's renamed (t64)
 packages. Press Launch. [dbp.md](dbp.md) covers both, plus the mount and
 input mapping a crashed DBP leaves behind.
 
+## A DBP does nothing when started from the menu
+
+Read `/tmp/dbpout/dbprun-<id>-stderr.log`. A missing library shows there as
+`error while loading shared libraries: <name>`. A launcher that reports a problem
+through zenity shows nothing either, because zenity 4 aborts in GTK4's GL renderer
+on this card (`malloc(): ...` or `free(): ...` in the log). `GSK_RENDERER=cairo`
+makes zenity work. [dbp.md](dbp.md), "zenity crashes", and "CorsixTH" for a case
+with both.
+
 ## A DBP launched from an exFAT card: kernel BUG, then nothing answers
 
 The window never opens, `dmesg` shows `kernel BUG at fs/buffer.c:3082!` with

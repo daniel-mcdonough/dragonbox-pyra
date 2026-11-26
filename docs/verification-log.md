@@ -3908,3 +3908,52 @@ R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`). Nobody was at the Pyra; i
   because both need hands on the device; and Hellfire, which needs the owner's files.
 - Left on the card: `devilx-1.5.2.dbp`, registered; `spawn.mpq` in its appdata; the shareware save in
   `~/.local/share/diasurgical/`; `/tmp/dvx-rep.sh`.
+
+## 2026-11-26 — CorsixTH: as shipped, started from appdata files, fullscreen with sound (R127)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`), sound through AESS. Nobody was at the Pyra. Input went in
+through `xsend` (`experiments/dbp-compat/`). The sink was lowered from 101 % to 30 % for the run and set back
+afterwards.
+
+- **Package.** Repository `apps/325`, `CorsixTH_maquis196` 0.68.0-r1 (2025-03-04), from
+  `repo/packages/CorsixTH_maquis196/331/download`: squashfs, 887 721 bytes, MD5 `ee8dd0928bdf2e8014be5b15a3ed6d63`,
+  both as listed. It registered within 5 s: menu entry `__dbp__CorsixTH_maquis196_default.desktop` (Games →
+  Simulation and Strategy), `Appdata=CorsixTH`. The image has 6 inodes: `corsix-th`, `CorsixTH.launch`,
+  `defaults/config.txt`, `defaults/hotkeys.txt`.
+- **Libraries: fail.** `NEEDED` includes `liblua5.3.so.0`, `libavformat.so.59`, `libavcodec.so.59`, `libavutil.so.57`,
+  `libswscale.so.6`, `libswresample.so.4` and `libcurl-nss.so.4`. All seven are `not found` inside
+  `dbp-cmd mount`. The image has no `lib/`.
+- **Lua scripts: missing.** The binary's only search path besides `--interpreter=` is
+  `/home/<builder>/workspace/dragonbox-corsixth/CorsixTH/CorsixTH/CorsixTH.lua` (from `strings`). Upstream 0.68.0
+  `main.cpp` searches local directories only with `SEARCH_LOCAL_DATADIRS`, which is off by default on Linux.
+- **From the menu, no data: nothing on screen.** The launcher reached its `HOSPITAL.EXE` check, and its zenity
+  error aborted (`Fatal glibc error: malloc.c:4434 (_int_malloc): assertion failed`). zenity by hand: 6 of 6 aborted
+  with heap errors (3 with the session's `HOME`, 3 with a fresh one), and so did 3 of 3 with `GSK_RENDERER=ngl`.
+  3 of 3 with `GSK_RENDERER=cairo` drew and timed out (rc 5).
+- **From the menu, with the demo data: nothing on screen.** The stderr log said
+  `./corsix-th: error while loading shared libraries: liblua5.3.so.0`.
+- **With appdata files (`dbp.md` "CorsixTH"): starts.** `package.user_prerun`, 19 libraries in `lib/`, lpeg and lfs
+  in `lua/5.3/`, the v0.68.0 Lua tree and the demo, in `/dragonbox/appdata/CorsixTH/` (79 MB). `ldd` with `lib/` on
+  the path left nothing unresolved, for the binary and for each copied library. From the menu, the process ran as
+  `./corsix-th --interpreter=/mnt/dbp/union/CorsixTH_maquis196/corsixth-0.68.0/CorsixTH.lua` with
+  `LD_LIBRARY_PATH=<union>/lib:<image>/lib::/usr/lib/arm-linux-gnueabihf/gl4es/`. Its maps held the copied FFmpeg,
+  libcurl-nss and Lua libraries, gl4es `libGL.so.1`, SGX `libGLESv2` 1.14.3699939, `libpvrDRI3WSEGL.so` and trixie's
+  `libfluidsynth.so.3`. The update check got through ("Update Available! 0.70.3"). One PulseAudio stream:
+  `corsix-th`, `s16le 2ch 22050Hz`.
+- **Stability runs** in the demo hospital, timed by `/tmp/cth-run.sh`. It sampled `top` every 10 s, recorded
+  `aess.monitor` at 48 kHz, diffed `dmesg` (fullscreen runs only) and checked the PulseAudio user journal:
+
+  | Run | Window | Length | CPU (one core) | Game clock | Exact silence ≥ 10 ms |
+  |---|---|---|---|---|---|
+  | win1 | 800x600 decorated | 120 s | 20–50 % | advancing | one 93 ms gap, after a 3 s fade |
+  | fs1 | Alt+Enter: 1280x720 fullscreen, 960x720 picture | 300 s | 20–50 % | 3 Apr → 23 May | one 93 ms gap, after a 4 s fade |
+  | fs2 | `fullscreen = true`, 1280x720 native, from the menu | 300 s | 27–60 % | 1 Jan → 14 Feb | one 186 ms gap, after a 5 s fade |
+
+  The process was alive at the end of each run. The kernel log and the PulseAudio journal stayed empty. Each gap
+  follows the music fading to a peak of 1–2, so it's the pause between XMI tracks, not a stall. The monitor captures
+  what PulseAudio mixed, not what the codec played, and nobody listened.
+- Not tested: listening for crackle on the speakers or headphones; sound effects under load (no reception desk, so
+  no patients); gamepad and nubs; Theme Hospital's full data.
+- Left on the card: `corsixth_0.68.0-r1_maquis196.dbp`, registered; `/dragonbox/appdata/CorsixTH/` with the demo,
+  the appdata files and the demo's autosave; `/tmp/cth-run.sh`, `/tmp/shot.sh`. The game's `config.txt` was put back
+  to the package's default.
