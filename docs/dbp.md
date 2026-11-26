@@ -190,7 +190,10 @@ libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
 32-bit and 64-bit `time_t` callers, and the result fails silently. A buster
 library kept in the package's own folder, used only by the old binary and
 needing nothing but libc, keeps the old binary's ABI. Buster's `libfuse.so.2`
-worked that way for the P* emulators, where trixie's `libfuse2t64` didn't.
+worked that way for the P* emulators, where trixie's `libfuse2t64` didn't. The
+package image is read-only, but if the launcher puts `<union>/lib` on
+`LD_LIBRARY_PATH`, the user can add a library to
+`dragonbox/appdata/<id>/lib/` (see "Making them start" under the P* emulators).
 
 ## A DBP that needs GLX
 
@@ -302,7 +305,8 @@ ignores Escape. It was ended with SIGTERM here, which left its union mounted
 
 ## ptitSeb's P* emulators: PSNes, PNes, PGen, PFBneo
 
-**They don't start on trixie as shipped.** The repository's current builds are all build 03, 6.06.0.03 (ptitSeb,
+**They don't start on trixie as shipped, but two buster libraries in each one's appdata folder fix that**
+(below, "Making them start"). The repository's current builds are all build 03, 6.06.0.03 (ptitSeb,
 2023-09-04): PSNes `repo/apps/199`, PNes `apps/198`, PGen `apps/197`, PFBneo `apps/195`. Each binary links two
 libraries trixie doesn't give it, and the dynamic linker stops before any window opens:
 
@@ -340,13 +344,68 @@ did). This is the silent t64 failure described above, seen for real. A working f
 forum's bookworm workaround, was not tried.
 
 **Menu keys** (`config.cfg`, as sent with `xsend`): arrows move, End is A (run), Return opens the per-ROM menu
-(the forum's "BACK is Enter"), Escape opens Main Options. **QUIT → GO** is the last entry (Up from the top
-wraps to it), and End selects it. Quitting this way unmounted the union and the romfs. ROMs go in
+(the forum's "BACK is Enter"), Escape opens Main Options. **QUIT → GO** is the last entry of Main Options (Up
+from its top wraps to it), and End selects it. Up in the game list wraps to the last game, not to QUIT. Quitting this way unmounted the union and the romfs. ROMs go in
 `dragonbox/appdata/<id>/roms/`, made on the first run along with `config.cfg`.
 
 **A stale romfs after a crash clears itself.** After SIGKILL, `dbp-run` unmounted the union, but
 `/tmp/c2d_romfs` stayed as a dead FUSE mount ("Transport endpoint is not connected"). The next P* emulator
 started cleared it and mounted its own (PGen, checked). By hand: `fusermount -u /tmp/c2d_romfs`.
+
+### Making them start
+
+Each launcher (`psnes.sh`, `pnes.sh`, ...) puts `<union>/lib` first on `LD_LIBRARY_PATH`. The union is the
+read-only image with `dragonbox/appdata/<id>/` as its writable branch. A file in `dragonbox/appdata/<id>/lib/`
+therefore shows up in `<union>/lib` next to the image's own GLEW and OpenSSL, and only that emulator loads it.
+`/etc/dbp/run_script`'s own `LD_LIBRARY_PATH` entry is the image's `lib/`, not the union's, so a package whose
+launcher doesn't add `<union>/lib` itself won't see such files. None of the four sets `Appdata=`, so the folder is
+the id: `psnes`, `pnes`, `pgen`, `pfbneo`.
+
+`device/pyra-ptitseb-libs.sh` does all of this. Run it as the desktop user, not root, once the `.dbp` files are in
+`dragonbox/packages/` and registered. It downloads the two debs from archive.debian.org and checks their
+SHA-256s. Then it takes `libtinyxml2.so.6.2.0` and `libfuse.so.2.9.9` out, checks those too, and copies them into each
+registered emulator's `appdata/<id>/lib/` under their sonames. `--check` shows what each one has, `--debs DIR` uses
+debs you already fetched, and `--undo` removes the files again. By hand, for one emulator:
+
+    cd /tmp
+    wget https://archive.debian.org/debian/pool/main/t/tinyxml2/libtinyxml2-6a_7.0.0+dfsg-1_armhf.deb
+    wget https://archive.debian.org/debian/pool/main/f/fuse/libfuse2_2.9.9-1+deb10u1_armhf.deb
+    sha256sum lib*.deb
+    #   e6e812f6d5d8ada7c73534c805b357f73e6aa009099c14ea654cea32bc106e8e  libtinyxml2-6a_7.0.0+dfsg-1_armhf.deb
+    #   c0a8c4ab83d337bca5738da2a7df264962f4269778b93a2814923a4a3ebb303d  libfuse2_2.9.9-1+deb10u1_armhf.deb
+    dpkg-deb -x libtinyxml2-6a_7.0.0+dfsg-1_armhf.deb x
+    dpkg-deb -x libfuse2_2.9.9-1+deb10u1_armhf.deb x
+    mkdir -p /dragonbox/appdata/psnes/lib
+    cp x/usr/lib/arm-linux-gnueabihf/libtinyxml2.so.6.2.0 /dragonbox/appdata/psnes/lib/libtinyxml2.so.6
+    cp x/lib/arm-linux-gnueabihf/libfuse.so.2.9.9 /dragonbox/appdata/psnes/lib/libfuse.so.2
+
+For a package on a second card, the folder is `dragonbox/appdata/<id>/` on that card (`dbp-cmd getmount <id>` prints
+its mount point). Nothing goes into `/usr/lib` and no package is installed. The libraries need only libc and
+libstdc++.
+
+**Where the two checksums come from.** They are the `SHA256:` lines of the two packages in buster's
+`main/binary-armhf/Packages`, which buster's signed `InRelease` vouches for. Trixie still carries buster's release
+key in `debian-archive-removed-keys.gpg`, so the whole chain can be checked on the Pyra:
+
+    B=https://archive.debian.org/debian/dists/buster
+    wget -q $B/InRelease $B/main/binary-armhf/Packages.xz
+    gpgv --keyring /usr/share/keyrings/debian-archive-removed-keys.gpg InRelease
+    #   Good signature from "Debian Stable Release Key (10/buster) <debian-release@lists.debian.org>"
+    grep 'main/binary-armhf/Packages.xz$' InRelease | tail -1; sha256sum Packages.xz
+    #   both b6dd3b4e38ad90b4d30330b27892761100d1c64439a4e3f7a384d3ec35cc110c
+    xz -dc Packages.xz | grep -A20 -E '^Package: (libtinyxml2-6a|libfuse2)$' | grep -E '^(Package|Version|SHA256):'
+
+The `grep ... | tail -1` takes the SHA256 section of `InRelease`, which is listed after the MD5 one. The extracted
+libraries' SHA-256s, which the script also checks: `libtinyxml2.so.6.2.0`
+`8c41daedc60746b9859b99fc214f2ac830de261bc61666bb5c07ea402498bd69`, `libfuse.so.2.9.9`
+`eb638c364f53d0ee9e36e3290a6c4b4b5a0120dd1c8c3b613cd14edb3f8a08d3`.
+
+**Starting them.** Applications → Emulators lists all four. `dbp-run` still shows its "One or more dependencies ...
+missing" dialog each time, because it checks the declared deb names (`libtinyxml2-6a`, `libfuse2`, and the t64
+renames `libminizip1`, `libcurl4`), not the libraries. Press **Launch anyway**. "Install missing dependencies" can't
+help: `libtinyxml2-6a` isn't in trixie, and `libfuse2t64` is the library that breaks them. `dbp` has no setting to
+skip the dialog. Tested 2026-11-26 on `5.6.19-m4-kbdled`: all four started from the menu to their game list with
+buster's two libraries mapped from `<union>/lib` (`verification-log.md`, R124).
 
 ## When a program is killed or crashes
 

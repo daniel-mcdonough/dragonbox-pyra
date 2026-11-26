@@ -3832,3 +3832,43 @@ Nobody was at the Pyra. The sink was lowered from 101 % to 30 % for the run and 
 - Left on the card: the four `.dbp`s in `/dragonbox/packages/`, registered, with their appdata folders
   (`config.cfg`, `configs/`, `roms/`, `saves/`, `pyrainput.cfg`), plus `/tmp/p-shim` (buster's two libraries) and
   `/tmp/xsend`. Removed: the `libfuse2t64` probe folder and screenshots.
+
+## 2026-11-26 — P* emulators start on trixie from appdata files alone (R124)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`), same packages as R123. Nobody was at the Pyra. The sink
+was lowered from 101 % to 30 % for the run and set back afterwards. No ROM was loaded.
+
+- **Launcher path.** `/etc/dbp/run_script` adds `$DBP_IMAGE_DIR/lib` (the read-only image), not the union. Each
+  P* launcher (`psnes.sh` etc.) runs `export LD_LIBRARY_PATH=$pwd/lib:$LD_LIBRARY_PATH` with `$pwd` the union, then
+  `LIBGL_VSYNC=1 gl4es bin/<name>`. A running emulator's environment had
+  `LD_LIBRARY_PATH=/mnt/dbp/union/<id>/lib:/mnt/dbp/images/<id>/lib::/usr/lib/arm-linux-gnueabihf/gl4es/`.
+- **AuFS merges `appdata/<id>/lib/`: pass.** Buster's `libtinyxml2.so.6` (SHA-256 `8c41daed…`) and `libfuse.so.2`
+  (`eb638c36…`) copied into `/dragonbox/appdata/<id>/lib/` for all four. After `dbp-cmd mount <id>`,
+  `/mnt/dbp/union/<id>/lib` listed them next to the image's `libGLEW.so.2.1`, `libcrypto.so.1.1`, `libssl.so.1.1`,
+  and `ldd` (with `<union>/lib` on the path) resolved both from there. `dbp-cmd umount` took a few seconds to
+  release the mounts.
+- **From the MATE menu: all four start, pass.** Applications → Emulators → PSNes / PNes / PGen / PFBneo, clicked with
+  `xsend` (the panel's own environment, nothing added). `dbp-run`'s "One or more dependencies ... missing" dialog
+  appeared each time (`libtinyxml2-6a`, `libminizip1`, `libfuse2`, `libcurl4`). "Launch anyway" was clicked, and
+  15 s later each emulator was running with `/mnt/dbp/union/<id>/lib/libfuse.so.2` and `libtinyxml2.so.6` in
+  `/proc/<pid>/maps`, gl4es `libGL.so.1` and `libpvrDRI3WSEGL.so` mapped, `/tmp/c2d_romfs` mounted
+  (`fuse.c2d_romfs`), and a `CROSS2D_SDL2_GL` window at 1280x720+0+0, `_NET_WM_STATE_FULLSCREEN, _NET_WM_STATE_FOCUSED`.
+  `xwd -root`: each one's skinned game list. `top` (two samples 2 s apart, second one): PSNes 23 % CPU / 53 MB RSS,
+  PNes 23 % / 49 MB, PGen 22 % / 53 MB, PFBneo 22 % / 106 MB.
+- **Quit: pass.** Escape → Up → End (QUIT → GO in Main Options) ended each one; no emulator, `dbp-run`, union,
+  image or romfs left. Up in the game list wraps to the last game, not to QUIT, so the first attempt on PSNes only
+  moved the list.
+- **`device/pyra-ptitseb-libs.sh`: pass.** `--undo` removed the eight hand-copied files and `--check` reported
+  them missing. A plain run fetched both debs from `https://archive.debian.org`, checked them against buster's
+  `Packages` SHA-256s, extracted and checked the two libraries, and copied them into all four appdata folders.
+  `--check` then said `ok` for each. `--debs DIR` with one byte appended to the libfuse deb stopped with
+  `SHA-256 doesn't match buster's Packages; not using it` (exit 1). `--debs` with intact debs worked. Run under sudo
+  it refused. PSNes then started from the menu again on the script's files, same result as above.
+- **Signature chain checked on the card.** Buster's `InRelease` from archive.debian.org: `gpgv --keyring
+  /usr/share/keyrings/debian-archive-removed-keys.gpg` → `Good signature from "Debian Stable Release Key (10/buster)"`
+  (key `6D33866EDD8FFA41C0143AEDDCC9EFBF77E11517`). `debian-archive-keyring.gpg` alone: no public key. Its SHA256
+  for `main/binary-armhf/Packages.xz`, `b6dd3b4e…cc110c`, matched the download. In that `Packages`:
+  `libtinyxml2-6a` 7.0.0+dfsg-1 `e6e812f6…106e8e`, `libfuse2` 2.9.9-1+deb10u1 `c0a8c4ab…b303d`, matching the debs.
+- Left on the card: the four `.dbp`s, registered, with the two libraries in each `appdata/<id>/lib/`; `/tmp/p-shim`,
+  `/tmp/xsend`, `/tmp/menurun.sh`, `/tmp/pyra-ptitseb-libs.sh`. Also still mounted from before this session:
+  `casio_sw-10_m-ht`'s image and union with no process using them (not touched).
