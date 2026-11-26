@@ -3778,3 +3778,57 @@ and listened to each one.
 - Left on the card: the four `.dbp`s in `/dragonbox/packages/`, registered, and their appdata folders
   (`ft2-clone`, `fiathomo`, `antedominum`, `autopsy`). Removed: `~/.config/FT2 clone`, the XTest program and the
   copied modules in `/tmp`.
+
+## 2026-11-26 — ptitSeb's P* emulators (PSNes, PNes, PGen, PFBneo): libraries, start, window, GL path (R123)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`), `dbp` 0.6.12.2-2, `libgl-gl4es-pyra` 1.1.7.1, SDL2
+2.32.4, `dri3wsegl-pyra`. From the forum review's compatibility list: build 03 broke on bullseye and bookworm over
+library names (https://pyra-handheld.com/boards/posts/1714566/, https://pyra-handheld.com/boards/posts/1724389/).
+Nobody was at the Pyra. The sink was lowered from 101 % to 30 % for the run and set back afterwards.
+
+- **In the DBP repository: all four, build 03.** 6.06.0.03 by ptitSeb, 2023-09-04. PSNes `repo/apps/199`,
+  `/repo/packages/psnes/244/download`, MD5 `141bde0fb35fdbfb62b43727608603ee`. PNes `apps/198`, id 245, MD5
+  `b1295b37f188757f0750e141ee6ef30c`. PGen `apps/197`, id 246, MD5 `44a21eb2751c385933387dde8fb55243`. PFBneo
+  `apps/195`, id 247, MD5 `82faf80792aba123f5f4b3ad9fde2b80`. All four MD5s matched. Older builds 01/02 are still
+  listed. Copied to `/dragonbox/packages/`, all registered. No `Appdata=` key, so appdata is the id.
+- **Declared:** `Dependency[deb]=libsdl2-2.0-0;libtinyxml2-6a;libminizip1;libfuse2;libcurl4;` (all four).
+  `dbp-run` reported `libtinyxml2-6a, libminizip1, libfuse2, libcurl4` missing. `libminizip1t64` and
+  `libcurl4t64` are installed (t64 renames). `libfuse2t64` 2.9.9-9 is in trixie, not installed.
+  `libtinyxml2-6a` doesn't exist in trixie (`libtinyxml2-11` 11.0.0 does, not installed).
+- **Libraries (`readelf -d`, `ldd` with the launcher's `LD_LIBRARY_PATH=<union>/lib`):** all four NEED
+  `libSDL2-2.0.so.0 libGLEW.so.2.1 libGL.so.1 libcrypto.so.1.1 libfuse.so.2 libcurl.so.4 libtinyxml2.so.6
+  libminizip.so.1` plus libz/freetype/png16/lzma/stdc++. PNes also needs `libarchive.so.13`. Each DBP's `lib/`
+  holds `libGLEW.so.2.1`, `libcrypto.so.1.1` and `libssl.so.1.1`, which resolve. **Not found: `libfuse.so.2`
+  and `libtinyxml2.so.6`**, in all four. `libcurl.so.4` pulls in the system's `libcrypto.so.3` alongside the
+  bundled 1.1 (both mapped at run time).
+- **As shipped: no start.** PSNes through `dbp-run --log-output`: `bin/psnes: error while loading shared
+  libraries: libfuse.so.2: cannot open shared object file`. `dbp-run` exited and unmounted. The launcher's
+  `pyrainputctl overload` / `no-overload` both ran. The other three need the same two missing libraries, so they
+  weren't run as shipped.
+- **Probe with buster's libraries: all four start to their menu, pass.** `libtinyxml2-6a_7.0.0+dfsg-1_armhf.deb`
+  and `libfuse2_2.9.9-1+deb10u1_armhf.deb` from archive.debian.org. The SHA-256s matched buster's `Packages`
+  (`e6e812f6…`, `c0a8c4ab…`). Their `.so` files went in a scratch folder on `LD_LIBRARY_PATH` for `dbp-run`, with
+  nothing installed and the DBPs untouched. Each emulator mounted its FUSE romfs at `/tmp/c2d_romfs`, wrote a new
+  `config.cfg`, saw `pyraInput Gamepad` as a GameController, and logged `GL1Renderer`, `GL renderer : GL4ES
+  wrapper`, `GL version : 2.1 gl4es wrapper 1.1.7`, `SDLRenderer(SDL2): 1280x720`. Window `CROSS2D_SDL2_GL`
+  1280x720+0+0, `_NET_WM_STATE_FULLSCREEN, _NET_WM_STATE_FOCUSED`. `/proc/<pid>/maps`: gl4es `libGL.so.1`,
+  SGX `libEGL`/`libGLESv2` 1.14.3699939, `/usr/lib/libpvrDRI3WSEGL.so`, system SDL2. `xwd -root`: each one's game
+  list with its own skin over the whole screen. In the menu, `top` (one sample each) showed 18 % of a core. RSS: PSNes 54 MB,
+  PNes 50 MB, PGen 55 MB, PFBneo 108 MB. No sink-input of their own. No ROM was loaded.
+- **Keys (XTest, `experiments/dbp-compat/xsend.c` built on the card):** Down moved the list. Left Alt (the
+  config's `KEY_START`) did nothing in the menu. Return opened the per-ROM options. Escape opened Main Options.
+  Up wrapped to `QUIT GO`, and End (`KEY_A` 77) quit. After each quit: no process, union, image or romfs left
+  mounted. Physical buttons were not tried.
+- **`libfuse2t64` instead of buster's libfuse: fail.** Same probe with trixie's `libfuse.so.2` (from
+  `libfuse2t64_2.9.9-9`) and buster's tinyxml2. PSNes opened its 1280x720 window and mounted the romfs, but every
+  skin texture failed: `stbi_load failed (/tmp/c2d_romfs/skins/default/buttons/11.png): unknown image type`. The
+  screen was white and black, nothing else. Keys did nothing. The main thread was `R` at 91 % CPU while the
+  `SDL2Thread` waited in `fuse_dev_do_read`, and SIGTERM had no effect. After SIGKILL, `dbp-run` exited and
+  unmounted the union, but `/tmp/c2d_romfs` stayed as a dead mount ("Transport endpoint is not connected").
+  Reading: the 32-bit-`time_t` binary and the 64-bit-`time_t` library disagree on `struct stat` (estimated cause,
+  not traced further).
+- **Dead romfs recovers.** PGen, started next with buster's libraries, replaced the dead mount, drew its skin
+  and quit cleanly. Nothing was left mounted afterwards.
+- Left on the card: the four `.dbp`s in `/dragonbox/packages/`, registered, with their appdata folders
+  (`config.cfg`, `configs/`, `roms/`, `saves/`, `pyrainput.cfg`), plus `/tmp/p-shim` (buster's two libraries) and
+  `/tmp/xsend`. Removed: the `libfuse2t64` probe folder and screenshots.

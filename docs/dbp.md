@@ -166,7 +166,9 @@ library whose ABI passes a `time_t` was rebuilt with a 64-bit one, and its
   passes a `time_t` or a struct holding one now disagrees in size between the
   old binary and the library. The fault is silent and depends on whether the
   program makes such calls. GBA.emu ran without visible fault, but that
-  doesn't prove every DBP will.
+  doesn't prove every DBP will. ptitSeb's P* emulators fail this way: given
+  `libfuse2t64` for `libfuse2`, their FUSE file reads come back corrupt
+  (see "ptitSeb's P* emulators" below).
 - **New soname** (from the image's package lists: `libtinyxml2-6a` →
   `libtinyxml2-11`, `libglew2.1` → `libglew2.2`, `libunistring2` →
   `libunistring5`, Boost 1.62/1.67 → 1.83, `libbullet` → `libbullet3.24t64`,
@@ -185,7 +187,10 @@ A missing soname needs a DBP rebuilt against trixie, or a DBP that bundles its
 libraries in its own `lib/`. `/etc/dbp/run_script` puts `$DBP_IMAGE_DIR/lib` on
 `LD_LIBRARY_PATH`. Copying a buster `.so` into the system, or symlinking
 `libGLEW.so.2.2` to `.so.2.1` (a workaround from the forum on bookworm), mixes
-32-bit and 64-bit `time_t` callers, and the result fails silently.
+32-bit and 64-bit `time_t` callers, and the result fails silently. A buster
+library kept in the package's own folder, used only by the old binary and
+needing nothing but libc, keeps the old binary's ABI. Buster's `libfuse.so.2`
+worked that way for the P* emulators, where trixie's `libfuse2t64` didn't.
 
 ## A DBP that needs GLX
 
@@ -294,6 +299,54 @@ menu, a smaller window, is drawn exactly inside its client area.
 Dominum, and each Autopsy demo back to the menu. The Autopsy menu itself
 ignores Escape. It was ended with SIGTERM here, which left its union mounted
 (see the next section).
+
+## ptitSeb's P* emulators: PSNes, PNes, PGen, PFBneo
+
+**They don't start on trixie as shipped.** The repository's current builds are all build 03, 6.06.0.03 (ptitSeb,
+2023-09-04): PSNes `repo/apps/199`, PNes `apps/198`, PGen `apps/197`, PFBneo `apps/195`. Each binary links two
+libraries trixie doesn't give it, and the dynamic linker stops before any window opens:
+
+    bin/psnes: error while loading shared libraries: libfuse.so.2: cannot open shared object file: No such file or directory
+
+| Library the binary needs | On trixie | Effect |
+|---|---|---|
+| `libtinyxml2.so.6` (buster's `libtinyxml2-6a`) | gone: trixie has `libtinyxml2.so.11` (`libtinyxml2-11`, not installed) | new soname, `not found` |
+| `libfuse.so.2` (`libfuse2`) | `libfuse2t64`, same soname, not installed | `not found`; installing it doesn't help (below) |
+| `libGLEW.so.2.1`, `libcrypto.so.1.1` | gone (trixie has GLEW 2.2, OpenSSL 3) | bundled in the DBP's `lib/`, resolve |
+| `libSDL2-2.0.so.0`, `libcurl.so.4`, `libminizip.so.1`, `libGL.so.1` | installed | resolve (`libGL` is gl4es's: the launcher runs `gl4es`) |
+
+Build 03's "repacked for better compatibility" is the bundled `lib/` with GLEW 2.1 and OpenSSL 1.1, the two
+libraries bookworm broke. It doesn't bundle tinyxml2 or fuse. The dependency dialog lists `libtinyxml2-6a,
+libminizip1, libfuse2, libcurl4`. Two of those are t64 renames that are installed (`libminizip1t64`,
+`libcurl4t64`). The other two really are missing.
+
+**With the two libraries supplied, all four start to their menu.** This was a probe that changed nothing on the
+system or in the packages. Buster's `libtinyxml2.so.6` (7.0.0) and `libfuse.so.2` (2.9.9) went in a scratch
+folder, passed through `LD_LIBRARY_PATH` to `dbp-run`. Each emulator then opened a 1280x720+0+0 window
+(`_NET_WM_STATE_FULLSCREEN`, no title bar) showing its game list. Rendering is SDL2's desktop GL through gl4es 1.1.7 on the SGX
+(`GL renderer : GL4ES wrapper`; `/proc/<pid>/maps` has gl4es `libGL.so.1`, the SGX `libEGL`/`libGLESv2` and
+`libpvrDRI3WSEGL.so`). That is the OpenGL 1.x backend ptitSeb built, so there are no shader filters
+(https://pyra-handheld.com/boards/posts/1710015/). Idle in the menu each used about 18 % of a core (`top`, one sample) and
+opened no audio stream. No ROM was loaded, so game speed and sound were not tested. Tested 2026-11-26
+(`verification-log.md`, R123).
+
+**Why `libfuse2t64` is not enough.** Each emulator mounts its own skin and data files with FUSE at
+`/tmp/c2d_romfs` (`POSIXRomFs`). The binaries were built with a 32-bit `time_t`, and `libfuse2t64` uses a 64-bit one,
+so the `struct stat` passed between them doesn't match. With trixie's `libfuse2t64` in the scratch folder in place of buster's, PSNes
+opened its window. Every skin image read from the romfs failed (`stbi_load failed ... unknown image type`), the
+screen stayed blank white and black, the main thread spun at 91 % of a core, and SIGTERM didn't stop it (SIGKILL
+did). This is the silent t64 failure described above, seen for real. A working fix must carry buster's
+`libfuse.so.2`, which matches the binary's ABI and needs only libc. Symlinking a newer tinyxml2 to `.so.6`, the
+forum's bookworm workaround, was not tried.
+
+**Menu keys** (`config.cfg`, as sent with `xsend`): arrows move, End is A (run), Return opens the per-ROM menu
+(the forum's "BACK is Enter"), Escape opens Main Options. **QUIT → GO** is the last entry (Up from the top
+wraps to it), and End selects it. Quitting this way unmounted the union and the romfs. ROMs go in
+`dragonbox/appdata/<id>/roms/`, made on the first run along with `config.cfg`.
+
+**A stale romfs after a crash clears itself.** After SIGKILL, `dbp-run` unmounted the union, but
+`/tmp/c2d_romfs` stayed as a dead FUSE mount ("Transport endpoint is not connected"). The next P* emulator
+started cleared it and mounted its own (PGen, checked). By hand: `fusermount -u /tmp/c2d_romfs`.
 
 ## When a program is killed or crashes
 
