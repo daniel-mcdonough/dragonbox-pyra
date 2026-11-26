@@ -3750,8 +3750,8 @@ and listened to each one.
   1.14@3699939`, `DRI3 1.0`, `present 1.2`. Maps the bundled WSEGL, the SGX `libEGL`/`libGLESv2`/`libsrv_um`, SDL2;
   no gl4es. Opens `/dev/dri/card0` and `renderD130`. First start: a decorated 632x400 window; `xwd -id` showed the
   main screen drawn correctly. Alt+Enter (its own help text names it) and F11 changed nothing, with the window
-  focused and keys reaching it (Escape opened its quit box; keys and clicks sent with a small XTest program built
-  on the card). Config → Miscellaneous → Fullscreen: "This setting is not applied until you close and reopen the
+  focused and keys reaching it (Escape opened its quit box; keys and clicks sent with `experiments/dbp-compat/xsend.c`,
+  built on the card). Config → Miscellaneous → Fullscreen: "This setting is not applied until you close and reopen the
   program". Saved to `~/.config/FT2 clone/FT2.CFG`. After a restart: window 1280x720+0+0 with
   `_NET_WM_STATE_FULLSCREEN`, and `xwd -root` showed the 632x400 picture stretched over the whole screen ("Stretched"
   off). Sink-input `ft2-clone`, `s16le 2ch 48000Hz`, uncorked from start. Its config page: default device, 48 kHz,
