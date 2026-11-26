@@ -4022,3 +4022,5 @@ tainted `OE`), then `modprobe -r` / `modprobe`, then `systemctl restart pyrainpu
   `0x4000/0` → `0x26`, `0x8000/0` → `0x2e`, `0xffff/0` → `0x3c`, `0/0x4000` → `0x26`, `0/0xffff` → `0x3c`,
   `0x2000/0xc000` → `0x35`. VIBCTLL stayed `00` throughout. The floor (32), the cap (60) and weak-to-right all
   behave as designed.
+- Owner, with 0055 loaded, SoH's Test button and game audio on the speakers: "I no longer hear the static."
+  Strength by feel and motor heat at code 60 not reported yet.
