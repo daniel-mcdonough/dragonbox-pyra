@@ -431,8 +431,10 @@ Tristram, where a click walked the hero, and Quit Game exited cleanly and unmoun
 **The forum's black screen at start didn't show up** in seven starts with the pyrainput mouse on, which is the default.
 The poster got past it with an external mouse and a restart, and suggested the launcher should run
 `sudo pyrainputctl disable mouse` before the game and `enable mouse` after, so the nubs act only as analog sticks.
-The 1.5.2 launcher does neither. Not tested: the nubs (how fast the right nub moves the cursor, and the
-deadzone), and the gamepad, because nobody was at the device.
+The 1.5.2 launcher does neither. Tried on the device the same day: the game is playable, but its default
+controls don't fit the Pyra's buttons and need remapping. DevilutionX keeps its bindings in the `[Keymapping]` and
+`[Padmapping]` sections of `diablo.ini` (in `~/.local/share/diasurgical/devilution/`). No Pyra mapping has been
+written yet.
 
 ## When a program is killed or crashes
 
