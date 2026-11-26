@@ -222,24 +222,25 @@ input is driven by a FET from the same contact. Fixing it would take a board
 change, such as using the jack's switch without sharing the tip.
 `experiments/jack-detect/README.md`, step 3.
 
-### 2.10 Weak rumble doesn't move the vibration motor
+### 2.10 Rumble: one motor, a narrow drive range
 
-The TWL6040 drives the motor on its right vibra channel (the left has none in
-the device tree), and the driver scales an effect's magnitude to a duty code
-whose full scale is 51 at the 3.3 V it sees on `vsys`. The motor on the one
-unit measured only starts between codes 25 and 32, roughly 50-63 % of full
-magnitude (by feel, 2026-11-26). Below that the registers are written and the
-motor stays still, so a game's light rumble does nothing, and `fftest`'s
-"strong rumble" (code 19) feels broken. Raising the floor would mean changing
-the driver's scaling or the device tree's motor/driver resistances. That is
-untried. Only the strong (low-frequency) magnitude drives it. The weak magnitude goes to
-the left channel, which has no motor, so a game's high-frequency or small-motor rumble does
-nothing at any strength. Games reach the motor fine: `pyraInput Gamepad` forwards effects, and
-SDL2 reports rumble on it. While rumble plays, the speakers (not headphones) click
-softly each time the driver switches on or off. That comes from the driver also enabling
-the motorless left channel. Games that pulse the motor, like Ship of Harkinian (32 ms on, 65 ms
-off), click about 10 times a second and barely spin it up. `verification-log.md`, R117 c,
-"rumble from a game's side" and "rumble in Ship of Harkinian".
+The TWL6040 drives the motor on its right vibra channel. The left channel has no motor in
+the device tree. The motor on the one unit measured starts only between codes 25 and 32,
+and code 64 trips the driver's overcurrent detection, so the usable range is narrow.
+
+On the stock driver, effects under about 60 % do nothing and 100 % (code 51) is weak.
+Weak-only (high-frequency or small-motor) rumble does nothing at any strength. Enabling the
+motorless left channel clicks in the speakers each time the driver switches on or off.
+Ship of Harkinian pulses rumble (32 ms on, 65 ms off), so it clicks about 10 times a second.
+
+`patches/0055` fixes these: one motor plays both halves of an effect, any nonzero effect
+starts at code 32, full strength is 56 (writes above 60 refused), and the left channel is
+never enabled. On the card it's loaded as a module from `updates/`; it isn't in a release
+kernel yet. Games reach the motor either way: `pyraInput Gamepad` forwards effects and SDL2
+reports rumble on it. Open: pyrainput erases an effect before each re-upload, which stops
+the motor on every strength change. Motor heat at 56-60 hasn't been measured, and
+overcurrent at a full battery hasn't been tested. `verification-log.md`, R117 c and the
+three rumble entries after it.
 
 ---
 

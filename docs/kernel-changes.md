@@ -309,11 +309,16 @@ and switching the motorless left driver on and off clicks in the speakers. It se
 magnitude only to the left, so weak-only rumble moved nothing. It also scaled magnitude onto
 codes 0-51, while this motor starts only at 25-32. 0055 treats a motor resistance of 100000 or
 more as no motor, never enables that channel, and plays max(strong, weak) on the right. It maps
-any nonzero magnitude onto `min_code`..`max_code`. These are module parameters, writable in
-`/sys/module/twl6040_vibra/parameters/`, defaulting to 32 and 60 (60 is 3.0 V peak at 50 mV a
-code; the chip takes up to 100). `max_code=0` gives back the stock cap, now computed in 64 bits
-(the left channel's overflowed `int`). `min_code=0` gives back the stock linear mapping.
-Measurements: `verification-log.md`, "rumble in Ship of Harkinian"; limits: `known-limitations.md` 2.10.
+any nonzero magnitude onto `min_code`..`max_code`, module parameters in
+`/sys/module/twl6040_vibra/parameters/` that can be changed at run time. The defaults are 32 and
+56, and writes above 60 are refused. Code 64 trips the right driver's overcurrent detection
+every time, while 62 never did with the battery at 3.84 V. The drive rises with battery
+voltage, so 56 leaves room for a full battery. `max_code=0` gives back the stock cap, now
+computed in 64 bits (the left channel's overflowed `int`). `min_code=0` gives back the stock
+linear mapping. `enable=N` stops playing effects (it takes effect at the next effect change),
+so a settings page can switch rumble off. The settings page itself isn't written yet.
+Measurements: `verification-log.md`, "rumble in Ship of Harkinian" and "patches/0055";
+limits: `known-limitations.md` 2.10.
 
 **`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
 vsys `regulator-max-microvolt` from 4200000 to 4350000 in `pyra-mainboard-common.dtsi`. The

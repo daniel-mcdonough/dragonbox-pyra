@@ -17,14 +17,18 @@ none.  Three things follow from the stock driver:
 
 Treat a motor resistance of 100000 or more as no motor: never enable
 that channel, and play max(strong, weak) on the one that has a motor.
-Map a nonzero magnitude onto min_code..max_code (module parameters,
-writable at run time, defaults 32 and 60; 60 is 3.0 V peak at 50 mV per
-code).  max_code=0 gives the stock supply/resistance cap, computed in
-64 bits.  min_code=0 gives the stock linear mapping.
+Map a nonzero magnitude onto min_code..max_code, module parameters
+writable at run time (defaults 32 and 56).  Writes above 60 are refused:
+code 64 trips the right driver's overcurrent detection every time, 62
+never did at a 3.84 V battery, and the drive rises with the battery.
+max_code=0 gives the stock supply/resistance cap, computed in 64 bits;
+min_code=0 gives the stock linear mapping.  enable=N stops playing
+effects, for a settings switch; it takes effect at the next effect
+change.
 ---
 --- a/drivers/input/misc/twl6040-vibra.c
 +++ b/drivers/input/misc/twl6040-vibra.c
-@@ -28,6 +28,24 @@
+@@ -28,6 +28,56 @@
  
  #define TWL6040_NUM_SUPPLIES 2
  
@@ -37,19 +41,51 @@ code).  max_code=0 gives the stock supply/resistance cap, computed in
 +/*
 + * The Pyra's motor doesn't start below code 25-32, and the 3.3 V vsys
 + * model caps it at 51.  0 for either restores the stock mapping.
++ *
++ * The chip takes codes up to 100, but on the Pyra code 64 trips the
++ * right driver's overcurrent detection every time (62 never did, at a
++ * 3.84 V battery), and the drive rises with the battery voltage.  A code
++ * set from userspace can't go above 60; the default leaves room for a
++ * full battery.
 + */
-+static unsigned int min_code = 32;
-+module_param(min_code, uint, 0644);
-+MODULE_PARM_DESC(min_code, "VIBDAT code for the weakest nonzero effect (0: no floor)");
++#define TWL6040_VIBRA_PARAM_MAX	60
 +
-+static unsigned int max_code = 60;
-+module_param(max_code, uint, 0644);
-+MODULE_PARM_DESC(max_code, "VIBDAT code for a full-magnitude effect, at most 100 (0: from the supply and resistances)");
++static int vibra_param_set_code(const char *val, const struct kernel_param *kp)
++{
++	unsigned int code;
++	int ret;
++
++	ret = kstrtouint(val, 0, &code);
++	if (ret)
++		return ret;
++	if (code > TWL6040_VIBRA_PARAM_MAX)
++		return -EINVAL;
++
++	*(unsigned int *)kp->arg = code;
++	return 0;
++}
++
++static const struct kernel_param_ops vibra_param_code_ops = {
++	.set = vibra_param_set_code,
++	.get = param_get_uint,
++};
++
++static unsigned int min_code = 32;
++module_param_cb(min_code, &vibra_param_code_ops, &min_code, 0644);
++MODULE_PARM_DESC(min_code, "VIBDAT code for the weakest nonzero effect, 0-60 (0: no floor)");
++
++static unsigned int max_code = 56;
++module_param_cb(max_code, &vibra_param_code_ops, &max_code, 0644);
++MODULE_PARM_DESC(max_code, "VIBDAT code for a full-magnitude effect, 0-60 (0: from the supply and resistances)");
++
++static bool enable = true;
++module_param(enable, bool, 0644);
++MODULE_PARM_DESC(enable, "Play effects (N: rumble off)");
 +
  struct vibra_info {
  	struct device *dev;
  	struct input_dev *input_dev;
-@@ -44,6 +62,8 @@
+@@ -44,6 +94,8 @@
  	unsigned int vibrdrv_res;
  	unsigned int viblmotor_res;
  	unsigned int vibrmotor_res;
@@ -58,7 +94,7 @@ code).  max_code=0 gives the stock supply/resistance cap, computed in
  
  	struct regulator_bulk_data supplies[TWL6040_NUM_SUPPLIES];
  
-@@ -89,17 +109,25 @@
+@@ -89,17 +141,25 @@
  		 * 3ms when enabling vibrator drivers to avoid false
  		 * overcurrent detection
  		 */
@@ -92,12 +128,12 @@ code).  max_code=0 gives the stock supply/resistance cap, computed in
  
  	info->enabled = true;
  }
-@@ -120,20 +148,30 @@
+@@ -120,20 +180,30 @@
  static u8 twl6040_vibra_code(int vddvib, int vibdrv_res, int motor_res,
  			     int speed, int direction)
  {
 -	int vpk, max_code;
-+	unsigned int lo = min_code, hi = max_code;
++	unsigned int lo = READ_ONCE(min_code), hi = READ_ONCE(max_code);
 +	int vpk;
  	u8 vibdat;
  
@@ -134,7 +170,7 @@ code).  max_code=0 gives the stock supply/resistance cap, computed in
  
  	/* 2's complement for direction > 180 degrees */
  	vibdat *= direction;
-@@ -144,20 +182,31 @@
+@@ -144,20 +214,31 @@
  static void twl6040_vibra_set_effect(struct vibra_info *info)
  {
  	struct twl6040 *twl6040 = info->twl6040;
@@ -175,7 +211,16 @@ code).  max_code=0 gives the stock supply/resistance cap, computed in
  
  	twl6040_reg_write(twl6040, TWL6040_REG_VIBDATL, vibdatl);
  	twl6040_reg_write(twl6040, TWL6040_REG_VIBDATR, vibdatr);
-@@ -271,6 +320,13 @@
+@@ -176,7 +257,7 @@
+ 		return;
+ 	}
+ 
+-	if (info->weak_speed || info->strong_speed) {
++	if (READ_ONCE(enable) && (info->weak_speed || info->strong_speed)) {
+ 		if (!info->enabled)
+ 			twl6040_vibra_enable(info);
+ 
+@@ -271,6 +352,13 @@
  		return -EINVAL;
  	}
  

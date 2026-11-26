@@ -4024,3 +4024,19 @@ tainted `OE`), then `modprobe -r` / `modprobe`, then `systemctl restart pyrainpu
   behave as designed.
 - Owner, with 0055 loaded, SoH's Test button and game audio on the speakers: "I no longer hear the static."
   Strength by feel and motor heat at code 60 not reported yet.
+
+## 2026-11-26 — patches/0055 revised: ceiling, off switch, overcurrent at code 64
+
+Same card and method as the entry above. The owner reported 0055 at 60 "feels stronger" and the clicks gone.
+With SoH's own rumble strength set to 20 %, an effect lands at about code 37.
+
+- With `max_code` at 64, full magnitude tripped `Right Vibrator overcurrent detected` (the driver's IRQ clears
+  VIBENA) on 5 plays of 5. At 56, 60 and 62: 0 of 5 each. Battery 3.84 V, 66 %, discharging. Not tested at a
+  full battery, where the drive (and the current) is higher.
+- Revised 0055: `min_code`/`max_code` refuse writes above 60, or anything not a number (65, 100, `abc`, `-1`
+  and `min_code=99` all refused, value unchanged). The default `max_code` is now 56. A new `enable` bool
+  switches playback off (`enable=N`: VIBCTLR stays `00` for a full-magnitude effect).
+- After reload: `0x0001/0` → VIBDATR `0x20`, `0xffff/0` → `0x38`, `0/0xffff` → `0x38`, VIBCTLL `00`, no
+  overcurrent. Module object and disassembly identical (`arm-linux-gnueabihf-objdump -dr -s`, 1076 lines)
+  built against `src-m4-kbdled` and `src-m4-kbdled-test`. An earlier "identical" check that used the host's
+  `objcopy` compared empty output; the disassembly comparison done then was valid.
