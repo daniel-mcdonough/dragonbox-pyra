@@ -232,7 +232,10 @@ magnitude (by feel, 2026-11-26). Below that the registers are written and the
 motor stays still, so a game's light rumble does nothing, and `fftest`'s
 "strong rumble" (code 19) feels broken. Raising the floor would mean changing
 the driver's scaling or the device tree's motor/driver resistances. That is
-untried. `verification-log.md`, R117 c.
+untried. Only the strong (low-frequency) magnitude drives it. The weak magnitude goes to
+the left channel, which has no motor, so a game's high-frequency or small-motor rumble does
+nothing at any strength. Games reach the motor fine: `pyraInput Gamepad` forwards effects, and
+SDL2 reports rumble on it. `verification-log.md`, R117 c and "rumble from a game's side".
 
 ---
 

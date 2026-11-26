@@ -3957,3 +3957,25 @@ afterwards.
 - Left on the card: `corsixth_0.68.0-r1_maquis196.dbp`, registered; `/dragonbox/appdata/CorsixTH/` with the demo,
   the appdata files and the demo's autosave; `/tmp/cth-run.sh`, `/tmp/shot.sh`. The game's `config.txt` was put back
   to the package's default.
+
+## 2026-11-26 — rumble from a game's side: pyraInput Gamepad and SDL2 reach the motor
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4). Effects checked by reading VIBCTLR/VIBDATR (`0x1a`/`0x1b` in
+`/sys/kernel/debug/regmap/0-004b/registers`) while they played, not by feel.
+
+- Access: `twl6040:vibrator` (`event8`) and `pyraInput Gamepad` (`event11`) are `root:input 660`, and the
+  desktop user `pyra` is in `input`. A game running as that user can open both read-write, which uploading an
+  effect needs.
+- `libpyrainput.so` handles rumble itself (`PyraJoystick::rumble_handle`, `handleRumble`) and opens
+  `twl6040:vibrator`. An `FF_RUMBLE` upload to `event11` returns at once and plays through.
+- `FF_RUMBLE`, 32-bit `EVIOCSFF`, strong/weak magnitude → VIBDATR, same on `event8` and `event11`:
+  `0xffff/0` → `0x33` (51), `0xc000/0` → `0x26`, `0xa000/0` → `0x1f`, `0x8000/0` → `0x19`, `0x4000/0` → `0x0c`,
+  `0/0xffff` → `0x00` (VIBCTLR still `0x01`), `0xffff/0xffff` → `0x33`. Linear in the strong magnitude. The
+  weak magnitude goes to the left channel, which has no motor (`viblmotor-res` 999999), so it never moves
+  anything.
+- SDL2 2.32.4 (Debian armhf): `pyraInput Gamepad` is a game controller (14 buttons, 4 axes),
+  `SDL_JoystickHasRumble` is 1, and `SDL_JoystickRumble(j, 0xffff, 0, 1500)` returns 0 and writes VIBDATR `0x33`.
+  SDL passes the low-frequency motor as `strong_magnitude`. `SDL_GetError` held a stale
+  "Unexpected controller element crc", which isn't from this call.
+- Answer: an SDL2 or evdev game can find the rumble and drive the motor with no setup. What it feels is
+  limited by `known-limitations.md` 2.10. Not run: RetroArch, DuckStation, or any other real emulator.
