@@ -4391,7 +4391,9 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
   `/etc/systemd/system/multi-user.target.wants/pyra_volumed.service` (the postinst's `deb-systemd-helper enable`
   adds links on an upgrade), `dpkg --verify pyra-hacks` clean. After a reboot: daemon active after 3 early
   restarts, `sound.target` active, no failed units; stopped, then `sudo systemctl default`: active again.
-- **Prep selftest** with `+pyra6` and pyra-settings v0.19 pinned, fix 35 standing aside: not run yet.
+- **Prep selftest** with `+pyra6` and pyra-settings v0.19 pinned, fix 35 standing aside (owner): 510 passed,
+  0 failed, 0 skipped, with the package archive linked back at `../pyra-packages-archive`. Among the passes: the
+  image's dpkg, in the chroot, linked `pyra_volumed.service` into `multi-user.target.wants`.
 - **pyra-settings v0.19** pinned in prep at the same time (asset `d0a62b05…6496e9`; Depends and Recommends as
   0.18). On the r6 card: `dpkg -i` over 0.18 clean, `dpkg --audit` empty, `pyra-settings-apply.service` ran
   `apply` with status 0, every module parses, and the window ran 10 s on `:0` with only theme warnings. Pages
