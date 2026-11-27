@@ -47,8 +47,9 @@ software rendered; gl4es is not.
 Leave it as the wrapper. Putting `/usr/lib/arm-linux-gnueabihf/gl4es` into
 `ld.so.conf` would shadow mesa's `libGL` for every process on the system, and
 GL 2.1 is not what every caller expects, and GTK4 would start trying a GL path
-through it. (GTK4's own GL renderer already fails on this card: zenity aborts
-in it unless `GSK_RENDERER=cairo` is set, `dbp.md` "zenity crashes".) The upstream package ships a wrapper rather than replacing
+through it. (GTK 4 gets no GL from the SGX either: the blob has GLES 2.0 and
+GTK 4.18 needs GLES 3.0, so it falls back to Vulkan, and lavapipe crashes it.
+Fix 34 sets `GSK_RENDERER=cairo`; `fixes.md`, fix 34.) The upstream package ships a wrapper rather than replacing
 `libGL` for exactly this reason. Wrap the programs that need GL:
 
     Exec=gl4es /usr/games/something          # in a .desktop file

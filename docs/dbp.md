@@ -130,7 +130,9 @@ on their timeout. So from the menu the launcher seems to do nothing, and the mes
 `/tmp/dbpout/dbprun-<id>-stderr.log`. Prep's fix 34 sets `GSK_RENDERER=cairo` in `/etc/environment`, and with it
 CorsixTH's "files not found" dialog shows when the game is started from the menu (2026-11-26, `verification-log.md`
 R129). On a card prepared before fix 34, add the line `GSK_RENDERER=cairo` to `/etc/environment` (as root) and log in
-again. Epiphany fails in the same renderer, and cairo does not save it (`browsers.md`).
+again. The cause: GTK can't get GLES 3.0 from the SGX, so it falls back to mesa's software Vulkan (lavapipe), which
+corrupts the heap on armhf (`fixes.md` fix 34, 2026-11-27). Epiphany fails in the same renderer, and cairo does not
+save it (`browsers.md`).
 
 ## Check a DBP's libraries before running it
 

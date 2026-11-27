@@ -4181,3 +4181,67 @@ each update, as SDL's `LINUX_JoystickRumble` does. `experiments/rumble/trace-vib
 - Not checked: a game. The motor wasn't felt (nobody at the device). The fallback path (the vibrator refuses the
   old id) isn't reachable from a test program: the uinput device's ff core already refuses a type change.
 - Left on the card: 0.1.19+pyra2 installed (rollback: the +pyra1 build, `dpkg -i`); the two scripts in `/tmp`.
+
+## 2026-11-27 — why GTK 4 crashes without fix 34: no GL on the SGX, then lavapipe (R131)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4), GTK 4.18.6, libepoxy 1.5.10, mesa 25.0.7-2, Vulkan loader
+1.4.309. `GSK_RENDERER` unset per command only (`env -u GSK_RENDERER DISPLAY=:0 ...`); `/etc/environment` kept fix
+34's line. Tools from `experiments/gtk4-renderer/`.
+
+- Repro: `zenity --info` aborted 3/3 (`Fatal glibc error: malloc.c:4434 (_int_malloc): assertion failed`,
+  `malloc(): invalid size (unsorted)`, `corrupted size vs. prev_size`). Under `pyra-gles` (blob's `libGLESv2.so.1`
+  as `.so.2`), still 3/3.
+- Libraries: `LD_DEBUG=libs` showed libepoxy opening `libEGL.so.1` →
+  `/opt/omap5-sgx-ddk-um-linux/lib/libEGL.so.1` (first in `ldconfig -p`; the blob's directory comes first in
+  `ld.so.conf.d`). glvnd's `libEGL.so.1` and `libEGL_mesa.so.0` were not loaded. glvnd's only EGL vendor file is
+  `50_mesa.json`, which doesn't matter here.
+- Switches, 3 runs each, "alive" = still running at `timeout 5`: `GSK_RENDERER=gl`, `ngl`, `vulkan` 0/3;
+  `GDK_DISABLE=gl-api`, `gles-api`, `egl`, `gl` 0/3; **`GDK_DISABLE=vulkan` 3/3**.
+- Vulkan drivers, one at a time with `VK_DRIVER_FILES=/usr/share/vulkan/icd.d/<x>_icd.json`: broadcom, freedreno,
+  nouveau, panfrost, radeon and virtio each 3/3 alive (`vkEnumeratePhysicalDevices(): VK_ERROR_INITIALIZATION_FAILED`,
+  so no device); **lvp 0/3**; no driver file at all, 3/3.
+- `GSK_DEBUG=renderer`: `Not using GL: Unable to create a GL context`, `Not using GL as fallback: ...`, then (with
+  `GDK_DEBUG=vulkan`) `Vulkan Device 0: llvmpipe (LLVM 19.1.7, 128 bits) (CPU)`. With `GDK_DISABLE=vulkan`: `Not using
+  Vulkan as fallback: Vulkan support disabled via GDK_DISABLE`, `Using renderer 'GskCairoRenderer'`.
+- gdb with `libgtk-4-1-dbgsym`, break at `lvp_CreateDevice`: called from `gdk_display_create_vulkan_device` ←
+  `gdk_display_prepare_vulkan` ← `vulkan_supported_platform (as_fallback=1)` ← `get_renderer_for_vulkan_fallback` ←
+  `gsk_renderer_new_for_surface` ← `gtk_window_realize`. GTK 4.18.6's `gskrenderer.c` takes a CPU device only on
+  that fallback path.
+- `eglprobe` (gcc on the card, `libegl-dev` + `libx11-dev` installed for it): `eglGetDisplay from
+  /opt/omap5-sgx-ddk-um-linux/lib/libEGL.so.1`, `EGL 1.4`, vendor `Imagination Technologies`, version `1.4 build
+  1.14@3699939 (MAIN)`, client APIs `OpenGL_ES`, extensions include `EGL_KHR_create_context` and
+  `EGL_KHR_surfaceless_context` (so GTK's init check passes), no client extensions,
+  `eglGetProcAddress(eglQueryDisplayAttribEXT) = (nil)`. RGBA8888 window config: renderable type 0x4 (ES2 only).
+  `GL 3.3` bindAPI=0, context NULL, error 0x3005; `GLES 3.0` bindAPI=1, NULL, 0x3005; `GL legacy` 0, NULL, 0x3005;
+  `GLES 2.0` (GTK never asks) context OK, surfaceless makeCurrent 1. GTK 4.18's floors are GL 3.3 / GLES 3.0
+  (`gdkglversionprivate.h`).
+- `GDK_DEBUG=opengl` abort explained: GTK 4.18.6 `find_egl_device()` calls `eglQueryDisplayAttribEXT` in the debug
+  block without checking for `EGL_EXT_device_query`, and the blob has no such function.
+- vulkan-tools: `vulkaninfo --summary` on lvp exited 0 3/3 (`PHYSICAL_DEVICE_TYPE_CPU`, `Mesa 25.0.7-2 (LLVM
+  19.1.7)`). **`vkcube --c 200` on lvp aborted 3/3** with the same heap errors. So did `--c 3`, `--wsi xlib`,
+  `--present_mode 0`, and `MESA_VK_WSI_DEBUG=noshm`, `sw`, `linear` (each 0/3). With `LP_NUM_THREADS=0`, zenity on lvp
+  still 0/3.
+- valgrind 3.24: 0 errors reported; `-s` shows all of them taken by Debian's `stack-clash-protection-armhf`
+  suppression (`Memcheck:Addr4`, `obj:*`). Memcheck then segfaulted at a stack address in
+  `vkEnumerateInstanceExtensionProperties`, before vkcube drew anything. That is not a real stack overflow.
+- electric-fence (`LD_PRELOAD=/usr/lib/libefence.so.0.0`, `EF_ALLOW_MALLOC_0=1`) under gdb, vkcube on lvp:
+  SIGSEGV at `vk_enqueue_cmd_pipeline_barrier2+106`, `str r7, [r4, #24]` (`vk_cmd_queue.c:7849`) ←
+  `vk_cmd_enqueue_CmdPipelineBarrier2` ← `vk_common_CmdPipelineBarrier`. The entry was allocated with
+  `vk_cmd_queue_type_sizes[180]` bytes. `p vk_cmd_queue_type_sizes[180]` = 24, `(enum vk_cmd_type)180` =
+  `VK_CMD_PIPELINE_BARRIER2`, `&((struct vk_cmd_queue_entry*)0)->u.pipeline_barrier2.dependency_info` = 0x18,
+  `sizeof(struct vk_cmd_pipeline_barrier2)` = 4. Needed 28. mesa 25.0.7's `vk_cmd_queue_gen.py`: size =
+  `sizeof(struct vk_cmd_<x>) + sizeof(struct vk_cmd_queue_entry_base)` (20 on armhf); `u` is at 24.
+- Upstream: mesa-25.0.7 through mesa-26.1.0 still use `sizeof(struct vk_cmd_queue_entry_base)`. mesa-26.2.0 uses
+  `offsetof(struct vk_cmd_queue_entry, u)`, from commit `9b7b28d7d5ed` ("vk/cmd_queue: simplify gross struct
+  duplication", MR 41516; first tag `mesa-26.2.0-rc1`). Debian (madison, 2026-11-27): trixie 25.0.7-2+deb13u1 (a CVE
+  backport, not this), trixie-backports up to 26.1.6, testing 26.1.6, unstable 26.2.7.
+- In-memory fix (`fixsizes.gdb`: +4 on all 213 entries at `lvp_CreateDevice`; `offsetof(u) = 24`, `PIPELINE_BARRIER2
+  size was 24`, `now 28`): no heap error. Instead thread `llvmpipe-0` (or `-1`) took SIGSEGV at pc 0x0, called from an
+  anonymous r-x page (JIT code), 3/3. That fault was not followed further.
+- Contrast: `LD_LIBRARY_PATH=/usr/lib/arm-linux-gnueabihf GDK_DISABLE=vulkan` (glvnd → mesa EGL → llvmpipe GL):
+  `Not using GL: renderer is llvmpipe`, then `Using renderer 'GskGLRenderer'` on the GL fallback, 3/3 alive.
+- Result: the cause is named. Fix 34 stays: no GTK 4 renderer other than cairo draws on the SGX, and the
+  alternatives, hiding lavapipe or using mesa's EGL, give cairo or software GL anyway.
+- Cleanup: the debian-debug source and the 26 packages installed for this run (gdb, valgrind, libc6-dbg,
+  vulkan-tools, mesa-utils-bin, electric-fence, the dbgsyms, the X/EGL headers) were purged; valgrind logs left in
+  `/tmp`.

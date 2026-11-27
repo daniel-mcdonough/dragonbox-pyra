@@ -2074,6 +2074,23 @@ file with that name to be a symlink. `/lib` is `/usr/lib` on trixie, so it is
 the package's `/usr/lib/libpvrDRI3WSEGL.so`. Any package run that triggers
 ldconfig prints it, with fix 21's patched copy or the stock one.
 
+## A Vulkan program, or a GTK 4 program, aborts with `malloc(): ...` or `corrupted size`
+
+The SGX has no Vulkan driver. The only Vulkan device on the card is mesa's
+software one, lavapipe (`llvmpipe (LLVM 19.1.7, 128 bits)`). In trixie's mesa
+25.0.7 it corrupts the heap on armhf, so any program that draws with it aborts
+after its first commands, with a different glibc heap error each run. `vkcube`
+does, and so does any GTK 4 program, which falls back to Vulkan because it
+gets no GL from the SGX (`fixes.md`, fix 34). `vulkaninfo` only lists devices,
+so it works and proves nothing.
+
+Nothing makes lavapipe usable here. Mesa 26.2 fixes the allocation. With the
+same correction made to 25.0.7 in memory, lavapipe still crashed, in its JIT
+code. 26.2 itself is untested (2026-11-27, `verification-log.md` R131). GTK 4 programs are covered by fix 34's `GSK_RENDERER=cairo`. A program
+with no other renderer than Vulkan cannot run on this card. To make Vulkan
+programs fail cleanly ("no device") instead of crashing, run them with
+`VK_DRIVER_FILES=/nonexistent`.
+
 ## The volume wheel is silent for half its travel, or `THE VOLUME WHEEL IS NOT CALIBRATED` after `apt`
 
 A package run replaced the `pyra-hacks` fork that fix 26 installed, with the

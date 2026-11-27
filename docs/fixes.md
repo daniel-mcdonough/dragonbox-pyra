@@ -2433,10 +2433,26 @@ whose only program is `gcr4-ssh-askpass`. The keyring's unlock prompt,
 the panel, caja, `pyra-settings`, fix 33's window) is GTK 3, which ignores
 the variable.
 
-**Cause.** Not found. GTK 4 on X11 renders through EGL, and this X server has
-no GLX (fix 4). With `GDK_DEBUG=opengl` zenity dies earlier, in libepoxy: the
-card's EGL provides no `eglQueryDisplayAttribEXT`, which GTK's debug output
-asks for. That is only the debug path, not the heap corruption.
+**Cause** (2026-11-27, `verification-log.md` R131; the tools are in
+`experiments/gtk4-renderer/`). Two things together:
+
+1. **GTK 4.18 gets no GL here.** libepoxy opens `libEGL.so.1`, which resolves
+   to the SGX blob, not glvnd. The blob offers OpenGL ES 2.0 only, and GTK
+   needs GLES 3.0 or GL 3.3: `eglCreateContext` fails all of GTK's requests
+   with `EGL_BAD_MATCH`.
+2. **GTK then falls back to Vulkan, and lavapipe corrupts the heap.** mesa's
+   software Vulkan driver is the only Vulkan device. In mesa 25.0.7 on armhf,
+   every recorded command is allocated 4 bytes short (`vk_cmd_queue.c` adds
+   `sizeof(vk_cmd_queue_entry_base)`, 20, but the command starts at offset
+   24). `vkcube` crashes the same way. Mesa 26.2 has the fix; trixie, and
+   trixie-backports' 26.1, do not. With the sizes corrected in memory, lavapipe
+   still crashes, in its JIT code.
+
+`GSK_RENDERER=ngl` or `gl` doesn't help, because a failed GL
+renderer still falls through to the Vulkan fallback. `GDK_DISABLE=vulkan` also
+avoids the crash, by ending at cairo too. With `GDK_DEBUG=opengl` zenity dies
+earlier, in libepoxy: GTK's debug output calls `eglQueryDisplayAttribEXT`
+without checking that the EGL has it. That is a separate, debug-only fault.
 
 **Fix.** Prep adds `GSK_RENDERER=cairo` to `/etc/environment`, under a comment
 naming the fix. pam_env reads that file for lightdm's session, ssh, su and
