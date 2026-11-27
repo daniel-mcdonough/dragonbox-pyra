@@ -212,7 +212,7 @@ jobs:
             echo "    gh attestation verify $NAME.img.xz --repo $GITHUB_REPOSITORY --signer-workflow $GITHUB_REPOSITORY/.github/workflows/release-image.yml"
             echo "    xzcat $NAME.img.xz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync"
             echo
-            echo "The first login is \`pyra\` / \`pyra\`, and it makes you choose a new password. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. The \`gh attestation verify\` line checks that this repository's Release image workflow built the file, which a matching checksum alone does not show; see \`docs/building.md\`, \"Checking a download\". \`$NAME.info\` records the commit, the prep options, the vendor image and kernel checksums, and the versions of the Pyra packages prep installed."
+            echo "The card has no password until its first boot: a window then asks you to choose one for the user \`pyra\`, and the greeter starts once it is set (fix 33). Until then ssh, a console and the greeter refuse logins. \`$NAME.sha256\` is the checksum of the uncompressed image, for after \`unxz\`. The \`gh attestation verify\` line checks that this repository's Release image workflow built the file, which a matching checksum alone does not show; see \`docs/building.md\`, \"Checking a download\". \`$NAME.info\` records the commit, the prep options, the vendor image and kernel checksums, and the versions of the Pyra packages prep installed."
             echo
             echo '```'
             cat "$NAME.info"
