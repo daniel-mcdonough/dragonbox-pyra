@@ -1871,7 +1871,7 @@ as `/etc/pyrainput.cfge`. It is harmless and can be deleted.
 ## A nub stays off centre in games, or Usr1, Fn+Usr1 and Fn+Esc do nothing
 
 Both are bugs in the input daemon, funkeymonkey-pyrainput 0.1.19, the same on
-bookworm and trixie. Prep's fix 29 installs 0.1.19+pyra1, which fixes both:
+bookworm and trixie. Prep's fix 29 installs 0.1.19+pyra2, which fixes both:
 `dpkg-query -W funkeymonkey-pyrainput` says which one a card has. On a card
 with the vendor's 0.1.19 (prepped before fix 29, with `--no-pyrainput`, or
 after a package run put it back, which `pyra-input-guard` reports), install the

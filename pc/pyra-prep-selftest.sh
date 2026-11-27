@@ -1421,7 +1421,7 @@ fi
 # silent and writes nothing; anything else warns, and puts back a missing unit
 # (fix 3's, byte for byte) and its link.
 IG=$PAYLOADS/pyra-input-guard
-for c in "0.1.19+pyra1|silent" "0.1.20+pyra1|silent" "|silent" "0.1.19|warn" "0.1.20|warn"; do
+for c in "0.1.19+pyra1|silent" "0.1.19+pyra2|silent" "0.1.20+pyra1|silent" "|silent" "0.1.19|warn" "0.1.20|warn"; do
     IFS='|' read -r v want <<<"$c"
     IGD=$(mktemp -d)
     IGO=$(PYRA_PYRAINPUT_VERSION=$v PYRA_INPUT_UNIT=$IGD/pyrainput.service PYRA_INPUT_WANTS=$IGD/wants/pyrainput.service "$IG" 2>&1); IGRC=$?

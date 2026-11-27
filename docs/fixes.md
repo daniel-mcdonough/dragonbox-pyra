@@ -2109,7 +2109,7 @@ back a word), and Fn+R/Fn+T typed é/è, keycap-correct; on tty1 (a fresh
 `login:` prompt, read back from `/dev/vcsu1`) Fn+E..P, A..L, ', M typed all
 eighteen keycap symbols in order.
 
-## Fix 29 — Usr1, Fn+Esc and d-pad right send nothing, and the nubs stick off-centre
+## Fix 29 — Usr1, Fn+Esc and d-pad right send nothing, the nubs stick off-centre, and rumble stutters
 
 **Symptom.** In `funkeymonkey-pyrainput` 0.1.19, Usr1 and Fn+Usr1 send nothing,
 Fn+Esc sends no SysRq, and d-pad right moves only the keyboard's `KEY_RIGHT`,
@@ -2117,13 +2117,18 @@ never the gamepad's hat (left, up and down do both). A nub pushed hard and let
 go fast can leave the gamepad axis at its last value outside the deadzone (seen
 at -38,-232 and -14,-248 with the raw nub back at 0,0), so a game keeps walking.
 The brightness-key lines in `/etc/pyrainput.cfg` wait for a reload (fix 15).
-Diagnosis: development log, R77; workarounds for a card without this fix in
+Each rumble strength change from a game (SDL re-uploads the effect under the
+same id) makes pyrainput erase the vibrator's copy and upload a new one; the
+erase stops the motor, so it switches off for about 16 ms at every change, and
+without a fresh play event it stays off.
+Diagnosis: development log, R77 and R134; workarounds for a card without this fix in
 `troubleshooting.md`.
 
-**Fix.** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra1: the vendor's 0.1.19
-source package with the three patches in `patches/userspace/funkeymonkey-pyrainput/`
+**Fix.** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra2: the vendor's 0.1.19
+source package with the four patches in `patches/userspace/funkeymonkey-pyrainput/`
 (0001 brightness defaults before the config, 0002 the axes back to 0 inside the
-deadzone, 0003 the four key names) and `systemd-dev` added to Build-Depends, so
+deadzone, 0003 the four key names, 0004 a known rumble effect updated in place
+under the vibrator's id instead of erased and uploaded again) and `systemd-dev` added to Build-Depends, so
 it ships `pyrainput.service` again (fix 3 has why the vendor's trixie build
 lacks it). The unit is byte-identical to fix 3's; dpkg takes over the file fix 3
 wrote, and the package's postinst keeps it enabled. Depends are the vendor
@@ -2133,9 +2138,9 @@ image.
 **Where the .deb comes from.** `./pc/pyra-crossbuild.sh pyrainput` builds it in
 a trixie container from the vendor's `.dsc` (pinned by SHA-256) and the Pyra
 repository's `funkeymonkey-dev` 0.1.2 headers (pinned too). The changelog entry
-has a fixed date, so the build is reproducible: two builds on 2026-11-21 gave
-the same file, SHA-256 `de94357a…cbda2638`. Prep pins that hash and downloads
-the release asset `pyrainput-0.1.19+pyra1` from this repository's releases;
+has a fixed date, so the build is reproducible: four builds on 2026-11-26 gave
+the same file, SHA-256 `f2e166bf…62783dbb`. Prep pins that hash and downloads
+the release asset `pyrainput-0.1.19+pyra2` from this repository's releases;
 `--pyrainput FILE` uses a `.deb` you have (a local build has the same hash),
 `--no-pyrainput` keeps the vendor's 0.1.19. Before fix 1 writes anything prep
 checks that the file is `funkeymonkey-pyrainput`, a `+pyra` version, ships the
@@ -2144,7 +2149,7 @@ installed and does nothing.
 
 **Kept in step with apt.** As fix 26: no apt hold (it would also hold back a
 vendor release that fixes these bugs). The vendor's 0.1.19 sorts below
-`0.1.19+pyra1`, so apt keeps it, but a downgrade or a vendor 0.1.20 replaces it.
+`0.1.19+pyra2`, so apt keeps it, but a downgrade or a vendor 0.1.20 replaces it.
 A dpkg `post-invoke` hook, `/etc/dpkg/dpkg.cfg.d/pyra-input-guard`, runs
 `/usr/local/sbin/pyra-input-guard` after every package run. It is silent while
 the package is a `+pyra` version. Otherwise it prints a `THE INPUT DAEMON IS
@@ -2154,7 +2159,7 @@ vendor's 0.1.19 has no unit, so dpkg deletes ours as the old package's file and
 the daemon would not start at the next boot (no nubs, no gamepad, no Fn layer).
 Then the guard writes fix 3's unit back and enables it. The selftest fires it
 with the image's dpkg: a downgrade to the archive's vendor 0.1.19 warns and
-leaves fix 3's unit enabled, and the return to 0.1.19+pyra1 is silent and owns
+leaves fix 3's unit enabled, and the return to the fixed build is silent and owns
 the unit again.
 
 **Checked** 2026-11-21 on the r5 release card with the package installed by
@@ -2170,6 +2175,12 @@ from the package's own unit file (`dpkg -S` confirms it, `dpkg -V` flags
 nothing but the expected conffile), and Fn+Esc — three presses each opened
 MATE's screenshot tool, the desktop-session face of the same `KEY_SYSRQ` this
 section calls "SysRq (PrtScrn)".
+
+**Rumble checked** 2026-11-26 on the R99 test card with 0.1.19+pyra2 (kernel r4
+with 0055; `verification-log.md`, R134): one effect re-uploaded twice under its
+id while playing keeps VIBCTLR at `01` from play to stop, with VIBDATR following
+each strength (`0x24`, `0x32`, `0x22`); 0.1.19+pyra1 wrote VIBCTLR `00` at the
+first update. 0001-0003 are unchanged from +pyra1, whose checks above stand.
 
 ## Fix 30 — touchscreen calibration does nothing, and the pointer jitters
 

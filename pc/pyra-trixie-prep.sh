@@ -45,7 +45,7 @@
 # option it downloads the pinned release (v0.4); --sound FILE uses a .deb you
 # have; --no-sound leaves it out.
 #
-# Fix 29 installs funkeymonkey-pyrainput 0.1.19+pyra1, the input daemon's
+# Fix 29 installs funkeymonkey-pyrainput 0.1.19+pyra2, the input daemon's
 # plugin rebuilt with patches/userspace/funkeymonkey-pyrainput/ and its systemd
 # unit (pc/pyra-crossbuild.sh pyrainput builds the same file), and a dpkg hook
 # that warns if a package run replaces it. With no option it downloads the
@@ -509,9 +509,9 @@ SOUND_TMP=
 STAGED_SOUND=$ROOT/var/tmp/pyra-prep-sound.deb
 # Fix 29's .deb, the release asset as published, by SHA-256. The build is
 # reproducible: pc/pyra-crossbuild.sh pyrainput makes a file with this SHA-256.
-PYRAINPUT_TAG=pyrainput-0.1.19+pyra1
-PYRAINPUT_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/pyrainput-0.1.19%2Bpyra1/funkeymonkey-pyrainput_0.1.19%2Bpyra1_armhf.deb
-PYRAINPUT_SHA256=de94357acbd87fc84856e4e591125c850161e4f22581ff9b2e2d1913cbda2638
+PYRAINPUT_TAG=pyrainput-0.1.19+pyra2
+PYRAINPUT_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/pyrainput-0.1.19%2Bpyra2/funkeymonkey-pyrainput_0.1.19%2Bpyra2_armhf.deb
+PYRAINPUT_SHA256=f2e166bf9bb792ce2dbc997bdb229bc2a1617c6c3110f21f57430b9862783dbb
 PYRAINPUT_TMP=
 STAGED_PYRAINPUT=$ROOT/var/tmp/pyra-prep-pyrainput.deb
 # Fix 32's three .debs: python3-apt and the two packages it depends on that the

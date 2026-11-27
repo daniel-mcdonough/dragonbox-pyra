@@ -1,0 +1,48 @@
+Update a known rumble effect in place instead of erasing it first
+
+When a game uploads an effect id it has uploaded before (SDL does this for
+every strength change), UI_FF_UPLOAD erased the vibrator's copy with
+EVIOCRMFF and uploaded a new one. The erase stops a playing effect, so each
+change switched the vibrator off and on: on the Pyra the TWL6040 driver
+clears VIBCTLR and sets it again, and rumble stutters while a game changes
+strength.
+
+EVIOCSFF with an existing id updates the effect in place (input_ff_upload),
+and a memless device such as twl6040-vibra keeps a started effect running at
+the new magnitude. Re-upload under the vibrator-side id pyrainput already
+keeps in _effectMap. If the vibrator refuses that id (an earlier upload
+failed and left -1 in the map), fall back to the old erase and fresh upload.
+A change of effect type never gets here: the uinput device's own ff core
+refuses it before pyrainput sees the request.
+
+Against funkeymonkey-pyrainput 0.1.19 (applies with or without 0001-0003).
+Apply with: patch -p1 < this-file
+
+--- a/joystick.cpp
++++ b/joystick.cpp
+@@ -110,12 +110,21 @@
+ 					upload.request_id = ev.value;
+ 					ioctl(_fd, UI_BEGIN_FF_UPLOAD, &upload);
+ 					int orig = upload.effect.id;
++					bool updated = false;
+ 					if (_effectMap.find(orig) != _effectMap.end()) {
+-						// effect already known, removing 1st
+-						deleteEffect(orig);
++						// effect already known: update it in place under the
++						// device's id, so a playing effect keeps playing
++						upload.effect.id = _effectMap[orig];
++						updated = ioctl(_rumble, EVIOCSFF, &upload.effect) >= 0;
++						if (!updated) {
++							// the vibrator lost it, removing 1st
++							deleteEffect(orig);
++						}
++					}
++					if (!updated) {
++						upload.effect.id = -1;
++						ioctl(_rumble, EVIOCSFF, &upload.effect);
+ 					}
+-					upload.effect.id = -1;
+-					ioctl(_rumble, EVIOCSFF, &upload.effect);
+ 					_effectMap[orig] = upload.effect.id;
+ 					upload.retval = 0;
+ 					ioctl(_fd, UI_END_FF_UPLOAD, &upload);

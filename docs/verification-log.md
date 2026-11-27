@@ -4153,3 +4153,31 @@ put back after. r4's own `updates/twl6040-vibra.ko` stays in r4's tree; the `-te
   3.86 V, 76 %. Motor not felt or heard (nobody at the device).
 - The one-shot revert brought the next boot back to `l5` (r4), where the parameters read `enable` Y, `max_code`
   50, `min_code` 32 from the restored file.
+
+## 2026-11-26 — pyrainput 0004: a rumble strength change keeps the motor on (R134, fix 29)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`) with 0055 as `updates/twl6040-vibra.ko` (taint 12800),
+pyra-settings' `max_code=50`. `./pc/pyra-crossbuild.sh pyrainput` with 0001-0004 gave
+`funkeymonkey-pyrainput_0.1.19+pyra2_armhf.deb`, SHA-256
+`f2e166bf9bb792ce2dbc997bdb229bc2a1617c6c3110f21f57430b9862783dbb`, the same in four builds (two before and two
+after a comment-only edit of 0004 that kept its line count). Tool: `experiments/rumble/ff-update-test.py` uploads
+one `FF_RUMBLE` effect on `pyraInput Gamepad` (strong `0x4000`, 10 s), plays it, re-uploads it under the same id
+at `0xffff` and then `0x2000` a second apart, then stops and erases it; `--play-again` also writes a play event after
+each update, as SDL's `LINUX_JoystickRumble` does. `experiments/rumble/trace-vibra.sh` records every regmap write to
+`0-004b` registers 0x18-0x1b (VIBCTLL, VIBDATL, VIBCTLR, VIBDATR) around it, so a short off can't fall between reads.
+
+- 0.1.19+pyra1, no replay: play → `1a=1`, `1b=0x24`. First update → `18=0`, `1a=0`, and nothing more until the
+  erase: the motor stays off for the rest of the effect.
+- 0.1.19+pyra1, `--play-again`: each update → `1a=0`, then about 16 ms later `1a=1` and VIBDATR rewritten
+  (`0x32`, then `0x22`). The motor switches off and on at every strength change.
+- 0.1.19+pyra2 (`dpkg -i`, `systemctl restart pyrainput`), both modes: `1a=1` once at play, then only `19=0` and
+  VIBDATR `0x32` and `0x22` at the updates (the second update with `--play-again` writes them twice), and `18=0`,
+  `1a=0` at the stop. VIBCTLR stays `01` from play to stop.
+- Codes: `0x4000` → `0x24` (36), `0xffff` → `0x32` (50, the card's `max_code`), `0x2000` → `0x22` (34), as 0055
+  scales them.
+- Found on the way: on 5.6.19 an event filter term `name == "0-004b"` on `regmap_reg_write` is accepted but
+  matches nothing, so the script filters on `reg` and picks the device in `sed`; writing `trace_clock` empties
+  the trace buffer.
+- Not checked: a game. The motor wasn't felt (nobody at the device). The fallback path (the vibrator refuses the
+  old id) isn't reachable from a test program: the uinput device's ff core already refuses a type change.
+- Left on the card: 0.1.19+pyra2 installed (rollback: the +pyra1 build, `dpkg -i`); the two scripts in `/tmp`.

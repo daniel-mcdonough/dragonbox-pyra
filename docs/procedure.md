@@ -355,11 +355,11 @@ Fn+' type `_` and `:` without also being Alt (and with Shift held) and Fn+R/Fn+T
 give é and è as the keycaps print, and adds the Fn layer to the console keymap.
 It has no option; it needs `patch` on the PC.
 
-**Input daemon (fix 29).** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra1,
+**Input daemon (fix 29).** Prep installs `funkeymonkey-pyrainput` 0.1.19+pyra2,
 the vendor's 0.1.19 rebuilt with `patches/userspace/funkeymonkey-pyrainput/`:
 Usr1, Fn+Usr1, Fn+Esc and d-pad right send their keys, the nubs' gamepad axes
-return when let go, and the brightness keys follow `/etc/pyrainput.cfg` from the
-start. By default it downloads the pinned release; `--pyrainput FILE` uses a
+return when let go, the brightness keys follow `/etc/pyrainput.cfg` from the
+start, and a game changing rumble strength no longer switches the motor off. By default it downloads the pinned release; `--pyrainput FILE` uses a
 `.deb` you have (`./pc/pyra-crossbuild.sh pyrainput` builds the same file, byte
 for byte), and `--no-pyrainput` keeps the vendor's.
 

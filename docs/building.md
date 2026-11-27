@@ -118,7 +118,7 @@ an armhf image by some unrelated `docker pull`, and the build would then run
 under qemu without saying so (found 2026-11-21).
 
 `./pc/pyra-crossbuild.sh pyrainput` builds fix 29's
-`funkeymonkey-pyrainput_0.1.19+pyra1_armhf.deb` into `pyrainput/` of the work
+`funkeymonkey-pyrainput_0.1.19+pyra2_armhf.deb` into `pyrainput/` of the work
 tree and prints its SHA-256; it should match the `PYRAINPUT_SHA256` pinned in
 prep (`fixes.md`, fix 29). About 4 minutes, most of it apt in the container.
 

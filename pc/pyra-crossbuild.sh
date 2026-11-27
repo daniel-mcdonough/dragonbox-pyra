@@ -23,7 +23,7 @@
 #   ./pyra-crossbuild.sh pyra-hacks [REF]    pyra-hacks from ../pyra-hacks, the pyra
 #                                            integration branch unless REF says otherwise
 #   ./pyra-crossbuild.sh pyrainput           funkeymonkey-pyrainput with patches/userspace/
-#                                            funkeymonkey-pyrainput/, as 0.1.19+pyra1 (fix 29)
+#                                            funkeymonkey-pyrainput/, as 0.1.19+pyra2 (fix 29)
 #   ./pyra-crossbuild.sh kernel-m4demo       the fix kernel plus the M4 stack and nothing else
 #   ./pyra-crossbuild.sh kernel-jack         stock source plus the jack-detect work and nothing else
 #
@@ -145,7 +145,7 @@ build_pyra_hacks() {
 }
 
 # funkeymonkey-pyrainput 0.1.19 with patches/userspace/funkeymonkey-pyrainput/
-# applied, as 0.1.19+pyra1 (prep's fix 29). It build-depends on
+# applied, as 0.1.19+pyra2 (prep's fix 29). It build-depends on
 # funkeymonkey-dev, which only the Pyra repository has, so that .deb is pinned
 # too and installed by hand. systemd-dev is added to Build-Depends: trixie moved
 # systemd.pc there from systemd, and without it CMake skips the unit, which is
@@ -156,8 +156,8 @@ PYRAINPUT_DSC=funkeymonkey-pyrainput_0.1.19.dsc
 PYRAINPUT_SHA=898e5703232eeb543d4b0dfd37a000951501419873bd35bd6d7c0b245a0424e2
 FKM_DEV_DEB=funkeymonkey-dev_0.1.2_all.deb
 FKM_DEV_SHA=48c30ff0ad97d1c306d599f4112ef61c6f81069023f0e17e6a65b6679fedef4d
-PYRAINPUT_VERSION=0.1.19+pyra1
-PYRAINPUT_DATE='Sat, 21 Nov 2026 12:00:00 +0000'
+PYRAINPUT_VERSION=0.1.19+pyra2
+PYRAINPUT_DATE='Thu, 26 Nov 2026 12:00:00 +0000'
 build_pyrainput() {
 	local dir=$BUILD_DIR/pyrainput got p
 	fetch "$PYRAINPUT_DSC" "$PYRAINPUT_SHA" "$dir"
@@ -190,8 +190,9 @@ build_pyrainput() {
 			printf "%s\n\n" "funkeymonkey-pyrainput ('"$PYRAINPUT_VERSION"') unstable; urgency=medium"
 			printf "%s\n" "  * dragonbox-pyra build: brightness-key defaults before the config file"
 			printf "%s\n" "    (0001), nub axes back to 0 inside the deadzone (0002), the key names"
-			printf "%s\n" "    for Usr1, Fn+Usr1, Fn+Esc and d-pad right (0003), and systemd-dev in"
-			printf "%s\n\n" "    Build-Depends so the systemd unit is installed again."
+			printf "%s\n" "    for Usr1, Fn+Usr1, Fn+Esc and d-pad right (0003), a known rumble"
+			printf "%s\n" "    effect updated in place instead of erased and uploaded again (0004),"
+			printf "%s\n\n" "    and systemd-dev in Build-Depends so the systemd unit is installed again."
 			printf "%s\n\n" " -- dragonbox-pyra <noreply@invalid>  '"$PYRAINPUT_DATE"'"
 			cat debian/changelog
 		} > debian/changelog.new
