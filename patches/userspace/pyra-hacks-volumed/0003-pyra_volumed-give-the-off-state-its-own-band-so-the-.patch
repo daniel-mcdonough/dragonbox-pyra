@@ -1,0 +1,77 @@
+From 88457853adc8c5ba03144c90df661f7759702f93 Mon Sep 17 00:00:00 2001
+From: daniel-mcdonough <daniel-mcdonough@users.noreply.github.com>
+Date: Sat, 14 Nov 2026 13:16:24 -0500
+Subject: [PATCH pyra-hacks 3/5] pyra_volumed: give the off state its own band,
+ so the wheel doesn't flutter at the bottom
+
+Off was a jump from 0 to step_lo at RAW_OFF, which the 0.3-step
+hysteresis can't damp. With the ADC wandering by up to 10 raw peak to
+peak at rest, a wheel resting at RAW_OFF flipped between 0 and step_lo
+several times a second (audible with hsrange 4 15). Now the wheel goes
+off at or below RAW_OFF and comes back on only above RAW_OFF + 12 raw.
+---
+ pyra_volumed.c | 23 +++++++++++++++++++----
+ 1 file changed, 19 insertions(+), 4 deletions(-)
+
+diff --git a/pyra_volumed.c b/pyra_volumed.c
+index 59f06b3..1e20208 100644
+--- a/pyra_volumed.c
++++ b/pyra_volumed.c
+@@ -64,6 +64,13 @@ static long step_lo[NOUT]={6,0}, step_hi[NOUT]={29,15};
+ 
+ // readings this close to the bottom are "all the way down": volume 0
+ #define RAW_OFF (cal[0]*1.25)
++// and once down, the wheel is only up again above this. Off is a jump (to
++// step_lo, not to the step next to 0), which HYSTERESIS can't damp, so it
++// gets its own band in raw units, wider than the ADC's wander (up to 10 raw
++// peak to peak with the wheel at rest): a wheel resting at RAW_OFF flipped
++// between 0 and step_lo several times a second.
++#define OFF_BAND 12
++#define RAW_ON (RAW_OFF+OFF_BAND)
+ 
+ // the log mapping magnifies ADC noise at the bottom of the travel, so only
+ // move once the wheel is this far past the edge of the current step
+@@ -123,9 +130,9 @@ static double travel(double raw)
+ }
+ 
+ // where the wheel is, in fractional steps of output o's control
+-static double position(int o,double raw)
++static double position(int o,double raw,int off)
+ {
+-    if(raw<=RAW_OFF)
++    if(off)
+         return 0;
+     return step_lo[o]+travel(raw)*(step_hi[o]-step_lo[o]);
+ }
+@@ -180,18 +187,26 @@ int main(int argc,char **argv)
+             double val;
+             double raw;
+             long pv[NOUT]={-1,-1};
++            int off=-1;
+             while(true)
+             { 
+                 //iio_channel_attr_read_double(ch,attr,&val);
+                 iio_channel_attr_read_double(ch,attraw,&raw);
+                 int moved=0;
++                // in the band between RAW_OFF and RAW_ON the wheel stays as
++                // it was; at start, only at or below RAW_OFF is off
++                int was=off;
++                if(raw<=RAW_OFF)
++                    off=1;
++                else if(raw>RAW_ON || off<0)
++                    off=0;
+                 for(int o=0;o<NOUT;o++)
+                 {
+-                    double pos=position(o,raw);
++                    double pos=position(o,raw,off);
+                     long volume=lround(pos);
+                     if(!elem[o])
+                         continue;
+-                    if(pv[o]<0 || (volume!=pv[o] && fabs(pos-pv[o])>0.5+HYSTERESIS))
++                    if(pv[o]<0 || off!=was || (volume!=pv[o] && fabs(pos-pv[o])>0.5+HYSTERESIS))
+                     {
+                         snd_mixer_selem_set_playback_volume_all(elem[o], volume);
+                         pv[o]=volume;
+-- 
+2.56.1
+

@@ -1,8 +1,8 @@
 From eb1d4884f9db6987b18c941aad675e05d4b10fe9 Mon Sep 17 00:00:00 2001
 From: daniel-mcdonough <daniel-mcdonough@users.noreply.github.com>
 Date: Sat, 14 Nov 2026 10:48:22 -0500
-Subject: [PATCH pyra-hacks] pyra_volumed: drive the headphone volume from the
- wheel too
+Subject: [PATCH pyra-hacks 2/5] pyra_volumed: drive the headphone volume from
+ the wheel too
 
 The wheel only ever set Handsfree Playback Volume, so it did nothing for
 headphones, which were left with PulseAudio's software volume alone.
@@ -202,5 +202,5 @@ index 05e556d..59f06b3 100644
  		    {
  		     delay+=delay/10;
 -- 
-2.55.0
+2.56.1
 

@@ -1,7 +1,7 @@
 From 593d59de71a6200104f2c8fb77d817d56ca6ad3a Mon Sep 17 00:00:00 2001
 From: Daniel McDonough <90170351+daniel-mcdonough@users.noreply.github.com>
 Date: Tue, 20 Oct 2026 18:10:20 -0400
-Subject: [PATCH pyra-hacks 1/2] pyra-thermal: set the ceiling through sysfs,
+Subject: [PATCH pyra-hacks 1/3] pyra-thermal: set the ceiling through sysfs,
  not cpufreq-set
 
 doThermal() applies its ceiling with cpufreq-set -u, which came from
@@ -42,5 +42,5 @@ index 58be93d..849b86d 100755
         	
  }
 -- 
-2.55.0
+2.56.1
 

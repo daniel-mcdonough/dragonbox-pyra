@@ -1,0 +1,75 @@
+From 9f1f4373014b53467f4f402cb74ff7538d0f687b Mon Sep 17 00:00:00 2001
+From: daniel-mcdonough <daniel-mcdonough@users.noreply.github.com>
+Date: Sun, 22 Nov 2026 03:12:54 -0500
+Subject: [PATCH pyra-hacks 3/3] pyra-thermal: keep a ceiling the user sets in
+ /etc/default/pyra-thermal
+
+The daemon writes scaling_max_freq on every pass, every 2 seconds, so a
+lower limit written there by hand is gone within one interval. There was
+no other place to put one.
+
+CPU_MAX_MHZ=1000 in /etc/default/pyra-thermal now lowers the top of the
+ladder: the daemon starts each pass from that value instead of 1500, so
+it never raises the clock past it, and the core and board rungs still
+cap below it when hot. The file is read on every pass with the shell's
+own read, not sourced, so a change applies within 2 seconds without a
+restart and nothing in the file is executed. A value that is not a plain
+number from 1 to 9999 is ignored; with several valid lines the lowest
+wins. The package does not ship the file, so without it nothing changes.
+---
+ pyra-thermal.sh | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/pyra-thermal.sh b/pyra-thermal.sh
+index b335257..79413f2 100755
+--- a/pyra-thermal.sh
++++ b/pyra-thermal.sh
+@@ -17,6 +17,37 @@ battery="bq27421-0"
+ maxFreq=1500
+ maxCharge=3000000
+ 
++# A ceiling the user sets, in MHz, as CPU_MAX_MHZ=1000 in this file. The
++# daemon rewrites scaling_max_freq on every pass, so a limit written there
++# by hand is gone within one interval; this is where it goes instead. Read
++# on every pass, so a change applies within one interval, no restart. The
++# ladder still caps below it when hot and never goes above it. The package
++# does not ship the file: no file, or no valid line, means no ceiling. A
++# value that is not a plain number from 1 to 9999 is ignored, one above the
++# top step changes nothing, and the kernel rounds the rest down to a step.
++pyraCeilingConf=/etc/default/pyra-thermal
++pyraTopFreq=${maxFreq}
++
++pyraReadCeiling()
++{
++	maxFreq=${pyraTopFreq}
++	[ -r "${pyraCeilingConf}" ] || return 0
++	# The second test keeps a last line that has no newline.
++	while IFS='= 	' read -r _pyra_k _pyra_v _pyra_rest || [ -n "${_pyra_k}" ]
++	do
++		[ "${_pyra_k}" = "CPU_MAX_MHZ" ] || continue
++		_pyra_v=${_pyra_v#[\"\']}
++		_pyra_v=${_pyra_v%[\"\']}
++		case "${_pyra_v}" in
++		''|0*|*[!0-9]*|?????*) continue ;;
++		esac
++		if [ "${_pyra_v}" -lt "${maxFreq}" ]
++		then
++			maxFreq=${_pyra_v}
++		fi
++	done < "${pyraCeilingConf}"
++}
++
+ setMaxFreq()
+ {
+         if [ "$1" -lt "$maxFreq" ]
+@@ -36,6 +67,7 @@ setMaxCharge()
+ doThermal()
+ {
+ 
++	pyraReadCeiling
+ 	current_maxFreq=${maxFreq}
+ 	current_maxCharge=${maxCharge}
+ 
+-- 
+2.56.1
+

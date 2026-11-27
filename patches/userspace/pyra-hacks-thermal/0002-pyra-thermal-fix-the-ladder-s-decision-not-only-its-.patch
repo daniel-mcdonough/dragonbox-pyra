@@ -1,7 +1,7 @@
 From 9ddad66bc27f4f4bb507d1fd84998e7e8248f48a Mon Sep 17 00:00:00 2001
 From: Daniel McDonough <90170351+daniel-mcdonough@users.noreply.github.com>
 Date: Tue, 20 Oct 2026 18:10:20 -0400
-Subject: [PATCH pyra-hacks 2/2] pyra-thermal: fix the ladder's decision, not
+Subject: [PATCH pyra-hacks 2/3] pyra-thermal: fix the ladder's decision, not
  only its application
 
 Once the ceiling was actually applied (previous commit), five faults in the
@@ -280,5 +280,5 @@ index 849b86d..b335257 100755
          then
                  echo ${core}:${core_temp} ${battery}:${battery_temp}
 -- 
-2.55.0
+2.56.1
 

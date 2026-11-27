@@ -1,0 +1,35 @@
+From 251989d873e8d0b75cb49ff9efb1b799d44d1a60 Mon Sep 17 00:00:00 2001
+From: daniel-mcdonough <daniel-mcdonough@users.noreply.github.com>
+Date: Fri, 27 Nov 2026 16:58:28 -0500
+Subject: [PATCH pyra-hacks 5/5] pyra_volumed.service: wanted by
+ multi-user.target too, so the wheel comes back after rescue mode
+
+sound.target is pulled in only by udev, when the sound card appears at
+boot. systemctl rescue stops it and the daemon; systemctl default isolates
+graphical.target, which holds neither, so the wheel stayed dead until a
+reboot. A stop by SIGTERM is clean, so Restart=on-failure doesn't help.
+
+Wanted by multi-user.target as well, the daemon is in the boot transaction
+before the card may be there; it exits and is restarted every 2 s until
+it is (0.38+pyra4).
+---
+ pyra_volumed.service | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/pyra_volumed.service b/pyra_volumed.service
+index 824a588..ff62c96 100644
+--- a/pyra_volumed.service
++++ b/pyra_volumed.service
+@@ -14,4 +14,8 @@ Restart=on-failure
+ RestartSec=2
+ 
+ [Install]
+-WantedBy=sound.target
++# udev pulls in sound.target when the card appears at boot, and nothing else
++# does, so after "systemctl rescue" and "systemctl default" the daemon would
++# stay stopped. multi-user.target brings it back; started before the card,
++# it retries (above).
++WantedBy=sound.target multi-user.target
+-- 
+2.56.1
+

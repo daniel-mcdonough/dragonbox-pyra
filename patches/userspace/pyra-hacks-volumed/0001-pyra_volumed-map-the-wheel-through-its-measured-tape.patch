@@ -1,8 +1,8 @@
 From 8baeb822d14ae13af7ee373a8083720515181138 Mon Sep 17 00:00:00 2001
 From: Daniel McDonough <90170351+daniel-mcdonough@users.noreply.github.com>
 Date: Tue, 20 Oct 2026 17:54:08 -0400
-Subject: [PATCH pyra-hacks] pyra_volumed: map the wheel through its measured
- taper
+Subject: [PATCH pyra-hacks 1/5] pyra_volumed: map the wheel through its
+ measured taper
 
 The wheel is a tapered potentiometer. Held at quarter turns, one unit read
 16, 144, 394, 1071 and 2068 on palmas-gpadc channel 2. The control it drives,
@@ -176,5 +176,5 @@ index 9eb3a71..05e556d 100644
                          snd_mixer_selem_set_playback_volume_all(elem, volume);
                          pv=volume;
 -- 
-2.55.0
+2.56.1
 

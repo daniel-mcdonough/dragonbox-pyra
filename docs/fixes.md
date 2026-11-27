@@ -2528,11 +2528,13 @@ failed units, and `systemctl default` started the stopped daemon again.
 ## Fixes 6, 7 and 12 as a package
 
 All three change files that `pyra-hacks` owns, so the prep script and the
-device scripts patch or override that package in place. The same three changes
+device scripts patch or override that package in place. The fork's changes
 as patches against pyra-hacks 0.38, in the form sent upstream, are in
-`patches/userspace/pyra-hacks-thermal/` (fixes 6 and 7, a two-patch series)
-and `patches/userspace/pyra-hacks-volumed/` (fix 12, also a two-patch series:
-the taper, then the headphones). Each applies with `git am`.
+`patches/userspace/pyra-hacks-thermal/` (three patches: fix 6, fix 7, then the
+user's CPU ceiling) and `patches/userspace/pyra-hacks-volumed/` (five: fix 12's
+taper and headphones, the off band, the retry until the card is there, and
+fix 35's `multi-user.target`). Each series applies to 0.38 in order with `git
+am`, and gives the feature branch's tree exactly.
 
 The packaged form is a separate repository,
 [pyra-hacks](https://github.com/daniel-mcdonough/pyra-hacks): `main` is the

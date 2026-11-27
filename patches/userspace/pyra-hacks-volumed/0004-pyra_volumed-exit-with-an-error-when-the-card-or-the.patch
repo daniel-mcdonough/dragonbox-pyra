@@ -1,0 +1,85 @@
+From a348627d5893bcdb3fbc9bd2a47c9294efae28d7 Mon Sep 17 00:00:00 2001
+From: daniel-mcdonough <daniel-mcdonough@users.noreply.github.com>
+Date: Thu, 19 Nov 2026 12:36:56 -0500
+Subject: [PATCH pyra-hacks 4/5] pyra_volumed: exit with an error when the card
+ or the ADC isn't there, so systemd retries
+
+Started before L15 registered, it found no controls and polled the wheel
+forever setting nothing; the wheel stayed dead until a restart. Stock 0.38
+crashed on the missing control instead, which restarted it by accident.
+The unit now waits 2 s between restarts and gives up after 30.
+---
+ pyra_volumed.c       | 24 +++++++++++++++++++++---
+ pyra_volumed.service |  5 +++++
+ 2 files changed, 26 insertions(+), 3 deletions(-)
+
+diff --git a/pyra_volumed.c b/pyra_volumed.c
+index 1e20208..0a75847 100644
+--- a/pyra_volumed.c
++++ b/pyra_volumed.c
+@@ -171,10 +171,24 @@ int main(int argc,char **argv)
+         if(step_lo[o]>step_hi[o])
+             step_lo[o]=step_hi[o];
+     }
++    // At boot the service can start before the card has registered. Exit
++    // with an error then, so systemd starts us again once it's there,
++    // rather than polling the wheel forever with nothing to set.
++    int found=0;
++    for(int o=0;o<NOUT;o++)
++        found+=elem[o]!=NULL;
++    if(!found)
++    {
++        fprintf(stderr,"pyra_volumed: no volume controls on %s yet\n",CARD);
++        snd_mixer_close(handle);
++        if(ctx)
++            iio_context_destroy(ctx);
++        return 1;
++    }
+     read_config(max);
+     
+ 
+-    const struct iio_device *dev=iio_context_find_device(ctx,DEVNAME);
++    const struct iio_device *dev=ctx?iio_context_find_device(ctx,DEVNAME):NULL;
+     if(dev)
+     {
+         //printf("found device\n");
+@@ -227,9 +241,13 @@ int main(int argc,char **argv)
+ 
+     }
+ 
+-iio_context_destroy(ctx);
++// Only reached without the wheel's ADC (also possible early at boot): fail,
++// so systemd tries again.
++fprintf(stderr,"pyra_volumed: no %s channel %s\n",DEVNAME,CHANNEL);
++if(ctx)
++    iio_context_destroy(ctx);
+ snd_mixer_close(handle);
+ 
+-return 0;
++return 1;
+ }
+ 
+diff --git a/pyra_volumed.service b/pyra_volumed.service
+index 7011a49..824a588 100644
+--- a/pyra_volumed.service
++++ b/pyra_volumed.service
+@@ -2,11 +2,16 @@
+ Description=Pyra Volume Daemon
+ Documentation=https://dev.pyra-handheld.com/packages/pyra-hacks
+ After=alsa-restore.service
++# Gives up after 30 failed starts in 2 minutes (no card on this kernel).
++StartLimitIntervalSec=120
++StartLimitBurst=30
+ 
+ [Service]
+ ExecStart=/usr/bin/pyra_volumed
+ KillMode=process
+ Restart=on-failure
++# pyra_volumed exits while the card or the ADC isn't there yet.
++RestartSec=2
+ 
+ [Install]
+ WantedBy=sound.target
+-- 
+2.56.1
+
