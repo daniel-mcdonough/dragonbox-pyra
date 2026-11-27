@@ -497,6 +497,14 @@ These all look like faults and are not. Each has been chased at least once.
 
 ## Traps that will cost you an afternoon
 
+* **Volume Control (pavucontrol) crashes on a card without fix 34.** The
+  vendor image ships pavucontrol 6.1, the menu's Sound & Video → Volume
+  Control. It is GTK 4, and GTK 4's GL renderer crashes on the Pyra: a
+  segfault or `malloc(): invalid size (unsorted)` before the window draws.
+  With `GSK_RENDERER=cairo`, which fix 34 sets card-wide, it opens and works
+  (2026-11-26, `fixes.md` Fix 34). MATE's Sound Preferences (GTK 3) never
+  had the problem.
+
 * **Mixer state is re-saved at every shutdown.** `alsa-state.service` is
   inactive on this image, but `alsa-restore.service` has
   `ExecStop=alsactl store`, so whatever the routes are when the machine goes

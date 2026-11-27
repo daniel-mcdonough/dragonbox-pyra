@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 33 (fix 2 with --set-password and
+# the end state of fixes 1 to 34 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1579,6 +1579,20 @@ import gi; gi.require_version("Gtk", "3.0"); gi.require_version("Gdk", "3.0"); f
 [[ $got == "[False, False, False, False, True]" ]] \
     && p "fix33: the window refuses empty, unequal, 'pyra' and line breaks, takes 'a:b c|d'; GTK 3 imports" || f "fix33: the checks or GTK 3: $got"
 
+i "assert fix 34 — GTK 4 programs use the cairo renderer"
+E=$MNT/etc/environment
+[[ -f $E && ! -L $E && $(stat -c '%a %u:%g' "$E") == "644 0:0" ]] && p "fix34: /etc/environment is a 644 root:root file" \
+    || f "fix34: /etc/environment is $(stat -c '%F %a %u:%g' "$E" 2>/dev/null || echo missing)"
+[[ $(grep -v '^#' "$E") == GSK_RENDERER=cairo ]] && p "fix34: /etc/environment sets GSK_RENDERER=cairo and nothing else" \
+    || f "fix34: /etc/environment's settings: $(grep -v '^#' "$E" | tr '\n' ' ')"
+grep -qE '^session[[:space:]]+required[[:space:]]+pam_env\.so[[:space:]]+readenv=1[[:space:]]*$' "$MNT/etc/pam.d/lightdm" \
+    && p "fix34: lightdm's session reads /etc/environment through pam_env" || f "fix34: /etc/pam.d/lightdm has no 'pam_env.so readenv=1'"
+# systemd's user manager, which starts D-Bus activated programs, takes its
+# environment from this generator; run the image's own.
+got=$(in_chroot env -i HOME=/nonexistent /usr/lib/systemd/user-environment-generators/30-systemd-environment-d-generator 2>&1 || true)
+grep -qx GSK_RENDERER=cairo <<<"$got" && p "fix34: the image's environment.d generator passes GSK_RENDERER=cairo to the user manager" \
+    || f "fix34: the image's environment.d generator printed: $(tr '\n' ' ' <<<"$got")"
+
 ########################################################################
 i "run 2 — idempotency"
 ########################################################################
@@ -1653,6 +1667,8 @@ grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
     && p "run 2 found fix32's three packages, three directories and the link in place" || f "run 2 did not find all of fix32's packages, directories and link in place"
 [[ $(grep -cE 'fix33: .*already (up to date|enabled)' "$OUT/prep-run2.log") -eq 3 ]] \
     && p "run 2 reported fix33's tool, unit and link already in place" || f "run 2 did not report fix33's tool, unit and link in place"
+grep -qF 'fix34: /etc/environment already sets GSK_RENDERER=cairo' "$OUT/prep-run2.log" \
+    && p "run 2 reported fix34's line already in place" || f "run 2 did not report fix34's line in place"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"

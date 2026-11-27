@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty-three known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -71,6 +71,10 @@
 # password in an X window on the first boot, before the greeter, when
 # /var/lib/dragonbox-pyra/first-boot-password names the user. Only --release
 # writes that file, so on any other card the unit does nothing.
+#
+# Fix 34 sets GSK_RENDERER=cairo in /etc/environment: GTK 4's GL renderer
+# crashes on the Pyra, which took zenity (DBP launchers' messages) and the
+# menu's Volume Control with it.
 #
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
@@ -2794,6 +2798,41 @@ elif [[ -e $ROOT$FIRSTBOOT_PENDING ]]; then
 else
     ok "fix33: nothing pending; the unit does nothing on this card"
 fi
+
+# ---------------------------------------------------------------------- fix 34
+#
+# GTK 4 draws with its GL renderer unless told otherwise, and on this card it
+# corrupts the heap before the first frame: zenity 4.1.90 (GTK 4.18.6) aborted
+# 6/6, and 3/3 with GSK_RENDERER=ngl; pavucontrol 6.1 segfaults or aborts the
+# same way. With GSK_RENDERER=cairo both draw (development log §R127, §R129).
+# DBP launchers report missing data through zenity, and pavucontrol is the
+# menu's Volume Control. pam_env reads /etc/environment for lightdm's session,
+# ssh, su and the console, and systemd's user manager reads it through
+# /usr/lib/environment.d/99-environment.conf, so menu launches and D-Bus
+# activated programs get it too. GTK 3 does not read it. The vendor's file is
+# empty; any other line in it stays.
+
+ENV_FILE=$ROOT/etc/environment
+ENV_NOTE="# dragonbox-pyra prep, fix 34: GTK 4's GL renderer crashes on the Pyra (docs/fixes.md)."
+ENV_LINE=GSK_RENDERER=cairo
+[[ -L $ENV_FILE ]] && die "fix34: /etc/environment is a link on the image; not writing through it"
+if [[ -f $ENV_FILE ]] && grep -qxF "$ENV_NOTE" "$ENV_FILE" && grep -qxF "$ENV_LINE" "$ENV_FILE" &&
+   [[ $(grep -c '^GSK_RENDERER=' "$ENV_FILE") -eq 1 ]]; then
+    ok "fix34: /etc/environment already sets $ENV_LINE"
+else
+    KEEP=$(grep -vxF -e "$ENV_NOTE" "$ENV_FILE" 2>/dev/null | grep -v '^GSK_RENDERER=' || true)
+    OLD=$(grep '^GSK_RENDERER=' "$ENV_FILE" 2>/dev/null | grep -vxF "$ENV_LINE" || true)
+    [[ -z $OLD ]] || warn "fix34: /etc/environment had '$OLD'; replaced"
+    { [[ -z $KEEP ]] || printf '%s\n' "$KEEP"; printf '%s\n%s\n' "$ENV_NOTE" "$ENV_LINE"; } >"$ENV_FILE.pyra-prep"
+    chmod 0644 "$ENV_FILE.pyra-prep"
+    chown 0:0 "$ENV_FILE.pyra-prep"
+    mv -f -- "$ENV_FILE.pyra-prep" "$ENV_FILE"
+    ok "fix34: /etc/environment sets $ENV_LINE"
+fi
+grep -qE '^session[[:space:]]+required[[:space:]]+pam_env\.so[[:space:]]+readenv=1[[:space:]]*$' "$ROOT/etc/pam.d/lightdm" 2>/dev/null ||
+    warn "fix34: /etc/pam.d/lightdm does not read /etc/environment; the MATE session will not get $ENV_LINE"
+[[ $(readlink "$ROOT/usr/lib/environment.d/99-environment.conf" 2>/dev/null) == /etc/environment ]] ||
+    warn "fix34: /usr/lib/environment.d/99-environment.conf is not the link to /etc/environment; D-Bus activated programs will not get $ENV_LINE"
 
 # ------------------------------------------------------------------- release
 #

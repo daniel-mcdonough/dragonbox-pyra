@@ -127,8 +127,10 @@ card zenity 4.1.90 (GTK 4.18.6) aborts before it draws anything. Each run ends i
 assertion failed`. Measured 2026-11-26 on `5.6.19-m4-kbdled`: 6 of 6 plain runs aborted, whatever `HOME` was, and
 so did 3 of 3 with `GSK_RENDERER=ngl` (GTK's default GL renderer). With `GSK_RENDERER=cairo`, 3 of 3 drew and closed
 on their timeout. So from the menu the launcher seems to do nothing, and the message is only in
-`/tmp/dbpout/dbprun-<id>-stderr.log`. Until the card sets the cairo renderer itself, run a launcher's message by hand
-with `GSK_RENDERER=cairo zenity ...`, or read the log. Epiphany fails in the same renderer (`browsers.md`).
+`/tmp/dbpout/dbprun-<id>-stderr.log`. Prep's fix 34 sets `GSK_RENDERER=cairo` in `/etc/environment`, and with it
+CorsixTH's "files not found" dialog shows when the game is started from the menu (2026-11-26, `verification-log.md`
+R129). On a card prepared before fix 34, add the line `GSK_RENDERER=cairo` to `/etc/environment` (as root) and log in
+again. Epiphany fails in the same renderer, and cairo does not save it (`browsers.md`).
 
 ## Check a DBP's libraries before running it
 
@@ -463,7 +465,7 @@ holds only the binary, its launcher and a default `config.txt` and `hotkeys.txt`
   trixie dropped. `liblua5.3.so.0` is in trixie but not installed. Its `Dependency[deb]` line is commented out, so
   no dependency dialog warns about any of this.
 - **Its launcher's messages don't show.** `CorsixTH.launch` checks for `HOSPITAL.EXE` in the union and reports a
-  missing one through zenity, which crashes (see "zenity crashes" above).
+  missing one through zenity, which crashes without fix 34 (see "zenity crashes" above).
 
 From Applications → Games → Simulation and Strategy, nothing appears, with or without game data. Without data,
 zenity aborts. With data, the log says `liblua5.3.so.0: cannot open shared object file`. The launcher also creates

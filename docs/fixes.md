@@ -1,4 +1,4 @@
-# The thirty-three fixes, and what they actually do
+# The thirty-four fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -57,6 +57,7 @@ them out.
 | 31 | project choice | — (a bug-report tool, and a record of how the card was prepared) | — | — |
 | 32 | restores | the image lacks `python3-apt`, which the DBP Installer needs on trixie (its bundled `apt_pkg` is built for Python 3.7); `~/dragonbox` → `/dragonbox` because `dbpd` searches only filesystem roots | the image ships `python3-apt`, and the Installer's RootFs target is a place `dbpd` searches | — |
 | 33 | workaround | `pam_gnome_keyring`'s password step finds no keyring daemon before `pam_systemd` has made `XDG_RUNTIME_DIR`, so a password changed at the greeter never reaches the login keyring (gnome-keyring 48.0) | never, for release images: a password chosen before the first login is the better design anyway | — |
+| 34 | workaround | GTK 4's default GL renderer corrupts the heap on this card's EGL stack (GTK 4.18.6; cause not found) | a GTK 4 program draws with the variable unset | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -213,7 +214,8 @@ here, so this is a real regression against bookworm, and `glxinfo` and anything
 that insists on desktop GL will not work. GTK4 applications don't fall back
 to cairo on their own: zenity 4.1.90 (GTK 4.18.6) aborts with a heap error in
 GTK's default GL renderer every time, and runs with `GSK_RENDERER=cairo`
-(measured 2026-11-26, `dbp.md` "zenity crashes").
+(measured 2026-11-26, `dbp.md` "zenity crashes"). Fix 34 sets that for every
+login.
 
 **What this does not cost.** `DRI3` and `Present` are untouched, and those are
 what `libpvrDRI3WSEGL` uses, so the hardware path — GLES2 through the SGX blob
@@ -2398,6 +2400,54 @@ card built from `8c3a35d` (`verification-log.md`, R99): the window came up
 before the greeter and took the password, there was no keyring before the
 first login, and the first login created one that the new password opens and
 `pyra` does not.
+
+## Fix 34 — GTK 4 programs abort before they draw: zenity, Volume Control
+
+**Symptom.** zenity 4.1.90 (GTK 4.18.6) aborts before it draws, with a
+different heap error each run (`malloc(): invalid size (unsorted)` and
+others): 6/6 runs by hand, and 3/3 with `GSK_RENDERER=ngl`. DBP launchers
+report missing data through zenity, so their messages never show (`dbp.md`,
+"zenity crashes"; development log, R127). pavucontrol 6.1, the menu's Sound &
+Video → Volume Control, is GTK 4 too and dies the same way: a segfault, then
+`malloc(): invalid size (unsorted)` (2026-11-26, R99 card). With
+`GSK_RENDERER=cairo` both draw.
+
+The card's other GTK 4 users, from `apt-cache rdepends --installed
+libgtk-4-1`: libadwaita, gtkmm 4, GTK 4's GStreamer media backend, and gcr4,
+whose only program is `gcr4-ssh-askpass`. The keyring's unlock prompt,
+`gcr-prompter`, is gcr's GTK 3 build. Everything else on the desktop (MATE,
+the panel, caja, `pyra-settings`, fix 33's window) is GTK 3, which ignores
+the variable.
+
+**Cause.** Not found. GTK 4 on X11 renders through EGL, and this X server has
+no GLX (fix 4). With `GDK_DEBUG=opengl` zenity dies earlier, in libepoxy: the
+card's EGL provides no `eglQueryDisplayAttribEXT`, which GTK's debug output
+asks for. That is only the debug path, not the heap corruption.
+
+**Fix.** Prep adds `GSK_RENDERER=cairo` to `/etc/environment`, under a comment
+naming the fix. pam_env reads that file for lightdm's session, ssh, su and
+the console (`session required pam_env.so readenv=1`), and systemd's user
+manager reads it through `/usr/lib/environment.d/99-environment.conf`, a link
+to it, so D-Bus activated programs get it too. A file under
+`/etc/environment.d` would reach only the user manager, and an Xsession.d
+snippet only X sessions. The vendor's file is empty; prep keeps any other
+line in it, and replaces another `GSK_RENDERER` line with a warning. It
+warns if lightdm's PAM stack or the link no longer reads the file. Nothing
+here is per machine, so `--release` keeps it. A program run with its own
+`GSK_RENDERER` still gets that one. On a card prepared before fix 34, add
+the line `GSK_RENDERER=cairo` to `/etc/environment` as root and log in again.
+
+Epiphany is not fixed by this: with cairo its WebKit web process crashes
+instead (`browsers.md`).
+
+**Checked** 2026-11-26 on the R99 card (`verification-log.md`, R129), with the
+line added to its `/etc/environment` and a fresh login: mate-panel, zenity and
+pavucontrol carried `GSK_RENDERER=cairo` in `/proc/<pid>/environ`; CorsixTH,
+started from the menu with `HOSPITAL.EXE` moved aside, showed its zenity
+error dialog; Volume Control opened from the menu and drew. GTK 3 programs
+started as before. The selftest (503 passed, 2026-11-26) asserts the file (644 root:root, the one
+setting), lightdm's pam_env line, that the image's environment.d generator
+passes the variable on, and that a second run finds it in place.
 
 ## Fixes 6, 7 and 12 as a package
 

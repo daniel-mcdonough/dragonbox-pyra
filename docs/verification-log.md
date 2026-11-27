@@ -4059,3 +4059,31 @@ R99 test card, kernel `5.6.19-m4-kbdled` (r4) with the revised 0055 module from 
   page showed the boot state (off, Medium, Test greyed out); a tap on the switch set `enable` Y, a tap on Strong
   set `max_code` 56 and the file, and Play gave VIBCTLR `01`, VIBDATR `0x38`. With the parameter path pointed at
   a missing directory the page shows its no-0055 note.
+
+## 2026-11-26 — fix 34: GTK 4 on the cairo renderer, from the menu (R129)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4). GTK 4 users on the card (`apt-cache rdepends --installed
+libgtk-4-1`): zenity, pavucontrol, libadwaita, gtkmm 4, GTK 4's GStreamer media backend, gcr4 (only
+`gcr4-ssh-askpass`; `gcr-prompter` is gcr's GTK 3 build).
+
+- Before the change, from ssh on the session's display: pavucontrol 6.1 with the default renderer ended in a
+  segfault (rc 139) on one run and `malloc(): invalid size (unsorted)` (rc 134) on the next; with
+  `GSK_RENDERER=cairo` it ran 2/2 until `timeout 6` stopped it.
+- Change: `# dragonbox-pyra prep, fix 34: ...` and `GSK_RENDERER=cairo` appended to the card's empty
+  `/etc/environment`. Fresh login through a temporary lightdm autologin drop-in, removed once mate-panel was up
+  (`lightdm-autologin` runs the same `pam_env.so readenv=1` session lines as a password login). mate-panel's
+  `/proc/<pid>/environ` had `GSK_RENDERER=cairo`; so did `systemctl --user show-environment` and the image's
+  `30-systemd-environment-d-generator`.
+- Menu repro: `HOSPITAL.EXE` moved aside; Games → Simulation and Strategy → CorsixTH (the SoH entry added since
+  R127 moves Simulation and Strategy to y=381, CorsixTH to 636,381). zenity started 2 s later as the child of
+  `CorsixTH.launch`, with `GSK_RENDERER=cairo`, was still alive 4 s later, and drew "Theme Hospital files not
+  found, please copy into /dragonbox/appdata/CorsixTH/ directory" with an OK button (xwd screenshot). OK closed
+  it; `HOSPITAL.EXE` put back.
+- Sound & Video → Volume Control (pavucontrol) from the menu: drew its Output Devices tab (Audio DSP (AESS),
+  Speakers, 101 %), `GSK_RENDERER=cairo` in its environ.
+- GTK 3 with the variable set: mate-volume-control, pyra-settings and mate-terminal were still running after
+  6 s; caja exited 0 (handed off to the desktop's caja). The panel, menu and desktop came up as before.
+- With `GDK_DEBUG=opengl` (default renderer or `GSK_RENDERER=gl`) zenity aborts 3/3 in libepoxy instead: `No
+  provider of eglQueryDisplayAttribEXT found`. Only GTK's debug path asks for it; it does not explain the heap
+  errors.
+- Prep selftest with fix 34: 503 passed, 0 failed, 0 skipped (owner, 2026-11-26; 498 + 5 for fix 34).
