@@ -4288,3 +4288,30 @@ on `DISPLAY=:0`.
   stayed on (the launcher's `no-overload` never ran). `sudo pyrainputctl no-overload` restored the nubs; the mount was
   left alone.
 - Not covered: bookworm's "wrong resolution" (bookworm card not used), full retail data, the other two demo maps.
+
+## 2026-11-27 — the `kernel-5.6.19-r5` release asset, now the one prep pins (R133)
+
+`kernel-5.6.19-r5` (Kernel release run 45958723755, built from the public export of the commit that added the
+Doom 3 notes), downloaded on the PC.
+
+- **Download:** `m4-kbdled-kernel.tar.gz` SHA-256
+  `e4c80747c1a0fe4774768267e41b8d622b2c3b642bfb0d17c88784ecdf92848e`, the same as the release's `SHA256SUMS`.
+  `gh attestation verify ... --signer-workflow .../kernel-release.yml` (building.md "Checking a download") exited 0.
+  `m4-kbdled-patches.txt` lists 0001-0055; the export's `patches/0055` is byte-identical to this repository's
+  (SHA-256 `1efa6c0e…215c`). In the tarball, `twl6040-vibra.ko` is in `kernel/drivers/input/misc/`.
+- **R99 test card:** installed with `pyra-install-debug-kernel.sh --replace-running --slot l5` over r4 (fallbacks:
+  `l0` stock, `l1` the r5 candidate). `/boot/vmlinuz-5.6.19-m4-kbdled` matched the tarball's (SHA-256 `e37d437a…072be`).
+  Then `rm /lib/modules/5.6.19-m4-kbdled/updates/twl6040-vibra.ko` and `depmod -a 5.6.19-m4-kbdled`; `modules.dep`
+  named the in-tree path before the reboot.
+- **Booted from `l5`:** `uname -rv` `5.6.19-m4-kbdled #10 SMP PREEMPT Fri Nov 27 07:29:45 UTC 2026` (the CI build).
+  `modinfo -n twl6040_vibra` → `/lib/modules/5.6.19-m4-kbdled/kernel/drivers/input/misc/twl6040-vibra.ko`;
+  `updates/` empty; module taint empty, kernel taint 512 (`W` only, as with the r5 candidate; r4 with the
+  `updates/` module read 12800). Parameters `min_code` 32, `max_code` 50 (pyra-settings' Medium), `enable` Y.
+  No failed units.
+- **Rumble:** `sudo ./trace-vibra.sh python3 ff-update-test.py 0x4000 0xffff 0x2000` (`experiments/rumble`):
+  VIBCTLR (`1a`) 1 at play and 0 only after the stop; VIBDATR (`1b`) 0x24, 0x32, 0x22 for the three strengths
+  (0x32 = 50, the configured full strength); VIBDATL (`19`) 0 throughout. Same pattern as the r5 candidate and
+  pyrainput 0004's entry. Motor not felt or heard (nobody at the device).
+- **Prep selftest** with the pin moved to r5 and `PYRA_KERNEL_TARBALL` set to the downloaded asset: 505 passed,
+  0 failed, 0 skipped. Its fix 31 check passes only when the marker reads `kernel=kernel-5.6.19-r5`, which prep
+  writes when the tarball matches the pinned SHA-256.

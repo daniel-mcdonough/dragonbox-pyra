@@ -460,14 +460,14 @@ for f in "$KINSTALL_SRC" "$KBOOT_SRC"; do
 done
 KERNEL_REL=5.6.19-m4-kbdled
 KERNEL_SLOT=l5
-# The published release asset: kernel-5.6.19-r4's m4-kbdled tarball, the
+# The published release asset: kernel-5.6.19-r5's m4-kbdled tarball, the
 # SHA-256 of the file as published (it matches the release's SHA256SUMS). All
 # three change together. The hash is what makes a download trustworthy: the
 # script comes from the repository, so the hash travels with the source that
 # names it.
-KERNEL_TAG=kernel-5.6.19-r4
-KERNEL_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/kernel-5.6.19-r4/m4-kbdled-kernel.tar.gz
-KERNEL_SHA256=a09fabbc96a77fc25bfd3b585187e5d85916af1bf0085759995d786c45105ea0
+KERNEL_TAG=kernel-5.6.19-r5
+KERNEL_URL=https://github.com/daniel-mcdonough/dragonbox-pyra/releases/download/kernel-5.6.19-r5/m4-kbdled-kernel.tar.gz
+KERNEL_SHA256=e4c80747c1a0fe4774768267e41b8d622b2c3b642bfb0d17c88784ecdf92848e
 KERNEL_TMP=
 STAGED_KERNEL=$ROOT/var/tmp/pyra-prep-kernel.tar.gz
 # Fix 22's published .deb, the same way: pyra-backlight's v0.8 release asset,

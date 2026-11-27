@@ -998,7 +998,7 @@ script checks the archive and the image inside it, as it does on a PC. The
 kernel is the `kernel-m4-kbdled` artifact of a Kernel release run, and the
 workflow's one input is that run's ID: not a tag or release name, which the
 artifact download cannot find. Give the run that built the release prep pins
-(`kernel-5.6.19-r4`, run 45350444408; r3 was run 44223360396, r2 run 43135826496, r1 run 42940820801), so prep reports the tarball as that
+(`kernel-5.6.19-r5`, run 45958723755; r4 was run 45350444408, r3 run 44223360396, r2 run 43135826496, r1 run 42940820801), so prep reports the tarball as that
 release rather than "a local build". Taking the pinned release's asset instead
 of a run ID is not done yet.
 
@@ -1082,6 +1082,9 @@ so far) carry no attestation, and `gh attestation verify` fails on them.
 the command above, `--signer-workflow` included; the certificate names
 `kernel-release.yml@refs/tags/kernel-5.6.19-r4` and that run. A copy with one
 byte changed at offset 1000 exited 1 with a 404.
+
+`kernel-5.6.19-r5` (run 45958723755), checked 2026-11-27 the same way: SHA-256
+`e4c80747…2848e`, the same as its `SHA256SUMS`, and the command above exited 0.
 
 **First run on GitHub** (artifact built 2026-11-11 02:01 UTC from `ef8b2dc`):
 it produced the artifact. Both `.sha256` files verified after download, and

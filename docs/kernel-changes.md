@@ -300,7 +300,7 @@ the same fault in its regmap version of the driver (`reports/letux-bq2429x-regis
 **0054 tested 2026-11-20** on the V5.3 unit, as `5.6.19-m4-kbdled-test` booted once from l1:
 through a charger unplug and replug, `registers` reg 09 equalled the driver's last `r9=` on
 all 118 one-second samples, `10` (UNPLUG) included (`verification-log.md`). It ships
-from `kernel-5.6.19-r4` (run 45350444408) on, which fix 19 pins; r3 and earlier lack it.
+from `kernel-5.6.19-r4` (run 45350444408) on; r3 and earlier lack it.
 
 **0055 — Input: twl6040-vibra: drive only the motor the board has, from its start level.**
 The Pyra has one vibration motor, on the TWL6040's right channel. The device tree gives the
@@ -320,9 +320,8 @@ so a settings page can switch rumble off. pyra-settings 0.18's Rumble page sets 
 `max_code` (Light 44, Medium 50, Strong 56, Max 60) through `/etc/modprobe.d/pyra-settings-rumble.conf`; prep's
 fix 26 pins 0.18. Measurements: `verification-log.md`, "rumble in Ship of Harkinian", "patches/0055"
 and "pyra-settings 0.18 Rumble page";
-limits: `known-limitations.md` 2.10. It is in no kernel release yet: r4 lacks it, and it ships from
-`kernel-5.6.19-r5` (r4 + 0055, nothing else) once the owner runs the Kernel release workflow; fix 19 still
-pins r4 until then. Cross-built into `5.6.19-m4-kbdled-test` and booted once 2026-11-26 (`verification-log.md`,
+limits: `known-limitations.md` 2.10. It ships from
+`kernel-5.6.19-r5` (r4 + 0055, nothing else; run 45958723755), which fix 19 pins; r4 and earlier lack it. Cross-built into `5.6.19-m4-kbdled-test` and booted once 2026-11-26 (`verification-log.md`,
 "0055 built in, kernel r5 candidate"). A card that ran 0055 as a module in
 `/lib/modules/5.6.19-m4-kbdled/updates/` must delete it and run `depmod -a 5.6.19-m4-kbdled` after
 installing r5, or the old module keeps loading in place of the built-in one.

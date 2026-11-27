@@ -1437,10 +1437,11 @@ fallback whatever prep does. All of this happens before
 fix 1 writes anything, so a failed download or a wrong tarball leaves the card
 untouched.
 
-The pinned release is `kernel-5.6.19-r4` (built by the Kernel release
-workflow from that tag, run 45350444408, 2026-11-24; it adds `patches/0054` and the
-`M4_KBDLED_ASKED` options, `kernel-notes.md` §8, to r3, which added `patches/0053`
-to r2; r1 lacked `patches/0050`). r4 is the first kernel release with an
+The pinned release is `kernel-5.6.19-r5` (built by the Kernel release
+workflow from that tag, run 45958723755, 2026-11-27; it adds `patches/0055`, the
+rumble fix, `kernel-notes.md` §9, to r4, which added `patches/0054` and the
+`M4_KBDLED_ASKED` options, §8, to r3; r3 added `patches/0053` to r2; r1 lacked
+`patches/0050`). r4 was the first kernel release with an
 attestation (`building.md`, "Checking a download"). A new release changes the tag, URL and
 hash in prep together.
 

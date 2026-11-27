@@ -235,8 +235,7 @@ Ship of Harkinian pulses rumble (32 ms on, 65 ms off), so it clicks about 10 tim
 
 `patches/0055` fixes these: one motor plays both halves of an effect, any nonzero effect
 starts at code 32, full strength is 56 (writes above 60 refused), and the left channel is
-never enabled. It isn't in a release kernel yet: it ships from `kernel-5.6.19-r5`, which the
-owner's Kernel release run makes (built and booted once 2026-11-26, `kernel-notes.md` §9); fix 19 pins r4 until then. pyra-settings 0.18 (fix 26's pin) has a Rumble page: on/off, four strengths up to 60, and a
+never enabled. It ships from `kernel-5.6.19-r5`, which fix 19 pins (`kernel-notes.md` §9). pyra-settings 0.18 (fix 26's pin) has a Rumble page: on/off, four strengths up to 60, and a
 test rumble. Games reach the motor either way: `pyraInput Gamepad` forwards effects and SDL2
 reports rumble on it. Fix 29's pyrainput 0.1.19+pyra2 updates a playing effect in place, so a
 strength change no longer switches the motor off (R134). Motor heat at 56-60 hasn't been measured, and

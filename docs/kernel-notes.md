@@ -361,8 +361,8 @@ The forum review found two config gaps that users had reported, and one more req
 thread. Each was decided against the shipped config (`kernel-5.6.19-r3`) and tested on a V5.3 unit
 on 2026-11-24 as `5.6.19-m4-kbdled-test`, booted once (`verification-log.md`, 2026-11-24). The
 options are in `M4_KBDLED_ASKED` in `pc/pyra-crossbuild.sh`, which `kernel-m4-kbdled` and
-`kernel-m4-kbdled-test` both build. r3 lacks all of them; they ship from `kernel-5.6.19-r4`, which fix 19
-pins.
+`kernel-m4-kbdled-test` both build. r3 lacks all of them; they ship from `kernel-5.6.19-r4` on (fix 19
+pins r5).
 
 | Option | Decision | Reason |
 | --- | --- | --- |
@@ -403,9 +403,9 @@ difference was measured. The test boot reached ssh like any other.
 `M4_KBDLED_ASKED`, section 8) plus `patches/0055`, the twl6040-vibra rumble fix (`kernel-changes.md`).
 Nothing else changes: no config option, no other patch. 0055 joined the release target by being in
 `patches/`, which `M4_PATCHES` in `pc/pyra-crossbuild.sh` takes whole, so `kernel-m4-kbdled`,
-`kernel-m4-kbdled-test` and `kernel-m4demo` all carry it from then on. The release itself is the owner's
-Kernel release run; until it exists, fix 19 pins r4 and a prepped card's pyra-settings Rumble page shows its
-no-0055 note.
+`kernel-m4-kbdled-test` and `kernel-m4demo` all carry it from then on. The release is Kernel release run 45958723755
+(2026-11-27, SHA-256 `e4c80747…2848e` for `m4-kbdled-kernel.tar.gz`, attested); fix 19 pins it. A card on r4
+or earlier shows pyra-settings' no-0055 note on its Rumble page.
 
 **Built and booted once, 2026-11-26** (`verification-log.md`, "0055 built in, kernel r5 candidate"):
 `kernel-m4-kbdled-test` cross-built with 54 patches (r4's 53 + 0055). Its `.config` matches r4's
