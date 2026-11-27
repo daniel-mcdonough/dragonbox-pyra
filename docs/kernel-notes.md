@@ -396,3 +396,20 @@ difference was measured. The test boot reached ssh like any other.
 - A process that wrote and fsynced 8 MiB to ext4 read `write_bytes: 8421376` from its own
   `/proc/self/io`. On tmpfs, which is `/tmp` on the card, the same write shows 0, because no
   block I/O takes place.
+
+## 9. Release r5: r4 plus `patches/0055`
+
+`kernel-5.6.19-r5` is r4 (`patches/` through 0054, the m4-kbdled experiment patches and
+`M4_KBDLED_ASKED`, section 8) plus `patches/0055`, the twl6040-vibra rumble fix (`kernel-changes.md`).
+Nothing else changes: no config option, no other patch. 0055 joined the release target by being in
+`patches/`, which `M4_PATCHES` in `pc/pyra-crossbuild.sh` takes whole, so `kernel-m4-kbdled`,
+`kernel-m4-kbdled-test` and `kernel-m4demo` all carry it from then on. The release itself is the owner's
+Kernel release run; until it exists, fix 19 pins r4 and a prepped card's pyra-settings Rumble page shows its
+no-0055 note.
+
+**Built and booted once, 2026-11-26** (`verification-log.md`, "0055 built in, kernel r5 candidate"):
+`kernel-m4-kbdled-test` cross-built with 54 patches (r4's 53 + 0055). Its `.config` matches r4's
+`/boot/config-5.6.19-m4-kbdled` apart from the release name, so the kernel the release builds differs from
+it only in that name. On the V5.3 unit from slot `l1` with `--once`: `twl6040_vibra` loaded from the kernel's own
+tree (`kernel/drivers/input/misc/`, no `updates/`), module untainted; parameters `min_code` 32, `max_code` 56,
+`enable` Y; rumble registers as with the module build.

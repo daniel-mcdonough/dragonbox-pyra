@@ -4128,3 +4128,28 @@ card. Run as `pyra` over ssh. Input went in through `xsend` (`experiments/dbp-co
   covered.
 - Left on the card: the script's setup with the demo in `/dragonbox/appdata/CorsixTH/`; R127's files in
   `~/r127-corsixth-aside/`; `~/pyra-corsixth-setup.sh`, `~/run4.log` and `~/run5.log`.
+
+## 2026-11-26 — 0055 built in, kernel r5 candidate (R132)
+
+R99 test card. `pc/pyra-crossbuild.sh kernel-m4-kbdled-test` with 0055 in `patches/`: 54 patches applied (r4's 53 +
+0055; `patch --reverse --dry-run` of the committed 0055 against the tree passes), tarball SHA-256
+`d634e4972c50f8161ae57f15e40953c31b607eb2e1d1a5ce5058cae12c9710e1`. Its `.config`, comments stripped, is
+identical to the card's `/boot/config-5.6.19-m4-kbdled` (r4, CI) once the release names are folded together.
+Installed with `pyra-install-debug-kernel.sh --slot l1` (replacing the 2026-11-24 `-test` build; `l5` r4 stayed the
+base, `l0` stock the fallback) and booted with `pyra-boot-kernel.sh debug l1 --once`. pyra-settings'
+`/etc/modprobe.d/pyra-settings-rumble.conf` (`max_code=50`) was moved aside for that boot so the defaults show, and
+put back after. r4's own `updates/twl6040-vibra.ko` stays in r4's tree; the `-test` tree has no `updates/`.
+
+- `uname -r` `5.6.19-m4-kbdled-test` (#10, built 2026-11-27 02:17 UTC). `modinfo -n twl6040_vibra` →
+  `/lib/modules/5.6.19-m4-kbdled-test/kernel/drivers/input/misc/twl6040-vibra.ko`; `/sys/module/twl6040_vibra/taint`
+  empty; kernel taint 512 (`W` only, from the boot-time L3 `L4WAKEUP` warning in `troubleshooting.md`; r4 with
+  the `updates/` module reads 12800, `W` + `O` + `E`). No failed units.
+- Parameters: `min_code` 32, `max_code` 56, `enable` Y.
+- `FF_RUMBLE` on `pyraInput Gamepad` (`event11`), a 1 s effect per row, registers read from
+  `/sys/kernel/debug/regmap/0-004b/registers` 0.4 s in and again 1.3 s in. Strong/weak → VIBCTLL, VIBCTLR, VIBDATR during;
+  VIBCTLR after: `0x0001/0` → `00 01 0x20`, `00`; `0x8000/0` → `00 01 0x2c`, `00`; `0xffff/0` → `00 01 0x38`, `00`;
+  `0/0xffff` → `00 01 0x38`, `00`; `0x2000/0xc000` → `00 01 0x32`, `00`. Idle `00 00 00`. Same as the
+  revised module (`0x20` floor, `0x38` at full, weak on the right, VIBCTLL `00`); no overcurrent message. Battery
+  3.86 V, 76 %. Motor not felt or heard (nobody at the device).
+- The one-shot revert brought the next boot back to `l5` (r4), where the parameters read `enable` Y, `max_code`
+  50, `min_code` 32 from the restored file.

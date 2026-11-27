@@ -51,9 +51,9 @@ so each one installs beside the others instead of replacing them.
 | `kernel-m4demo` | `5.6.19-m4demo` | `patches/` + `experiments/m4-ipu` only. This is what the demo kit ships |
 | `kernel-m4-uprobe` | `5.6.19-m4-uprobe` | `kernel-m4` + `UPROBE_EVENTS` |
 | `kernel-m4-uprobe-kprobe` | `5.6.19-m4-uprobe-kprobe` | `kernel-m4-uprobe` + `PM_DEBUG`, `PM_ADVANCED_DEBUG` |
-| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | **The shipped kernel.** `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect`. From r4 also `M4_KBDLED_ASKED` (AF_ALG, UVC, task I/O accounting: `kernel-notes.md` §8; r3 lacks them) |
+| `kernel-m4-kbdled` | `5.6.19-m4-kbdled` | **The shipped kernel.** `kernel-m4-uprobe-kprobe` + 0034 (GPU idle power) + `experiments/kbd-led` + `experiments/jack-detect`. From r4 also `M4_KBDLED_ASKED` (AF_ALG, UVC, task I/O accounting: `kernel-notes.md` §8; r3 lacks them). From r5 also 0055 (rumble), which is in `patches/` |
 | `kernel-m4-kbdled-sched` | `5.6.19-m4-kbdled-sched` | The running `5.6.19-m4-kbdled` build (#10, 2026-10-29: same 48 patches, same config, `FW_LOADER_USER_HELPER_FALLBACK` still on) + `SCHEDSTATS` / `SCHED_INFO`, for `/proc/<pid>/task/<tid>/schedstat` (run-queue delay) when measuring games. Config checked against the device's `/boot/config-5.6.19-m4-kbdled`: only those two and the release name differ. Developer build; the undervolt module has its own build for it (`experiments/undervolt/README.md`) |
-| `kernel-m4-kbdled-test` | `5.6.19-m4-kbdled-test` | `kernel-m4-kbdled` exactly, under its own release name, so a patch can be tried in a spare slot beside the shipped kernel. Developer build. Built 2026-11-24 with `M4_KBDLED_ASKED` and booted once (`kernel-notes.md` §8) |
+| `kernel-m4-kbdled-test` | `5.6.19-m4-kbdled-test` | `kernel-m4-kbdled` exactly, under its own release name, so a patch can be tried in a spare slot beside the shipped kernel. Developer build. Built 2026-11-24 with `M4_KBDLED_ASKED` and booted once (`kernel-notes.md` §8); built 2026-11-26 with 0055 (the r5 candidate) and booted once (`kernel-notes.md` §9) |
 | `kernel-jack` | `5.6.19-jack` | Stock source + `experiments/jack-detect` only, for a clean A/B on the stock bookworm card |
 
 **The device runs `5.6.19-m4-kbdled-sched`** since 2026-11-07, at the owner's request (boot entry l6,
@@ -320,7 +320,12 @@ so a settings page can switch rumble off. pyra-settings 0.18's Rumble page sets 
 `max_code` (Light 44, Medium 50, Strong 56, Max 60) through `/etc/modprobe.d/pyra-settings-rumble.conf`; prep's
 fix 26 pins 0.18. Measurements: `verification-log.md`, "rumble in Ship of Harkinian", "patches/0055"
 and "pyra-settings 0.18 Rumble page";
-limits: `known-limitations.md` 2.10.
+limits: `known-limitations.md` 2.10. It is in no kernel release yet: r4 lacks it, and it ships from
+`kernel-5.6.19-r5` (r4 + 0055, nothing else) once the owner runs the Kernel release workflow; fix 19 still
+pins r4 until then. Cross-built into `5.6.19-m4-kbdled-test` and booted once 2026-11-26 (`verification-log.md`,
+"0055 built in, kernel r5 candidate"). A card that ran 0055 as a module in
+`/lib/modules/5.6.19-m4-kbdled/updates/` must delete it and run `depmod -a 5.6.19-m4-kbdled` after
+installing r5, or the old module keeps loading in place of the built-in one.
 
 **`patches/proposed/vsys-max-4350000.patch` (draft, in no kernel).** It raises the charger's
 vsys `regulator-max-microvolt` from 4200000 to 4350000 in `pyra-mainboard-common.dtsi`. The
