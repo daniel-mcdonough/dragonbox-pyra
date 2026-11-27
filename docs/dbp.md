@@ -539,6 +539,60 @@ the music faded out: a gap of 93–186 ms between tracks. The forum's "unstable 
 show. What wasn't covered: the speakers weren't listened to, so crackle after the mixer isn't ruled out. The demo
 hospital had no patients, so sound effects were few. Gamepad and nubs weren't tried.
 
+## Doom 3 (ptitSeb's dante build)
+
+**It runs on trixie as shipped, once the data is right.** The repository's current build is 0.0.1.05 (ptitSeb,
+2021-07-24, `repo/apps/59`, package `doom3`; the `/download` file matched the listed MD5
+`d1befdb3bb074e7c1a8112a35a8ffdb3`). It holds the engine `doom-mon.arm` ("DOOM 1.3.1", from the dante GLES2 port),
+the shader pack `pak000_gl2progs.pk4`, a default `DoomConfig.cfg.sav`, a pyrainput mapping and the launcher
+`doom3.sh`. The binary links the SGX `libGLESv2.so.1` and `libEGL.so.1` directly, and the launcher `LD_PRELOAD`s
+them too. That makes it GLES2 straight to the SGX, with no gl4es and no GLX, so fix 4 doesn't touch it. Every library
+it links resolves on trixie, and its three declared dependencies (`libopenal1`, `libvorbis0a`, `zenity`) are
+installed, so no dependency dialog appears. There is no `Appdata=` key: the folder is `dragonbox/appdata/doom3/`.
+
+**The data** goes in `dragonbox/appdata/doom3/base/`: the original Doom 3's `*.pk4` files, not the BFG Edition. The
+launcher checks only for `base/pak000.pk4`. If it's missing, a zenity error says so (it shows with fix 34) and the
+launcher exits. Settings and saves go to `dragonbox/appdata/doom3/.doom3/base/`.
+
+**The `WEAPON_NETFIRING` error means the 1.3.1 patch is missing.** With data copied from the DVD alone, the menu
+works, but starting a map ends at the console with `ERROR: Missing 'WEAPON_NETFIRING' field in script object
+'weapon_fists'`. The engine is 1.3.1 and its game code expects 1.3.1 scripts. The field arrives in `pak006.pk4` of
+id's free Linux patch `doom3-linux-1.3.1.1304.x86.run` (21 MB, on mirrors of id's FTP under
+`idstuff/doom3/linux/`). The patch's `pak005.pk4`-`pak008.pk4` go into `base/` next to the DVD's files. The patch is a
+makeself archive, so it doesn't need to be run: the gzipped tar starts after its first 373 lines:
+
+    tail -n +374 doom3-linux-1.3.1.1304.x86.run | tar xz base/pak005.pk4 base/pak006.pk4 base/pak007.pk4 base/pak008.pk4
+
+A GOG or Steam copy is already patched.
+
+**Unreadable menu text: the game lowers its own texture settings.** On start the engine can't detect the video
+memory (`guess failed, return default low-end VRAM setting ( 64MB VRAM )` in the log), and it saves low-end texture
+values into `DoomConfig.cfg`. After the first run the saved file had smaller bump and specular maps
+(`image_downSizeBump 1`, `image_downSizeSpecular 1`, `image_downSizeLimit 64`), which leave the text alone. In an
+earlier series of runs it had also saved `com_machineSpec 0` and `image_downSize 1`. With `image_downSize 1` every
+texture is cut to 64 pixels, the menu font included, and the labels turn to a blur on every launch after that.
+Setting only that value reproduced the blur. Which run first writes it wasn't pinned down. The shipped
+`DoomConfig.cfg.sav` has `image_downSize 0`, which is why the first launch looks right. The game runs `autoexec.cfg`
+after `DoomConfig.cfg`, so one line keeps the text sharp whatever the saved file says:
+
+    echo 'seta image_downSize "0"' > dragonbox/appdata/doom3/.doom3/base/autoexec.cfg
+
+Deleting `.doom3/base/DoomConfig.cfg` also helps: the launcher copies the default back, but the game can lower it
+again.
+
+**Resolution.** With the default config the window is fullscreen at 1280x720, and the game draws into an 853x480
+framebuffer that is scaled up (`Using Smaller 32bits FrameBuffer (video=1280x720, FB=853x480)`). The forum's "wrong
+resolution on bookworm" didn't show on trixie. Bookworm wasn't tried.
+
+Tested 2026-11-27 on `5.6.19-m4-kbdled` (`verification-log.md`, R136) with the free 2004 demo's `demo00.pk4` copied as
+`base/pak000.pk4`. The demo's menu file has another name, so the menu shows only with the patch's pk4s added. Its
+maps are `game/demo_mars_city1`, `demo_mars_city2` and `demo_mc_underground`, and the retail menu's New Game asks for
+`mars_city1`, which the demo lacks. Start the demo from the launcher with `+map game/demo_mars_city1`. With the patch
+in `base/`, Mars City loaded in about two minutes and played: 9-16 fps in the hangar (the game's counter), 37 fps on
+the PDA screen, 63 fps in the console, with one core at 60-80 % and 400 MB resident. The CPU sat at 78-80 °C, held at
+1.0 GHz by the thermal limit. Sound goes through OpenAL Soft into PulseAudio. The launcher's pyrainput overload makes
+the left nub the mouse buttons and the right nub the mouse. The overload uses the image's `sudoers.d/pyrainput` entry.
+
 ## When a program is killed or crashes
 
 - **The mount can be left behind.** `dbp-run` unmounts when the program exits
@@ -552,6 +606,16 @@ hospital had no patients, so sound effects were few. Gamepad and nubs weren't tr
   path until `findmnt` no longer lists it. The two empty
   mount points stay, and if the `.dbp` was deleted meanwhile, so does its loop
   device (`sudo losetup -l` shows it `(deleted)`; `sudo losetup -d` frees it).
+  A left-behind mount is harmless in itself: the next launch of that package
+  uses it and runs. Unmounting it by hand can make things worse. On
+  2026-11-27, after Doom 3 was killed twice, its union and image were
+  unmounted with `sudo umount`. From then on `dbp-cmd mount doom3` returned a
+  token but mounted nothing, and every launch failed with
+  `/etc/dbp/run_script: line 32: /mnt/dbp/union/doom3/doom3.sh: No such file or directory`.
+  Restarting `dbpd`, detaching the loop device, removing the empty mount
+  points and re-registering the package didn't help, though other packages
+  still mounted. A reboot did. So leave a stale mount alone unless the `.dbp`
+  itself has to go, and reboot afterwards if the package then won't start.
 - **Input can stay remapped.** Many launchers (GBA.emu's included) remap
   input for the game and undo it on exit, so a crash leaves the game's
   mapping. Recovery: [troubleshooting.md](troubleshooting.md), "Nubs, d-pad or game buttons dead

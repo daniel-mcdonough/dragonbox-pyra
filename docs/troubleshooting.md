@@ -1733,6 +1733,11 @@ on this card (`malloc(): ...` or `free(): ...` in the log). `GSK_RENDERER=cairo`
 makes zenity work. [dbp.md](dbp.md), "zenity crashes", and "CorsixTH" for a case
 with both.
 
+If the log says `/mnt/dbp/union/<id>/<launcher>: No such file or directory`,
+`dbpd` no longer mounts that package. Seen 2026-11-27 after a killed game's
+leftover mount was removed with `sudo umount`. Restarting `dbpd` didn't clear
+it; rebooting did. [dbp.md](dbp.md), "When a program is killed or crashes".
+
 ## A DBP launched from an exFAT card: kernel BUG, then nothing answers
 
 The window never opens, `dmesg` shows `kernel BUG at fs/buffer.c:3082!` with

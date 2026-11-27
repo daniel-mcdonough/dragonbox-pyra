@@ -4245,3 +4245,46 @@ R99 test card, kernel `5.6.19-m4-kbdled` (r4), GTK 4.18.6, libepoxy 1.5.10, mesa
 - Cleanup: the debian-debug source and the 26 packages installed for this run (gdb, valgrind, libc6-dbg,
   vulkan-tools, mesa-utils-bin, electric-fence, the dbgsyms, the X/EGL headers) were purged; valgrind logs left in
   `/tmp`.
+
+## 2026-11-27 — Doom 3 (ptitSeb's dante build 0.0.1.05) on trixie (R136)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4). Package `doom3` 0.0.1.05 from `repo/packages/doom3/download`: MD5
+`d1befdb3bb074e7c1a8112a35a8ffdb3` and SHA-1 `ce88cbd9…17460`, both matching the repository's listing. Data: the free
+demo's `demo00.pk4` (483 535 485 bytes, from id's `doom3-linux-1.1.1286-demo.x86.run`, payload MD5 matching the
+makeself header) copied as `base/pak000.pk4`; later also `pak005`-`pak008.pk4` from `doom3-linux-1.3.1.1304.x86.run`
+(both from a mirror of id's FTP). Every launch went through `/usr/local/games/doom3.sh`, the menu entry's command,
+on `DISPLAY=:0`.
+
+- `ldd doom-mon.arm`: nothing missing; `libGLESv2.so.1` and `libEGL.so.1` → `/opt/omap5-sgx-ddk-um-linux/lib`.
+  Declared dependencies `libopenal1` 1:1.24.2-1, `libvorbis0a` 1.3.7-3 and `zenity` 4.1.90-1 are installed, so there is
+  no dependency dialog.
+- No data: zenity's "You need Doom III original files" error window showed (fix 34 in `/etc/environment`).
+- Demo only: 1280x720 window, `/proc/<pid>/maps` has the blob's `libEGL`, `libGLESv2`, `libIMGegl` and
+  `libpvrDRI3WSEGL.so`. Log: `GL_RENDERER: PowerVR SGX 544MP`, `Using Smaller 32bits FrameBuffer (video=1280x720,
+  FB=853x480)`, `using GLSL renderSystem`, OpenAL Soft 1.24.2 on device `Audio DSP (AESS)`. No menu: `Invalid GUI:
+  guis/mainmenu.gui` (the demo's file is `guis/demo_mainmenu.gui`), 63 fps on the console.
+- Demo only, `+map game/demo_mars_city1`: the map loaded (1969 entities), then at `SpawnPlayer: 0` the console showed
+  `ERROR: Missing 'WEAPON_NETFIRING' field in script object 'weapon_fists'`, the forum's error. The demo's
+  `script/weapon_base.script` (2004-08-04) has no such field. The 1.3.1 patch's `pak006.pk4` carries a
+  `weapon_base.script` (2005-01-18) that declares `boolean WEAPON_NETFIRING;`.
+- Demo + patch pk4s: the retail main menu shows, fullscreen, 49 fps. `+map game/demo_mars_city1` loaded in about two
+  minutes and played with no error. The owner played it. Game counter: 14, 16, 9 fps in the hangar, 37 fps on the PDA.
+  `top`: 64-79 % of one core, RSS 397-402 MB, 6 threads, 756 MB used system-wide. `thermal_zone0` 78.1-79.8 °C,
+  `scaling_cur_freq` 1 000 000 throughout. Sound: `libopenal` + `libpulse` mapped, PulseAudio running.
+- Menu text: with a fresh `DoomConfig.cfg` (the launcher copies `DoomConfig.cfg.sav`), the button labels were sharp.
+  The log says `guess failed, return default low-end VRAM setting ( 64MB VRAM )`. After the first run the saved
+  config had `image_downSizeBump 1`, `image_downSizeLimit 64`, `image_downSizeSpecular 1`, `image_ignoreHighQuality 1`
+  (the `.sav` has 0, 256, 0, 0), but still `image_downSize 0`, and launches 2 and 3 were sharp. An earlier config, saved
+  during the demo-only runs, had `com_machineSpec 0`, `com_videoRam 64` and `image_downSize 1`. That one gave the blurred
+  labels. Setting only `image_downSize "1"` (limit 64) reproduced the blur, and `autoexec.cfg` holding
+  `seta image_downSize "0"` (log: `execing autoexec.cfg` after `DoomConfig.cfg`) made the labels sharp again with
+  the bad value still in `DoomConfig.cfg`. Which launch first writes `image_downSize 1` wasn't pinned down.
+- dbpd: after two killed runs, the union and image were removed with `sudo umount`. From then on `dbp-cmd mount doom3`
+  returned tokens 9-15 with nothing mounted, and launches failed with `/mnt/dbp/union/doom3/doom3.sh: No such file or
+  directory`. `systemctl restart dbpd`, `losetup -d /dev/loop7`, `rmdir` of both mount points and
+  unregister/register didn't clear it. `ft2-clone` mounted normally meanwhile. A reboot cleared it. After the reboot the
+  card was at the greeter, so the remaining runs used the greeter's X server (its auth file copied with sudo).
+- End of the play run: `timeout 600` killed the launcher. The union and image stayed mounted and the pyrainput overload
+  stayed on (the launcher's `no-overload` never ran). `sudo pyrainputctl no-overload` restored the nubs; the mount was
+  left alone.
+- Not covered: bookworm's "wrong resolution" (bookworm card not used), full retail data, the other two demo maps.
