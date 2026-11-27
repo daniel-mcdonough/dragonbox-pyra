@@ -58,7 +58,7 @@ them out.
 | 32 | restores | the image lacks `python3-apt`, which the DBP Installer needs on trixie (its bundled `apt_pkg` is built for Python 3.7); `~/dragonbox` → `/dragonbox` because `dbpd` searches only filesystem roots | the image ships `python3-apt`, and the Installer's RootFs target is a place `dbpd` searches | — |
 | 33 | workaround | `pam_gnome_keyring`'s password step finds no keyring daemon before `pam_systemd` has made `XDG_RUNTIME_DIR`, so a password changed at the greeter never reaches the login keyring (gnome-keyring 48.0) | never, for release images: a password chosen before the first login is the better design anyway | — |
 | 34 | workaround | GTK 4's default GL renderer corrupts the heap on this card's EGL stack (GTK 4.18.6; cause not found) | a GTK 4 program draws with the variable unset | — |
-| 35 | workaround | `pyra-hacks`: `pyra_volumed.service` is wanted only by `sound.target`, which only udev starts; the unit should be wanted by `multi-user.target` too | the fork's unit is wanted by `multi-user.target` | — |
+| 35 | package fix | `pyra-hacks`: `pyra_volumed.service` is wanted only by `sound.target`, which only udev starts; the fork's unit is wanted by `multi-user.target` too (`0.38+pyra6`) | as fix 6; prep only removes the drop-in an earlier run wrote | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -1945,14 +1945,14 @@ package*, below), which its volume wheel page needs, and `pyra-backlight (>= 0.4
 (fix 22), which its display and keyboard light page needs. (0.13 and earlier
 had both in Depends; 0.14 moved them to Recommends.) Prep installs both anyway,
 so fix 26 also
-installs the fork's `pyra-hacks_0.38+pyra5_armhf.deb`, pinned by SHA-256
-(`28e6242f…2c5d73`, the release asset as published), from a copy beside the pyra-settings `.deb` or else from that release. It
-replaces the vendor's 0.38; an image that already has 0.38+pyra5 or later
-keeps it. 0.38+pyra5 also keeps a CPU ceiling you set (*A CPU ceiling of your
+installs the fork's `pyra-hacks_0.38+pyra6_armhf.deb`, pinned by SHA-256
+(`bfcc6b04…37477e`, the release asset as published), from a copy beside the pyra-settings `.deb` or else from that release. It
+replaces the vendor's 0.38 or an older fork; an image that already has 0.38+pyra6 or later
+keeps it. From 0.38+pyra5 it also keeps a CPU ceiling you set (*A CPU ceiling of your
 own*, below). The fork's thermal
 script is byte-identical to what fixes 6 and 7 make, so their dpkg guard finds
-nothing to do, and prep checks that after the install. Fix 12 stands aside
-(above). Fix 8 stays: the fork does not set the charger's limit.
+nothing to do, and prep checks that after the install. Fixes 12 and 35 stand aside
+(above, below). Fix 8 stays: the fork does not set the charger's limit.
 
 **How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
 `.deb`s in one run, after checking before fix 1 that the file is
@@ -1974,7 +1974,7 @@ note (`kernel-changes.md`, 0055). `--no-settings` leaves both packages
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
-repository's 0.38 sorts below `0.38+pyra5`, so apt keeps the fork. A vendor
+repository's 0.38 sorts below `0.38+pyra6`, so apt keeps the fork. A vendor
 0.39 would replace it and satisfy pyra-settings' Recommends without reading
 `/etc/pyra_volumed.conf`; the wheel page would then do nothing until the fork
 is rebased.
@@ -2497,22 +2497,30 @@ counts a stop by SIGTERM as clean. `bluetooth.service` is wanted by
 `multi-user.target` directly and comes back; `bluetooth.target` stays down,
 with nothing hanging off it but the service.
 
-**Fix.** Prep writes `/etc/systemd/system/multi-user.target.d/pyra-volumed.conf`,
-which adds `Wants=pyra_volumed.service` to `multi-user.target`, under a comment
-naming the fix. It doesn't pull in `sound.target`, which would join the boot
-transaction ahead of the card, and `alsa-restore` would then skip the mixer
-state because no card was there yet. The daemon itself can start early only
-because the fork's (fix 26, from `0.38+pyra4`) exits until the card and the
-wheel's ADC are there, and systemd restarts it every 2 s. The vendor's daemon
-waits for neither, so with `--no-settings` prep writes nothing and removes
-the file if an earlier run wrote it. Nothing here is per machine, so
-`--release` keeps it. On a card prepared before fix 35, write the same two
-lines to that path as root and run `sudo systemctl daemon-reload`. Until
-then, `sudo systemctl start sound.target` or a reboot brings the wheel back.
+**Fix.** The pyra-hacks fork's unit is `WantedBy=sound.target multi-user.target`
+from `0.38+pyra6` (*Fixes 6, 7 and 12 as a package*, below), which fix 26
+installs. Its postinst links the unit into `multi-user.target.wants`, on an
+upgrade from an older fork too, so `systemctl default` starts the daemon
+again. Only the daemon is wanted, not `sound.target`: that target would join
+the boot transaction ahead of the card, and `alsa-restore` would then skip
+the mixer state because no card was there yet. The daemon itself can start
+early because the fork's (from `0.38+pyra4`) exits until the card and the
+wheel's ADC are there, and systemd restarts it every 2 s. The vendor's waits
+for neither, so with `--no-settings` the wheel keeps the old behaviour.
+
+Fix 35 first shipped as a prep drop-in,
+`/etc/systemd/system/multi-user.target.d/pyra-volumed.conf`, with
+`Wants=pyra_volumed.service`. Prep now removes that file if an earlier run
+wrote it, and warns if fix 26 left a card without the fork's link. On a card
+with an older fork, install `0.38+pyra6`. Until then, `sudo systemctl start
+sound.target` or a reboot brings the wheel back.
 
 **Checked** 2026-11-27 on the r6 card (`verification-log.md`, R140): with the
 daemon stopped, `sudo systemctl default` left it inactive without the
-drop-in and started it with the drop-in, and no unit failed.
+drop-in and started it with the drop-in. Then with `0.38+pyra6` (the release
+asset) and no drop-in: the upgrade from `+pyra5` made the
+`multi-user.target.wants` link, `dpkg --verify` was clean, a boot had no
+failed units, and `systemctl default` started the stopped daemon again.
 
 ## Fixes 6, 7 and 12 as a package
 
@@ -2539,7 +2547,8 @@ debs attached:
 | `0.38+pyra2` | 2026-11-14 | the wheel drives the headphones too (fix 12, patch 0002) |
 | `0.38+pyra3` | 2026-11-14 | the wheel's off position has its own band, so it doesn't flutter at the bottom |
 | `0.38+pyra4` | 2026-11-19 | `pyra_volumed` exits when the sound card or the wheel's ADC is not there yet and systemd restarts it every 2 s, up to 30 times, so a daemon started before the card registered no longer leaves the wheel dead for the boot |
-| `0.38+pyra5` | 2026-11-22 | the thermal daemon keeps a CPU ceiling set in `/etc/default/pyra-thermal` (*A CPU ceiling of your own*, below); prep's fix 26 installs this one |
+| `0.38+pyra5` | 2026-11-22 | the thermal daemon keeps a CPU ceiling set in `/etc/default/pyra-thermal` (*A CPU ceiling of your own*, below) |
+| `0.38+pyra6` | 2026-11-27 | `pyra_volumed.service` is wanted by `multi-user.target` too, so the wheel comes back after rescue mode (fix 35); prep's fix 26 installs this one |
 
 To install 0.38+pyra2 on the Pyra:
 
@@ -2567,7 +2576,7 @@ The running unit has had `0.38+pyra1` since 2026-10-20, replacing 0.38. The prev
 thermal script is kept beside it as `pyra-thermal.sh.before-pyra1-deb`. To
 go back, install the archive's `pyra-hacks_0.38_armhf.deb`, then run fixes 6,
 7 and 12 again. The fixes stay in the prep script for cards with the stock
-package; fix 26 installs `0.38+pyra5` along with pyra-settings.
+package; fix 26 installs `0.38+pyra6` along with pyra-settings.
 
 ### A CPU ceiling of your own
 

@@ -2104,8 +2104,8 @@ mode stopped `pyra_volumed`, and `systemctl default` didn't start it again:
     systemctl is-active pyra_volumed sound.target    # inactive inactive
 
 `sudo systemctl start sound.target` brings the wheel back, and so does a
-reboot. Fix 35 (`fixes.md`) has `systemctl default` start it, on cards
-prepared with fix 26's pyra-hacks fork.
+reboot. The pyra-hacks fork from `0.38+pyra6` (fix 35 in `fixes.md`) has
+`systemctl default` start it; `dpkg-query -W pyra-hacks` shows which you have.
 
 ## The volume wheel is silent for half its travel, or `THE VOLUME WHEEL IS NOT CALIBRATED` after `apt`
 
@@ -2119,9 +2119,9 @@ after every package run until it is dealt with. Check:
     dpkg-query -W pyra-hacks    # a fork is 0.38+pyraN
 
 Either put the fork back, with its `.deb` from the pyra-hacks release
-`v0.38+pyra5` (prep's `HACKS_URL`, checked against `HACKS_SHA256`):
+`v0.38+pyra6` (prep's `HACKS_URL`, checked against `HACKS_SHA256`):
 
-    sudo dpkg -i pyra-hacks_0.38+pyra5_armhf.deb
+    sudo dpkg -i pyra-hacks_0.38+pyra6_armhf.deb
 
 or, to keep the vendor package, apply fix 12 from a copy of this repository:
 `sudo device/pyra-volumed/install.sh`. If a newer vendor release is the cause,

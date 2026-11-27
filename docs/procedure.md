@@ -342,7 +342,7 @@ have, downloaded or built with pyra-backlight's `./build-deb.sh`, name it:
 `--no-backlight` leaves it out.
 
 **Settings app (fix 26).** Prep installs `pyra-settings` and the pyra-hacks fork
-`0.38+pyra5` its volume wheel page needs (it also keeps a CPU ceiling you
+`0.38+pyra6` its volume wheel page needs (it also keeps a CPU ceiling you
 set, fixes.md "A CPU ceiling of your own"), the same way: by default it downloads
 pyra-settings' release (v0.18) and the fork's, each checked against a pinned
 SHA-256. `--settings FILE` takes a `.deb` you have (the fork comes from a copy

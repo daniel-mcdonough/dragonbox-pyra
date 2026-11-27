@@ -4384,3 +4384,11 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
   (`no volume controls on hw:CARD=L15 yet`); it exited three times, two seconds apart, and has run since
   22:08:43. `sound.target` active, no failed units.
 - **Wheel by hand** (owner, after that boot): pyra-sound's bar follows the wheel again.
+- **pyra-hacks `0.38+pyra6`:** the unit change went to the fork instead (`feature/volumed-taper` 251989d,
+  `WantedBy=sound.target multi-user.target`; packaging 1a4835c, tag `v0.38+pyra6`, release run 46073911465
+  green). The asset `pyra-hacks_0.38+pyra6_armhf.deb` hashes `bfcc6b04…37477e`; prep pins it. On the r6 card,
+  with the drop-in removed: `dpkg -i` over `+pyra5` made
+  `/etc/systemd/system/multi-user.target.wants/pyra_volumed.service` (the postinst's `deb-systemd-helper enable`
+  adds links on an upgrade), `dpkg --verify pyra-hacks` clean. After a reboot: daemon active after 3 early
+  restarts, `sound.target` active, no failed units; stopped, then `sudo systemctl default`: active again.
+- **Prep selftest** with `+pyra6` pinned and fix 35 standing aside: not run yet.

@@ -33,8 +33,8 @@
 # --no-backlight leaves it out.
 #
 # Fix 26 installs pyra-settings (the Pyra's own settings app) and the
-# pyra-hacks fork its volume wheel and Performance pages need (0.38+pyra5, which carries fixes
-# 6, 7 and 12, fix 12 then standing aside, and keeps a CPU ceiling set in
+# pyra-hacks fork its volume wheel and Performance pages need (0.38+pyra6, which carries fixes
+# 6, 7, 12 and 35, fixes 12 and 35 then standing aside, and keeps a CPU ceiling set in
 # /etc/default/pyra-thermal), and a dpkg hook that warns if a
 # package run replaces the fork. With no option it downloads the pinned
 # pyra-settings release (v0.18). --settings FILE uses a .deb you
@@ -489,17 +489,17 @@ GIR_URLS=(https://deb.debian.org/debian/pool/main/m/mate-panel/$GIR_DEB
           https://snapshot.debian.org/file/97d67626deac4562a3475a7abe61638c3d84f2a9)
 STAGED_GIR=
 # Fix 26's two .debs, both release assets as published, by SHA-256: pyra-settings
-# v0.18 and the pyra-hacks fork v0.38+pyra5. A copy of the fork beside the
+# v0.18 and the pyra-hacks fork v0.38+pyra6. A copy of the fork beside the
 # pyra-settings .deb is used instead, so a run with --settings can be offline.
 SETTINGS_TAG=v0.18
 SETTINGS_URL=https://github.com/daniel-mcdonough/pyra-settings/releases/download/v0.18/pyra-settings_0.18_all.deb
 SETTINGS_SHA256=3cbadf168f7aa85723d44e0db453c6db7bc3d32223cfb79f050b4de131dda702
 SETTINGS_TMP=
 STAGED_SETTINGS=$ROOT/var/tmp/pyra-prep-settings.deb
-HACKS_VER=0.38+pyra5
-HACKS_DEB=pyra-hacks_0.38+pyra5_armhf.deb
-HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra5/pyra-hacks_0.38%2Bpyra5_armhf.deb
-HACKS_SHA256=28e6242ff1ad3c50ae158319f2a95e6c9a9737d9bec2aa7d0aec6131552c5d73
+HACKS_VER=0.38+pyra6
+HACKS_DEB=pyra-hacks_0.38+pyra6_armhf.deb
+HACKS_URL=https://github.com/daniel-mcdonough/pyra-hacks/releases/download/v0.38%2Bpyra6/pyra-hacks_0.38%2Bpyra6_armhf.deb
+HACKS_SHA256=bfcc6b049c081acc58be7f9195eea5e268e25cf00496d6ea0552e7197437477e
 STAGED_HACKS=
 # Fix 27's .deb, the release asset as published, by SHA-256.
 SOUND_TAG=v0.4
@@ -2836,36 +2836,30 @@ grep -qE '^session[[:space:]]+required[[:space:]]+pam_env\.so[[:space:]]+readenv
 
 # ---------------------------------------------------------------------- fix 35
 #
-# pyra_volumed is WantedBy=sound.target, and only udev starts sound.target,
-# when the sound card appears at boot. "systemctl rescue" stops both, and
-# "systemctl default" brings back graphical.target without them, so the wheel
-# stays dead until a reboot (the r6 card, 2026-11-27). multi-user.target wants
-# the daemon itself here. Not sound.target: pulled from the boot transaction it
-# could be up before the card is, and alsa-restore would skip the mixer state.
-# The daemon can start before the card because the fork's (fix 26, 0.38+pyra4
-# on) exits until the card and the ADC are there and systemd restarts it. The
-# vendor's waits for neither, so without the fork this writes nothing.
+# pyra_volumed was WantedBy=sound.target only, and only udev starts
+# sound.target, when the sound card appears at boot. "systemctl rescue" stops
+# both, and "systemctl default" brings back graphical.target without them, so
+# the wheel stayed dead until a reboot (the r6 card, 2026-11-27). The fork's
+# unit is wanted by multi-user.target too from 0.38+pyra6, and its postinst
+# makes the link. That is safe only because the fork's daemon (from 0.38+pyra4)
+# exits until the card and the ADC are there and systemd restarts it; the
+# vendor's waits for neither, so without the fork the wheel keeps the old
+# behaviour. Fix 35 first shipped as a multi-user.target drop-in; a run here
+# removes one an earlier run wrote.
 
 VOL_WANTS=$ROOT/etc/systemd/system/multi-user.target.d/pyra-volumed.conf
-VOL_WANTS_BODY='# dragonbox-pyra prep, fix 35: the volume wheel comes back after rescue mode (docs/fixes.md).
-[Unit]
-Wants=pyra_volumed.service'
-if [[ $SETTINGS_MODE == file ]]; then
-    if [[ -f $VOL_WANTS && ! -L $VOL_WANTS && $(<"$VOL_WANTS") == "$VOL_WANTS_BODY" ]]; then
-        ok "fix35: ${VOL_WANTS#$ROOT} already up to date"
-    else
-        VERB=$([[ -e $VOL_WANTS ]] && echo updated || echo installed)
-        mkdir -p "$(dirname "$VOL_WANTS")"
-        rm -f -- "$VOL_WANTS"
-        printf '%s\n' "$VOL_WANTS_BODY" >"$VOL_WANTS"
-        chmod 0644 "$VOL_WANTS"
-        chown 0:0 "$VOL_WANTS"
-        ok "fix35: $VERB ${VOL_WANTS#$ROOT}"
-    fi
-elif [[ -e $VOL_WANTS ]]; then
+if [[ -e $VOL_WANTS ]]; then
     rm -f -- "$VOL_WANTS"
     rmdir -- "$(dirname "$VOL_WANTS")" 2>/dev/null || true
-    ok "fix35: removed ${VOL_WANTS#$ROOT}; without the pyra-hacks fork (fix 26) the daemon must wait for sound.target"
+    ok "fix35: removed ${VOL_WANTS#$ROOT}, which an earlier run wrote"
+fi
+if [[ $SETTINGS_MODE == file ]]; then
+    VOL_LINK=$ROOT/etc/systemd/system/multi-user.target.wants/pyra_volumed.service
+    if [[ $(readlink "$VOL_LINK" 2>/dev/null) == */systemd/system/pyra_volumed.service ]]; then
+        ok "fix35: the pyra-hacks fork's unit is enabled in multi-user.target"
+    else
+        warn "fix35: no ${VOL_LINK#$ROOT}; the wheel will stay dead after rescue mode (pyra-hacks older than 0.38+pyra6?)"
+    fi
 else
     ok "fix35: left out; without the pyra-hacks fork (fix 26) the daemon must wait for sound.target"
 fi

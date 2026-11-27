@@ -307,8 +307,8 @@ path.
 
 Its unit is `WantedBy=sound.target`, which only udev starts, when the sound
 card appears at boot. Rescue mode stops it, and `systemctl default` does not
-bring it back, so prep's fix 35 makes `multi-user.target` want the daemon too
-(`fixes.md`, fix 35).
+bring it back, so the pyra-hacks fork's unit is wanted by `multi-user.target`
+too, from `0.38+pyra6` (`fixes.md`, fix 35).
 
 **Leave the output volume in MATE's Sound Preferences (PulseAudio's sink
 volume) at 100 %.** The wheel is the volume control. A lower sink volume only
