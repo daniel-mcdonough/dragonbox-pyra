@@ -4397,4 +4397,4 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
 - **pyra-settings v0.19** pinned in prep at the same time (asset `d0a62b05…6496e9`; Depends and Recommends as
   0.18). On the r6 card: `dpkg -i` over 0.18 clean, `dpkg --audit` empty, `pyra-settings-apply.service` ran
   `apply` with status 0, every module parses, and the window ran 10 s on `:0` with only theme warnings. Pages
-  not opened by hand.
+  checked by the owner on the card afterwards: working.
