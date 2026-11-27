@@ -131,9 +131,9 @@ the session goes idle. The same way, it downloads the package from its
 `--backlight FILE` takes a `.deb` you have, and `--no-backlight` leaves it out.
 
 It also installs `pyra-settings` (fix 26), the Pyra's own settings app (wake
-buttons, lid, volume wheel, CPU ceiling), with the pyra-hacks fork its volume
+buttons, lid, volume wheel, CPU ceiling, rumble), with the pyra-hacks fork its volume
 wheel and Performance pages need. It downloads the package from its
-[release](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.17) and checks it against a pinned hash;
+[release](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.18) and checks it against a pinned hash;
 `--settings FILE` takes a `.deb` you have, and `--no-settings` leaves it out.
 
 It also installs `pyra-sound` (fix 27), a sound icon for the panel (mute,

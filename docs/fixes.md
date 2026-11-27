@@ -1950,18 +1950,20 @@ nothing to do, and prep checks that after the install. Fix 12 stands aside
 **How prep installs it.** As fix 22: the image's `dpkg -i` in the chroot, both
 `.deb`s in one run, after checking before fix 1 that the file is
 `pyra-settings` and that the image has every package either depends on (the
-vendor image has all seven of pyra-settings 0.17's: python3, python3-gi,
+vendor image has all seven of pyra-settings 0.18's: python3, python3-gi,
 gir1.2-gtk-3.0, pkexec, polkitd, alsa-utils, pulseaudio-utils).
 `--settings` with `--no-backlight` is refused, since a page of pyra-settings
 needs pyra-backlight. A second run sees the version installed and does nothing.
 
 The `.deb` comes from `--settings FILE`, or by default from pyra-settings'
-[release v0.17](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.17)
-(`pyra-settings_0.17_all.deb`), checked against `SETTINGS_SHA256` in the script
-(`4030f260…fc6f18e`, the asset as published). 0.15 added the Performance page
+[release v0.18](https://github.com/daniel-mcdonough/pyra-settings/releases/tag/v0.18)
+(`pyra-settings_0.18_all.deb`), checked against `SETTINGS_SHA256` in the script
+(`3cbadf16…131dda702`, the asset as published). 0.15 added the Performance page
 (*A CPU ceiling of your own*); 0.16 fits it on the Pyra's screen (0.15's window
 was wider than 1280 px and would not maximize); 0.17 adds the About page, which
-shows and copies fix 31's `pyra-info`. `--no-settings` leaves both packages
+shows and copies fix 31's `pyra-info`; 0.18 adds the Rumble page (on/off, four
+strengths, a test rumble), which needs kernel patch 0055 and otherwise shows a
+note (`kernel-changes.md`, 0055). `--no-settings` leaves both packages
 out and fix 12 in place.
 
 **Kept in step with apt.** The fork is in no apt repository, and the vendor
@@ -2275,7 +2277,7 @@ run on the same day with the same checkout finds it up to date. Prep runs as
 root in a checkout the user owns, so it calls git with `safe.directory` set to
 that checkout. A card prepared before fix 31 says "no record".
 
-Pyra Settings 0.17's About page runs `pyra-info` and shows its text with a
+Pyra Settings' About page (0.17 and later) runs `pyra-info` and shows its text with a
 button that copies it.
 
 **Checked** 2026-11-22 on the r5 release card with `pyra-info` copied in by

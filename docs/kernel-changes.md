@@ -317,8 +317,8 @@ voltage, so 56 leaves room for a full battery. `max_code=0` gives back the stock
 computed in 64 bits (the left channel's overflowed `int`). `min_code=0` gives back the stock
 linear mapping. `enable=N` stops playing effects (it takes effect at the next effect change),
 so a settings page can switch rumble off. pyra-settings 0.18's Rumble page sets `enable` and
-`max_code` (Light 44, Medium 50, Strong 56, Max 60) through `/etc/modprobe.d/pyra-settings-rumble.conf`; the
-image doesn't pin 0.18 yet. Measurements: `verification-log.md`, "rumble in Ship of Harkinian", "patches/0055"
+`max_code` (Light 44, Medium 50, Strong 56, Max 60) through `/etc/modprobe.d/pyra-settings-rumble.conf`; prep's
+fix 26 pins 0.18. Measurements: `verification-log.md`, "rumble in Ship of Harkinian", "patches/0055"
 and "pyra-settings 0.18 Rumble page";
 limits: `known-limitations.md` 2.10.
 
