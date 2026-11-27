@@ -4338,7 +4338,8 @@ Draft `image-2026.12-r6`: `pyra-trixie-release-4c32dba69c88.img.xz`, built by Re
   `(EE) libinput bug: kernel fuzz of 5` lines are fix 30's fuzz, logged as before.
 - **Root (fix 2, R101):** `passwd -S root` → `root L 2026-02-01`; the shadow hash starts `!$y$`; `su` refuses.
   Both `rescue.service.d/` and `emergency.service.d/` have `pyra-sulogin-force.conf`
-  (`SYSTEMD_SULOGIN_FORCE=1`). The console `systemctl rescue` step was not run (it needs someone at the screen).
+  (`SYSTEMD_SULOGIN_FORCE=1`). On the console (owner, the same evening), `sudo systemctl rescue` gave a root
+  shell with no password prompt. Afterwards the card was back at `running`, default `graphical.target`.
 - **Fix 31:** `pyra-info`: `Prepared : commit 4c32dba69c88, 2026-11-27, kernel-5.6.19-r5, release image`; boot
   entry `l5; default l5`; kernel `#10 ... Fri Nov 27 07:29:45 UTC 2026` (the r5 build); packages
   funkeymonkey-pyrainput 0.1.19+pyra2, pyra-backlight 0.8, pyra-hacks 0.38+pyra5, pyra-settings 0.18,
