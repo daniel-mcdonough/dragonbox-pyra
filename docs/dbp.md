@@ -463,7 +463,7 @@ holds only the binary, its launcher and a default `config.txt` and `hotkeys.txt`
 - **Libraries trixie doesn't have.** It links bookworm's FFmpeg 5 (`libavformat.so.59`, `libavcodec.so.59`,
   `libavutil.so.57`, `libswscale.so.6`, `libswresample.so.4`; trixie has FFmpeg 7) and `libcurl-nss.so.4`, which
   trixie dropped. `liblua5.3.so.0` is in trixie but not installed. Its `Dependency[deb]` line is commented out, so
-  no dependency dialog warns about any of this.
+  no dependency dialog warns about any of this. Uncommented, it would name bullseye's FFmpeg 4 (`libavformat58` ...).
 - **Its launcher's messages don't show.** `CorsixTH.launch` checks for `HOSPITAL.EXE` in the union and reports a
   missing one through zenity, which crashes without fix 34 (see "zenity crashes" above).
 
