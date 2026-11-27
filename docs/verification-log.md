@@ -4380,3 +4380,4 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
 - **Boot with the drop-in:** `multi-user.target` started the daemon at 22:08:34, before the L15 card registered
   (`no volume controls on hw:CARD=L15 yet`); it exited three times, two seconds apart, and has run since
   22:08:43. `sound.target` active, no failed units.
+- **Wheel by hand** (owner, after that boot): pyra-sound's bar follows the wheel again.
