@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty-four known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -2833,6 +2833,42 @@ grep -qE '^session[[:space:]]+required[[:space:]]+pam_env\.so[[:space:]]+readenv
     warn "fix34: /etc/pam.d/lightdm does not read /etc/environment; the MATE session will not get $ENV_LINE"
 [[ $(readlink "$ROOT/usr/lib/environment.d/99-environment.conf" 2>/dev/null) == /etc/environment ]] ||
     warn "fix34: /usr/lib/environment.d/99-environment.conf is not the link to /etc/environment; D-Bus activated programs will not get $ENV_LINE"
+
+# ---------------------------------------------------------------------- fix 35
+#
+# pyra_volumed is WantedBy=sound.target, and only udev starts sound.target,
+# when the sound card appears at boot. "systemctl rescue" stops both, and
+# "systemctl default" brings back graphical.target without them, so the wheel
+# stays dead until a reboot (the r6 card, 2026-11-27). multi-user.target wants
+# the daemon itself here. Not sound.target: pulled from the boot transaction it
+# could be up before the card is, and alsa-restore would skip the mixer state.
+# The daemon can start before the card because the fork's (fix 26, 0.38+pyra4
+# on) exits until the card and the ADC are there and systemd restarts it. The
+# vendor's waits for neither, so without the fork this writes nothing.
+
+VOL_WANTS=$ROOT/etc/systemd/system/multi-user.target.d/pyra-volumed.conf
+VOL_WANTS_BODY='# dragonbox-pyra prep, fix 35: the volume wheel comes back after rescue mode (docs/fixes.md).
+[Unit]
+Wants=pyra_volumed.service'
+if [[ $SETTINGS_MODE == file ]]; then
+    if [[ -f $VOL_WANTS && ! -L $VOL_WANTS && $(<"$VOL_WANTS") == "$VOL_WANTS_BODY" ]]; then
+        ok "fix35: ${VOL_WANTS#$ROOT} already up to date"
+    else
+        VERB=$([[ -e $VOL_WANTS ]] && echo updated || echo installed)
+        mkdir -p "$(dirname "$VOL_WANTS")"
+        rm -f -- "$VOL_WANTS"
+        printf '%s\n' "$VOL_WANTS_BODY" >"$VOL_WANTS"
+        chmod 0644 "$VOL_WANTS"
+        chown 0:0 "$VOL_WANTS"
+        ok "fix35: $VERB ${VOL_WANTS#$ROOT}"
+    fi
+elif [[ -e $VOL_WANTS ]]; then
+    rm -f -- "$VOL_WANTS"
+    rmdir -- "$(dirname "$VOL_WANTS")" 2>/dev/null || true
+    ok "fix35: removed ${VOL_WANTS#$ROOT}; without the pyra-hacks fork (fix 26) the daemon must wait for sound.target"
+else
+    ok "fix35: left out; without the pyra-hacks fork (fix 26) the daemon must wait for sound.target"
+fi
 
 # ------------------------------------------------------------------- release
 #

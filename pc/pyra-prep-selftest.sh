@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 34 (fix 2 with --set-password and
+# the end state of fixes 1 to 35 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1593,6 +1593,21 @@ got=$(in_chroot env -i HOME=/nonexistent /usr/lib/systemd/user-environment-gener
 grep -qx GSK_RENDERER=cairo <<<"$got" && p "fix34: the image's environment.d generator passes GSK_RENDERER=cairo to the user manager" \
     || f "fix34: the image's environment.d generator printed: $(tr '\n' ' ' <<<"$got")"
 
+i "assert fix 35 — multi-user.target wants the volume wheel's daemon, with the fork only"
+V=$MNT/etc/systemd/system/multi-user.target.d/pyra-volumed.conf
+if [[ $SON == yes ]]; then
+    [[ -f $V && ! -L $V && $(stat -c '%a %u:%g' "$V") == "644 0:0" ]] && p "fix35: ${V#$MNT} is a 644 root:root file" \
+        || f "fix35: ${V#$MNT} is $(stat -c '%F %a %u:%g' "$V" 2>/dev/null || echo missing)"
+    [[ $(grep -v '^#' "$V" 2>/dev/null) == $'[Unit]\nWants=pyra_volumed.service' ]] && p "fix35: it adds Wants=pyra_volumed.service and nothing else" \
+        || f "fix35: its settings: $(grep -v '^#' "$V" 2>/dev/null | tr '\n' ' ')"
+    [[ -f $MNT/usr/lib/systemd/system/pyra_volumed.service ]] && p "fix35: the image has pyra_volumed.service to want" \
+        || f "fix35: the image has no /usr/lib/systemd/system/pyra_volumed.service"
+    grep -qx 'Restart=on-failure' "$MNT/usr/lib/systemd/system/pyra_volumed.service" 2>/dev/null \
+        && p "fix35: the fork's unit restarts the daemon while the card is not there yet" || f "fix35: pyra_volumed.service has no Restart=on-failure"
+else
+    [[ ! -e $V ]] && p "fix35: no drop-in without the pyra-hacks fork" || f "fix35: ${V#$MNT} written without the fork"
+fi
+
 ########################################################################
 i "run 2 — idempotency"
 ########################################################################
@@ -1669,6 +1684,10 @@ grep -qE 'fix24: .*already up to date' "$OUT/prep-run2.log" && p "run 2 reported
     && p "run 2 reported fix33's tool, unit and link already in place" || f "run 2 did not report fix33's tool, unit and link in place"
 grep -qF 'fix34: /etc/environment already sets GSK_RENDERER=cairo' "$OUT/prep-run2.log" \
     && p "run 2 reported fix34's line already in place" || f "run 2 did not report fix34's line in place"
+if [[ $SON == yes ]]; then
+    grep -qF 'fix35: /etc/systemd/system/multi-user.target.d/pyra-volumed.conf already up to date' "$OUT/prep-run2.log" \
+        && p "run 2 reported fix35's drop-in already up to date" || f "run 2 did not report fix35's drop-in up to date"
+fi
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"

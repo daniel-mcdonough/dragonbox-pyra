@@ -220,7 +220,7 @@ not instructions). The logs are listed separately at the end.
 | [docs/grow-rootfs.md](docs/grow-rootfs.md) | Filling the rest of the card. |
 | [docs/card-backup-restore.md](docs/card-backup-restore.md) | Back up the running card, and restore it. |
 | [docs/reproduce.md](docs/reproduce.md) | Everything here, including the patched kernel and the helper scripts. |
-| [docs/fixes.md](docs/fixes.md) | The thirty-four fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
+| [docs/fixes.md](docs/fixes.md) | The thirty-five fixes the prep script applies, what each is for, and the diagnosis behind it. Opens with a table of which ones are temporary and what retires them. |
 | [docs/audio.md](docs/audio.md) | The audio chain, what the codec will and will not do, and how to diagnose silence. |
 | [docs/gl4es.md](docs/gl4es.md) | Desktop GL programs, on the GPU rather than in software; DBPs that need GLX; fullscreen crashes under gl4es. |
 | [docs/dbp.md](docs/dbp.md) | DBP packages from the forum: installing one, the false "missing dependencies" dialog, which old libraries trixie renamed, SDL 1.2 games (scaling, D-pad pressed twice), ft2-clone and the demos the forum warned about for audio noise, and ptitSeb's P* emulators (PSNes, PNes, PGen, PFBneo), which need two buster libraries in their appdata folder (`device/pyra-ptitseb-libs.sh`), DevilutionX (Diablo), which works as shipped, and CorsixTH, which starts once `device/pyra-corsixth-setup.sh` has filled its appdata folder. |

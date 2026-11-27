@@ -1,4 +1,4 @@
-# The thirty-four fixes, and what they actually do
+# The thirty-five fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -58,6 +58,7 @@ them out.
 | 32 | restores | the image lacks `python3-apt`, which the DBP Installer needs on trixie (its bundled `apt_pkg` is built for Python 3.7); `~/dragonbox` → `/dragonbox` because `dbpd` searches only filesystem roots | the image ships `python3-apt`, and the Installer's RootFs target is a place `dbpd` searches | — |
 | 33 | workaround | `pam_gnome_keyring`'s password step finds no keyring daemon before `pam_systemd` has made `XDG_RUNTIME_DIR`, so a password changed at the greeter never reaches the login keyring (gnome-keyring 48.0) | never, for release images: a password chosen before the first login is the better design anyway | — |
 | 34 | workaround | GTK 4's default GL renderer corrupts the heap on this card's EGL stack (GTK 4.18.6; cause not found) | a GTK 4 program draws with the variable unset | — |
+| 35 | workaround | `pyra-hacks`: `pyra_volumed.service` is wanted only by `sound.target`, which only udev starts; the unit should be wanted by `multi-user.target` too | the fork's unit is wanted by `multi-user.target` | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2479,6 +2480,39 @@ error dialog; Volume Control opened from the menu and drew. GTK 3 programs
 started as before. The selftest (503 passed, 2026-11-26) asserts the file (644 root:root, the one
 setting), lightdm's pam_env line, that the image's environment.d generator
 passes the variable on, and that a second run finds it in place.
+
+## Fix 35 — the volume wheel stays dead after rescue mode
+
+**Symptom.** After `sudo systemctl rescue` and then `systemctl default`, the
+volume wheel does nothing until the next reboot. pyra-sound's wheel bar does
+not move, though the icon, the headphone slider and the sound itself all work
+(the r6 release card, 2026-11-27).
+
+**Cause.** `pyra_volumed.service` is `WantedBy=sound.target`, and
+`sound.target` has no other way in: udev's sound-card devices pull it in at
+boot. Rescue mode stops `sound.target` and the daemon with it. `systemctl
+default` isolates `graphical.target`, whose tree holds neither, so neither comes
+back. The unit's `Restart=on-failure` does not fire either, because systemd
+counts a stop by SIGTERM as clean. `bluetooth.service` is wanted by
+`multi-user.target` directly and comes back; `bluetooth.target` stays down,
+with nothing hanging off it but the service.
+
+**Fix.** Prep writes `/etc/systemd/system/multi-user.target.d/pyra-volumed.conf`,
+which adds `Wants=pyra_volumed.service` to `multi-user.target`, under a comment
+naming the fix. It doesn't pull in `sound.target`, which would join the boot
+transaction ahead of the card, and `alsa-restore` would then skip the mixer
+state because no card was there yet. The daemon itself can start early only
+because the fork's (fix 26, from `0.38+pyra4`) exits until the card and the
+wheel's ADC are there, and systemd restarts it every 2 s. The vendor's daemon
+waits for neither, so with `--no-settings` prep writes nothing and removes
+the file if an earlier run wrote it. Nothing here is per machine, so
+`--release` keeps it. On a card prepared before fix 35, write the same two
+lines to that path as root and run `sudo systemctl daemon-reload`. Until
+then, `sudo systemctl start sound.target` or a reboot brings the wheel back.
+
+**Checked** 2026-11-27 on the r6 card (`verification-log.md`, R140): with the
+daemon stopped, `sudo systemctl default` left it inactive without the
+drop-in and started it with the drop-in, and no unit failed.
 
 ## Fixes 6, 7 and 12 as a package
 

@@ -4357,3 +4357,26 @@ Draft `image-2026.12-r6`: `pyra-trixie-release-4c32dba69c88.img.xz`, built by Re
   logged only theme warnings.
 - No failed units. The card's `/etc/sudoers` NOPASSWD line was added by the owner after first boot; prep
   doesn't ship it.
+
+## 2026-11-27 — the volume wheel after rescue mode, and fix 35 (R140)
+
+On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `systemctl default` (back at
+`graphical.target` 21:35:46), pyra-sound's wheel bar stopped following the wheel.
+
+- **Journal:** `pyra_volumed.service` was stopped at 21:35:11 with `sound.target` ("Deactivated successfully",
+  main process killed by TERM), and nothing started it again. `sound.target` was inactive. `systemctl show
+  sound.target`: `Wants=alsa-state.service pyra_volumed.service alsa-restore.service`, `WantedBy=` only the
+  five sound-card device units. `bluetooth.service` was active again; `bluetooth.target` was not.
+- **Unit:** the fork's `pyra_volumed.service` (0.38+pyra5): `WantedBy=sound.target`, `Restart=on-failure`,
+  `RestartSec=2`, `StartLimitBurst=30`.
+- **Isolation is safe over ssh:** `user@1000.service` and every `session-N.scope` are `IgnoreOnIsolate=yes`;
+  lightdm and ssh are in `graphical.target`'s tree.
+- **Change:** `/etc/systemd/system/multi-user.target.d/pyra-volumed.conf` with `[Unit]`
+  `Wants=pyra_volumed.service`, then `daemon-reload`. `systemctl start default.target` on the already-active
+  target did not start the stopped daemon. `sudo systemctl default` did.
+- **Control:** with the daemon stopped each time, `sudo systemctl default` left it `inactive` with the drop-in
+  moved away, and started it (`active`, a new pid) with the drop-in back. `systemctl --failed` was empty after.
+- **Prep selftest** with fix 35: not run yet (it needs the owner's sudo).
+- **Boot with the drop-in:** `multi-user.target` started the daemon at 22:08:34, before the L15 card registered
+  (`no volume controls on hw:CARD=L15 yet`); it exited three times, two seconds apart, and has run since
+  22:08:43. `sound.target` active, no failed units.

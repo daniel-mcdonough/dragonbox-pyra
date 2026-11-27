@@ -2096,6 +2096,17 @@ with no other renderer than Vulkan cannot run on this card. To make Vulkan
 programs fail cleanly ("no device") instead of crashing, run them with
 `VK_DRIVER_FILES=/nonexistent`.
 
+## The volume wheel does nothing after `systemctl rescue`
+
+pyra-sound's wheel bar doesn't move, but sound plays and the icon works. Rescue
+mode stopped `pyra_volumed`, and `systemctl default` didn't start it again:
+
+    systemctl is-active pyra_volumed sound.target    # inactive inactive
+
+`sudo systemctl start sound.target` brings the wheel back, and so does a
+reboot. Fix 35 (`fixes.md`) has `systemctl default` start it, on cards
+prepared with fix 26's pyra-hacks fork.
+
 ## The volume wheel is silent for half its travel, or `THE VOLUME WHEEL IS NOT CALIBRATED` after `apt`
 
 A package run replaced the `pyra-hacks` fork that fix 26 installed, with the

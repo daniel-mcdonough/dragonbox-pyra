@@ -41,16 +41,17 @@ fixes and the systemd unit the vendor's trixie build lacks, fix 30
 makes "Calibrate Touchscreen" calibrate libinput and steadies the stylus, and
 fix 31 installs `pyra-info`, which prints what a bug report needs, and
 fix 32 makes the DBP Installer run and its downloads register,
-fix 33 asks a release card's user for a password on the first boot, before the greeter, and
-fix 34 makes GTK 4 programs (zenity, Volume Control) draw with cairo instead of crashing.
+fix 33 asks a release card's user for a password on the first boot, before the greeter,
+fix 34 makes GTK 4 programs (zenity, Volume Control) draw with cairo instead of crashing, and
+fix 35 brings the volume wheel back after rescue mode.
 
-Companion script: `../pc/pyra-trixie-prep.sh`. It applies all thirty-four fixes offline.
+Companion script: `../pc/pyra-trixie-prep.sh`. It applies all thirty-five fixes offline.
 Several fixes install files from `device/`, so run it from a checkout of the
 repository rather than copying the script somewhere on its own. It needs the
 card's boot partition mounted at the rootfs's `/boot`, and, on a PC that is not
 armhf, qemu-user with binfmt: fixes 14, 19, 20, 22, 24, 26, 27, 28, 29 and 32 run the image's own tools in a
 chroot (`fixes.md`). It checks both before writing anything.
-`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 34 against a copy of the
+`../pc/pyra-prep-selftest.sh` proves it does that correctly for fixes 1 to 35 against a copy of the
 real image, without a Pyra and without touching a card. The image must hash to the vendor's pinned SHA-256
 (`pc/pyra-vendor-image.sh`); the self-test refuses any other, and unpacks a fresh one from the `.7z` when there
 is none.
@@ -728,7 +729,7 @@ its three units (governor, AESS script choice, undervolt), re-applies the
 sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
-and of the thirty-four fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
+and of the thirty-five fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
 with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg

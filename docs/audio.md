@@ -305,6 +305,11 @@ wheel on `palmas-gpadc` and sets a volume; it never sets a route. The TWL6040
 controls are the same on both kernels, so none of this changes on the AESS
 path.
 
+Its unit is `WantedBy=sound.target`, which only udev starts, when the sound
+card appears at boot. Rescue mode stops it, and `systemctl default` does not
+bring it back, so prep's fix 35 makes `multi-user.target` want the daemon too
+(`fixes.md`, fix 35).
+
 **Leave the output volume in MATE's Sound Preferences (PulseAudio's sink
 volume) at 100 %.** The wheel is the volume control. A lower sink volume only
 adds software attenuation in front of it, so the top of the wheel no longer
