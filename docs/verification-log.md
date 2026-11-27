@@ -4376,10 +4376,10 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
   target did not start the stopped daemon. `sudo systemctl default` did.
 - **Control:** with the daemon stopped each time, `sudo systemctl default` left it `inactive` with the drop-in
   moved away, and started it (`active`, a new pid) with the drop-in back. `systemctl --failed` was empty after.
-- **Prep selftest** with fix 35 (owner): 495 passed, 0 failed, 2 skipped. The skips are the wheel and input guards'
-  downgrade runs: the vendor debs they install were not at `../pyra-packages-archive/` (the archive now lives on another
-  drive; `PYRA_HACKS_VENDOR_DEB` and `PYRA_PYRAINPUT_VENDOR_DEB` point at it). Fix 26
-  ran, so fix 35's four asserts and run 2's up-to-date line are among the passes.
+- **Prep selftest** with fix 35 (owner): 510 passed, 0 failed, 0 skipped (505 + 5 for fix 35), with
+  `PYRA_HACKS_VENDOR_DEB`, `PYRA_PYRAINPUT_VENDOR_DEB` and `PYRA_WSEGL_DEB` pointing at the package archive,
+  which has moved off `../pyra-packages-archive/`. A first run without them skipped the two guard downgrades
+  (495 passed).
 - **Boot with the drop-in:** `multi-user.target` started the daemon at 22:08:34, before the L15 card registered
   (`no volume controls on hw:CARD=L15 yet`); it exited three times, two seconds apart, and has run since
   22:08:43. `sound.target` active, no failed units.
