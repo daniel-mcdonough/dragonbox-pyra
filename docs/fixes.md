@@ -168,7 +168,10 @@ Why (found 2026-11-21, R87): the package's CMake file asks pkg-config for
 `systemd`'s `systemdsystemunitdir` and installs the unit only if it finds
 `systemd.pc`. Trixie moved that file from `systemd` to `systemd-dev`, and the
 package's `Build-Depends: systemd` was not updated, so the build silently
-skipped the unit. Fix 29's rebuild adds `systemd-dev` and ships the unit
+skipped the unit (`pkg_check_modules` without `REQUIRED`). Debian split
+`systemd-dev` out in systemd 253-2; bookworm (252) has no such package, so one
+`debian/control` for both suites needs `systemd-dev | systemd (<< 253-2~)`
+(untested; `reports/pyra-funkeymonkey-missing-unit.md`). Fix 29's rebuild adds `systemd-dev` and ships the unit
 again, byte-identical to the one this fix writes; fix 3 stays for
 `--no-pyrainput`.
 

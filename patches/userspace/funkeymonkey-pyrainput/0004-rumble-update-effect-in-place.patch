@@ -10,8 +10,9 @@ strength.
 EVIOCSFF with an existing id updates the effect in place (input_ff_upload),
 and a memless device such as twl6040-vibra keeps a started effect running at
 the new magnitude. Re-upload under the vibrator-side id pyrainput already
-keeps in _effectMap. If the vibrator refuses that id (an earlier upload
-failed and left -1 in the map), fall back to the old erase and fresh upload.
+keeps in _effectMap. If an earlier upload failed, the map holds -1 and the
+same call uploads a fresh effect. If the vibrator refuses the id it holds,
+fall back to the old erase and fresh upload.
 A change of effect type never gets here: the uinput device's own ff core
 refuses it before pyrainput sees the request.
 
