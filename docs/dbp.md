@@ -473,7 +473,29 @@ zenity aborts. With data, the log says `liblua5.3.so.0: cannot open shared objec
 the package is on the system card. On a second card the game's own appdata folder is elsewhere, so the config ends
 up in the wrong place.
 
-**Making it start, from appdata files alone.** `/etc/dbp/run_script` sources `package.user_prerun` from the union
+**Making it start: `device/pyra-corsixth-setup.sh`.** Run it as the desktop user, not root, once
+`corsixth_0.68.0-r1_maquis196.dbp` is in `dragonbox/packages/` and registered. It needs the network and puts
+everything listed below into the game's appdata folder: 55 MB (39 MB of libraries, 16 MB of Lua tree), and 22 MB more for the demo (`du`, 2026-11-26). `--demo` also fetches and unpacks the
+free demo. `--check` compares the files with the SHA-256 list it keeps in `.pyra-corsixth-setup`. `--undo` removes
+the files that are still unchanged. Neither touches `CorsixTH/` or the game data. How it decides what to trust:
+
+- **Debian packages.** It fetches `InRelease` for bookworm, trixie and their `-updates` and `-security` suites, and
+  uses only the text that `gpgv` verifies against `/usr/share/keyrings/debian-archive-keyring.gpg`, which holds both
+  releases' archive keys. From that it checks `main/binary-armhf/Packages.xz`, and from that each `.deb`. For each
+  package it takes the highest version across the three suites of its release. A Release past its `Valid-Until`
+  is refused.
+- **The Lua tree.** GitHub's archive of the `v0.68.0` tag, checked against a SHA-256 pinned in the script. That
+  archive verified (2026-11-26) against the release's `CorsixTH-0.68.0.tar.gz.sig`, made by the key that signed the
+  tag (`DB14 7D8C D673 7D34 210D 2023 5C25 1992 033D 3D7C`).
+- **The demo.** A SHA-256 pinned in the script.
+
+Before it copies anything, it runs `ldd` on the binary and on each library with the new `lib/` on the path, and
+stops if anything is unresolved. If `CorsixTH/` is missing, it creates it from the package's `defaults/`, with
+`check_for_updates = false`. The launcher would otherwise create it at `/dragonbox/appdata/CorsixTH/`, the wrong
+place when the package is on a second card. If a `package.user_prerun` exists that the script didn't write, it
+stops rather than replace it. The run is in `verification-log.md` (R130).
+
+**What it sets up, from appdata files alone.** `/etc/dbp/run_script` sources `package.user_prerun` from the union
 root before it runs the launcher, in its own shell. A file in `dragonbox/appdata/CorsixTH/` (the `Appdata=` name)
 therefore shows up there. It can set the library path and also append the `--interpreter` argument, which the menu
 entry can't pass:
@@ -488,19 +510,20 @@ Next to it, in the same folder:
 - `corsixth-0.68.0/`: the `CorsixTH/` directory of the upstream `v0.68.0` source tag (`CorsixTH.lua`, `Lua`,
   `Bitmap`, `Levels`, `Campaigns`, `Graphics`). The package's changelog says it matches that tag, and the game reports
   v0.68.0.
-- `lua/5.3/lpeg.so` and `lua/5.3/lfs.so`: from trixie's `lua-lpeg` 1.1.0-2 and `lua-filesystem` 1.8.0-3+b2.
+- `lua/5.3/lpeg.so` and `lua/5.3/lfs.so`: from trixie's `lua-lpeg` 1.1.0-2 and `lua-filesystem` 1.8.0-3+b2. Each
+  package carries a build for Lua 5.1 to 5.4 under the same file name, so take the one under `lua/5.3/`.
 - `lib/`: 19 libraries, 39 MB. From trixie: `liblua5.3-0` 5.3.6-2+b4 and `libhwy1t64` 1.2.0-2+b2. From bookworm:
   `libavformat59`, `libavcodec59`, `libavutil57`, `libswscale6` and `libswresample4` (all 7:5.1.9-0+deb12u1), plus
   what they pull in that trixie lacks or renamed: `libvpx7`, `libdav1d6`, `libcodec2-1.0`, `libjxl0.7`, `librav1e0`,
-  `libsvtav1enc1`, `libx265-199` and `libssh-gcrypt-4`. Then `libcurl3-nss` with `libldap-2.5-0`. Each library is
-  copied under its soname, and nothing is installed into the system.
+  `libsvtav1enc1`, `libx265-199` and `libssh-gcrypt-4`. Then `libcurl3-nss` with `libldap-2.5-0`. Take the newest of
+  bookworm main and bookworm-security: on 2026-11-26 security still listed `libcurl3-nss` 7.88.1-10+deb12u5, while
+  main had deb12u15. Each library is copied under its soname, and nothing is installed into the system.
 - The game data at the top of the folder (`HOSPITAL.EXE`, `DATA/`, `SOUND/` ...). The free demo from CorsixTH's
   README, `th.corsix.org/Demo.zip` (12 878 920 bytes), works: unpack its `HOSP/` folder there. Never commit game data.
 
 These bookworm libraries call into trixie's t64 libraries (gnutls, gcrypt, nss, ...). That held for the runs below,
 but a mixed set like this is a test arrangement, not something to ship. The update check goes through bookworm's
-libcurl, so set `check_for_updates = false` in `CorsixTH/config.txt`. A script that fetches and checks these files,
-as `pyra-ptitseb-libs.sh` does for the P* emulators, isn't written yet.
+libcurl, so set `check_for_updates = false` in `CorsixTH/config.txt` (the script does this when it creates that folder).
 
 **Fullscreen with sound: stable on trixie, at least without anyone listening.** Tested 2026-11-26 on
 `5.6.19-m4-kbdled` through AESS (`verification-log.md`, R127). With the appdata files in place, the menu entry started

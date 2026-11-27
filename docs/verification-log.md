@@ -4087,3 +4087,44 @@ libgtk-4-1`): zenity, pavucontrol, libadwaita, gtkmm 4, GTK 4's GStreamer media 
   provider of eglQueryDisplayAttribEXT found`. Only GTK's debug path asks for it; it does not explain the heap
   errors.
 - Prep selftest with fix 34: 503 passed, 0 failed, 0 skipped (owner, 2026-11-26; 498 + 5 for fix 34).
+
+## 2026-11-26 — `device/pyra-corsixth-setup.sh`: CorsixTH from the menu, set up by the script (R130)
+
+R99 test card, kernel `5.6.19-m4-kbdled` (r4 in `l5`), `CorsixTH_maquis196` 0.68.0-r1 registered on the system
+card. Run as `pyra` over ssh. Input went in through `xsend` (`experiments/dbp-compat/`).
+
+- **Starting point.** Everything in `/dragonbox/appdata/CorsixTH/` from R127 (the hand-placed `lib/`, `lua/`,
+  `corsixth-0.68.0/`, `package.user_prerun`, the `CorsixTH/` config folder and the demo) was moved out of the folder.
+  Only `.cache` and aufs's `.wh..wh.orph` stayed.
+- **Two bugs found on the way, both fixed before the runs below.** `dpkg-deb -x` needs its target directory to
+  exist. A `find -name lpeg.so` picked the Lua 5.4 build, because `lua-lpeg` and `lua-filesystem` ship one per Lua
+  version under the same name (`lua/5.1/` to `lua/5.4/`). The script now matches the `lua/5.3/` path. `ldd`
+  doesn't catch this, because the modules link only libc.
+- **Fresh run, `--demo`: pass (rc 0; a full run takes 50–54 s, `time` on the other runs).** All six `InRelease` files verified (bookworm, trixie,
+  each with `-updates` and `-security`). Versions taken: FFmpeg 5 libraries 7:5.1.9-0+deb12u1, `libvpx7`
+  1.12.0-1+deb12u5, `libdav1d6` 1.0.0-2+deb12u1, `libcodec2-1.0` 1.0.5-1, `libjxl0.7` 0.7.0-10+deb12u1, `librav1e0`
+  0.5.1-6, `libsvtav1enc1` 1.4.1+dfsg-1, `libx265-199` 3.5-2+b1, `libssh-gcrypt-4` 0.10.6-0+deb12u3, `libcurl3-nss`
+  **7.88.1-10+deb12u15** (R127 had deb12u5), `libldap-2.5-0` 2.5.13+dfsg-5, `liblua5.3-0` 5.3.6-2+b4, `libhwy1t64`
+  1.2.0-2+b2, `lua-lpeg` 1.1.0-2, `lua-filesystem` 1.8.0-3+b2. The `ldd` check passed. The script created
+  `CorsixTH/` with `check_for_updates = false` and unpacked the demo. 412 files went into the manifest.
+- **Against R127's hand-placed set** (on an earlier run): the Lua tree was identical (`diff -rq`), and so were 18
+  of the 19 libraries and both Lua modules (`cmp`). `libcurl-nss.so.4` differed, as expected from the newer version.
+- **Second run over the first: pass.** It replaced its own `package.user_prerun` and skipped the demo, because
+  `HOSPITAL.EXE` was already there. `--check`: `ok: 412 files unchanged`.
+- **`--undo`: pass.** It left `CorsixTH/` and the demo's files, and `--check` then reported "not set up" (rc 1).
+- **From the menu: pass.** Games → Simulation and Strategy (370,381) → CorsixTH (636,381). The process was
+  `./corsix-th --interpreter=/mnt/dbp/union/CorsixTH_maquis196/corsixth-0.68.0/CorsixTH.lua` with
+  `LD_LIBRARY_PATH=<union>/lib:<image>/lib::/usr/lib/arm-linux-gnueabihf/gl4es/` and
+  `LUA_CPATH=<union>/lua/5.3/?.so;;`. Its maps held the copied FFmpeg, `libcurl-nss` and `liblua5.3`, the copied
+  `lpeg.so` and `lfs.so`, gl4es `libGL.so.1`, SGX `libGLESv2` 1.14.3699939 and `libpvrDRI3WSEGL.so`. An 800x600
+  "CorsixTH" window drew the main menu with "Version: v0.68.0" and "Not checking for updates" (`xwd` screenshot,
+  17 s after the click). Exit → ✓ ended the process, and `findmnt -t aufs,squashfs` listed nothing for CorsixTH
+  afterwards.
+- **Refusals: pass.** A copy with `KEYRING` set to `debian-archive-removed-keys.gpg` stopped at the first index
+  ("bookworm: InRelease has no good signature", rc 1). A copy with a wrong tarball SHA-256 stopped at the Lua tree
+  ("doesn't match the v0.68.0 SHA-256"). Both left the folder as it was (`--check` ok after each).
+- Not tested: a package on a second card (the `CorsixTH/` placement is reasoned from the launcher, not run); a
+  tampered `.deb` or `Packages.xz` (same `sha_ok` path as the tarball); gameplay beyond the menu, which R127
+  covered.
+- Left on the card: the script's setup with the demo in `/dragonbox/appdata/CorsixTH/`; R127's files in
+  `~/r127-corsixth-aside/`; `~/pyra-corsixth-setup.sh`, `~/run4.log` and `~/run5.log`.
