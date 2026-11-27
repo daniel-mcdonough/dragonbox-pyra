@@ -4315,3 +4315,44 @@ Doom 3 notes), downloaded on the PC.
 - **Prep selftest** with the pin moved to r5 and `PYRA_KERNEL_TARBALL` set to the downloaded asset: 505 passed,
   0 failed, 0 skipped. Its fix 31 check passes only when the marker reads `kernel=kernel-5.6.19-r5`, which prep
   writes when the tarball matches the pinned SHA-256.
+
+## 2026-11-27 — release image draft r6 on a Pyra (R108)
+
+Draft `image-2026.12-r6`: `pyra-trixie-release-4c32dba69c88.img.xz`, built by Release image run 46056077021
+(green, 8m34s) with kernel run 45958723755 (`kernel-5.6.19-r5`), from the public export of `4c32dba69c88`.
+
+- **Download:** `gh attestation verify ... --signer-workflow .../release-image.yml` exited 0 on the `.xz`. The
+  unpacked image matched the release's `.sha256` (`6986588a…8b70`).
+- **Written from the Pyra itself**, not a PC reader. The running R99 test card (left slot, `mmcblk1`) wrote it
+  to the card in the right slot, which shows up as `mmcblk3` (`device/type` `SD`; the eMMC is `mmcblk0`,
+  type `MMC`). `pyra-image-write.sh IMAGE /dev/mmcblk3 --yes`: direct-I/O write and read-back, SHA-256 equal,
+  15 min 22 s for both together (measured, `time`). `unxz -T0` of the 877 MiB `.xz` took 3 min 40 s on the
+  Pyra (measured). The card then went into the left slot alone.
+- **Grow:** `/run/initramfs/pyra-grow-root.log` capacity check passed (931 samples), both fsck runs `[Ok..]`
+  throughout (56 s and 67 s), "the root filesystem is now 238 GiB"; `df /` 239G. `fixing SIT types` and the
+  curseg moves are the usual output (see the entry on the first grow above).
+- **First boot (fix 33):** `pyra-first-boot.service` 21:22:32 to 21:24:37, then lightdm. `chpasswd` changed
+  `pyra`'s password at 21:24:36 (the harmless "no old password" keyring line). At the first login, 21:24:47-49:
+  `stashed password`, then `unlocked login keyring`; `login.keyring` created at 21:24 (105 bytes), as on R99.
+  The xinit `(EE) Server terminated with error (1)` when the unit's X server closes is its normal exit. The
+  `(EE) libinput bug: kernel fuzz of 5` lines are fix 30's fuzz, logged as before.
+- **Root (fix 2, R101):** `passwd -S root` → `root L 2026-02-01`; the shadow hash starts `!$y$`; `su` refuses.
+  Both `rescue.service.d/` and `emergency.service.d/` have `pyra-sulogin-force.conf`
+  (`SYSTEMD_SULOGIN_FORCE=1`). The console `systemctl rescue` step was not run (it needs someone at the screen).
+- **Fix 31:** `pyra-info`: `Prepared : commit 4c32dba69c88, 2026-11-27, kernel-5.6.19-r5, release image`; boot
+  entry `l5; default l5`; kernel `#10 ... Fri Nov 27 07:29:45 UTC 2026` (the r5 build); packages
+  funkeymonkey-pyrainput 0.1.19+pyra2, pyra-backlight 0.8, pyra-hacks 0.38+pyra5, pyra-settings 0.18,
+  pyra-sound 0.4, dri3wsegl-pyra 0.4, u-boot-pyra 0.1.5.
+- **Rumble:** no `updates/` directory; the only `twl6040-vibra.ko` is in `kernel/drivers/input/misc/`. Kernel
+  taint 512. Parameters `min_code` 32, `max_code` 56 (default cap; pyra-settings not opened yet), `enable` Y.
+  `trace-vibra.sh python3 ff-update-test.py 0x4000 0xffff 0x2000`: VIBCTLR (`1a`) 1 at play and 0 after the
+  stop; VIBDATR (`1b`) 0x25, 0x38, 0x22 (0x38 = 56, the cap); VIBDATL 0. Motor not felt (checked over ssh).
+- **Fixes 28-32 present from prep:** the xkb `pyra` diversion and the console kmap cache (28); pyrainput
+  0.1.19+pyra2 running and `pyra-input-guard` hooked into dpkg (29); fix 30's three files; `apt_pkg` 3.0.3,
+  `~/dragonbox` → `/dragonbox` and `dbp-cmd ping` OK (32). Not re-tested by hand (their behaviour was checked
+  on the R99 card).
+- **Fix 34:** `/etc/environment` holds `GSK_RENDERER=cairo`, and the MATE session (marco's environment) has it.
+  zenity `--info` and pavucontrol, started with that environment, both drew fully (screenshot by `xwd`). They
+  logged only theme warnings.
+- No failed units. The card's `/etc/sudoers` NOPASSWD line was added by the owner after first boot; prep
+  doesn't ship it.

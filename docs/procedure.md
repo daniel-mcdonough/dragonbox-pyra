@@ -223,6 +223,15 @@ another machine, the one with the reader.
   that is already a Pyra system, and asks for the device name to be typed. It
   writes with direct I/O, then reads the card back with direct I/O and requires
   the same SHA-256.
+- **Or write on the Pyra itself.** A running Pyra card can write a second card
+  in the right slot. Copy the image, its `.sha256` and the write script over
+  (unpack an `.xz` there), then run `sudo ./pyra-image-write.sh IMAGE
+  /dev/mmcblkN`. Use `lsblk` to find N; it isn't fixed (`mmcblk3` on
+  2026-11-27). The script refuses the eMMC (`mmcblk0`, whose
+  `/sys/block/*/device/type` reads `MMC`, not `SD`) and the card you booted
+  from. A 6 GiB image took about 15 minutes to write and read back. Boot the
+  new card in the left slot with the other card out: both cards carry the
+  same disk id (`troubleshooting.md`, "Two cards from the image in the Pyra").
 
 With that route, skip section 4 and go to section 5.
 

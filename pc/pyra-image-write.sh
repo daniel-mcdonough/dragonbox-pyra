@@ -10,7 +10,7 @@
 # against its .sha256 and refuses:
 #   - a partition (pass the whole card), or anything that is not a block device
 #   - a disk that is neither removable nor on an MMC controller, so internal
-#     drives and USB hard disks are refused
+#     drives and USB hard disks are refused, and an eMMC (the Pyra's own)
 #   - the disk holding /, or any disk with a mounted partition
 #   - a card smaller than the image
 # then shows what is on the card and asks for its name to be typed (--yes skips
@@ -49,6 +49,8 @@ RM=$(cat "$SYS/removable" 2>/dev/null || echo 0)
 TRAN=$(lsblk -dno TRAN "$DEV" 2>/dev/null | tr -d ' ')
 [[ $RM == 1 || $NAME == mmcblk* ]] ||
     die "$DEV is not removable and not an MMC device (transport '${TRAN:-?}'); refusing in case it is a disk you need"
+# Run on the Pyra itself, the eMMC is an unmounted mmcblk disk too; SD cards read "SD" here
+[[ $(cat "$SYS/device/type" 2>/dev/null) != MMC ]] || die "$DEV is an eMMC, not an SD card; refusing"
 ROOTSRC=$(findmnt -no SOURCE /)
 ROOTDISK=$(lsblk -no PKNAME "${ROOTSRC%%\[*}" 2>/dev/null | head -1)     # btrfs: /dev/sda2[/@]
 [[ $NAME != "$ROOTDISK" ]] || die "$DEV holds this machine's root filesystem"
