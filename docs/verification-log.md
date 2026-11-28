@@ -4421,5 +4421,5 @@ rebooted.
   --triggers-only initramfs-tools` did the same. Both initrds list fix 14's two `init-top` hooks. A reboot on the
   rebuilt m4-kbdled initrd: `running`, no failed units, graphical.target 17.3 s into userspace.
 - **Prep's fix 36 block,** run alone on a copy of the card's file with the line set back to `yes`: changed only
-  that line, mode 644; a second run reported it in place; a doubled line and a missing file stopped it. The prep
-  selftest was not run (it needs root on the PC).
+  that line, mode 644; a second run reported it in place; a doubled line and a missing file stopped it.
+- **Prep selftest** with fix 36 (owner): 515 passed, 0 failed, 0 skipped (510 + 5 for fix 36).
