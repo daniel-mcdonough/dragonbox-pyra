@@ -731,7 +731,7 @@ sysctl settings, points the Fn keyboard-light keys at `pyra-kbdlight.sh` and
 reloads `pyrainput`, and rebuilds any initrd that lacks the initramfs hooks
 (step 5). `--dry-run` says what it would change first. It installs no kernel,
 and of the thirty-six fixes it applies only 13 to 18, 20, 24 and 25, whose files it shares
-with prep (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
+with prep, and fix 36's one line in `update-initramfs.conf` (fix 19's two kernel scripts it puts on `$PATH` too). It does put the fix 6, 7 and 8 scripts
 on `$PATH`, and it updates fix 5's `pyra-usb3503-rescue` script in
 place, because the two share a path. It installs fix 21's script and its dpkg
 guard but does not patch the library; `sudo pyra-wsegl-fdfix.sh install` does.

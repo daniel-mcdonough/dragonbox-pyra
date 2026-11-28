@@ -2552,7 +2552,8 @@ changed line on an upgrade and asks only if a new initramfs-tools changes the
 file too; keep the local version then. Prep refuses an image whose file is
 missing, a link, or has no or several `update_initramfs` lines.
 
-On a card prepared before this fix:
+On a card prepared before this fix, `device/pyra-install-helpers.sh` makes the
+same change, or by hand:
 
     sudo sed -i 's/^update_initramfs=.*/update_initramfs=all/' /etc/initramfs-tools/update-initramfs.conf
     sudo update-initramfs -u

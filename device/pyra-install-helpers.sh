@@ -37,6 +37,7 @@
 # scripts prep calls. Fix 21's script and its dpkg guard land where prep puts
 # them, but the library is not patched: that is `sudo pyra-wsegl-fdfix.sh
 # install`, after which the guard keeps it patched across package runs.
+# Fix 36 is one line in initramfs-tools' own conffile, edited as prep edits it.
 #
 # Every step is idempotent. Run it again after a `git pull`.
 #
@@ -374,6 +375,28 @@ for initrd in /boot/initrd.img-*; do
 done
 note "/boot: $(df -Ph /boot | awk 'NR==2{print $4}') free"
 
+# --------------------------------------------- every initrd on an upgrade
+# Fix 36. initramfs-tools' trigger runs "update-initramfs -u" with no -k, which
+# with update_initramfs=yes rebuilds only the highest version, and
+# 5.6.19-pyradef sorts above 5.6.19-m4-kbdled, so an apt upgrade left the booted
+# kernel's initrd stale. "all" rebuilds each one. update-initramfs reads only
+# this conffile, so its one line is edited in place; dpkg keeps the change on
+# an upgrade. A file without exactly one such line is left alone.
+say "update-initramfs: every kernel's initrd on an upgrade (fix 36)"
+UIC=/etc/initramfs-tools/update-initramfs.conf
+uic_ok() { [ "$(grep '^update_initramfs=' "$UIC" 2>/dev/null)" = update_initramfs=all ]; }
+uic_lines=$(grep -c '^update_initramfs=' "$UIC" 2>/dev/null || true)
+if uic_ok; then
+	note "same      $UIC (update_initramfs=all)"
+elif [ ! -f "$UIC" ] || [ -L "$UIC" ] || [ "$uic_lines" != 1 ]; then
+	note "NOT changed $UIC: missing, a link, or not exactly one update_initramfs line"
+elif [ "$DRYRUN" = 1 ]; then
+	note "would set update_initramfs=all in $UIC (now '$(grep '^update_initramfs=' "$UIC")')"
+else
+	sed -i 's/^update_initramfs=.*/update_initramfs=all/' "$UIC"
+	note "set       update_initramfs=all in $UIC"
+fi
+
 # -------------------------------------------------- moved to pyra-backlight
 # Earlier versions of this script installed the idle dimmer and the
 # brightness applet by hand. Left in place, /usr/local/bin/pyra-idle-dim
@@ -446,6 +469,12 @@ for initrd in /boot/initrd.img-*; do
 	fi
 done
 [ "$fail" = 0 ] || die "rebuild the initrds above:${rebuild_fail:- see above}"
+if uic_ok; then
+	note "ok   $UIC rebuilds every kernel's initrd"
+else
+	note "BAD  $UIC: an apt upgrade will rebuild only the highest kernel's initrd"
+	die "set update_initramfs=all in $UIC (docs/fixes.md, fix 36)"
+fi
 
 cat <<'EOF'
 
@@ -482,6 +511,8 @@ In every kernel's initrd, two init-top hooks against a late root mount:
 
     pyra-fw-nofallback                no 60 s wait for absent firmware
     pyra-settle-nudge                 wakes udevadm settle if it sleeps on
+
+and update_initramfs=all, so an apt upgrade rebuilds every one of them.
 
 The two benchmarks are installed as source, in /usr/local/src/pyra, because
 both link against Xlib and this image does not ship libx11-dev:

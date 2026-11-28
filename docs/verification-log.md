@@ -4423,3 +4423,6 @@ rebooted.
 - **Prep's fix 36 block,** run alone on a copy of the card's file with the line set back to `yes`: changed only
   that line, mode 644; a second run reported it in place; a doubled line and a missing file stopped it.
 - **Prep selftest** with fix 36 (owner): 515 passed, 0 failed, 0 skipped (510 + 5 for fix 36).
+- **`device/pyra-install-helpers.sh` with fix 36,** on the r7 card with the line set back to `yes`: `--dry-run`
+  said it would set `all` and changed nothing; the real run set it and its verify step passed (exit 0); a second
+  run reported the file unchanged (exit 0). No failed units after.
