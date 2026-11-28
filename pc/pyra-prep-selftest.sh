@@ -10,7 +10,7 @@
 # repository, it is unpacked from the vendor .7z (archive checked too). Runs on
 # a COPY, so the image itself stays pristine for the next run. Snapshots the whole rootfs before and after, so an unexpected write
 # anywhere in the tree cannot go unnoticed. Then runs the prep script, asserts
-# the end state of fixes 1 to 35 (fix 2 with --set-password and
+# the end state of fixes 1 to 36 (fix 2 with --set-password and
 # --ssh-key, fix 14 with --grow-on-boot), runs it a second time and requires the
 # filesystem to be unchanged, checks that fix 23 keeps a card's own host keys
 # and machine-id (and removes a vendor key mixed in with them), checks that a missing fix 5 payload and an
@@ -1610,6 +1610,18 @@ else
     [[ ! -e $L ]] && p "fix35: the vendor's daemon is not in multi-user.target" || f "fix35: ${L#$MNT} exists without the fork"
 fi
 
+i "assert fix 36 — update-initramfs rebuilds every kernel's initrd"
+U=$MNT/etc/initramfs-tools/update-initramfs.conf
+[[ $(grep '^update_initramfs=' "$U" 2>/dev/null) == update_initramfs=all ]] \
+    && p "fix36: update-initramfs.conf sets update_initramfs=all, once" || f "fix36: update-initramfs.conf: $(grep '^update_initramfs=' "$U" 2>/dev/null | tr '\n' ' ')"
+[[ -f $U && ! -L $U && $(stat -c '%a %u:%g' "$U") == "644 0:0" ]] && p "fix36: update-initramfs.conf is a 644 root:root file" \
+    || f "fix36: update-initramfs.conf is $(stat -c '%F %a %u:%g' "$U" 2>/dev/null || echo missing)"
+grep -qx 'backup_initramfs=no' "$U" && p "fix36: the file's other setting is the vendor's" || f "fix36: backup_initramfs changed or gone"
+# update-initramfs has no dry run, so check the value it will source rather
+# than rebuild both initrds again under qemu.
+got=$(in_chroot sh -c '. /etc/initramfs-tools/update-initramfs.conf; echo "$update_initramfs"' 2>&1 || true)
+[[ $got == all ]] && p "fix36: the image's shell reads update_initramfs=all from the conffile" || f "fix36: the conffile gives update_initramfs='$got'"
+
 ########################################################################
 i "run 2 — idempotency"
 ########################################################################
@@ -1690,6 +1702,8 @@ if [[ $SON == yes ]]; then
     grep -qF "fix35: the pyra-hacks fork's unit is enabled in multi-user.target" "$OUT/prep-run2.log" \
         && p "run 2 found the fork's unit enabled in multi-user.target" || f "run 2 did not find the fork's unit enabled in multi-user.target"
 fi
+grep -qF "fix36: update-initramfs already rebuilds every kernel's initrd" "$OUT/prep-run2.log" \
+    && p "run 2 reported fix36's setting already in place" || f "run 2 did not report fix36's setting in place"
 for m in 'is already diverted' 'already fixed' 'already carries the Fn fragment' 'already has the Fn keys'; do
     grep -F 'fix28: ' "$OUT/prep-run2.log" | grep -qF "$m" \
         && p "run 2 reported fix28's '$m'" || f "run 2 did not report fix28's '$m'"

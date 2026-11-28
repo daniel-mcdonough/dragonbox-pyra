@@ -4398,3 +4398,28 @@ On the r6 card above, after the owner's `sudo systemctl rescue` (21:35:11) and `
   0.18). On the r6 card: `dpkg -i` over 0.18 clean, `dpkg --audit` empty, `pyra-settings-apply.service` ran
   `apply` with status 0, every module parses, and the window ran 10 s on `:0` with only theme warnings. Pages
   checked by the owner on the card afterwards: working.
+
+## 2026-11-28 — the r7 card after an `apt upgrade`, and fix 36 (R141)
+
+Release image r7 (prep commit `d61d76cdee84`, `kernel-5.6.19-r5`) on a Pyra; the owner ran `apt upgrade`
+on it (278 packages, among them xserver-xorg-core `+deb13u4`, mesa `25.0.7-2+deb13u1`, libinput `1.28.1-1+deb13u1`,
+systemd/udev 257.13, lightdm `1.32.0-6+deb13u1`, libc6 `2.41-12+deb13u5`, apt 3.0.4, initramfs-tools 0.148.4), then
+rebooted.
+
+- **After the reboot:** `is-system-running` `running`, no failed units, `dpkg --audit` empty, `dpkg --verify` clean
+  on the pyra packages except fix 21's patched `libpvrDRI3WSEGL.so` (`pyra-wsegl-fdfix.sh status`: fixed). Xorg
+  (omap5) logged no `(EE)` but fix 30's fuzz lines. `pyra-gles2-smoke` built on the card: blob EGL/GLES, PowerVR
+  SGX 544MP, 1436 fps. Touchscreen `LIBINPUT_FUZZ`/`EVDEV_ABS` 5 (fix 30); `apt_pkg` imports against apt 3.0.4 and
+  `dbp-cmd ping` exits 0 (fix 32); xkb diversion and layout `pyra` (28); `GSK_RENDERER=cairo` in marco's
+  environment (34); root `L`, sulogin drop-ins (2); pyra_volumed, pyrainput, pyra-thermal, pyra-sound, PulseAudio on
+  `aess` running. The `omap_l3_noc` L4WAKEUP warning was in the boot before the upgrade too.
+- **The fault:** initramfs-tools' trigger rebuilt `initrd.img-5.6.19-pyradef` (00:44); `initrd.img-5.6.19-m4-kbdled`,
+  the booted kernel's, kept prep's (23:47). The trigger runs `update-initramfs -u` with no `-k`, which with
+  `update_initramfs=yes` takes the highest version by `linux-version sort`.
+- **Fix 36 on the card:** `update_initramfs=all` in `/etc/initramfs-tools/update-initramfs.conf`. `update-initramfs
+  -u` generated both initrds in 31 s (measured, `time`); `dpkg-trigger --no-await update-initramfs` then `dpkg
+  --triggers-only initramfs-tools` did the same. Both initrds list fix 14's two `init-top` hooks. A reboot on the
+  rebuilt m4-kbdled initrd: `running`, no failed units, graphical.target 17.3 s into userspace.
+- **Prep's fix 36 block,** run alone on a copy of the card's file with the line set back to `yes`: changed only
+  that line, mode 644; a second run reported it in place; a doubled line and a missing file stopped it. The prep
+  selftest was not run (it needs root on the PC).

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Apply the thirty-five known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
+# Apply the thirty-six known fixes to a freshly-written Debian 13 (trixie) Pyra SD card.
 # Run against the MOUNTED rootfs partition, with the boot partition mounted at
 # its /boot, before the card's first boot.
 #
@@ -75,6 +75,10 @@
 # Fix 34 sets GSK_RENDERER=cairo in /etc/environment: GTK 4's GL renderer
 # crashes on the Pyra, which took zenity (DBP launchers' messages) and the
 # menu's Volume Control with it.
+#
+# Fix 36 sets update_initramfs=all, so the initramfs-tools trigger an apt
+# upgrade fires rebuilds the shipped kernel's initrd too, not only the stock
+# one, whose version sorts higher.
 #
 # --grow-on-boot adds pyra-grow-root to fix 14's initrds: on its first boot
 # the card checks its capacity and grows the rootfs to fill itself, so no PC
@@ -2862,6 +2866,36 @@ if [[ $SETTINGS_MODE == file ]]; then
     fi
 else
     ok "fix35: left out; without the pyra-hacks fork (fix 26) the daemon must wait for sound.target"
+fi
+
+# ---------------------------------------------------------------------- fix 36
+#
+# A package that changes what goes into an initrd (udev, systemd, kmod, a hook)
+# fires initramfs-tools' trigger, which runs "update-initramfs -u" with no -k.
+# With update_initramfs=yes that rebuilds only the highest version by
+# "linux-version sort", and 5.6.19-pyradef sorts above 5.6.19-m4-kbdled, so an
+# apt upgrade rebuilt the stock kernel's initrd and left the one the card boots
+# (fix 19) as prep made it (the r7 card, 2026-11-28). "all" rebuilds every
+# kernel's initrd; on the Pyra the two take about 30 s. update-initramfs reads
+# only this conffile, so the line is edited in place; dpkg keeps a changed
+# conffile on an upgrade and asks only if the package changes it too.
+
+UIC=$ROOT/etc/initramfs-tools/update-initramfs.conf
+[[ -f $UIC && ! -L $UIC ]] || die "fix36: /etc/initramfs-tools/update-initramfs.conf is missing or a link on the image"
+case $(grep -c '^update_initramfs=' "$UIC") in
+0) die "fix36: /etc/initramfs-tools/update-initramfs.conf has no update_initramfs line" ;;
+1) ;;
+*) die "fix36: /etc/initramfs-tools/update-initramfs.conf has more than one update_initramfs line" ;;
+esac
+if grep -qx 'update_initramfs=all' "$UIC"; then
+    ok "fix36: update-initramfs already rebuilds every kernel's initrd"
+else
+    OLD=$(grep '^update_initramfs=' "$UIC")
+    sed 's/^update_initramfs=.*/update_initramfs=all/' "$UIC" >"$UIC.pyra-prep"
+    chmod 0644 "$UIC.pyra-prep"
+    chown 0:0 "$UIC.pyra-prep"
+    mv -f -- "$UIC.pyra-prep" "$UIC"
+    ok "fix36: update-initramfs rebuilds every kernel's initrd ('$OLD' was the highest version only)"
 fi
 
 # ------------------------------------------------------------------- release

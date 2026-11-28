@@ -1,4 +1,4 @@
-# The thirty-five fixes, and what they actually do
+# The thirty-six fixes, and what they actually do
 
 > **Type: reference.** How things are and why; not a procedure.
 
@@ -59,6 +59,7 @@ them out.
 | 33 | workaround | `pam_gnome_keyring`'s password step finds no keyring daemon before `pam_systemd` has made `XDG_RUNTIME_DIR`, so a password changed at the greeter never reaches the login keyring (gnome-keyring 48.0) | never, for release images: a password chosen before the first login is the better design anyway | — |
 | 34 | workaround | GTK 4's default GL renderer corrupts the heap on this card's EGL stack (GTK 4.18.6; cause not found) | a GTK 4 program draws with the variable unset | — |
 | 35 | package fix | `pyra-hacks`: `pyra_volumed.service` is wanted only by `sound.target`, which only udev starts; the fork's unit is wanted by `multi-user.target` too (`0.38+pyra6`) | as fix 6; prep only removes the drop-in an earlier run wrote | — |
+| 36 | project choice | — (`update-initramfs -u` rebuilds only the highest kernel version, and the stock kernel's sorts above the shipped one's) | the card stops carrying two kernels | — |
 
 
 ### Fix 1 — Xorg segfault at startup (SUPERSEDED, see fix 4)
@@ -2524,6 +2525,42 @@ drop-in and started it with the drop-in. Then with `0.38+pyra6` (the release
 asset) and no drop-in: the upgrade from `+pyra5` made the
 `multi-user.target.wants` link, `dpkg --verify` was clean, a boot had no
 failed units, and `systemctl default` started the stopped daemon again.
+
+## Fix 36 — an apt upgrade rebuilds the stock kernel's initrd, not the one the card boots
+
+**Symptom.** After an `apt upgrade` that brought udev, systemd and
+initramfs-tools, `/boot/initrd.img-5.6.19-pyradef` was new and
+`/boot/initrd.img-5.6.19-m4-kbdled`, the initrd of the kernel the card boots
+(fix 19), still dated from prep (the r7 card, 2026-11-28). Nothing broke that
+time, but the shipped kernel's initrd kept the old udev, and a hook added later
+would never reach it.
+
+**Cause.** Packages that change an initrd's contents fire initramfs-tools'
+`update-initramfs` trigger, whose postinst runs `update-initramfs -u` with no
+`-k`. With the default `update_initramfs=yes` that rebuilds one initrd, the
+highest version by `linux-version sort`, and `5.6.19-pyradef` sorts above
+`5.6.19-m4-kbdled`. The `/boot/initrd.img` link and the running kernel are
+only consulted when no version is found. A kernel package's own install passes
+`-k`, so it is not affected; the shipped kernel is not a package anyway.
+
+**Fix.** Prep sets `update_initramfs=all` in
+`/etc/initramfs-tools/update-initramfs.conf`, the only file update-initramfs
+reads its settings from. Then `-u` without `-k` rebuilds every kernel's
+initrd that exists. The stock kernel stays the `l0` fallback, so its initrd is
+still kept current. The two rebuilds took 31 s on the Pyra (measured). The file is initramfs-tools' conffile, so dpkg keeps the
+changed line on an upgrade and asks only if a new initramfs-tools changes the
+file too; keep the local version then. Prep refuses an image whose file is
+missing, a link, or has no or several `update_initramfs` lines.
+
+On a card prepared before this fix:
+
+    sudo sed -i 's/^update_initramfs=.*/update_initramfs=all/' /etc/initramfs-tools/update-initramfs.conf
+    sudo update-initramfs -u
+
+**Checked** 2026-11-28 on the r7 card after its `apt upgrade`
+(`verification-log.md`): with the line changed, `update-initramfs -u` and then
+the trigger itself (`dpkg-trigger update-initramfs`, `dpkg --triggers-only
+initramfs-tools`) each generated both initrds, both with fix 14's two hooks.
 
 ## Fixes 6, 7 and 12 as a package
 
